@@ -1,0 +1,20 @@
+{
+  "name": "test-project",
+  "version": "1.0.0",
+  "description": "Test project for Beagle Run",
+  "engines": {
+    "node": ">=16.0.0",
+    "npm": ">=8.0.0"
+  },
+  "scripts": {
+    "dev": "echo 'Starting development server...' && sleep 1 && echo 'Server running on http://localhost:3000' && echo 'GraphQL endpoint: http://localhost:3000/graphql' && echo 'Admin panel: https://admin.example.com'",
+    "build": "echo 'Building project...' && sleep 1 && echo 'Build completed successfully!' && echo 'Preview at https://preview.vercel.app/abc123'",
+    "test": "echo 'Running tests...' && echo '✓ Test 1 passed' && echo '✗ Test 2 failed' && echo 'Error: Cannot find module \"./utils\"' >&2 && echo '1 passing, 1 failing'",
+    "lint": "echo 'Linting code...' && echo 'Warning: unused variable at line 42' && echo 'Error: Missing semicolon at line 105' >&2 && echo 'Linting completed with 1 warning and 1 error'",
+    "error-demo": "echo 'Starting process...' && sleep 1 && echo 'Error: Failed to connect to database at postgresql://localhost:5432' >&2 && echo 'Fatal: Connection timeout' >&2 && exit 1",
+    "docs": "echo 'Generating documentation...' && echo 'Docs available at https://docs.myproject.com' && echo 'API reference: http://localhost:8080/api-docs'"
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}
