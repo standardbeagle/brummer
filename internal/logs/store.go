@@ -312,3 +312,18 @@ func (s *Store) GetURLs() []URLEntry {
 	copy(result, s.urls)
 	return result
 }
+
+func (s *Store) ClearLogs() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	s.entries = make([]LogEntry, 0, s.maxEntries)
+	s.byProcess = make(map[string][]int)
+}
+
+func (s *Store) ClearErrors() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	s.errors = make([]LogEntry, 0, 100)
+}

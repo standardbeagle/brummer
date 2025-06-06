@@ -78,6 +78,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/mcp/stop", s.handleStopProcess)
 	mux.HandleFunc("/mcp/search", s.handleSearchLogs)
 	mux.HandleFunc("/mcp/filters", s.handleFilters)
+	mux.HandleFunc("/mcp/browser-log", s.handleBrowserLog)
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -435,6 +436,125 @@ func (s *Server) broadcast(event Event) {
 			// Client channel is full, skip
 		}
 	}
+}
+
+func (s *Server) handleBrowserLog(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req struct {
+		ClientID string `json:"clientId"`
+		LogData  struct {
+			Type      string                 `json:"type"`
+			Level     string                 `json:"level"`
+			Message   string                 `json:"message"`
+			Details   map[string]interface{} `json:"details"`
+			URL       string                 `json:"url"`
+			Timestamp string                 `json:"timestamp"`
+			Source    string                 `json:"source"`
+			Tab       struct {
+				ID    int    `json:"id"`
+				URL   string `json:"url"`
+				Title string `json:"title"`
+			} `json:"tab"`
+		} `json:"logData"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Validate client exists
+	s.mu.RLock()
+	_, exists := s.clients[req.ClientID]
+	s.mu.RUnlock()
+
+	if !exists {
+		http.Error(w, "Client not found", http.StatusNotFound)
+		return
+	}
+
+	// Format browser log for Brummer's log system
+	processName := fmt.Sprintf("Browser Tab %d", req.LogData.Tab.ID)
+	
+	// Create a formatted log message
+	var logMessage string
+	switch req.LogData.Type {
+	case "console":
+		logMessage = fmt.Sprintf("[%s] %s", req.LogData.Level, req.LogData.Message)
+	case "javascript-error":
+		if details := req.LogData.Details; details != nil {
+			if filename, ok := details["filename"].(string); ok && filename != "" {
+				logMessage = fmt.Sprintf("JS Error: %s (%s:%v:%v)", 
+					req.LogData.Message, filename, details["lineno"], details["colno"])
+			} else {
+				logMessage = fmt.Sprintf("JS Error: %s", req.LogData.Message)
+			}
+		} else {
+			logMessage = fmt.Sprintf("JS Error: %s", req.LogData.Message)
+		}
+	case "promise-rejection":
+		logMessage = fmt.Sprintf("Promise Rejection: %s", req.LogData.Message)
+	case "resource-error":
+		logMessage = fmt.Sprintf("Resource Error: %s", req.LogData.Message)
+	case "network-request":
+		if details := req.LogData.Details; details != nil {
+			status := ""
+			if s, ok := details["status"].(float64); ok {
+				status = fmt.Sprintf(" (%d)", int(s))
+			}
+			duration := ""
+			if d, ok := details["duration"].(float64); ok {
+				duration = fmt.Sprintf(" %dms", int(d))
+			}
+			logMessage = fmt.Sprintf("Network: %s%s%s", req.LogData.Message, status, duration)
+		} else {
+			logMessage = fmt.Sprintf("Network: %s", req.LogData.Message)
+		}
+	case "network-error":
+		logMessage = fmt.Sprintf("Network Error: %s", req.LogData.Message)
+	case "navigation":
+		logMessage = fmt.Sprintf("Navigation: %s", req.LogData.Message)
+	default:
+		logMessage = fmt.Sprintf("[%s] %s", req.LogData.Type, req.LogData.Message)
+	}
+
+	// Add browser context to message
+	if req.LogData.Tab.Title != "" {
+		logMessage = fmt.Sprintf("%s | Page: %s (%s)", logMessage, req.LogData.Tab.Title, req.LogData.Tab.URL)
+	} else {
+		logMessage = fmt.Sprintf("%s | Page: %s", logMessage, req.LogData.Tab.URL)
+	}
+
+	// Determine if it's an error
+	isError := req.LogData.Level == "error" || 
+		       req.LogData.Type == "javascript-error" || 
+		       req.LogData.Type == "promise-rejection" || 
+		       req.LogData.Type == "resource-error" || 
+		       req.LogData.Type == "network-error"
+
+	// Add to log store
+	s.logStore.Add("browser", processName, logMessage, isError)
+
+	// Broadcast event
+	s.broadcast(Event{
+		Type: "log.line",
+		Data: map[string]interface{}{
+			"processId":   "browser",
+			"processName": processName,
+			"content":     logMessage,
+			"isError":     isError,
+			"timestamp":   req.LogData.Timestamp,
+			"source":      req.LogData.Source,
+			"type":        req.LogData.Type,
+		},
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]bool{"success": true})
 }
 
 func generateID() string {

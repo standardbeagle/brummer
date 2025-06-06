@@ -82,6 +82,8 @@ type keyMap struct {
 	RestartAll key.Binding
 	CopyError  key.Binding
 	Priority   key.Binding
+	ClearLogs  key.Binding
+	ClearErrors key.Binding
 	Help       key.Binding
 }
 
@@ -138,6 +140,14 @@ var keys = keyMap{
 		key.WithKeys("p"),
 		key.WithHelp("p", "toggle priority"),
 	),
+	ClearLogs: key.NewBinding(
+		key.WithKeys("x"),
+		key.WithHelp("x", "clear logs"),
+	),
+	ClearErrors: key.NewBinding(
+		key.WithKeys("z"),
+		key.WithHelp("z", "clear errors"),
+	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
 		key.WithHelp("?", "help"),
@@ -151,9 +161,9 @@ func (k keyMap) ShortHelp() []key.Binding {
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Enter, k.Back},
-		{k.Tab, k.Search, k.Filter, k.Stop},
-		{k.Restart, k.RestartAll, k.CopyError, k.Priority},
-		{k.Help, k.Quit},
+		{k.Tab, k.Search, k.Filter, k.Priority},
+		{k.Stop, k.Restart, k.RestartAll, k.CopyError},
+		{k.ClearLogs, k.ClearErrors, k.Help, k.Quit},
 	}
 }
 
@@ -173,10 +183,29 @@ type processItem struct {
 func (i processItem) FilterValue() string { return i.process.Name }
 func (i processItem) Title() string {
 	status := string(i.process.Status)
-	return fmt.Sprintf("[%s] %s", status, i.process.Name)
+	var statusEmoji string
+	switch i.process.Status {
+	case process.StatusRunning:
+		statusEmoji = "🟢"
+	case process.StatusStopped:
+		statusEmoji = "🔴"
+	case process.StatusFailed:
+		statusEmoji = "❌"
+	case process.StatusSuccess:
+		statusEmoji = "✅"
+	default:
+		statusEmoji = "⏸️"
+	}
+	return fmt.Sprintf("%s [%s] %s", statusEmoji, status, i.process.Name)
 }
 func (i processItem) Description() string {
-	return fmt.Sprintf("PID: %s | Started: %s", i.process.ID, i.process.StartTime.Format("15:04:05"))
+	var actions string
+	if i.process.Status == process.StatusRunning {
+		actions = "Press 's' to stop, 'r' to restart"
+	} else {
+		actions = "Press 'Enter' to view logs"
+	}
+	return fmt.Sprintf("PID: %s | Started: %s | %s", i.process.ID, i.process.StartTime.Format("15:04:05"), actions)
 }
 
 type packageManagerItem struct {
@@ -322,11 +351,7 @@ func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *event
 		currentPath:    getCurrentDir(),
 	}
 
-	processMgr.RegisterLogCallback(func(processID, line string, isError bool) {
-		if proc, exists := processMgr.GetProcess(processID); exists {
-			logStore.Add(processID, proc.Name, line, isError)
-		}
-	})
+	// Note: Log callback is registered in main.go to avoid duplication
 
 	// Initialize settings list
 	m.updateSettingsList()
@@ -366,10 +391,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch {
 		case key.Matches(msg, m.keys.Quit):
-			return m, tea.Sequence(
-				tea.Printf(renderExitScreen()),
-				tea.Quit,
-			)
+			// Check if there are running processes
+			runningProcesses := 0
+			for _, proc := range m.processMgr.GetAllProcesses() {
+				if proc.Status == process.StatusRunning {
+					runningProcesses++
+				}
+			}
+			
+			if runningProcesses > 0 {
+				// Add a message about stopping processes
+				return m, tea.Sequence(
+					tea.Printf("Stopping %d running processes...\n", runningProcesses),
+					func() tea.Msg {
+						m.processMgr.Cleanup()
+						return tea.Msg(nil)
+					},
+					tea.Printf(renderExitScreen()),
+					tea.Quit,
+				)
+			} else {
+				return m, tea.Sequence(
+					tea.Printf(renderExitScreen()),
+					tea.Quit,
+				)
+			}
 
 		case key.Matches(msg, m.keys.Tab):
 			m.cycleView()
@@ -394,10 +440,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 		case key.Matches(msg, m.keys.RestartAll):
-			cmds = append(cmds, m.handleRestartAll())
+			if m.currentView == ViewProcesses {
+				m.logStore.Add("system", "System", "Restarting all running processes...", false)
+				cmds = append(cmds, m.handleRestartAll())
+			}
 
 		case key.Matches(msg, m.keys.CopyError):
 			cmds = append(cmds, m.handleCopyError())
+
+		case key.Matches(msg, m.keys.ClearLogs):
+			if m.currentView == ViewLogs {
+				m.handleClearLogs()
+			}
+
+		case key.Matches(msg, m.keys.ClearErrors):
+			if m.currentView == ViewErrors {
+				m.handleClearErrors()
+			}
 
 		case key.Matches(msg, m.keys.Enter):
 			cmds = append(cmds, m.handleEnter())
@@ -419,21 +478,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case ViewProcesses:
+		// Handle process-specific key commands BEFORE list update
+		// This ensures our keys take precedence over list navigation
+		if msg, ok := msg.(tea.KeyMsg); ok {
+			switch {
+			case key.Matches(msg, m.keys.Stop):
+				if i, ok := m.processesList.SelectedItem().(processItem); ok {
+					if err := m.processMgr.StopProcess(i.process.ID); err != nil {
+						m.logStore.Add("system", "System", fmt.Sprintf("Failed to stop process %s: %v", i.process.Name, err), true)
+					} else {
+						m.logStore.Add("system", "System", fmt.Sprintf("Stopping process: %s", i.process.Name), false)
+					}
+					cmds = append(cmds, m.waitForUpdates())
+				} else {
+					m.logStore.Add("system", "System", "No process selected to stop", true)
+				}
+				// Don't update the list for this key, we handled it
+				return m, tea.Batch(cmds...)
+				
+			case key.Matches(msg, m.keys.Restart):
+				if i, ok := m.processesList.SelectedItem().(processItem); ok {
+					cmds = append(cmds, m.handleRestartProcess(i.process))
+					m.logStore.Add("system", "System", fmt.Sprintf("Restarting process: %s", i.process.Name), false)
+				} else {
+					m.logStore.Add("system", "System", "No process selected to restart", true)
+				}
+				// Don't update the list for this key, we handled it
+				return m, tea.Batch(cmds...)
+			}
+		}
+		
+		// Update the list only if we didn't handle the key above
 		newList, cmd := m.processesList.Update(msg)
 		m.processesList = newList
 		cmds = append(cmds, cmd)
-
-		if msg, ok := msg.(tea.KeyMsg); ok {
-			if key.Matches(msg, m.keys.Stop) {
-				if i, ok := m.processesList.SelectedItem().(processItem); ok {
-					m.processMgr.StopProcess(i.process.ID)
-				}
-			} else if key.Matches(msg, m.keys.Restart) {
-				if i, ok := m.processesList.SelectedItem().(processItem); ok {
-					cmds = append(cmds, m.handleRestartProcess(i.process))
-				}
-			}
-		}
 
 	case ViewLogs, ViewErrors, ViewURLs:
 		newViewport, cmd := m.logsViewport.Update(msg)
@@ -490,7 +568,7 @@ func (m Model) View() string {
 	case ViewScripts:
 		content = m.scriptsList.View()
 	case ViewProcesses:
-		content = m.processesList.View()
+		content = m.renderProcessesView()
 	case ViewLogs:
 		content = m.renderLogsView()
 	case ViewErrors:
@@ -520,7 +598,7 @@ func (m Model) View() string {
 }
 
 func (m *Model) updateSizes() {
-	headerHeight := 3
+	headerHeight := 3  // title + tabs + separator
 	helpHeight := 3
 	contentHeight := m.height - headerHeight - helpHeight
 
@@ -598,16 +676,52 @@ func (m *Model) updateLogsView() {
 
 	var content strings.Builder
 	for _, log := range logs {
+		// Skip empty log entries (used for separation)
+		if strings.TrimSpace(log.Content) == "" {
+			continue
+		}
+		
 		style := m.getLogStyle(log)
-		line := fmt.Sprintf("[%s] %s: %s\n", 
+		
+		// Clean up the log content
+		cleanContent := m.cleanLogContent(log.Content)
+		
+		// Always ensure each log entry ends with proper line termination (CR+LF)
+		// This ensures the cursor resets to column 0 for the next line
+		if !strings.HasSuffix(cleanContent, "\n") {
+			cleanContent += "\r\n"
+		} else {
+			// Replace existing \n with \r\n to ensure cursor reset
+			cleanContent = strings.TrimSuffix(cleanContent, "\n") + "\r\n"
+		}
+		
+		// Format the timestamp and process name with style, but keep the content raw
+		// to preserve ANSI codes in the log output
+		prefix := fmt.Sprintf("[%s] %s: ", 
 			log.Timestamp.Format("15:04:05"),
 			log.ProcessName,
-			log.Content,
 		)
-		content.WriteString(style.Render(line))
+		
+		// Apply style only to the prefix, not the content
+		content.WriteString(style.Render(prefix))
+		content.WriteString(cleanContent)
 	}
 
 	m.logsViewport.SetContent(content.String())
+}
+
+func (m Model) cleanLogContent(content string) string {
+	// Keep the original content with ANSI codes
+	cleaned := content
+	
+	// Handle different line ending styles - ensure proper line endings
+	cleaned = strings.ReplaceAll(cleaned, "\r\n", "\n")  // Windows line endings -> Unix
+	cleaned = strings.ReplaceAll(cleaned, "\r", "\n")    // Lone CR -> newline (for terminal resets)
+	
+	// Don't trim or limit - preserve the original formatting
+	// The terminal/viewport will handle wrapping and display
+	
+	return cleaned
 }
 
 func (m Model) getLogStyle(log logs.LogEntry) lipgloss.Style {
@@ -629,10 +743,30 @@ func (m Model) getLogStyle(log logs.LogEntry) lipgloss.Style {
 }
 
 func (m Model) renderHeader() string {
+	// Get process count information
+	processes := m.processMgr.GetAllProcesses()
+	runningCount := 0
+	for _, proc := range processes {
+		if proc.Status == process.StatusRunning {
+			runningCount++
+		}
+	}
+	
+	// Build title with process info
+	baseTitle := "🐝 Brummer - Package Script Manager"
+	var processInfo string
+	if len(processes) > 0 {
+		if runningCount > 0 {
+			processInfo = fmt.Sprintf(" (%d processes, %d running)", len(processes), runningCount)
+		} else {
+			processInfo = fmt.Sprintf(" (%d processes)", len(processes))
+		}
+	}
+	
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226")).
-		Render("🐝 Brummer - Package Script Manager")
+		Render(baseTitle + processInfo)
 
 	tabs := []string{}
 	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
@@ -653,9 +787,34 @@ func (m Model) renderHeader() string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
-		"",
 		tabBar,
 		strings.Repeat("─", m.width),
+	)
+}
+
+func (m Model) renderProcessesView() string {
+	processes := m.processMgr.GetAllProcesses()
+	
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Render("Select process: ↑/↓ | Stop: s | Restart: r | Restart All: Ctrl+R | View Logs: Enter")
+	
+	if len(processes) == 0 {
+		emptyState := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Render("No processes yet. Go to Scripts tab and press Enter on a script to start it.")
+		
+		return lipgloss.JoinVertical(lipgloss.Left, 
+			instructions,
+			"",
+			emptyState,
+		)
+	}
+	
+	return lipgloss.JoinVertical(lipgloss.Left, 
+		instructions,
+		"",
+		m.processesList.View(),
 	)
 }
 
@@ -997,6 +1156,10 @@ func (m *Model) installMCPToFile(filePath string) {
 
 func (m *Model) handleRestartProcess(proc *process.Process) tea.Cmd {
 	return func() tea.Msg {
+		// Clear logs and errors before restarting
+		m.logStore.ClearLogs()
+		m.logStore.ClearErrors()
+		
 		// Stop the process first
 		if err := m.processMgr.StopProcess(proc.ID); err != nil {
 			m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", proc.Name, err), true)
@@ -1008,7 +1171,7 @@ func (m *Model) handleRestartProcess(proc *process.Process) tea.Cmd {
 		if err != nil {
 			m.logStore.Add("system", "System", fmt.Sprintf("Error restarting script %s: %v", proc.Name, err), true)
 		} else {
-			m.logStore.Add("system", "System", fmt.Sprintf("Restarted process: %s", proc.Name), false)
+			m.logStore.Add("system", "System", fmt.Sprintf("🔄 Restarted process: %s (logs cleared)", proc.Name), false)
 		}
 		return processUpdateMsg{}
 	}
@@ -1016,6 +1179,10 @@ func (m *Model) handleRestartProcess(proc *process.Process) tea.Cmd {
 
 func (m *Model) handleRestartAll() tea.Cmd {
 	return func() tea.Msg {
+		// Clear logs and errors before restarting all
+		m.logStore.ClearLogs()
+		m.logStore.ClearErrors()
+		
 		processes := m.processMgr.GetAllProcesses()
 		restarted := 0
 		
@@ -1037,7 +1204,7 @@ func (m *Model) handleRestartAll() tea.Cmd {
 			}
 		}
 		
-		m.logStore.Add("system", "System", fmt.Sprintf("Restarted %d processes", restarted), false)
+		m.logStore.Add("system", "System", fmt.Sprintf("🔄 Restarted %d processes (logs cleared)", restarted), false)
 		return processUpdateMsg{}
 	}
 }
@@ -1109,4 +1276,16 @@ func copyToClipboard(text string) error {
 	
 	cmd.Stdin = strings.NewReader(text)
 	return cmd.Run()
+}
+
+func (m *Model) handleClearLogs() {
+	m.logStore.ClearLogs()
+	m.logStore.Add("system", "System", "📝 Logs cleared", false)
+	m.updateLogsView()
+}
+
+func (m *Model) handleClearErrors() {
+	m.logStore.ClearErrors()
+	m.logStore.Add("system", "System", "🗑️ Error history cleared", false)
+	m.updateLogsView()
 }

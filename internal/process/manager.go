@@ -7,7 +7,11 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"runtime"
+	"strconv"
+	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/beagle/brummer/internal/config"
@@ -101,6 +105,15 @@ func (m *Manager) StartScript(scriptName string) (*Process, error) {
 
 	// Set up environment
 	cmd.Env = os.Environ()
+	// Force color output for common tools
+	cmd.Env = append(cmd.Env, "FORCE_COLOR=1")
+	cmd.Env = append(cmd.Env, "COLORTERM=truecolor")
+	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	
+	// Set process group for easier cleanup on Unix systems
+	if runtime.GOOS != "windows" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	}
 
 	process := &Process{
 		ID:        processID,
@@ -158,6 +171,16 @@ func (m *Manager) runProcess(p *Process) error {
 	go func() {
 		err := p.Cmd.Wait()
 		
+		// Ensure clean log separation when process exits
+		// This adds a newline to ensure the next process starts on a new line
+		m.mu.RLock()
+		callbacks := m.logCallbacks
+		m.mu.RUnlock()
+		
+		for _, cb := range callbacks {
+			cb(p.ID, "", false) // Empty line to ensure separation
+		}
+		
 		p.mu.Lock()
 		now := time.Now()
 		p.EndTime = &now
@@ -192,9 +215,39 @@ func (m *Manager) runProcess(p *Process) error {
 }
 
 func (m *Manager) streamLogs(processID string, reader io.Reader, isError bool) {
-	scanner := bufio.NewScanner(reader)
-	for scanner.Scan() {
-		line := scanner.Text()
+	// Use a buffered reader to handle partial lines
+	bufReader := bufio.NewReader(reader)
+	
+	for {
+		line, err := bufReader.ReadString('\n')
+		if err != nil {
+			// If we have partial data when EOF is reached, still process it
+			if err == io.EOF && len(line) > 0 {
+				// Remove any trailing newline if present
+				line = strings.TrimSuffix(line, "\n")
+				
+				m.mu.RLock()
+				callbacks := m.logCallbacks
+				m.mu.RUnlock()
+				
+				for _, cb := range callbacks {
+					cb(processID, line, isError)
+				}
+
+				m.eventBus.Publish(events.Event{
+					Type:      events.LogLine,
+					ProcessID: processID,
+					Data: map[string]interface{}{
+						"line":    line,
+						"isError": isError,
+					},
+				})
+			}
+			break
+		}
+		
+		// Remove the newline character
+		line = strings.TrimSuffix(line, "\n")
 		
 		m.mu.RLock()
 		callbacks := m.logCallbacks
@@ -229,13 +282,50 @@ func (m *Manager) StopProcess(processID string) error {
 		process.mu.Unlock()
 		return fmt.Errorf("process %s is not running", processID)
 	}
+	
+	// Get the PID before we start killing
+	var mainPID int
+	if process.Cmd != nil && process.Cmd.Process != nil {
+		mainPID = process.Cmd.Process.Pid
+	}
+	
+	// First try graceful shutdown
+	if process.cancel != nil {
+		process.cancel()
+	}
+	
+	// Kill the process tree aggressively
+	if process.Cmd != nil && process.Cmd.Process != nil {
+		m.killProcessTree(process.Cmd.Process.Pid)
+	}
+	
+	// Also kill any processes that might be using development ports
+	m.killProcessesByPort()
+	
+	process.Status = StatusStopped
+	now := time.Now()
+	process.EndTime = &now
+	exitCode := -1
+	process.ExitCode = &exitCode
 	process.mu.Unlock()
 
-	process.cancel()
+	// Give processes a moment to die
+	time.Sleep(100 * time.Millisecond)
 	
-	process.mu.Lock()
-	process.Status = StatusStopped
-	process.mu.Unlock()
+	// Double-check that the main process is dead
+	if mainPID > 0 {
+		m.ensureProcessDead(mainPID)
+	}
+
+	// Publish stop event
+	m.eventBus.Publish(events.Event{
+		Type:      events.ProcessExited,
+		ProcessID: processID,
+		Data: map[string]interface{}{
+			"exitCode": exitCode,
+			"forced":   true,
+		},
+	})
 
 	return nil
 }
@@ -292,4 +382,163 @@ func (m *Manager) SetUserPackageManager(pm parser.PackageManager) error {
 
 func (m *Manager) updatePackageManager() {
 	m.packageMgr = parser.GetPreferredPackageManager(m.packageJSON, m.workDir, m.userPackageMgr)
+}
+
+// StopAllProcesses stops all running processes
+func (m *Manager) StopAllProcesses() error {
+	m.mu.RLock()
+	var processIDs []string
+	for id, proc := range m.processes {
+		if proc.Status == StatusRunning {
+			processIDs = append(processIDs, id)
+		}
+	}
+	m.mu.RUnlock()
+
+	var lastError error
+	for _, id := range processIDs {
+		if err := m.StopProcess(id); err != nil {
+			lastError = err
+		}
+	}
+	
+	return lastError
+}
+
+// Cleanup stops all processes and cleans up resources
+func (m *Manager) Cleanup() error {
+	err := m.StopAllProcesses()
+	
+	// Also kill any remaining development processes
+	m.killProcessesByPort()
+	
+	return err
+}
+
+// killProcessTree kills a process and all its children
+func (m *Manager) killProcessTree(pid int) {
+	if runtime.GOOS == "windows" {
+		// On Windows, try to kill the process directly
+		if proc, err := os.FindProcess(pid); err == nil {
+			proc.Kill()
+		}
+	} else {
+		// On Unix systems, kill the entire process group
+		syscall.Kill(-pid, syscall.SIGTERM)
+		time.Sleep(50 * time.Millisecond)
+		syscall.Kill(-pid, syscall.SIGKILL)
+		
+		// Also try to find and kill child processes
+		m.killChildProcesses(pid)
+	}
+}
+
+// killChildProcesses finds and kills child processes
+func (m *Manager) killChildProcesses(parentPID int) {
+	if runtime.GOOS == "windows" {
+		return // Skip for Windows
+	}
+	
+	// Use ps to find child processes
+	cmd := exec.Command("pgrep", "-P", strconv.Itoa(parentPID))
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	
+	lines := strings.TrimSpace(string(output))
+	if lines == "" {
+		return
+	}
+	
+	for _, line := range strings.Split(lines, "\n") {
+		if childPID, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
+			// Recursively kill children
+			m.killChildProcesses(childPID)
+			// Then kill this child
+			if proc, err := os.FindProcess(childPID); err == nil {
+				proc.Signal(syscall.SIGTERM)
+				time.Sleep(50 * time.Millisecond)
+				proc.Kill()
+			}
+		}
+	}
+}
+
+// ensureProcessDead makes sure a process is really dead
+func (m *Manager) ensureProcessDead(pid int) {
+	if proc, err := os.FindProcess(pid); err == nil {
+		// Try to send signal 0 to check if process exists
+		if err := proc.Signal(syscall.Signal(0)); err == nil {
+			// Process still exists, kill it
+			proc.Kill()
+		}
+	}
+}
+
+// killProcessesByPort kills processes using development ports
+func (m *Manager) killProcessesByPort() {
+	if runtime.GOOS == "windows" {
+		return // Skip for Windows for now
+	}
+	
+	// Find processes using development ports (3000-3009)
+	for port := 3000; port <= 3009; port++ {
+		m.killProcessUsingPort(port)
+	}
+	
+	// Also check for common development server patterns
+	m.killProcessesByPattern("next dev")
+	m.killProcessesByPattern("next-server")
+	m.killProcessesByPattern("webpack")
+	m.killProcessesByPattern("vite")
+}
+
+// killProcessUsingPort finds and kills the process using a specific port
+func (m *Manager) killProcessUsingPort(port int) {
+	// Use lsof to find process using the port
+	cmd := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	
+	lines := strings.TrimSpace(string(output))
+	if lines == "" {
+		return
+	}
+	
+	for _, line := range strings.Split(lines, "\n") {
+		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
+			if proc, err := os.FindProcess(pid); err == nil {
+				proc.Signal(syscall.SIGTERM)
+				time.Sleep(50 * time.Millisecond)
+				proc.Kill()
+			}
+		}
+	}
+}
+
+// killProcessesByPattern kills processes matching a pattern
+func (m *Manager) killProcessesByPattern(pattern string) {
+	cmd := exec.Command("pgrep", "-f", pattern)
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+	
+	lines := strings.TrimSpace(string(output))
+	if lines == "" {
+		return
+	}
+	
+	for _, line := range strings.Split(lines, "\n") {
+		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
+			if proc, err := os.FindProcess(pid); err == nil {
+				proc.Signal(syscall.SIGTERM)
+				time.Sleep(50 * time.Millisecond)
+				proc.Kill()
+			}
+		}
+	}
 }

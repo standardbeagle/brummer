@@ -99,8 +99,17 @@ func runApp(cmd *cobra.Command, args []string) {
 			
 			// Wait for signal
 			<-sigChan
-			fmt.Println("\nShutting down MCP server...")
+			fmt.Println("\nShutting down gracefully...")
+			
+			// Cleanup all processes
+			fmt.Println("Stopping all running processes...")
+			if err := processMgr.Cleanup(); err != nil {
+				log.Printf("Error during process cleanup: %v", err)
+			}
+			
+			fmt.Println("Stopping MCP server...")
 			mcpServer.Stop()
+			fmt.Println("Cleanup complete.")
 			return
 		} else {
 			// In TUI mode, run MCP server in background
@@ -115,17 +124,44 @@ func runApp(cmd *cobra.Command, args []string) {
 
 	// Only run TUI if not in headless mode
 	if !noTUI {
+		// Set up signal handling for cleanup
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		
 		// Create and run TUI
 		model := tui.NewModel(processMgr, logStore, eventBus)
 		p := tea.NewProgram(model, tea.WithAltScreen())
 
-		if _, err := p.Run(); err != nil {
-			log.Fatal("Failed to run TUI:", err)
+		// Run TUI in goroutine so we can handle signals
+		done := make(chan error)
+		go func() {
+			_, err := p.Run()
+			done <- err
+		}()
+
+		// Wait for either TUI to exit or signal
+		select {
+		case err := <-done:
+			if err != nil {
+				log.Fatal("Failed to run TUI:", err)
+			}
+		case <-sigChan:
+			fmt.Println("\nShutting down gracefully...")
+			p.Quit()
+			<-done // Wait for TUI to actually exit
 		}
 
-		// Cleanup
+		// Cleanup all processes and resources
+		fmt.Println("Stopping all running processes...")
+		if err := processMgr.Cleanup(); err != nil {
+			log.Printf("Error during process cleanup: %v", err)
+		}
+		
 		if mcpServer != nil {
+			fmt.Println("Stopping MCP server...")
 			mcpServer.Stop()
 		}
+		
+		fmt.Println("Cleanup complete.")
 	}
 }

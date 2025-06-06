@@ -65,9 +65,23 @@ Flags:
 
 ### Process Management
 
-- **s**: Stop selected process
-- **r**: Restart selected process
+- **Navigate**: Use ↑/↓ arrows to select a process (shows status with colored indicators)
+- **s**: Stop selected process (only works on running processes 🟢)
+- **r**: Restart selected process (stops then starts the same script)
 - **Ctrl+R**: Restart all running processes
+- **Enter**: View logs for selected process
+
+**Process Status Indicators:**
+- 🟢 **Running** - Process is active (can stop/restart)
+- 🔴 **Stopped** - Process was manually stopped
+- ❌ **Failed** - Process exited with error
+- ✅ **Success** - Process completed successfully
+- ⏸️ **Pending** - Process is starting up
+
+**Automatic Cleanup:**
+- All running processes are automatically stopped when Brummer exits
+- Use Ctrl+C or 'q' to quit with graceful cleanup
+- Process count shown in header: "Running Processes (2)"
 
 ### Log Management
 
@@ -154,13 +168,35 @@ brummer --no-mcp
 brummer --no-tui
 ```
 
+## Browser Integration
+
+### Firefox Extension
+
+Brummer includes a Firefox DevTools extension that connects to the MCP server and displays detected URLs directly in the browser's developer tools.
+
+**Features:**
+- View detected URLs from your running scripts
+- One-click opening of URLs in new tabs
+- Real-time updates as new URLs are detected
+- Integrated into Firefox Developer Tools
+- **Browser Log Integration**: Forward console logs, JavaScript errors, and network requests to Brummer's log system
+
+**Installation:**
+```bash
+cd browser-extension
+# Add icon files to icons/ directory
+# Load in Firefox from about:debugging
+```
+
+See `browser-extension/README.md` for detailed installation and usage instructions.
+
 ## Development
 
 ### Project Structure
 
 ```
 brummer/
-├── cmd/brummer/      # Main application entry point
+├── cmd/brummer/         # Main application entry point
 ├── internal/
 │   ├── tui/             # Terminal UI components
 │   ├── process/         # Process management
@@ -170,6 +206,7 @@ brummer/
 ├── pkg/
 │   ├── events/          # Event system
 │   └── filters/         # Log filtering
+├── browser-extension/   # Firefox DevTools extension
 └── go.mod
 ```
 
@@ -184,6 +221,20 @@ go build -o brummer ./cmd/brummer
 ```bash
 go test ./...
 ```
+
+### Cleanup Tools
+
+**Check development ports:**
+```bash
+./check-ports.sh
+```
+
+**Clean up orphaned processes:**
+```bash
+./cleanup-processes.sh
+```
+
+These tools help manage orphaned development processes that can occur during testing or if processes aren't properly terminated.
 
 ## License
 
