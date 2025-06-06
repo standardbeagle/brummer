@@ -4,7 +4,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/beagle/beagle-run/pkg/events"
+	"github.com/beagle/brummer/pkg/events"
 )
 
 type EventDetector struct {

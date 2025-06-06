@@ -1,6 +1,8 @@
-# Beagle Run
+# 🐝 Brummer
 
-A powerful TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts with integrated MCP server for external tool access.
+*A TUI package script manager with intelligent monitoring*
+
+A TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts with integrated MCP server for external tool access. Brummer provides intelligent log management, real-time monitoring, and seamless integration with development tools.
 
 ## Features
 
@@ -19,15 +21,15 @@ A powerful TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts 
 ## Installation
 
 ```bash
-go install github.com/beagle/beagle-run/cmd/beagle-run@latest
+go install github.com/beagle/brummer/cmd/brummer@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/beagle/beagle-run.git
-cd beagle-run
-go build -o beagle-run ./cmd/beagle-run
+git clone https://github.com/beagle/brummer.git
+cd brummer
+go build -o brummer ./cmd/brummer
 ```
 
 ## Usage
@@ -37,33 +39,61 @@ go build -o beagle-run ./cmd/beagle-run
 In a directory with a `package.json` file:
 
 ```bash
-beagle-run
+brummer
 ```
 
 ### Options
 
 ```bash
-beagle-run [flags]
+brummer [flags]
 
 Flags:
   -d, --dir string   Working directory containing package.json (default ".")
   -p, --port int     MCP server port (default 7777)
       --no-mcp       Disable MCP server
-  -h, --help         help for beagle-run
+  -h, --help         help for brummer
 ```
 
 ### TUI Navigation
 
-- **Tab**: Switch between views (Scripts, Processes, Logs)
+- **Tab**: Switch between views (Scripts, Processes, Logs, Errors, URLs, Settings)
 - **↑/↓** or **j/k**: Navigate items
 - **Enter**: Select/execute
 - **Esc** or **q**: Go back
 - **/**: Search logs
 - **p**: Toggle high-priority logs
+
+### Process Management
+
 - **s**: Stop selected process
+- **r**: Restart selected process
+- **Ctrl+R**: Restart all running processes
+
+### Log Management
+
+- **c**: Copy most recent error to clipboard
 - **f**: View/manage filters
+
+### Other
+
 - **?**: Show help
 - **Ctrl+C**: Quit
+
+### Settings Tab
+
+The Settings tab provides:
+
+- **Package Manager Selection**: Choose between npm, yarn, pnpm, or bun
+- **MCP Server Installation**: One-click installation for development tools:
+  - Claude Desktop ✓
+  - Claude Code ✓  
+  - Cursor ✓
+  - VSCode (with MCP extension) ✓
+  - Cline ✓
+  - Windsurf ✓
+  - Roo Code (experimental)
+  - Augment (experimental)
+  - Cody (experimental)
 
 ## MCP Server API
 
@@ -103,19 +133,25 @@ POST /mcp/connect
 ### Run in a specific directory
 
 ```bash
-beagle-run -d ~/projects/my-app
+brummer -d ~/projects/my-app
 ```
 
 ### Run with custom MCP port
 
 ```bash
-beagle-run -p 8888
+brummer -p 8888
 ```
 
 ### Run without MCP server (TUI only)
 
 ```bash
-beagle-run --no-mcp
+brummer --no-mcp
+```
+
+### Run in headless mode (MCP server only)
+
+```bash
+brummer --no-tui
 ```
 
 ## Development
@@ -123,8 +159,8 @@ beagle-run --no-mcp
 ### Project Structure
 
 ```
-beagle-run/
-├── cmd/beagle-run/      # Main application entry point
+brummer/
+├── cmd/brummer/      # Main application entry point
 ├── internal/
 │   ├── tui/             # Terminal UI components
 │   ├── process/         # Process management
@@ -140,7 +176,7 @@ beagle-run/
 ### Building
 
 ```bash
-go build -o beagle-run ./cmd/beagle-run
+go build -o brummer ./cmd/brummer
 ```
 
 ### Testing

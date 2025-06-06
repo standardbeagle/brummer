@@ -1,4 +1,4 @@
-module github.com/beagle/beagle-run
+module github.com/beagle/brummer
 
 go 1.24.2
 

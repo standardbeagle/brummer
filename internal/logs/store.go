@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beagle/beagle-run/pkg/filters"
+	"github.com/beagle/brummer/pkg/filters"
 )
 
 type LogLevel int

@@ -13,5 +13,5 @@ cat > package.json << 'EOF'
 }
 EOF
 
-echo "Running beagle-run..."
-../beagle-run
+echo "Running brummer..."
+../brummer

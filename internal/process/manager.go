@@ -10,9 +10,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beagle/beagle-run/internal/config"
-	"github.com/beagle/beagle-run/internal/parser"
-	"github.com/beagle/beagle-run/pkg/events"
+	"github.com/beagle/brummer/internal/config"
+	"github.com/beagle/brummer/internal/parser"
+	"github.com/beagle/brummer/pkg/events"
 )
 
 type Process struct {

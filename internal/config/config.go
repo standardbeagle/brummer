@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/beagle/beagle-run/internal/parser"
+	"github.com/beagle/brummer/internal/parser"
 )
 
 type Config struct {
@@ -19,7 +19,7 @@ func GetConfigPath() (string, error) {
 		return "", err
 	}
 	
-	configDir := filepath.Join(homeDir, ".beagle-run")
+	configDir := filepath.Join(homeDir, ".brummer")
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return "", err
 	}

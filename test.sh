@@ -1,4 +1,4 @@
 #!/bin/bash
-echo "Testing beagle-run with test project..."
+echo "Testing brummer with test project..."
 cd test-project
-../beagle-run
+../brummer
