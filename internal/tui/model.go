@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -53,6 +54,9 @@ type Model struct {
 	processesList   list.Model
 	logsViewport    viewport.Model
 	errorsViewport  viewport.Model
+	errorsList      list.Model
+	selectedError   *logs.ErrorContext
+	errorDetailView viewport.Model
 	urlsViewport    viewport.Model
 	settingsList    list.Model
 	searchInput     textinput.Model
@@ -71,6 +75,10 @@ type Model struct {
 	commandsList     list.Model
 	detectedCommands []parser.ExecutableCommand
 	monorepoInfo     *parser.MonorepoInfo
+	
+	// UI state
+	copyNotification string
+	notificationTime time.Time
 	
 	help         help.Model
 	keys         keyMap
@@ -207,6 +215,33 @@ type runCustomItem struct{}
 func (i runCustomItem) FilterValue() string { return "custom command" }
 func (i runCustomItem) Title() string       { return "➕ Run Custom Command..." }
 func (i runCustomItem) Description() string { return "Run a custom command not listed above" }
+
+type errorItem struct {
+	errorCtx *logs.ErrorContext
+}
+
+func (i errorItem) FilterValue() string { return i.errorCtx.Message }
+func (i errorItem) Title() string {
+	// Show error type with icon
+	icon := "❌"
+	if i.errorCtx.Severity == "warning" {
+		icon = "⚠️"
+	} else if i.errorCtx.Severity == "critical" {
+		icon = "🔥"
+	}
+	
+	// Truncate message if too long
+	msg := i.errorCtx.Message
+	if len(msg) > 50 {
+		msg = msg[:47] + "..."
+	}
+	
+	return fmt.Sprintf("%s %s: %s", icon, i.errorCtx.Type, msg)
+}
+func (i errorItem) Description() string {
+	// Show process and time
+	return fmt.Sprintf("%s | %s", i.errorCtx.ProcessName, i.errorCtx.Timestamp.Format("15:04:05"))
+}
 
 type processItem struct {
 	process   *process.Process
@@ -419,6 +454,16 @@ func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *event
 	commandsList.SetFilteringEnabled(true)
 	m.commandsList = commandsList
 	
+	// Initialize errors list
+	errorsList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	errorsList.Title = "Errors"
+	errorsList.SetShowStatusBar(false)
+	errorsList.SetFilteringEnabled(true)
+	m.errorsList = errorsList
+	
+	// Initialize error detail view
+	m.errorDetailView = viewport.New(0, 0)
+	
 	// Check for monorepo on startup
 	m.monorepoInfo, _ = processMgr.GetMonorepoInfo()
 
@@ -445,6 +490,10 @@ func (m Model) Init() tea.Cmd {
 	
 	m.eventBus.Subscribe(events.ProxyStopped, func(e events.Event) {
 		m.updateChan <- processUpdateMsg{}
+	})
+	
+	m.eventBus.Subscribe(events.ErrorDetected, func(e events.Event) {
+		m.updateChan <- errorUpdateMsg{}
 	})
 
 	return tea.Batch(
@@ -572,6 +621,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLogsView()
 		cmds = append(cmds, m.waitForUpdates())
 		
+	case errorUpdateMsg:
+		m.updateErrorsList()
+		cmds = append(cmds, m.waitForUpdates())
+		
 	case tickMsg:
 		// Continue ticking for periodic updates (e.g., browser status)
 		cmds = append(cmds, m.tickCmd())
@@ -641,10 +694,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.processesList = newList
 		cmds = append(cmds, cmd)
 
-	case ViewLogs, ViewErrors, ViewURLs:
+	case ViewLogs, ViewURLs:
 		newViewport, cmd := m.logsViewport.Update(msg)
 		m.logsViewport = newViewport
 		cmds = append(cmds, cmd)
+		
+	case ViewErrors:
+		// Update errors list
+		newList, cmd := m.errorsList.Update(msg)
+		m.errorsList = newList
+		cmds = append(cmds, cmd)
+		
+		// Update detail view
+		newDetail, cmd := m.errorDetailView.Update(msg)
+		m.errorDetailView = newDetail
+		cmds = append(cmds, cmd)
+		
+		// Handle selection change (both Enter and arrow keys)
+		if msg, ok := msg.(tea.KeyMsg); ok {
+			if key.Matches(msg, m.keys.Enter) || key.Matches(msg, m.keys.Up) || key.Matches(msg, m.keys.Down) {
+				if i, ok := m.errorsList.SelectedItem().(errorItem); ok {
+					m.selectedError = i.errorCtx
+					m.updateErrorDetailView()
+				}
+			}
+		}
 
 	case ViewSettings:
 		if m.showingFileBrowser {
@@ -704,7 +778,7 @@ func (m Model) View() string {
 		case ViewLogs:
 			content = m.renderLogsView()
 		case ViewErrors:
-			content = m.renderErrorsView()
+			content = m.renderErrorsViewSplit()
 		case ViewURLs:
 			content = m.renderURLsView()
 		case ViewSettings:
@@ -739,10 +813,13 @@ func (m *Model) updateSizes() {
 	m.processesList.SetSize(m.width, contentHeight)
 	m.settingsList.SetSize(m.width, contentHeight)
 	m.commandsList.SetSize(m.width, contentHeight)
+	m.errorsList.SetSize(m.width/3, contentHeight) // Split view
 	m.logsViewport.Width = m.width
 	m.logsViewport.Height = contentHeight
 	m.errorsViewport.Width = m.width
 	m.errorsViewport.Height = contentHeight
+	m.errorDetailView.Width = m.width*2/3
+	m.errorDetailView.Height = contentHeight
 	m.urlsViewport.Width = m.width
 	m.urlsViewport.Height = contentHeight
 }
@@ -912,10 +989,19 @@ func (m Model) renderHeader() string {
 		browserIcon = " 🌐" // Connected browser icon
 	}
 	
+	// Add copy notification if recent
+	notification := ""
+	if m.copyNotification != "" && time.Since(m.notificationTime) < 3*time.Second {
+		notificationStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("82")).
+			Bold(true)
+		notification = " " + notificationStyle.Render(m.copyNotification)
+	}
+	
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226")).
-		Render(baseTitle + processInfo + browserIcon)
+		Render(baseTitle + processInfo + browserIcon + notification)
 
 	tabs := []string{}
 	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
@@ -1197,6 +1283,7 @@ func (m *Model) renderURLsView() string {
 
 type processUpdateMsg struct{}
 type logUpdateMsg struct{}
+type errorUpdateMsg struct{}
 type tickMsg struct{}
 
 func (m Model) waitForUpdates() tea.Cmd {
@@ -1535,7 +1622,8 @@ func (m *Model) handleCopyError() tea.Cmd {
 		if err := copyToClipboard(errorText); err != nil {
 			m.logStore.Add("system", "System", fmt.Sprintf("Failed to copy to clipboard: %v", err), true)
 		} else {
-			m.logStore.Add("system", "System", "📋 Error copied to clipboard", false)
+			m.copyNotification = "📋 Error copied to clipboard"
+			m.notificationTime = time.Now()
 		}
 		
 		return logUpdateMsg{}
@@ -1724,4 +1812,199 @@ func (m Model) renderRunDialog() string {
 	content.WriteString(m.commandsList.View())
 	
 	return content.String()
+}
+
+func (m *Model) updateErrorsList() {
+	errorContexts := m.logStore.GetErrorContexts()
+	
+	items := make([]list.Item, 0, len(errorContexts))
+	for i := len(errorContexts) - 1; i >= 0; i-- {
+		items = append(items, errorItem{errorCtx: &errorContexts[i]})
+	}
+	
+	m.errorsList.SetItems(items)
+	
+	// Select first item if we have errors and nothing selected
+	if len(items) > 0 && m.selectedError == nil {
+		if item, ok := items[0].(errorItem); ok {
+			m.selectedError = item.errorCtx
+			m.updateErrorDetailView()
+		}
+	}
+}
+
+func (m *Model) updateErrorDetailView() {
+	if m.selectedError == nil {
+		m.errorDetailView.SetContent("Select an error to view details")
+		return
+	}
+	
+	var content strings.Builder
+	
+	// Header with error type and severity
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
+	content.WriteString(headerStyle.Render(fmt.Sprintf("%s Error", m.selectedError.Type)))
+	content.WriteString("\n\n")
+	
+	// Error info
+	infoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	content.WriteString(infoStyle.Render(fmt.Sprintf("Time: %s | Process: %s | Language: %s",
+		m.selectedError.Timestamp.Format("15:04:05"),
+		m.selectedError.ProcessName,
+		m.selectedError.Language)))
+	content.WriteString("\n\n")
+	
+	// Main error message
+	messageStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
+	content.WriteString(messageStyle.Render("Error Message:"))
+	content.WriteString("\n")
+	content.WriteString(m.selectedError.Message)
+	content.WriteString("\n\n")
+	
+	// Find the lowest level code reference
+	if codeRef := m.findLowestCodeReference(m.selectedError); codeRef != "" {
+		codeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+		content.WriteString(codeStyle.Render("📍 Code Location:"))
+		content.WriteString("\n")
+		content.WriteString(codeRef)
+		content.WriteString("\n\n")
+	}
+	
+	// Stack trace
+	if len(m.selectedError.Stack) > 0 {
+		stackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243")).Bold(true)
+		content.WriteString(stackStyle.Render("Stack Trace:"))
+		content.WriteString("\n")
+		stackLineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		for _, line := range m.selectedError.Stack {
+			content.WriteString(stackLineStyle.Render("  " + strings.TrimSpace(line)))
+			content.WriteString("\n")
+		}
+		content.WriteString("\n")
+	}
+	
+	// Additional context
+	if len(m.selectedError.Context) > 0 {
+		contextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Bold(true)
+		content.WriteString(contextStyle.Render("Additional Context:"))
+		content.WriteString("\n")
+		contextLineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+		for _, line := range m.selectedError.Context {
+			if strings.TrimSpace(line) != "" {
+				content.WriteString(contextLineStyle.Render("  " + strings.TrimSpace(line)))
+				content.WriteString("\n")
+			}
+		}
+		content.WriteString("\n")
+	}
+	
+	// Raw log lines (collapsed by default)
+	if len(m.selectedError.Raw) > 0 {
+		rawStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("236")).Bold(true)
+		content.WriteString(rawStyle.Render("Raw Log Output:"))
+		content.WriteString("\n")
+		rawLineStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("236"))
+		for _, line := range m.selectedError.Raw {
+			content.WriteString(rawLineStyle.Render(line))
+			content.WriteString("\n")
+		}
+	}
+	
+	m.errorDetailView.SetContent(content.String())
+}
+
+func (m Model) findLowestCodeReference(errorCtx *logs.ErrorContext) string {
+	// Look for file paths with line numbers in stack traces
+	filePattern := regexp.MustCompile(`([^\s\(\)]+\.(js|ts|jsx|tsx|go|py|java|rs|rb|php)):(\d+)(?::(\d+))?`)
+	
+	var lowestRef string
+	var lowestInProject bool
+	
+	// Check stack traces first
+	for _, line := range errorCtx.Stack {
+		if matches := filePattern.FindStringSubmatch(line); matches != nil {
+			filePath := matches[1]
+			lineNum := matches[3]
+			colNum := ""
+			if len(matches) > 4 {
+				colNum = matches[4]
+			}
+			
+			// Prioritize project files over node_modules
+			isProjectFile := !strings.Contains(filePath, "node_modules") && 
+				!strings.Contains(filePath, "/usr/") &&
+				!strings.Contains(filePath, "\\Windows\\")
+			
+			if lowestRef == "" || (isProjectFile && !lowestInProject) {
+				if colNum != "" {
+					lowestRef = fmt.Sprintf("%s:%s:%s", filePath, lineNum, colNum)
+				} else {
+					lowestRef = fmt.Sprintf("%s:%s", filePath, lineNum)
+				}
+				lowestInProject = isProjectFile
+			}
+		}
+	}
+	
+	// If no stack trace refs, check context
+	if lowestRef == "" {
+		for _, line := range errorCtx.Context {
+			if matches := filePattern.FindStringSubmatch(line); matches != nil {
+				filePath := matches[1]
+				lineNum := matches[3]
+				lowestRef = fmt.Sprintf("%s:%s", filePath, lineNum)
+				break
+			}
+		}
+	}
+	
+	return lowestRef
+}
+
+func (m Model) renderErrorsViewSplit() string {
+	if m.width < 100 {
+		// For narrow screens, use the old view
+		return m.renderErrorsView()
+	}
+	
+	// Update the errors list
+	errorContexts := m.logStore.GetErrorContexts()
+	if len(errorContexts) == 0 {
+		return m.renderErrorsView()
+	}
+	
+	// Calculate split dimensions
+	listWidth := m.width / 3
+	detailWidth := m.width - listWidth - 3 // -3 for border and padding
+	contentHeight := m.height - 5 // Adjust for header
+	
+	// Update sizes
+	m.errorsList.SetSize(listWidth, contentHeight)
+	m.errorDetailView.Width = detailWidth
+	m.errorDetailView.Height = contentHeight
+	
+	// Update list items if needed
+	currentItems := m.errorsList.Items()
+	if len(currentItems) != len(errorContexts) {
+		const_m := &m
+		const_m.updateErrorsList()
+	}
+	
+	// Create border styles
+	borderStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240"))
+	
+	// Render list and detail side by side
+	listView := borderStyle.
+		Width(listWidth).
+		Height(contentHeight).
+		Render(m.errorsList.View())
+	
+	detailView := borderStyle.
+		Width(detailWidth).
+		Height(contentHeight).
+		Render(m.errorDetailView.View())
+	
+	return lipgloss.JoinHorizontal(lipgloss.Top, listView, " ", detailView)
 }

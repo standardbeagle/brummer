@@ -17,7 +17,8 @@
     "color-test": "node color-test.js",
     "browser-test": "node browser-test.js",
     "proxy-test": "node proxy-test.js",
-    "mongo-error": "node mongo-error-test.js"
+    "mongo-error": "node mongo-error-test.js",
+    "multi-error": "node multi-error-test.js"
   },
   "dependencies": {
     "express": "^4.18.0"
