@@ -154,6 +154,29 @@ The extension uses Brummer's MCP server endpoints:
 - `GET /mcp/events` - Real-time event stream
 - URLs are extracted from log content using regex
 
+## Testing & Debugging
+
+### Quick Test
+1. **Open the test page** in Firefox:
+   ```
+   file:///path/to/brummer/browser-extension/test.html
+   ```
+2. **Open Developer Tools** (F12)
+3. **Look for the "🐝 Brummer" tab** in DevTools
+4. **Click "Connect"** to connect to your Brummer server
+5. **Use the test buttons** to verify functionality
+
+### Debugging Tips
+- **Check the DevTools console** for extension logs (look for 🐝 emoji messages)
+- **The panel shows**:
+  - Connection status with hover details
+  - Active tabs with Brummer logging enabled
+  - Real-time updates every 2 seconds
+- **Content scripts add**:
+  - Styled console logs when Brummer parameters are detected
+  - Floating status indicator with ping latency
+  - Connection health monitoring
+
 ## Troubleshooting
 
 ### Connection Issues
@@ -168,6 +191,8 @@ The extension uses Brummer's MCP server endpoints:
 3. **Verify MCP server is enabled** (it is by default)
 
 4. **Check browser console** for error messages
+
+5. **Look for debug logs** with 🐝 emoji in DevTools console
 
 ### No URLs Appearing
 

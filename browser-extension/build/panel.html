@@ -226,6 +226,20 @@
             padding-top: 12px;
             margin-top: 12px;
         }
+        
+        .active-tab-item {
+            padding: 12px;
+            border-bottom: 1px solid #f0f0f0;
+            transition: background-color 0.2s;
+        }
+        
+        .active-tab-item:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .active-tab-item:last-child {
+            border-bottom: none;
+        }
     </style>
 </head>
 <body>
@@ -259,6 +273,15 @@
     </div>
     
     <div id="errorContainer"></div>
+    
+    <div class="section">
+        <div class="section-title">Active Browser Tabs</div>
+        <div id="activeTabsContainer">
+            <div class="empty-state">
+                <div style="font-size: 14px; color: #999;">No tabs with Brummer logging active</div>
+            </div>
+        </div>
+    </div>
     
     <div class="section">
         <div class="section-title">Detected URLs</div>

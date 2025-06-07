@@ -5,7 +5,7 @@
 ### 1. Start Brummer
 ```bash
 cd test-project
-../brummer
+../brum
 ```
 
 ### 2. Start Some Processes

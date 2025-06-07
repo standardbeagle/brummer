@@ -16,10 +16,11 @@ type PackageJSON struct {
 	Description     string            `json:"description"`
 	Scripts         map[string]string `json:"scripts"`
 	Dependencies    map[string]string `json:"dependencies"`
-	DevDependencies map[string]string `json:"devDependencies"`
+	DevDependencies map[string]string `json:"devdependencies"`
 	Engines         map[string]string `json:"engines"`
 	PackageManager  string            `json:"packageManager"`
 	Private         bool              `json:"private"`
+	Workspaces      interface{}       `json:"workspaces"` // Can be array or object
 }
 
 type PackageManager string

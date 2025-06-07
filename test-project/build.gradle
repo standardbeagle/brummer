@@ -1,0 +1,11 @@
+plugins {
+    id 'application'
+}
+
+mainClassName = 'TestApp'
+
+task hello {
+    doLast {
+        println 'Hello from Gradle!'
+    }
+}

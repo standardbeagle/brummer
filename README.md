@@ -7,29 +7,62 @@ A TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts with inte
 ## Features
 
 - **Multi-Package Manager Support**: Automatically detects and uses npm, yarn, pnpm, or bun
+- **Monorepo Support**: Full support for pnpm workspaces, npm workspaces, yarn workspaces, Lerna, Nx, and Rush
+- **Multi-Language Detection**: Auto-detects commands for Node.js, Go, Rust, Java (Gradle/Maven), .NET, Python, Ruby, PHP, Flutter, and more
 - **Interactive TUI**: Navigate through scripts, monitor processes, and view logs in real-time
 - **Smart Log Management**: 
   - Automatic error detection and prioritization
   - Log filtering and search capabilities
   - Build event and test result detection
+- **Automatic Proxy**: Auto-proxy development servers to capture browser console logs
 - **MCP Server Integration**: Allows external tools (VSCode, Claude Code, etc.) to:
   - Access log output and errors
   - Execute commands asynchronously
   - Monitor process status
 - **Process Management**: Start, stop, and monitor multiple processes simultaneously
+- **VS Code Tasks**: Detects and runs VS Code tasks from .vscode/tasks.json
 
 ## Installation
 
+### Quick Install (Recommended)
+
 ```bash
-go install github.com/beagle/brummer/cmd/brummer@latest
+# Using curl
+curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+
+# Or using wget
+wget -qO- https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
 ```
 
-Or build from source:
+### Install from Source
 
 ```bash
-git clone https://github.com/beagle/brummer.git
+# Clone the repository
+git clone https://github.com/beagle/brummer
 cd brummer
-go build -o brummer ./cmd/brummer
+
+# Using Make (recommended)
+make install-user    # Install for current user
+# OR
+make install        # Install system-wide (requires sudo)
+
+# Using the interactive installer
+./install.sh
+```
+
+### Manual Build
+
+```bash
+git clone https://github.com/beagle/brummer
+cd brummer
+go build -o brum ./cmd/brummer
+mv brum ~/.local/bin/  # Add to PATH
+```
+
+### Using Go Install
+
+```bash
+go install github.com/beagle/brummer/cmd/brummer@latest
 ```
 
 ## Usage
@@ -39,19 +72,19 @@ go build -o brummer ./cmd/brummer
 In a directory with a `package.json` file:
 
 ```bash
-brummer
+brum
 ```
 
 ### Options
 
 ```bash
-brummer [flags]
+brum [flags]
 
 Flags:
   -d, --dir string   Working directory containing package.json (default ".")
   -p, --port int     MCP server port (default 7777)
       --no-mcp       Disable MCP server
-  -h, --help         help for brummer
+  -h, --help         help for brum
 ```
 
 ### TUI Navigation
@@ -59,6 +92,7 @@ Flags:
 - **Tab**: Switch between views (Scripts, Processes, Logs, Errors, URLs, Settings)
 - **↑/↓** or **j/k**: Navigate items
 - **Enter**: Select/execute
+- **n**: Open run command dialog (from Scripts tab)
 - **Esc** or **q**: Go back
 - **/**: Search logs
 - **p**: Toggle high-priority logs
@@ -147,48 +181,27 @@ POST /mcp/connect
 ### Run in a specific directory
 
 ```bash
-brummer -d ~/projects/my-app
+brum -d ~/projects/my-app
 ```
 
 ### Run with custom MCP port
 
 ```bash
-brummer -p 8888
+brum -p 8888
 ```
 
 ### Run without MCP server (TUI only)
 
 ```bash
-brummer --no-mcp
+brum --no-mcp
 ```
 
 ### Run in headless mode (MCP server only)
 
 ```bash
-brummer --no-tui
+brum --no-tui
 ```
 
-## Browser Integration
-
-### Firefox Extension
-
-Brummer includes a Firefox DevTools extension that connects to the MCP server and displays detected URLs directly in the browser's developer tools.
-
-**Features:**
-- View detected URLs from your running scripts
-- One-click opening of URLs in new tabs
-- Real-time updates as new URLs are detected
-- Integrated into Firefox Developer Tools
-- **Browser Log Integration**: Forward console logs, JavaScript errors, and network requests to Brummer's log system
-
-**Installation:**
-```bash
-cd browser-extension
-# Add icon files to icons/ directory
-# Load in Firefox from about:debugging
-```
-
-See `browser-extension/README.md` for detailed installation and usage instructions.
 
 ## Development
 
@@ -213,7 +226,7 @@ brummer/
 ### Building
 
 ```bash
-go build -o brummer ./cmd/brummer
+go build -o brum ./cmd/brummer
 ```
 
 ### Testing
@@ -235,6 +248,15 @@ go test ./...
 ```
 
 These tools help manage orphaned development processes that can occur during testing or if processes aren't properly terminated.
+
+## Documentation
+
+Comprehensive documentation is available at [https://beagle.github.io/brummer/](https://beagle.github.io/brummer/)
+
+- [Getting Started Guide](https://beagle.github.io/brummer/docs/getting-started)
+- [Installation Options](https://beagle.github.io/brummer/docs/installation)
+- [MCP Integration](https://beagle.github.io/brummer/docs/mcp-integration/overview)
+- [Browser Extension (Alpha)](https://beagle.github.io/brummer/docs/browser-extension/overview)
 
 ## License
 

@@ -8,11 +8,13 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/beagle/brummer/internal/logs"
 	"github.com/beagle/brummer/internal/mcp"
 	"github.com/beagle/brummer/internal/parser"
 	"github.com/beagle/brummer/internal/process"
+	"github.com/beagle/brummer/internal/proxy"
 	"github.com/beagle/brummer/pkg/events"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -40,6 +42,8 @@ type Model struct {
 	processMgr   *process.Manager
 	logStore     *logs.Store
 	eventBus     *events.EventBus
+	mcpServer    *mcp.Server
+	proxyMgr     *proxy.ProxyManager
 	
 	currentView  View
 	width        int
@@ -62,6 +66,12 @@ type Model struct {
 	currentPath        string
 	fileList          []FileItem
 	
+	// Run dialog state
+	showingRunDialog bool
+	commandsList     list.Model
+	detectedCommands []parser.ExecutableCommand
+	monorepoInfo     *parser.MonorepoInfo
+	
 	help         help.Model
 	keys         keyMap
 	
@@ -69,22 +79,23 @@ type Model struct {
 }
 
 type keyMap struct {
-	Up         key.Binding
-	Down       key.Binding
-	Enter      key.Binding
-	Back       key.Binding
-	Quit       key.Binding
-	Tab        key.Binding
-	Search     key.Binding
-	Filter     key.Binding
-	Stop       key.Binding
-	Restart    key.Binding
-	RestartAll key.Binding
-	CopyError  key.Binding
-	Priority   key.Binding
-	ClearLogs  key.Binding
+	Up          key.Binding
+	Down        key.Binding
+	Enter       key.Binding
+	Back        key.Binding
+	Quit        key.Binding
+	Tab         key.Binding
+	Search      key.Binding
+	Filter      key.Binding
+	Stop        key.Binding
+	Restart     key.Binding
+	RestartAll  key.Binding
+	CopyError   key.Binding
+	Priority    key.Binding
+	ClearLogs   key.Binding
 	ClearErrors key.Binding
-	Help       key.Binding
+	Help        key.Binding
+	RunDialog   key.Binding
 }
 
 var keys = keyMap{
@@ -152,6 +163,10 @@ var keys = keyMap{
 		key.WithKeys("?"),
 		key.WithHelp("?", "help"),
 	),
+	RunDialog: key.NewBinding(
+		key.WithKeys("n"),
+		key.WithHelp("n", "new process"),
+	),
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -176,8 +191,26 @@ func (i scriptItem) FilterValue() string { return i.name }
 func (i scriptItem) Title() string       { return i.name }
 func (i scriptItem) Description() string { return i.script }
 
+type commandItem struct {
+	command parser.ExecutableCommand
+}
+
+func (i commandItem) FilterValue() string { return i.command.Name }
+func (i commandItem) Title() string {
+	categoryStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	return fmt.Sprintf("%s %s", i.command.Name, categoryStyle.Render(fmt.Sprintf("[%s]", i.command.Category)))
+}
+func (i commandItem) Description() string { return i.command.Description }
+
+type runCustomItem struct{}
+
+func (i runCustomItem) FilterValue() string { return "custom command" }
+func (i runCustomItem) Title() string       { return "➕ Run Custom Command..." }
+func (i runCustomItem) Description() string { return "Run a custom command not listed above" }
+
 type processItem struct {
-	process *process.Process
+	process   *process.Process
+	proxyInfo *proxy.ProxyInfo
 }
 
 func (i processItem) FilterValue() string { return i.process.Name }
@@ -196,16 +229,37 @@ func (i processItem) Title() string {
 	default:
 		statusEmoji = "⏸️"
 	}
-	return fmt.Sprintf("%s [%s] %s", statusEmoji, status, i.process.Name)
+	title := fmt.Sprintf("%s [%s] %s", statusEmoji, status, i.process.Name)
+	
+	// Add proxy indicator if proxy is running
+	if i.proxyInfo != nil && i.proxyInfo.Status == "running" {
+		title += " 🔗"  // Link emoji indicates proxy is active
+	}
+	
+	return title
 }
 func (i processItem) Description() string {
+	var parts []string
+	
+	// Add PID and start time
+	parts = append(parts, fmt.Sprintf("PID: %s", i.process.ID))
+	parts = append(parts, fmt.Sprintf("Started: %s", i.process.StartTime.Format("15:04:05")))
+	
+	// Add proxy info if available
+	if i.proxyInfo != nil && i.proxyInfo.Status == "running" {
+		parts = append(parts, fmt.Sprintf("Proxy: %s", i.proxyInfo.ProxyURL))
+	}
+	
+	// Add actions
 	var actions string
 	if i.process.Status == process.StatusRunning {
 		actions = "Press 's' to stop, 'r' to restart"
 	} else {
 		actions = "Press 'Enter' to view logs"
 	}
-	return fmt.Sprintf("PID: %s | Started: %s | %s", i.process.ID, i.process.StartTime.Format("15:04:05"), actions)
+	parts = append(parts, actions)
+	
+	return strings.Join(parts, " | ")
 }
 
 type packageManagerItem struct {
@@ -308,7 +362,7 @@ func (i FileItem) Description() string {
 	return fmt.Sprintf("File (%d bytes)", i.Size)
 }
 
-func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus) Model {
+func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, proxyMgr *proxy.ProxyManager) Model {
 	scripts := processMgr.GetScripts()
 	scriptItems := make([]list.Item, 0, len(scripts))
 	for name, script := range scripts {
@@ -337,6 +391,8 @@ func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *event
 		processMgr:     processMgr,
 		logStore:       logStore,
 		eventBus:       eventBus,
+		mcpServer:      mcpServer,
+		proxyMgr:       proxyMgr,
 		currentView:    ViewScripts,
 		scriptsList:    scriptsList,
 		processesList:  processesList,
@@ -355,6 +411,16 @@ func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *event
 
 	// Initialize settings list
 	m.updateSettingsList()
+	
+	// Initialize commands list for run dialog
+	commandsList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	commandsList.Title = "Available Commands"
+	commandsList.SetShowStatusBar(false)
+	commandsList.SetFilteringEnabled(true)
+	m.commandsList = commandsList
+	
+	// Check for monorepo on startup
+	m.monorepoInfo, _ = processMgr.GetMonorepoInfo()
 
 	return m
 }
@@ -372,10 +438,19 @@ func (m Model) Init() tea.Cmd {
 	m.eventBus.Subscribe(events.LogLine, func(e events.Event) {
 		m.updateChan <- logUpdateMsg{}
 	})
+	
+	m.eventBus.Subscribe(events.ProxyStarted, func(e events.Event) {
+		m.updateChan <- processUpdateMsg{}
+	})
+	
+	m.eventBus.Subscribe(events.ProxyStopped, func(e events.Event) {
+		m.updateChan <- processUpdateMsg{}
+	})
 
 	return tea.Batch(
 		textinput.Blink,
 		m.waitForUpdates(),
+		m.tickCmd(),
 	)
 }
 
@@ -389,6 +464,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateSizes()
 
 	case tea.KeyMsg:
+		// Handle number keys 1-6 for tab switching
+		switch msg.String() {
+		case "1":
+			m.currentView = ViewScripts
+			return m, nil
+		case "2":
+			m.currentView = ViewProcesses
+			return m, nil
+		case "3":
+			m.currentView = ViewLogs
+			return m, nil
+		case "4":
+			m.currentView = ViewErrors
+			return m, nil
+		case "5":
+			m.currentView = ViewURLs
+			return m, nil
+		case "6":
+			m.currentView = ViewSettings
+			return m, nil
+		}
+		
 		switch {
 		case key.Matches(msg, m.keys.Quit):
 			// Check if there are running processes
@@ -460,6 +557,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		case key.Matches(msg, m.keys.Enter):
 			cmds = append(cmds, m.handleEnter())
+			
+		case key.Matches(msg, m.keys.RunDialog):
+			if m.currentView == ViewScripts && !m.showingRunDialog {
+				m.showRunDialog()
+			}
 		}
 
 	case processUpdateMsg:
@@ -469,6 +571,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logUpdateMsg:
 		m.updateLogsView()
 		cmds = append(cmds, m.waitForUpdates())
+		
+	case tickMsg:
+		// Continue ticking for periodic updates (e.g., browser status)
+		cmds = append(cmds, m.tickCmd())
+	}
+
+	// Handle run dialog updates
+	if m.showingRunDialog {
+		// Handle escape key to close dialog
+		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, m.keys.Back) {
+			m.showingRunDialog = false
+			return m, nil
+		}
+		
+		// Handle enter key to run command
+		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, m.keys.Enter) {
+			cmds = append(cmds, m.handleRunCommand())
+			return m, tea.Batch(cmds...)
+		}
+		
+		// Update the commands list
+		newList, cmd := m.commandsList.Update(msg)
+		m.commandsList = newList
+		cmds = append(cmds, cmd)
+		
+		return m, tea.Batch(cmds...)
 	}
 
 	switch m.currentView {
@@ -564,27 +692,32 @@ func (m Model) View() string {
 
 	var content string
 	
-	switch m.currentView {
-	case ViewScripts:
-		content = m.scriptsList.View()
-	case ViewProcesses:
-		content = m.renderProcessesView()
-	case ViewLogs:
-		content = m.renderLogsView()
-	case ViewErrors:
-		content = m.renderErrorsView()
-	case ViewURLs:
-		content = m.renderURLsView()
-	case ViewSettings:
-		if m.showingFileBrowser {
-			content = m.renderFileBrowser()
-		} else {
-			content = m.settingsList.View()
+	// Show run dialog if active
+	if m.showingRunDialog {
+		content = m.renderRunDialog()
+	} else {
+		switch m.currentView {
+		case ViewScripts:
+			content = m.renderScriptsView()
+		case ViewProcesses:
+			content = m.renderProcessesView()
+		case ViewLogs:
+			content = m.renderLogsView()
+		case ViewErrors:
+			content = m.renderErrorsView()
+		case ViewURLs:
+			content = m.renderURLsView()
+		case ViewSettings:
+			if m.showingFileBrowser {
+				content = m.renderFileBrowser()
+			} else {
+				content = m.settingsList.View()
+			}
+		case ViewSearch:
+			content = m.renderSearchView()
+		case ViewFilters:
+			content = m.renderFiltersView()
 		}
-	case ViewSearch:
-		content = m.renderSearchView()
-	case ViewFilters:
-		content = m.renderFiltersView()
 	}
 
 	helpView := m.help.View(m.keys)
@@ -605,6 +738,7 @@ func (m *Model) updateSizes() {
 	m.scriptsList.SetSize(m.width, contentHeight)
 	m.processesList.SetSize(m.width, contentHeight)
 	m.settingsList.SetSize(m.width, contentHeight)
+	m.commandsList.SetSize(m.width, contentHeight)
 	m.logsViewport.Width = m.width
 	m.logsViewport.Height = contentHeight
 	m.errorsViewport.Width = m.width
@@ -656,7 +790,16 @@ func (m *Model) updateProcessList() {
 	processes := m.processMgr.GetAllProcesses()
 	items := make([]list.Item, len(processes))
 	for i, p := range processes {
-		items[i] = processItem{process: p}
+		var proxyInfo *proxy.ProxyInfo
+		if m.proxyMgr != nil {
+			if info, exists := m.proxyMgr.GetProxyForProcess(p.ID); exists {
+				proxyInfo = info
+			}
+		}
+		items[i] = processItem{
+			process:   p,
+			proxyInfo: proxyInfo,
+		}
 	}
 	m.processesList.SetItems(items)
 }
@@ -763,17 +906,24 @@ func (m Model) renderHeader() string {
 		}
 	}
 	
+	// Add browser connection status icon
+	browserIcon := ""
+	if m.mcpServer != nil && m.mcpServer.HasActiveBrowsers() {
+		browserIcon = " 🌐" // Connected browser icon
+	}
+	
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226")).
-		Render(baseTitle + processInfo)
+		Render(baseTitle + processInfo + browserIcon)
 
 	tabs := []string{}
 	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
 	inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
-	for _, v := range []View{ViewScripts, ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewSettings} {
-		label := string(v)
+	tabViews := []View{ViewScripts, ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewSettings}
+	for i, v := range tabViews {
+		label := fmt.Sprintf("%d.%s", i+1, string(v))
 		if v == m.currentView {
 			tabs = append(tabs, activeStyle.Render("▶ " + label))
 		} else {
@@ -887,7 +1037,44 @@ func (m *Model) renderURLsView() string {
 	urls := m.logStore.GetURLs()
 	
 	var content strings.Builder
-	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Detected URLs") + "\n\n")
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Detected URLs & Proxies") + "\n")
+	
+	// Add MCP connection info for Firefox extension
+	mcpInfoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Italic(true)
+	if m.mcpServer != nil {
+		content.WriteString(mcpInfoStyle.Render(fmt.Sprintf("🦊 Firefox Extension: Connect to http://localhost:%d", m.mcpServer.GetPort())) + "\n\n")
+	} else {
+		content.WriteString(mcpInfoStyle.Render("🦊 Firefox Extension: MCP server not running") + "\n\n")
+	}
+	
+	// Show active proxies first
+	if m.proxyMgr != nil {
+		proxies := m.proxyMgr.GetActiveProxies()
+		if len(proxies) > 0 {
+			proxyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Bold(true)
+			content.WriteString(proxyStyle.Render("🔗 Active Proxies:") + "\n")
+			
+			for _, proxy := range proxies {
+				if proxy.Status == "running" {
+					urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Underline(true)
+					processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+					targetStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+					
+					content.WriteString(fmt.Sprintf("%s [%s]\n",
+						processStyle.Render(proxy.ProcessName),
+						proxy.StartTime.Format("15:04:05"),
+					))
+					content.WriteString(fmt.Sprintf("  Proxy: %s\n", urlStyle.Render(proxy.ProxyURL)))
+					content.WriteString(fmt.Sprintf("  Target: %s\n", targetStyle.Render(proxy.TargetURL)))
+					content.WriteString("\n")
+				}
+			}
+			
+			if len(urls) > 0 {
+				content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("─────────────────") + "\n\n")
+			}
+		}
+	}
 	
 	if len(urls) == 0 {
 		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No URLs detected yet"))
@@ -907,11 +1094,36 @@ func (m *Model) renderURLsView() string {
 			}
 			seen[url.URL] = true
 			
+			// Generate token for this URL if MCP server is available
+			urlWithToken := url.URL
+			if m.mcpServer != nil {
+				token := m.mcpServer.GenerateURLToken(url.ProcessName)
+				// Add token as query parameter
+				port := m.mcpServer.GetPort()
+				baseURL := fmt.Sprintf("http://localhost:%d", port)
+				
+				if strings.Contains(url.URL, "?") {
+					urlWithToken = fmt.Sprintf("%s&brummer_token=%s&brummer_base=%s", url.URL, token, baseURL)
+				} else {
+					urlWithToken = fmt.Sprintf("%s?brummer_token=%s&brummer_base=%s", url.URL, token, baseURL)
+				}
+			}
+			
 			content.WriteString(fmt.Sprintf("%s %s\n%s\n",
 				timeStyle.Render(url.Timestamp.Format("15:04:05")),
 				processStyle.Render(fmt.Sprintf("[%s]", url.ProcessName)),
-				urlStyle.Render(url.URL),
+				urlStyle.Render(urlWithToken),
 			))
+			
+			// Add connection info for Firefox extension
+			connectionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+			if m.mcpServer != nil {
+				content.WriteString(connectionStyle.Render(fmt.Sprintf("  🔗 process=%s time=%d port=%d\n", 
+					url.ProcessName, url.Timestamp.Unix(), m.mcpServer.GetPort())))
+			} else {
+				content.WriteString(connectionStyle.Render(fmt.Sprintf("  🔗 process=%s time=%d\n", 
+					url.ProcessName, url.Timestamp.Unix())))
+			}
 			
 			// Show context if it's not too long
 			contextLen := len(url.Context)
@@ -931,11 +1143,18 @@ func (m *Model) renderURLsView() string {
 
 type processUpdateMsg struct{}
 type logUpdateMsg struct{}
+type tickMsg struct{}
 
 func (m Model) waitForUpdates() tea.Cmd {
 	return func() tea.Msg {
 		return <-m.updateChan
 	}
+}
+
+func (m Model) tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg{}
+	})
 }
 
 func (m *Model) updateSettingsList() {
@@ -1288,4 +1507,133 @@ func (m *Model) handleClearErrors() {
 	m.logStore.ClearErrors()
 	m.logStore.Add("system", "System", "🗑️ Error history cleared", false)
 	m.updateLogsView()
+}
+
+func (m *Model) showRunDialog() {
+	m.showingRunDialog = true
+	
+	// Get detected commands
+	m.detectedCommands = m.processMgr.GetDetectedCommands()
+	
+	// Get monorepo info
+	m.monorepoInfo, _ = m.processMgr.GetMonorepoInfo()
+	
+	// Build command list items
+	items := make([]list.Item, 0)
+	
+	// Add detected commands sorted by priority
+	for _, cmd := range m.detectedCommands {
+		items = append(items, commandItem{command: cmd})
+	}
+	
+	// Add monorepo commands if detected
+	if m.monorepoInfo != nil {
+		for _, pkg := range m.monorepoInfo.Packages {
+			for scriptName, script := range pkg.Scripts {
+				items = append(items, commandItem{
+					command: parser.ExecutableCommand{
+						Name:        fmt.Sprintf("%s: %s", pkg.Name, scriptName),
+						Command:     "npm",
+						Args:        []string{"run", scriptName, "--workspace", pkg.Name},
+						Description: script,
+						Category:    "Monorepo",
+						ProjectType: parser.ProjectTypeMonorepo,
+						Priority:    80,
+					},
+				})
+			}
+		}
+	}
+	
+	// Add custom command option at the end
+	items = append(items, runCustomItem{})
+	
+	m.commandsList.SetItems(items)
+}
+
+func (m *Model) handleRunCommand() tea.Cmd {
+	if !m.showingRunDialog {
+		return nil
+	}
+	
+	selected := m.commandsList.SelectedItem()
+	if selected == nil {
+		return nil
+	}
+	
+	m.showingRunDialog = false
+	
+	switch item := selected.(type) {
+	case commandItem:
+		go func() {
+			_, err := m.processMgr.StartCommand(item.command.Name, item.command.Command, item.command.Args)
+			if err != nil {
+				m.logStore.Add("system", "System", fmt.Sprintf("Error starting command %s: %v", item.command.Name, err), true)
+				m.updateChan <- logUpdateMsg{}
+			}
+		}()
+		m.currentView = ViewProcesses
+		m.updateProcessList()
+		return m.waitForUpdates()
+		
+	case runCustomItem:
+		// TODO: Show custom command input dialog
+		m.logStore.Add("system", "System", "Custom command dialog not yet implemented", true)
+		return nil
+	}
+	
+	return nil
+}
+
+func (m Model) renderScriptsView() string {
+	var content strings.Builder
+	
+	// Add instructions
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Render("Select script: ↑/↓ | Run: Enter | Run Other Command: n | Switch View: Tab")
+	
+	content.WriteString(instructions)
+	content.WriteString("\n\n")
+	
+	// Show monorepo info if detected
+	if m.monorepoInfo != nil {
+		monoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+		content.WriteString(monoStyle.Render(fmt.Sprintf("📦 %s Monorepo Detected", m.monorepoInfo.Type)))
+		content.WriteString("\n")
+		
+		pkgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+		content.WriteString(pkgStyle.Render(fmt.Sprintf("Found %d packages in workspaces", len(m.monorepoInfo.Packages))))
+		content.WriteString("\n\n")
+	}
+	
+	content.WriteString(m.scriptsList.View())
+	
+	return content.String()
+}
+
+func (m Model) renderRunDialog() string {
+	var content strings.Builder
+	
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
+	content.WriteString(titleStyle.Render("🚀 Run Command"))
+	content.WriteString("\n\n")
+	
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Render("Select command: ↑/↓ | Run: Enter | Cancel: Esc")
+	
+	content.WriteString(instructions)
+	content.WriteString("\n\n")
+	
+	// Show monorepo info if detected
+	if m.monorepoInfo != nil {
+		monoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220"))
+		content.WriteString(monoStyle.Render(fmt.Sprintf("📦 Monorepo: %s with %d packages", m.monorepoInfo.Type, len(m.monorepoInfo.Packages))))
+		content.WriteString("\n\n")
+	}
+	
+	content.WriteString(m.commandsList.View())
+	
+	return content.String()
 }

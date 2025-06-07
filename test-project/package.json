@@ -14,7 +14,9 @@
     "error-demo": "echo 'Starting process...' && sleep 1 && echo 'Error: Failed to connect to database at postgresql://localhost:5432' >&2 && echo 'Fatal: Connection timeout' >&2 && exit 1",
     "docs": "echo 'Generating documentation...' && echo 'Docs available at https://docs.myproject.com' && echo 'API reference: http://localhost:8080/api-docs'",
     "long-running": "node long-running-script.js",
-    "color-test": "node color-test.js"
+    "color-test": "node color-test.js",
+    "browser-test": "node browser-test.js",
+    "proxy-test": "node proxy-test.js"
   },
   "dependencies": {
     "express": "^4.18.0"

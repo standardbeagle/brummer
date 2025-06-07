@@ -14,4 +14,4 @@ cat > package.json << 'EOF'
 EOF
 
 echo "Running brummer..."
-../brummer
+../brum

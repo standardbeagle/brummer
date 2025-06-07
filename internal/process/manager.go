@@ -87,6 +87,16 @@ func (m *Manager) GetScripts() map[string]string {
 	return m.packageJSON.Scripts
 }
 
+// GetDetectedCommands returns all detected executable commands
+func (m *Manager) GetDetectedCommands() []parser.ExecutableCommand {
+	return parser.DetectProjectCommands(m.workDir)
+}
+
+// GetMonorepoInfo returns monorepo information if detected
+func (m *Manager) GetMonorepoInfo() (*parser.MonorepoInfo, error) {
+	return parser.DetectMonorepo(m.workDir)
+}
+
 func (m *Manager) StartScript(scriptName string) (*Process, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -119,6 +129,49 @@ func (m *Manager) StartScript(scriptName string) (*Process, error) {
 		ID:        processID,
 		Name:      scriptName,
 		Script:    script,
+		Cmd:       cmd,
+		Status:    StatusPending,
+		StartTime: time.Now(),
+		cancel:    cancel,
+	}
+
+	m.processes[processID] = process
+
+	if err := m.runProcess(process); err != nil {
+		process.Status = StatusFailed
+		return nil, err
+	}
+
+	return process, nil
+}
+
+// StartCommand starts a custom command (not from package.json)
+func (m *Manager) StartCommand(name string, command string, args []string) (*Process, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	processID := fmt.Sprintf("%s-%d", name, time.Now().Unix())
+	
+	ctx, cancel := context.WithCancel(context.Background())
+	cmd := exec.CommandContext(ctx, command, args...)
+	cmd.Dir = m.workDir
+
+	// Set up environment
+	cmd.Env = os.Environ()
+	// Force color output for common tools
+	cmd.Env = append(cmd.Env, "FORCE_COLOR=1")
+	cmd.Env = append(cmd.Env, "COLORTERM=truecolor")
+	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	
+	// Set process group for easier cleanup on Unix systems
+	if runtime.GOOS != "windows" {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	}
+
+	process := &Process{
+		ID:        processID,
+		Name:      name,
+		Script:    fmt.Sprintf("%s %s", command, strings.Join(args, " ")),
 		Cmd:       cmd,
 		Status:    StatusPending,
 		StartTime: time.Now(),

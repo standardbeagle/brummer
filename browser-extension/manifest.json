@@ -1,5 +1,5 @@
 {
-  "manifest_version": 2,
+  "manifest_version": 3,
   "name": "Brummer DevTools",
   "version": "1.0.0",
   "description": "Connect Brummer package script manager to Firefox Developer Tools",
@@ -7,18 +7,21 @@
   "permissions": [
     "activeTab",
     "tabs",
-    "devtools",
     "storage",
-    "contextMenus",
+    "contextMenus"
+  ],
+  
+  "host_permissions": [
     "http://localhost:7777/*",
-    "https://localhost:7777/*"
+    "https://localhost:7777/*",
+    "http://localhost/*",
+    "https://localhost/*"
   ],
   
   "devtools_page": "devtools.html",
   
   "background": {
-    "scripts": ["background.js"],
-    "persistent": false
+    "service_worker": "background.js"
   },
   
   "content_scripts": [
@@ -36,6 +39,9 @@
   },
   
   "web_accessible_resources": [
-    "panel.html"
+    {
+      "resources": ["panel.html"],
+      "matches": ["<all_urls>"]
+    }
   ]
 }

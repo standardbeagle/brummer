@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -19,8 +20,10 @@ type Server struct {
 	logStore   *logs.Store
 	eventBus   *events.EventBus
 	
-	clients    map[string]*Client
-	mu         sync.RWMutex
+	clients         map[string]*Client
+	tokens          map[string]string // token -> clientID mapping
+	browserClients  map[string]time.Time // clientID -> last activity
+	mu              sync.RWMutex
 	
 	server     *http.Server
 }
@@ -55,22 +58,31 @@ type Error struct {
 }
 
 func NewServer(port int, processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus) *Server {
-	return &Server{
-		port:       port,
-		processMgr: processMgr,
-		logStore:   logStore,
-		eventBus:   eventBus,
-		clients:    make(map[string]*Client),
+	s := &Server{
+		port:           port,
+		processMgr:     processMgr,
+		logStore:       logStore,
+		eventBus:       eventBus,
+		clients:        make(map[string]*Client),
+		tokens:         make(map[string]string),
+		browserClients: make(map[string]time.Time),
 	}
+	
+	// Start browser client cleanup routine
+	go s.cleanupInactiveBrowsers()
+	
+	return s
 }
 
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	
+	// MCP protocol endpoints
 	mux.HandleFunc("/mcp/connect", s.handleConnect)
 	mux.HandleFunc("/mcp/events", s.handleSSE)
 	mux.HandleFunc("/mcp/command", s.handleCommand)
 	
+	// MCP convenience endpoints
 	mux.HandleFunc("/mcp/logs", s.handleGetLogs)
 	mux.HandleFunc("/mcp/processes", s.handleGetProcesses)
 	mux.HandleFunc("/mcp/scripts", s.handleGetScripts)
@@ -78,7 +90,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/mcp/stop", s.handleStopProcess)
 	mux.HandleFunc("/mcp/search", s.handleSearchLogs)
 	mux.HandleFunc("/mcp/filters", s.handleFilters)
-	mux.HandleFunc("/mcp/browser-log", s.handleBrowserLog)
+	
+	// Browser extension API (not MCP protocol)
+	mux.HandleFunc("/api/browser-log", s.handleBrowserLog)
+	mux.HandleFunc("/api/ping", s.handlePing)
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -149,6 +164,15 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 			"search",
 			"filters",
 			"events",
+		},
+		"endpoints": map[string]string{
+			"browserLog": "/api/browser-log",
+			"events": "/mcp/events",
+			"logs": "/mcp/logs",
+			"processes": "/mcp/processes",
+			"scripts": "/mcp/scripts",
+			"execute": "/mcp/execute",
+			"stop": "/mcp/stop",
 		},
 	}
 
@@ -444,6 +468,27 @@ func (s *Server) handleBrowserLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check for bearer token
+	authHeader := r.Header.Get("Authorization")
+	var clientID string
+	
+	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+		token := strings.TrimPrefix(authHeader, "Bearer ")
+		s.mu.RLock()
+		cid, exists := s.tokens[token]
+		s.mu.RUnlock()
+		
+		if !exists {
+			http.Error(w, "Invalid token", http.StatusUnauthorized)
+			return
+		}
+		clientID = cid
+		// Track browser activity
+		s.mu.Lock()
+		s.browserClients[clientID] = time.Now()
+		s.mu.Unlock()
+	}
+
 	var req struct {
 		ClientID string `json:"clientId"`
 		LogData  struct {
@@ -467,18 +512,28 @@ func (s *Server) handleBrowserLog(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Use clientID from bearer token if available, otherwise from request
+	if clientID == "" {
+		clientID = req.ClientID
+	}
+	
 	// Validate client exists
-	s.mu.RLock()
-	_, exists := s.clients[req.ClientID]
-	s.mu.RUnlock()
+	if clientID != "" {
+		s.mu.RLock()
+		_, exists := s.clients[clientID]
+		s.mu.RUnlock()
 
-	if !exists {
-		http.Error(w, "Client not found", http.StatusNotFound)
-		return
+		if !exists {
+			http.Error(w, "Client not found", http.StatusNotFound)
+			return
+		}
 	}
 
 	// Format browser log for Brummer's log system
-	processName := fmt.Sprintf("Browser Tab %d", req.LogData.Tab.ID)
+	processName := "[browser]"
+	if req.LogData.Tab.ID != 0 {
+		processName = fmt.Sprintf("[browser:%d]", req.LogData.Tab.ID)
+	}
 	
 	// Create a formatted log message
 	var logMessage string
@@ -559,4 +614,123 @@ func (s *Server) handleBrowserLog(w http.ResponseWriter, r *http.Request) {
 
 func generateID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// GenerateURLToken creates a token for a specific URL that will be opened
+func (s *Server) GenerateURLToken(processName string) string {
+	token := fmt.Sprintf("bt_%s_%d", processName, time.Now().UnixNano())
+	
+	// Create a temporary client for this browser tab
+	clientID := generateID()
+	client := &Client{
+		ID:       clientID,
+		Name:     fmt.Sprintf("Browser Tab (%s)", processName),
+		SSE:      make(chan Event, 100),
+		Commands: make(chan Command, 10),
+	}
+	
+	s.mu.Lock()
+	s.clients[clientID] = client
+	s.tokens[token] = clientID
+	s.mu.Unlock()
+	
+	return token
+}
+
+// GetPort returns the server port
+func (s *Server) GetPort() int {
+	return s.port
+}
+
+// HasActiveBrowsers returns true if any browser clients are currently active
+func (s *Server) HasActiveBrowsers() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	cutoff := time.Now().Add(-30 * time.Second) // Consider active if seen in last 30 seconds
+	for _, lastSeen := range s.browserClients {
+		if lastSeen.After(cutoff) {
+			return true
+		}
+	}
+	return false
+}
+
+// cleanupInactiveBrowsers removes browser clients that haven't been active
+func (s *Server) cleanupInactiveBrowsers() {
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		s.mu.Lock()
+		cutoff := time.Now().Add(-60 * time.Second) // Remove after 60 seconds of inactivity
+		for clientID, lastSeen := range s.browserClients {
+			if lastSeen.Before(cutoff) {
+				delete(s.browserClients, clientID)
+				// Also cleanup associated client and token
+				if token := s.findTokenForClient(clientID); token != "" {
+					delete(s.tokens, token)
+				}
+				delete(s.clients, clientID)
+			}
+		}
+		s.mu.Unlock()
+	}
+}
+
+// findTokenForClient finds the token associated with a client ID
+func (s *Server) findTokenForClient(clientID string) string {
+	for token, cid := range s.tokens {
+		if cid == clientID {
+			return token
+		}
+	}
+	return ""
+}
+
+// handlePing handles ping requests from browser extensions
+func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check for bearer token
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
+		http.Error(w, "Authorization required", http.StatusUnauthorized)
+		return
+	}
+
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	s.mu.RLock()
+	clientID, exists := s.tokens[token]
+	s.mu.RUnlock()
+
+	if !exists {
+		http.Error(w, "Invalid token", http.StatusUnauthorized)
+		return
+	}
+
+	// Update browser activity
+	s.mu.Lock()
+	s.browserClients[clientID] = time.Now()
+	s.mu.Unlock()
+
+	// Parse request body
+	var req struct {
+		Timestamp string `json:"timestamp"`
+	}
+	json.NewDecoder(r.Body).Decode(&req)
+
+	// Send pong response
+	response := map[string]interface{}{
+		"status":    "pong",
+		"timestamp": time.Now().Format(time.RFC3339),
+		"clientId":  clientID,
+		"active":    true,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }

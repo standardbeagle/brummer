@@ -29,8 +29,8 @@ content.WriteString(cleanContent)
 ```
 
 ## Testing
-1. Build the updated brummer: `go build -o brummer cmd/brummer/main.go`
-2. Run brummer in the test-project directory: `cd test-project && ../brummer`
+1. Build the updated brummer: `go build -o brum cmd/brummer/main.go`
+2. Run brummer in the test-project directory: `cd test-project && ../brum`
 3. Select and run the "color-test" script
 4. Switch to the Logs view to see colored output
 

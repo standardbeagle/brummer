@@ -3,6 +3,7 @@ console.log('Brummer DevTools extension loaded');
 
 let brummerConnection = null;
 let brummerClientId = null;
+let brummerEndpoints = {};
 let logQueue = [];
 
 // Handle messages from content scripts or devtools
@@ -50,7 +51,7 @@ async function sendLogToBrummer(logData) {
     if (!brummerConnection) return;
     
     try {
-        const response = await fetch(`${brummerConnection}/mcp/browser-log`, {
+        const response = await fetch(`${brummerConnection}/api/browser-log`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',

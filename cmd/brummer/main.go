@@ -11,6 +11,7 @@ import (
 	"github.com/beagle/brummer/internal/logs"
 	"github.com/beagle/brummer/internal/mcp"
 	"github.com/beagle/brummer/internal/process"
+	"github.com/beagle/brummer/internal/proxy"
 	"github.com/beagle/brummer/internal/tui"
 	"github.com/beagle/brummer/pkg/events"
 	tea "github.com/charmbracelet/bubbletea"
@@ -25,7 +26,7 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "brummer",
+	Use:   "brum",
 	Short: "A TUI for managing npm/yarn/pnpm/bun scripts with MCP integration",
 	Long: `Brummer is a terminal user interface for managing package.json scripts.
 It provides real-time log monitoring, error detection, and MCP server integration
@@ -80,8 +81,13 @@ func runApp(cmd *cobra.Command, args []string) {
 
 	// Start MCP server if enabled
 	var mcpServer *mcp.Server
+	var proxyManager *proxy.ProxyManager
 	if !noMCP || noTUI {
 		mcpServer = mcp.NewServer(mcpPort, processMgr, logStore, eventBus)
+		// Create proxy manager
+		if mcpServer != nil {
+			proxyManager = proxy.NewProxyManager(mcpServer, eventBus, logStore)
+		}
 		if noTUI {
 			// In headless mode, run MCP server in foreground
 			fmt.Printf("Starting MCP server on port %d (headless mode)...\n", mcpPort)
@@ -129,7 +135,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 		
 		// Create and run TUI
-		model := tui.NewModel(processMgr, logStore, eventBus)
+		model := tui.NewModel(processMgr, logStore, eventBus, mcpServer, proxyManager)
 		p := tea.NewProgram(model, tea.WithAltScreen())
 
 		// Run TUI in goroutine so we can handle signals

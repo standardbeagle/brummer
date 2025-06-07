@@ -5,9 +5,11 @@ class BrummerConnection {
         this.eventSource = null;
         this.urls = [];
         this.clientId = null;
+        this.activeTabs = new Map(); // Track active tabs with Brummer logging
         
         this.loadSettings();
         this.updateStatus();
+        this.monitorActiveTabs();
     }
     
     async loadSettings() {
@@ -42,13 +44,16 @@ class BrummerConnection {
     }
     
     async connect() {
+        console.log('🔗 Starting connection process...');
         try {
             this.serverUrl = document.getElementById('serverUrl').value.trim();
+            console.log('📡 Connecting to:', this.serverUrl);
             await this.saveSettings();
             
             this.showError('');
             
             // First, connect to the MCP server
+            console.log('📤 Sending connection request...');
             const connectResponse = await fetch(`${this.serverUrl}/mcp/connect`, {
                 method: 'POST',
                 headers: {
@@ -65,6 +70,12 @@ class BrummerConnection {
             
             const connectData = await connectResponse.json();
             this.clientId = connectData.clientId;
+            this.endpoints = connectData.endpoints || {};
+            
+            // Store endpoints for background script
+            chrome.storage.local.set({
+                brummerEndpoints: this.endpoints
+            });
             
             // Load initial URLs
             await this.loadUrls();
@@ -236,9 +247,11 @@ class BrummerConnection {
         if (this.connected) {
             statusEl.textContent = 'Connected';
             statusEl.className = 'status connected';
+            statusEl.title = `Connected to ${this.serverUrl}\nClient ID: ${this.clientId}`;
         } else {
             statusEl.textContent = 'Disconnected';
             statusEl.className = 'status disconnected';
+            statusEl.title = 'Not connected to Brummer server';
         }
     }
     
@@ -257,10 +270,17 @@ let brummer;
 
 // Initialize when the panel is shown
 function initializeBrummer() {
+    console.log('🚀 Initializing Brummer panel...');
     if (!brummer) {
         brummer = new BrummerConnection();
+        console.log('✅ BrummerConnection instance created');
         // Auto-connect on first load
-        setTimeout(() => brummer.connect(), 500);
+        setTimeout(() => {
+            console.log('🔌 Auto-connecting to Brummer server...');
+            brummer.connect();
+        }, 500);
+    } else {
+        console.log('ℹ️ Brummer already initialized');
     }
 }
 
@@ -293,3 +313,99 @@ async function toggleBrowserLogging() {
 
 // Initialize immediately if panel is already visible
 document.addEventListener('DOMContentLoaded', initializeBrummer);
+
+// Extension of BrummerConnection class methods
+BrummerConnection.prototype.monitorActiveTabs = function() {
+    // Check for active tabs periodically
+    setInterval(() => {
+        this.checkActiveTabs();
+    }, 2000);
+    
+    // Initial check
+    this.checkActiveTabs();
+};
+
+BrummerConnection.prototype.checkActiveTabs = async function() {
+    try {
+        // Query all tabs
+        const tabs = await chrome.tabs.query({});
+        
+        // Clear existing tab tracking
+        this.activeTabs.clear();
+        
+        // Check each tab for Brummer parameters
+        for (const tab of tabs) {
+            if (tab.url) {
+                try {
+                    const url = new URL(tab.url);
+                    if (url.searchParams.has('brummer_token')) {
+                        this.activeTabs.set(tab.id, {
+                            id: tab.id,
+                            title: tab.title || 'Untitled',
+                            url: tab.url,
+                            token: url.searchParams.get('brummer_token'),
+                            process: url.searchParams.get('brummer_process') || 'unknown',
+                            active: tab.active,
+                            lastSeen: new Date()
+                        });
+                    }
+                } catch (e) {
+                    // Invalid URL, skip
+                }
+            }
+        }
+        
+        // Update UI
+        this.renderActiveTabs();
+    } catch (error) {
+        console.error('Failed to check active tabs:', error);
+    }
+};
+
+BrummerConnection.prototype.renderActiveTabs = function() {
+    const container = document.getElementById('activeTabsContainer');
+    
+    if (this.activeTabs.size === 0) {
+        container.innerHTML = `
+            <div class="empty-state">
+                <div style="font-size: 14px; color: #999;">No tabs with Brummer logging active</div>
+                <div style="font-size: 12px; color: #bbb; margin-top: 4px;">
+                    Tabs opened from Brummer will appear here
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    const tabsHtml = Array.from(this.activeTabs.values()).map(tab => {
+        const isActive = tab.active ? '🟢' : '⚪';
+        const truncatedUrl = tab.url.length > 50 ? tab.url.substring(0, 50) + '...' : tab.url;
+        
+        return `
+            <div class="url-item" style="padding: 12px; border-bottom: 1px solid #f0f0f0;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 12px;">${isActive}</span>
+                    <div style="flex: 1;">
+                        <div style="font-weight: 500; font-size: 13px;">${tab.title}</div>
+                        <div style="font-size: 11px; color: #666; margin-top: 2px;">
+                            Process: ${tab.process} | Tab ID: ${tab.id}
+                        </div>
+                        <div style="font-size: 11px; color: #999; margin-top: 2px;">
+                            ${truncatedUrl}
+                        </div>
+                    </div>
+                    <button class="open-btn" onclick="chrome.tabs.update(${tab.id}, {active: true})">
+                        Focus
+                    </button>
+                </div>
+            </div>
+        `;
+    }).join('');
+    
+    container.innerHTML = `
+        <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
+            ${this.activeTabs.size} tab${this.activeTabs.size > 1 ? 's' : ''} with active logging
+        </div>
+        ${tabsHtml}
+    `;
+};

@@ -4,19 +4,49 @@
     
     let lastUrl = location.href;
     let brummerEnabled = false;
+    let brummerToken = null;
+    let brummerEndpoint = null;
     let logBuffer = [];
     
-    // Check if Brummer logging is enabled
-    chrome.storage.local.get(['brummerLoggingEnabled'], (result) => {
-        brummerEnabled = result.brummerLoggingEnabled || false;
-        if (brummerEnabled) {
-            initializeBrowserLogging();
-        }
-    });
+    // Check URL for brummer token
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('brummer_token')) {
+        brummerToken = urlParams.get('brummer_token');
+        brummerEnabled = true;
+        
+        // Get the brummer base URL from parameters
+        const brummerBase = urlParams.get('brummer_base') || 'http://localhost:7777';
+        brummerEndpoint = brummerBase + '/api/browser-log';
+        
+        // Enhanced logging with styled console output
+        console.log('%c🐝 Brummer Extension Activated', 'background: #FFD700; color: #000; padding: 5px 10px; font-weight: bold; border-radius: 3px;');
+        console.log('%cURL Parameters Recognized:', 'color: #4CAF50; font-weight: bold;');
+        console.log('  Token:', brummerToken);
+        console.log('  Endpoint:', brummerEndpoint);
+        console.log('  Process:', urlParams.get('brummer_process') || 'unknown');
+        
+        // Create connection status indicator
+        createConnectionStatus();
+        
+        initializeBrowserLogging();
+        
+        // Start connection monitoring
+        startConnectionMonitoring();
+    }
     
-    // Listen for enable/disable messages from extension
+    // Check if Brummer logging is enabled (skip if already enabled by token)
+    if (!brummerToken) {
+        chrome.storage.local.get(['brummerLoggingEnabled'], (result) => {
+            brummerEnabled = result.brummerLoggingEnabled || false;
+            if (brummerEnabled) {
+                initializeBrowserLogging();
+            }
+        });
+    }
+    
+    // Listen for enable/disable messages from extension (skip if using token)
     chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.type === 'brummer_toggle_logging') {
+        if (message.type === 'brummer_toggle_logging' && !brummerToken) {
             brummerEnabled = message.enabled;
             if (brummerEnabled) {
                 initializeBrowserLogging();
@@ -42,10 +72,27 @@
     function sendToBrummer(logData) {
         if (!brummerEnabled) return;
         
-        chrome.runtime.sendMessage({
-            type: 'brummer_browser_log',
-            data: logData
-        });
+        // If we have a token, send directly to the API endpoint
+        if (brummerToken && brummerEndpoint) {
+            fetch(brummerEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${brummerToken}`
+                },
+                body: JSON.stringify({
+                    logData: logData
+                })
+            }).catch(error => {
+                console.error('Failed to send log to Brummer:', error);
+            });
+        } else {
+            // Fallback to extension messaging
+            chrome.runtime.sendMessage({
+                type: 'brummer_browser_log',
+                data: logData
+            });
+        }
     }
     
     function interceptConsole() {
@@ -296,6 +343,146 @@
         
         // Initial check
         urlChanged();
+    }
+    
+    // Connection status UI elements
+    let statusIndicator = null;
+    let connectionState = 'connecting';
+    let lastPingTime = null;
+    let pingInterval = null;
+    
+    function createConnectionStatus() {
+        // Create status indicator element
+        statusIndicator = document.createElement('div');
+        statusIndicator.id = 'brummer-status';
+        statusIndicator.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 12px;
+            z-index: 999999;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.3s ease;
+            cursor: pointer;
+            user-select: none;
+        `;
+        
+        // Add hover effect
+        statusIndicator.addEventListener('mouseenter', () => {
+            statusIndicator.style.transform = 'scale(1.05)';
+        });
+        
+        statusIndicator.addEventListener('mouseleave', () => {
+            statusIndicator.style.transform = 'scale(1)';
+        });
+        
+        // Click to hide/show
+        statusIndicator.addEventListener('click', () => {
+            if (statusIndicator.style.opacity === '0.3') {
+                statusIndicator.style.opacity = '1';
+            } else {
+                statusIndicator.style.opacity = '0.3';
+            }
+        });
+        
+        updateConnectionStatus('connecting', 'Connecting to Brummer...');
+        document.body.appendChild(statusIndicator);
+    }
+    
+    function updateConnectionStatus(state, message) {
+        if (!statusIndicator) return;
+        
+        connectionState = state;
+        
+        const stateColors = {
+            'connected': '#4CAF50',
+            'connecting': '#FFC107',
+            'disconnected': '#F44336',
+            'error': '#F44336'
+        };
+        
+        const stateIcons = {
+            'connected': '🟢',
+            'connecting': '🟡',
+            'disconnected': '🔴',
+            'error': '⚠️'
+        };
+        
+        const color = stateColors[state] || '#999';
+        const icon = stateIcons[state] || '❓';
+        
+        statusIndicator.innerHTML = `
+            <span style="font-size: 16px;">${icon}</span>
+            <div>
+                <div style="font-weight: bold;">Brummer</div>
+                <div style="font-size: 10px; opacity: 0.8;">${message}</div>
+            </div>
+        `;
+        
+        statusIndicator.style.borderLeft = `3px solid ${color}`;
+    }
+    
+    function startConnectionMonitoring() {
+        // Initial ping
+        sendPing();
+        
+        // Set up regular pings every 5 seconds
+        pingInterval = setInterval(() => {
+            sendPing();
+        }, 5000);
+        
+        // Cleanup on page unload
+        window.addEventListener('beforeunload', () => {
+            if (pingInterval) {
+                clearInterval(pingInterval);
+            }
+        });
+    }
+    
+    async function sendPing() {
+        if (!brummerEndpoint || !brummerToken) return;
+        
+        const startTime = Date.now();
+        
+        try {
+            const response = await fetch(brummerEndpoint.replace('/api/browser-log', '/api/ping'), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${brummerToken}`
+                },
+                body: JSON.stringify({
+                    timestamp: new Date().toISOString()
+                })
+            });
+            
+            if (response.ok) {
+                const latency = Date.now() - startTime;
+                lastPingTime = Date.now();
+                updateConnectionStatus('connected', `Connected (${latency}ms)`);
+                
+                // Log successful ping in console
+                console.log(`%c✓ Brummer ping: ${latency}ms`, 'color: #4CAF50; font-size: 10px;');
+            } else {
+                throw new Error(`HTTP ${response.status}`);
+            }
+        } catch (error) {
+            // Check if we've been disconnected for more than 10 seconds
+            if (lastPingTime && Date.now() - lastPingTime > 10000) {
+                updateConnectionStatus('disconnected', 'Connection lost');
+            } else {
+                updateConnectionStatus('error', `Error: ${error.message}`);
+            }
+            
+            console.error('%c✗ Brummer ping failed:', 'color: #F44336; font-size: 10px;', error.message);
+        }
     }
     
 })();
