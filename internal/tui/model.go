@@ -1006,26 +1006,80 @@ func (m Model) renderFiltersView() string {
 }
 
 func (m *Model) renderErrorsView() string {
-	errors := m.logStore.GetErrors()
+	errorContexts := m.logStore.GetErrorContexts()
 	
 	var content strings.Builder
 	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Recent Errors") + "\n\n")
 	
-	if len(errors) == 0 {
-		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No errors detected yet"))
+	if len(errorContexts) == 0 {
+		// Fall back to simple errors if no contexts
+		errors := m.logStore.GetErrors()
+		if len(errors) == 0 {
+			content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No errors detected yet"))
+		} else {
+			errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+			timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+			processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+			
+			// Show most recent errors first
+			for i := len(errors) - 1; i >= 0 && i >= len(errors)-20; i-- {
+				err := errors[i]
+				content.WriteString(fmt.Sprintf("%s %s\n%s\n\n",
+					timeStyle.Render(err.Timestamp.Format("15:04:05")),
+					processStyle.Render(fmt.Sprintf("[%s]", err.ProcessName)),
+					errorStyle.Render(err.Content),
+				))
+			}
+		}
 	} else {
-		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+		// Styles for different parts
+		errorTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
 		timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 		processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
+		messageStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+		stackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
+		contextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
+		separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("236"))
 		
-		// Show most recent errors first
-		for i := len(errors) - 1; i >= 0 && i >= len(errors)-20; i-- {
-			err := errors[i]
-			content.WriteString(fmt.Sprintf("%s %s\n%s\n\n",
-				timeStyle.Render(err.Timestamp.Format("15:04:05")),
-				processStyle.Render(fmt.Sprintf("[%s]", err.ProcessName)),
-				errorStyle.Render(err.Content),
+		// Show most recent error contexts first
+		shown := 0
+		for i := len(errorContexts) - 1; i >= 0 && shown < 10; i-- {
+			errorCtx := errorContexts[i]
+			
+			// Error header
+			content.WriteString(fmt.Sprintf("%s %s %s\n",
+				timeStyle.Render(errorCtx.Timestamp.Format("15:04:05")),
+				processStyle.Render(fmt.Sprintf("[%s]", errorCtx.ProcessName)),
+				errorTypeStyle.Render(errorCtx.Type),
 			))
+			
+			// Main error message
+			content.WriteString(messageStyle.Render(errorCtx.Message) + "\n")
+			
+			// Stack trace if available
+			if len(errorCtx.Stack) > 0 {
+				content.WriteString(stackStyle.Render("Stack Trace:") + "\n")
+				for j, stackLine := range errorCtx.Stack {
+					if j > 5 { // Limit stack trace lines
+						content.WriteString(stackStyle.Render(fmt.Sprintf("  ... and %d more lines", len(errorCtx.Stack)-j)) + "\n")
+						break
+					}
+					content.WriteString(stackStyle.Render("  " + strings.TrimSpace(stackLine)) + "\n")
+				}
+			}
+			
+			// Additional context if available
+			if len(errorCtx.Context) > 0 && len(errorCtx.Context) <= 5 {
+				for _, ctxLine := range errorCtx.Context {
+					if strings.TrimSpace(ctxLine) != "" {
+						content.WriteString(contextStyle.Render("  " + strings.TrimSpace(ctxLine)) + "\n")
+					}
+				}
+			}
+			
+			// Separator between errors
+			content.WriteString(separatorStyle.Render("─────────────────────────────────────────") + "\n\n")
+			shown++
 		}
 	}
 	
@@ -1430,18 +1484,52 @@ func (m *Model) handleRestartAll() tea.Cmd {
 
 func (m *Model) handleCopyError() tea.Cmd {
 	return func() tea.Msg {
-		errors := m.logStore.GetErrors()
-		if len(errors) == 0 {
-			m.logStore.Add("system", "System", "No recent errors to copy", false)
-			return logUpdateMsg{}
-		}
+		// Try to get error contexts first
+		errorContexts := m.logStore.GetErrorContexts()
 		
-		// Get the most recent error
-		recentError := errors[len(errors)-1]
-		errorText := fmt.Sprintf("[%s] %s: %s", 
-			recentError.Timestamp.Format("15:04:05"), 
-			recentError.ProcessName, 
-			recentError.Content)
+		var errorText string
+		
+		if len(errorContexts) > 0 {
+			// Get the most recent error context
+			recentError := errorContexts[len(errorContexts)-1]
+			
+			// Build comprehensive error text
+			var errorBuilder strings.Builder
+			errorBuilder.WriteString(fmt.Sprintf("Error Type: %s\n", recentError.Type))
+			errorBuilder.WriteString(fmt.Sprintf("Time: %s\n", recentError.Timestamp.Format("15:04:05")))
+			errorBuilder.WriteString(fmt.Sprintf("Process: %s\n", recentError.ProcessName))
+			errorBuilder.WriteString(fmt.Sprintf("Message: %s\n", recentError.Message))
+			
+			if len(recentError.Stack) > 0 {
+				errorBuilder.WriteString("\nStack Trace:\n")
+				for _, line := range recentError.Stack {
+					errorBuilder.WriteString("  " + line + "\n")
+				}
+			}
+			
+			if len(recentError.Context) > 0 {
+				errorBuilder.WriteString("\nAdditional Context:\n")
+				for _, line := range recentError.Context {
+					errorBuilder.WriteString("  " + line + "\n")
+				}
+			}
+			
+			errorText = errorBuilder.String()
+		} else {
+			// Fall back to simple errors
+			errors := m.logStore.GetErrors()
+			if len(errors) == 0 {
+				m.logStore.Add("system", "System", "No recent errors to copy", false)
+				return logUpdateMsg{}
+			}
+			
+			// Get the most recent error
+			recentError := errors[len(errors)-1]
+			errorText = fmt.Sprintf("[%s] %s: %s", 
+				recentError.Timestamp.Format("15:04:05"), 
+				recentError.ProcessName, 
+				recentError.Content)
+		}
 		
 		// Try to copy to system clipboard
 		if err := copyToClipboard(errorText); err != nil {

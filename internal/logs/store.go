@@ -33,13 +33,15 @@ type LogEntry struct {
 }
 
 type Store struct {
-	entries      []LogEntry
-	byProcess    map[string][]int
-	errors       []LogEntry
-	urls         []URLEntry
-	maxEntries   int
-	filters      []filters.Filter
-	mu           sync.RWMutex
+	entries       []LogEntry
+	byProcess     map[string][]int
+	errors        []LogEntry
+	errorContexts []ErrorContext
+	errorParser   *ErrorParser
+	urls          []URLEntry
+	maxEntries    int
+	filters       []filters.Filter
+	mu            sync.RWMutex
 }
 
 type URLEntry struct {
@@ -52,12 +54,14 @@ type URLEntry struct {
 
 func NewStore(maxEntries int) *Store {
 	return &Store{
-		entries:    make([]LogEntry, 0, maxEntries),
-		byProcess:  make(map[string][]int),
-		errors:     make([]LogEntry, 0, 100),
-		urls:       make([]URLEntry, 0, 100),
-		maxEntries: maxEntries,
-		filters:    []filters.Filter{},
+		entries:       make([]LogEntry, 0, maxEntries),
+		byProcess:     make(map[string][]int),
+		errors:        make([]LogEntry, 0, 100),
+		errorContexts: make([]ErrorContext, 0, 100),
+		errorParser:   NewErrorParser(),
+		urls:          make([]URLEntry, 0, 100),
+		maxEntries:    maxEntries,
+		filters:       []filters.Filter{},
 	}
 }
 
@@ -91,11 +95,19 @@ func (s *Store) Add(processID, processName, content string, isError bool) *LogEn
 	s.entries = append(s.entries, entry)
 	s.byProcess[processID] = append(s.byProcess[processID], idx)
 
-	// Track errors
+	// Track errors with enhanced parsing
 	if isError || entry.Level >= LevelError {
 		s.errors = append(s.errors, entry)
 		if len(s.errors) > 100 {
 			s.errors = s.errors[1:]
+		}
+	}
+	
+	// Process through error parser for better error context
+	if errorCtx := s.errorParser.ProcessLine(processID, processName, content, entry.Timestamp); errorCtx != nil {
+		s.errorContexts = append(s.errorContexts, *errorCtx)
+		if len(s.errorContexts) > 100 {
+			s.errorContexts = s.errorContexts[1:]
 		}
 	}
 
@@ -326,4 +338,16 @@ func (s *Store) ClearErrors() {
 	defer s.mu.Unlock()
 	
 	s.errors = make([]LogEntry, 0, 100)
+	s.errorContexts = make([]ErrorContext, 0, 100)
+	s.errorParser.ClearErrors()
+}
+
+// GetErrorContexts returns parsed error contexts with full details
+func (s *Store) GetErrorContexts() []ErrorContext {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	result := make([]ErrorContext, len(s.errorContexts))
+	copy(result, s.errorContexts)
+	return result
 }

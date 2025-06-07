@@ -16,7 +16,8 @@
     "long-running": "node long-running-script.js",
     "color-test": "node color-test.js",
     "browser-test": "node browser-test.js",
-    "proxy-test": "node proxy-test.js"
+    "proxy-test": "node proxy-test.js",
+    "mongo-error": "node mongo-error-test.js"
   },
   "dependencies": {
     "express": "^4.18.0"
