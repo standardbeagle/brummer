@@ -150,7 +150,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 	// Always show dropdown if we have suggestions or if we're at the beginning
 	if len(c.suggestions) == 0 && c.currentIndex == 0 && (value == "" || value == "/") {
 		// Show initial commands when empty
-		c.suggestions = []string{"run", "show", "hide"}
+		c.suggestions = []string{"run", "restart", "stop", "show", "hide"}
 		c.showDropdown = true
 	}
 	
@@ -163,7 +163,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 	if c.currentIndex == 0 {
 		// First segment - show root commands
-		rootCommands := []string{"run", "show", "hide"}
+		rootCommands := []string{"run", "restart", "stop", "show", "hide"}
 		currentText := ""
 		if len(c.segments) > 0 {
 			currentText = c.segments[0]
@@ -203,6 +203,24 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 				currentText = c.segments[c.currentIndex]
 			}
 			return c.filterSuggestions(scripts, currentText)
+			
+		case "/restart", "/stop":
+			// Get running processes with "all" as default option
+			processes := []string{"all"}
+			
+			if c.processMgr != nil {
+				for _, proc := range c.processMgr.GetAllProcesses() {
+					if proc.Status == process.StatusRunning {
+						processes = append(processes, proc.Name)
+					}
+				}
+			}
+			
+			currentText := ""
+			if c.currentIndex < len(c.segments) {
+				currentText = c.segments[c.currentIndex]
+			}
+			return c.filterSuggestions(processes, currentText)
 			
 		case "/show", "/hide":
 			// Common patterns for log filtering
@@ -364,6 +382,29 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		}
 		return true, ""
 		
+	case "/restart", "/stop":
+		if len(parts) < 2 {
+			// Default to "all" if no process specified
+			return true, ""
+		}
+		processName := parts[1]
+		
+		// Check if it's "all" or a valid running process
+		if processName == "all" {
+			return true, ""
+		}
+		
+		// Check if process exists and is running
+		if c.processMgr != nil {
+			for _, proc := range c.processMgr.GetAllProcesses() {
+				if proc.Name == processName && proc.Status == process.StatusRunning {
+					return true, ""
+				}
+			}
+			return false, fmt.Sprintf("Process '%s' is not running", processName)
+		}
+		return true, ""
+		
 	case "/show", "/hide":
 		if len(parts) < 2 {
 			return false, fmt.Sprintf("Please specify a pattern for %s", command)
@@ -372,12 +413,12 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		
 	default:
 		// Check if it's a partial command
-		for _, cmd := range []string{"run", "show", "hide"} {
+		for _, cmd := range []string{"run", "restart", "stop", "show", "hide"} {
 			if strings.HasPrefix(cmd, strings.TrimPrefix(command, "/")) {
 				return false, fmt.Sprintf("Incomplete command. Did you mean /%s?", cmd)
 			}
 		}
-		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /show, /hide", command)
+		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /show, /hide", command)
 	}
 }
 

@@ -2057,6 +2057,127 @@ func (m *Model) handleSlashCommand(input string) {
 		}()
 		// Switch to logs view immediately
 		m.currentView = ViewLogs
+	case "/restart":
+		processName := ""
+		if len(parts) >= 2 {
+			processName = parts[1]
+		} else {
+			processName = "all"
+		}
+		
+		if processName == "all" {
+			// Restart all running processes
+			go func() {
+				processes := m.processMgr.GetAllProcesses()
+				restarted := 0
+				for _, proc := range processes {
+					if proc.Status == process.StatusRunning {
+						// Stop the process
+						if err := m.processMgr.StopProcess(proc.ID); err != nil {
+							m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", proc.Name, err), true)
+							continue
+						}
+						// Start it again
+						_, err := m.processMgr.StartScript(proc.Name)
+						if err != nil {
+							m.logStore.Add("system", "System", fmt.Sprintf("Error restarting script %s: %v", proc.Name, err), true)
+						} else {
+							restarted++
+						}
+					}
+				}
+				m.logStore.Add("system", "System", fmt.Sprintf("🔄 Restarted %d processes", restarted), false)
+				m.updateChan <- processUpdateMsg{}
+			}()
+		} else {
+			// Restart specific process
+			go func() {
+				// Find the process
+				var targetProc *process.Process
+				for _, proc := range m.processMgr.GetAllProcesses() {
+					if proc.Name == processName && proc.Status == process.StatusRunning {
+						targetProc = proc
+						break
+					}
+				}
+				
+				if targetProc == nil {
+					m.logStore.Add("system", "System", fmt.Sprintf("Process '%s' is not running", processName), true)
+					m.updateChan <- logUpdateMsg{}
+					return
+				}
+				
+				// Stop and restart the process
+				if err := m.processMgr.StopProcess(targetProc.ID); err != nil {
+					m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", processName, err), true)
+					m.updateChan <- logUpdateMsg{}
+					return
+				}
+				
+				_, err := m.processMgr.StartScript(processName)
+				if err != nil {
+					m.logStore.Add("system", "System", fmt.Sprintf("Error restarting script %s: %v", processName, err), true)
+				} else {
+					m.logStore.Add("system", "System", fmt.Sprintf("🔄 Restarted process: %s", processName), false)
+				}
+				m.updateChan <- processUpdateMsg{}
+			}()
+		}
+		m.currentView = ViewProcesses
+		
+	case "/stop":
+		processName := ""
+		if len(parts) >= 2 {
+			processName = parts[1]
+		} else {
+			processName = "all"
+		}
+		
+		if processName == "all" {
+			// Stop all running processes
+			go func() {
+				processes := m.processMgr.GetAllProcesses()
+				stopped := 0
+				for _, proc := range processes {
+					if proc.Status == process.StatusRunning {
+						if err := m.processMgr.StopProcess(proc.ID); err != nil {
+							m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", proc.Name, err), true)
+						} else {
+							stopped++
+						}
+					}
+				}
+				m.logStore.Add("system", "System", fmt.Sprintf("⏹️ Stopped %d processes", stopped), false)
+				m.updateChan <- processUpdateMsg{}
+			}()
+		} else {
+			// Stop specific process
+			go func() {
+				// Find the process
+				var targetProc *process.Process
+				for _, proc := range m.processMgr.GetAllProcesses() {
+					if proc.Name == processName && proc.Status == process.StatusRunning {
+						targetProc = proc
+						break
+					}
+				}
+				
+				if targetProc == nil {
+					m.logStore.Add("system", "System", fmt.Sprintf("Process '%s' is not running", processName), true)
+					m.updateChan <- logUpdateMsg{}
+					return
+				}
+				
+				if err := m.processMgr.StopProcess(targetProc.ID); err != nil {
+					m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", processName, err), true)
+				} else {
+					m.logStore.Add("system", "System", fmt.Sprintf("⏹️ Stopped process: %s", processName), false)
+				}
+				m.updateChan <- processUpdateMsg{}
+			}()
+		}
+		m.currentView = ViewProcesses
+		
 	default:
 		// Unknown command, treat as search
 		m.searchResults = m.logStore.Search(input)
