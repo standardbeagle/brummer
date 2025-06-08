@@ -384,8 +384,8 @@ func (s *Server) Start() error {
 		return fmt.Errorf("proxy server already running")
 	}
 	
-	// Always start the full proxy server for PAC file support
-	if s.proxy == nil {
+	// In full proxy mode, ensure goproxy is initialized
+	if s.mode == ProxyModeFull && s.proxy == nil {
 		proxy := goproxy.NewProxyHttpServer()
 		proxy.Verbose = false
 		s.proxy = proxy
@@ -419,8 +419,18 @@ func (s *Server) Start() error {
 				return
 			}
 			
-			// All proxy requests go through goproxy
-			s.proxy.ServeHTTP(w, r)
+			// In reverse proxy mode, we don't handle proxy requests on the main port
+			if s.mode == ProxyModeReverse {
+				http.Error(w, "This is the control port. Use the dedicated proxy ports for each URL.", http.StatusBadRequest)
+				return
+			}
+			
+			// All proxy requests go through goproxy (full proxy mode only)
+			if s.proxy != nil {
+				s.proxy.ServeHTTP(w, r)
+			} else {
+				http.Error(w, "Proxy not initialized", http.StatusInternalServerError)
+			}
 		}),
 	}
 	
@@ -532,6 +542,7 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.HandlerFunc {
 		// Parse target URL
 		targetURL, err := url.Parse(mapping.TargetURL)
 		if err != nil {
+			log.Printf("Error parsing target URL %s: %v", mapping.TargetURL, err)
 			http.Error(w, "Invalid target URL", http.StatusInternalServerError)
 			return
 		}
@@ -568,7 +579,12 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.HandlerFunc {
 		// Perform the request
 		client := &http.Client{
 			Timeout: 30 * time.Second,
+			CheckRedirect: func(req *http.Request, via []*http.Request) error {
+				return http.ErrUseLastResponse // Don't follow redirects automatically
+			},
 		}
+		
+		log.Printf("Proxying request: %s %s -> %s", r.Method, r.URL.Path, targetURLStr)
 		resp, err := client.Do(proxyReq)
 		
 		duration := time.Since(startTime)
@@ -619,6 +635,7 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.HandlerFunc {
 		contentType := resp.Header.Get("Content-Type")
 		isHTML := strings.Contains(contentType, "text/html")
 		
+		// Just read telemetry enabled directly - it's a bool, so it's atomic
 		if s.enableTelemetry && isHTML && resp.StatusCode == 200 {
 			// Read the entire response body for injection
 			body, err := ioutil.ReadAll(resp.Body)
@@ -894,15 +911,13 @@ func (s *Server) GetTelemetryStore() *TelemetryStore {
 
 // EnableTelemetry enables or disables telemetry collection
 func (s *Server) EnableTelemetry(enable bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Just set it directly - bool writes are atomic
 	s.enableTelemetry = enable
 }
 
 // IsTelemetryEnabled returns whether telemetry is enabled
 func (s *Server) IsTelemetryEnabled() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	// Just read it directly - bool reads are atomic
 	return s.enableTelemetry
 }
 
