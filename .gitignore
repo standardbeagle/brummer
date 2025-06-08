@@ -1,6 +1,5 @@
 # Compiled binaries
-brummer
-brum
+/brum
 
 # Go build artifacts
 *.exe

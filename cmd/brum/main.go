@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
+	"time"
 
 	"github.com/beagle/brummer/internal/logs"
 	"github.com/beagle/brummer/internal/mcp"
@@ -25,11 +27,19 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "brum",
+	Use:   "brum [scripts...] or brum '<command>'",
 	Short: "A TUI for managing npm/yarn/pnpm/bun scripts with MCP integration",
 	Long: `Brummer is a terminal user interface for managing package.json scripts.
 It provides real-time log monitoring, error detection, and MCP server integration
-for external tool access.`,
+for external tool access.
+
+Examples:
+  brum                    # Start TUI in scripts view
+  brum dev                # Start 'dev' script and show logs
+  brum dev test           # Start both 'dev' and 'test' scripts
+  brum 'node server.js'   # Run arbitrary command
+  brum -d ../app dev      # Run 'dev' in ../app directory`,
+	Args: cobra.ArbitraryArgs,
 	Run: runApp,
 }
 
@@ -77,6 +87,50 @@ func runApp(cmd *cobra.Command, args []string) {
 			detector.ProcessLogLine(processID, proc.Name, line, isError)
 		}
 	})
+
+	// Handle CLI arguments to start scripts
+	var startedFromCLI bool
+	if len(args) > 0 {
+		startedFromCLI = true
+		scripts := processMgr.GetScripts()
+		
+		for _, arg := range args {
+			// Check if it's a known script
+			if _, exists := scripts[arg]; exists {
+				// Start the script
+				proc, err := processMgr.StartScript(arg)
+				if err != nil {
+					log.Printf("Failed to start script '%s': %v", arg, err)
+				} else {
+					fmt.Printf("Started script '%s' (PID: %s)\n", arg, proc.ID)
+				}
+			} else if len(args) == 1 && strings.Contains(arg, " ") {
+				// Single argument with spaces - treat as a command
+				parts := strings.Fields(arg)
+				if len(parts) > 0 {
+					proc, err := processMgr.StartCommand("custom", parts[0], parts[1:])
+					if err != nil {
+						log.Fatalf("Failed to start command '%s': %v", arg, err)
+					} else {
+						fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+					}
+				}
+			} else {
+				// Try to run it as a command
+				proc, err := processMgr.StartCommand(arg, arg, []string{})
+				if err != nil {
+					log.Printf("Failed to start command '%s': %v", arg, err)
+				} else {
+					fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+				}
+			}
+		}
+		
+		// Give processes a moment to start before showing TUI
+		if startedFromCLI {
+			time.Sleep(100 * time.Millisecond)
+		}
+	}
 
 	// Start MCP server if enabled
 	var mcpServer *mcp.Server
@@ -129,7 +183,11 @@ func runApp(cmd *cobra.Command, args []string) {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 		
 		// Create and run TUI
-		model := tui.NewModel(processMgr, logStore, eventBus, mcpServer)
+		initialView := tui.ViewScripts
+		if startedFromCLI {
+			initialView = tui.ViewLogs
+		}
+		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, initialView)
 		p := tea.NewProgram(model, tea.WithAltScreen())
 
 		// Run TUI in goroutine so we can handle signals

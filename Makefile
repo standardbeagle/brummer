@@ -15,7 +15,7 @@ LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
 .PHONY: build
 build:
 	@echo "🔨 Building Brummer..."
-	@go build $(LDFLAGS) -o $(BINARY_NAME) cmd/brummer/main.go
+	@go build $(LDFLAGS) -o $(BINARY_NAME) cmd/brum/main.go
 	@echo "✅ Build complete: ./$(BINARY_NAME)"
 
 # Run tests

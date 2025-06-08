@@ -408,6 +408,10 @@ func (i FileItem) Description() string {
 }
 
 func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server) Model {
+	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, ViewScripts)
+}
+
+func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, initialView View) Model {
 	scripts := processMgr.GetScripts()
 	scriptItems := make([]list.Item, 0, len(scripts))
 	for name, script := range scripts {
@@ -437,7 +441,7 @@ func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *event
 		logStore:       logStore,
 		eventBus:       eventBus,
 		mcpServer:      mcpServer,
-		currentView:    ViewScripts,
+		currentView:    initialView,
 		scriptsList:    scriptsList,
 		processesList:  processesList,
 		settingsList:   settingsList,
