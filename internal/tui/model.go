@@ -67,6 +67,10 @@ type Model struct {
 	showPattern     string  // Regex pattern for /show command
 	hidePattern     string  // Regex pattern for /hide command
 	
+	// Logs view state
+	logsAutoScroll  bool    // Whether to auto-scroll to bottom
+	logsAtBottom    bool    // Whether viewport is at bottom
+	
 	// Command window state
 	showingCommandWindow bool
 	commandAutocomplete  CommandAutocomplete
@@ -113,6 +117,7 @@ type keyMap struct {
 	ClearErrors key.Binding
 	Help        key.Binding
 	RunDialog   key.Binding
+	AutoScroll  key.Binding
 }
 
 var keys = keyMap{
@@ -183,6 +188,10 @@ var keys = keyMap{
 	RunDialog: key.NewBinding(
 		key.WithKeys("n"),
 		key.WithHelp("n", "new process"),
+	),
+	AutoScroll: key.NewBinding(
+		key.WithKeys("end"),
+		key.WithHelp("end", "auto-scroll"),
 	),
 }
 
@@ -454,6 +463,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		keys:           keys,
 		updateChan:     make(chan tea.Msg, 100),
 		currentPath:    getCurrentDir(),
+		logsAutoScroll: true,  // Start with auto-scroll enabled
 	}
 
 	// Note: Log callback is registered in main.go to avoid duplication
@@ -716,6 +726,61 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 	case ViewLogs, ViewURLs:
+		// Handle manual scrolling
+		if m.currentView == ViewLogs {
+			if msg, ok := msg.(tea.KeyMsg); ok {
+				switch {
+				case key.Matches(msg, m.keys.Up):
+					// Disable auto-scroll when user scrolls up
+					m.logsAutoScroll = false
+					m.logsViewport.LineUp(1)
+					return m, nil
+				case key.Matches(msg, m.keys.Down):
+					m.logsViewport.LineDown(1)
+					// Check if we're at the bottom
+					if m.logsViewport.AtBottom() {
+						m.logsAutoScroll = true
+					}
+					return m, nil
+				case msg.String() == "pgup":
+					m.logsAutoScroll = false
+					m.logsViewport.ViewUp()
+					return m, nil
+				case msg.String() == "pgdown":
+					m.logsViewport.ViewDown()
+					if m.logsViewport.AtBottom() {
+						m.logsAutoScroll = true
+					}
+					return m, nil
+				case msg.String() == "end":
+					// End key re-enables auto-scroll and goes to bottom
+					m.logsAutoScroll = true
+					m.logsViewport.GotoBottom()
+					return m, nil
+				case msg.String() == "home":
+					// Home key goes to top and disables auto-scroll
+					m.logsAutoScroll = false
+					m.logsViewport.GotoTop()
+					return m, nil
+				}
+			}
+			
+			// Handle mouse wheel
+			if msg, ok := msg.(tea.MouseMsg); ok {
+				if msg.Type == tea.MouseWheelUp {
+					m.logsAutoScroll = false
+					m.logsViewport.LineUp(3)
+					return m, nil
+				} else if msg.Type == tea.MouseWheelDown {
+					m.logsViewport.LineDown(3)
+					if m.logsViewport.AtBottom() {
+						m.logsAutoScroll = true
+					}
+					return m, nil
+				}
+			}
+		}
+		
 		newViewport, cmd := m.logsViewport.Update(msg)
 		m.logsViewport = newViewport
 		cmds = append(cmds, cmd)
@@ -1022,6 +1087,11 @@ func (m *Model) updateLogsView() {
 	}
 
 	m.logsViewport.SetContent(content.String())
+	
+	// Auto-scroll to bottom if enabled
+	if m.logsAutoScroll {
+		m.logsViewport.GotoBottom()
+	}
 }
 
 func (m Model) cleanLogContent(content string) string {
@@ -1163,7 +1233,30 @@ func (m Model) renderLogsView() string {
 	}
 	
 	header := lipgloss.NewStyle().Bold(true).Render(title)
-	return lipgloss.JoinVertical(lipgloss.Left, header, m.logsViewport.View())
+	
+	// Add auto-scroll indicator
+	var scrollIndicator string
+	if !m.logsAutoScroll {
+		scrollStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("226")).
+			Background(lipgloss.Color("235")).
+			Padding(0, 1).
+			Bold(true)
+		scrollIndicator = scrollStyle.Render("⏸ PAUSED - Press End to resume auto-scroll")
+	}
+	
+	// Combine header with scroll indicator
+	headerContent := header
+	if scrollIndicator != "" {
+		headerContent = lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			header,
+			"  ",
+			scrollIndicator,
+		)
+	}
+	
+	return lipgloss.JoinVertical(lipgloss.Left, headerContent, m.logsViewport.View())
 }
 
 
