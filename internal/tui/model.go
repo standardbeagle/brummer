@@ -483,7 +483,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	
 	// Initialize script selector if starting in that view
 	if initialView == ViewScriptSelector {
-		m.scriptSelector = NewScriptSelectorAutocomplete(scripts)
+		m.scriptSelector = NewScriptSelectorAutocompleteWithProcessManager(scripts, processMgr)
 		m.scriptSelector.SetWidth(60)
 		m.scriptSelector.Focus()
 	}
@@ -2068,7 +2068,7 @@ func (m *Model) handleSlashCommand(input string) {
 func (m *Model) showCommandWindow() {
 	m.showingCommandWindow = true
 	scripts := m.processMgr.GetScripts()
-	m.commandAutocomplete = NewCommandAutocomplete(scripts)
+	m.commandAutocomplete = NewCommandAutocompleteWithProcessManager(scripts, m.processMgr)
 	m.commandAutocomplete.SetWidth(min(60, m.width - 10))
 	// Force initial focus
 	m.commandAutocomplete.Focus()

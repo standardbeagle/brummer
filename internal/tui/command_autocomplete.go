@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/beagle/brummer/internal/process"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -23,6 +24,7 @@ type CommandAutocomplete struct {
 	
 	// Command-specific data
 	availableScripts map[string]string // Script name -> script command
+	processMgr      *process.Manager  // Reference to process manager to check running scripts
 }
 
 func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
@@ -41,6 +43,13 @@ func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
 	// Initialize suggestions
 	c.updateSuggestions()
 	
+	return c
+}
+
+// NewCommandAutocompleteWithProcessManager creates a command autocomplete with process manager
+func NewCommandAutocompleteWithProcessManager(scripts map[string]string, processMgr *process.Manager) CommandAutocomplete {
+	c := NewCommandAutocomplete(scripts)
+	c.processMgr = processMgr
 	return c
 }
 
@@ -168,10 +177,24 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 	if c.currentIndex == 1 && len(c.segments) > 0 {
 		switch c.segments[0] {
 		case "/run":
-			// Get script names
+			// Get script names, excluding already running ones
 			scripts := make([]string, 0, len(c.availableScripts))
+			
+			// Get running scripts if process manager is available
+			runningScripts := make(map[string]bool)
+			if c.processMgr != nil {
+				for _, proc := range c.processMgr.GetAllProcesses() {
+					if proc.Status == process.StatusRunning {
+						runningScripts[proc.Name] = true
+					}
+				}
+			}
+			
+			// Only add scripts that aren't already running
 			for name := range c.availableScripts {
-				scripts = append(scripts, name)
+				if !runningScripts[name] {
+					scripts = append(scripts, name)
+				}
 			}
 			sort.Strings(scripts)
 			
@@ -331,6 +354,14 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		if _, exists := c.availableScripts[scriptName]; !exists {
 			return false, fmt.Sprintf("Script '%s' not found. Available: %s", scriptName, c.getAvailableScriptsString())
 		}
+		// Check if script is already running
+		if c.processMgr != nil {
+			for _, proc := range c.processMgr.GetAllProcesses() {
+				if proc.Name == scriptName && proc.Status == process.StatusRunning {
+					return false, fmt.Sprintf("Script '%s' is already running", scriptName)
+				}
+			}
+		}
 		return true, ""
 		
 	case "/show", "/hide":
@@ -351,9 +382,22 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 }
 
 func (c *CommandAutocomplete) getAvailableScriptsString() string {
+	// Get running scripts if process manager is available
+	runningScripts := make(map[string]bool)
+	if c.processMgr != nil {
+		for _, proc := range c.processMgr.GetAllProcesses() {
+			if proc.Status == process.StatusRunning {
+				runningScripts[proc.Name] = true
+			}
+		}
+	}
+	
+	// Only show scripts that aren't already running
 	scripts := make([]string, 0, len(c.availableScripts))
 	for name := range c.availableScripts {
-		scripts = append(scripts, name)
+		if !runningScripts[name] {
+			scripts = append(scripts, name)
+		}
 	}
 	sort.Strings(scripts)
 	if len(scripts) > 5 {

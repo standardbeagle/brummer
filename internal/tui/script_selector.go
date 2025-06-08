@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/beagle/brummer/internal/process"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -29,14 +30,35 @@ func NewScriptSelectorAutocomplete(scripts map[string]string) CommandAutocomplet
 	return c
 }
 
+// NewScriptSelectorAutocompleteWithProcessManager creates a script selector with process manager
+func NewScriptSelectorAutocompleteWithProcessManager(scripts map[string]string, processMgr *process.Manager) CommandAutocomplete {
+	c := NewScriptSelectorAutocomplete(scripts)
+	c.processMgr = processMgr
+	// Re-update suggestions with process manager filter
+	c.updateScriptSelectorSuggestions()
+	return c
+}
+
 // updateScriptSelectorSuggestions updates suggestions for script selector mode
 func (c *CommandAutocomplete) updateScriptSelectorSuggestions() {
 	value := strings.ToLower(c.input.Value())
 	
-	// Get all scripts
+	// Get running scripts if process manager is available
+	runningScripts := make(map[string]bool)
+	if c.processMgr != nil {
+		for _, proc := range c.processMgr.GetAllProcesses() {
+			if proc.Status == process.StatusRunning {
+				runningScripts[proc.Name] = true
+			}
+		}
+	}
+	
+	// Get all scripts that aren't already running
 	scripts := make([]string, 0, len(c.availableScripts))
 	for name := range c.availableScripts {
-		scripts = append(scripts, name)
+		if !runningScripts[name] {
+			scripts = append(scripts, name)
+		}
 	}
 	sort.Strings(scripts)
 	
