@@ -2271,6 +2271,50 @@ func (m *Model) handleSlashCommand(input string) {
 		}
 		m.currentView = ViewProcesses
 		
+	case "/clear":
+		target := ""
+		if len(parts) >= 2 {
+			target = parts[1]
+		} else {
+			target = "all"
+		}
+		
+		switch target {
+		case "all":
+			m.logStore.ClearLogs()
+			m.logStore.ClearErrors()
+			m.logStore.Add("system", "System", "🗑️ Cleared all logs and errors", false)
+			
+		case "logs":
+			m.logStore.ClearLogs()
+			m.logStore.Add("system", "System", "📝 Cleared all logs", false)
+			
+		case "errors":
+			m.logStore.ClearErrors()
+			m.logStore.Add("system", "System", "🗑️ Cleared all errors", false)
+			
+		default:
+			// Check if it's a script name
+			if _, exists := m.processMgr.GetScripts()[target]; exists {
+				m.logStore.ClearLogsForProcess(target)
+				m.logStore.Add("system", "System", fmt.Sprintf("🗑️ Cleared logs for script: %s", target), false)
+			} else {
+				m.logStore.Add("system", "System", fmt.Sprintf("Invalid clear target: %s", target), true)
+			}
+		}
+		
+		// Update the logs view to reflect changes
+		m.updateLogsView()
+		// Also update errors list if errors were cleared
+		if target == "all" || target == "errors" {
+			m.updateErrorsList()
+		}
+		if m.currentView == ViewLogs || m.currentView == ViewErrors {
+			// Stay in current view to see the clear message
+		} else {
+			m.currentView = ViewLogs
+		}
+		
 	default:
 		// Unknown command, treat as search
 		m.searchResults = m.logStore.Search(input)

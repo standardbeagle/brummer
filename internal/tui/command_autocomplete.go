@@ -150,7 +150,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 	// Always show dropdown if we have suggestions or if we're at the beginning
 	if len(c.suggestions) == 0 && c.currentIndex == 0 && (value == "" || value == "/") {
 		// Show initial commands when empty
-		c.suggestions = []string{"run", "restart", "stop", "show", "hide"}
+		c.suggestions = []string{"run", "restart", "stop", "clear", "show", "hide"}
 		c.showDropdown = true
 	}
 	
@@ -163,7 +163,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 	if c.currentIndex == 0 {
 		// First segment - show root commands
-		rootCommands := []string{"run", "restart", "stop", "show", "hide"}
+		rootCommands := []string{"run", "restart", "stop", "clear", "show", "hide"}
 		currentText := ""
 		if len(c.segments) > 0 {
 			currentText = c.segments[0]
@@ -221,6 +221,23 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 				currentText = c.segments[c.currentIndex]
 			}
 			return c.filterSuggestions(processes, currentText)
+			
+		case "/clear":
+			// Options: all, logs, errors, or script names
+			options := []string{"all", "logs", "errors"}
+			
+			// Add all script names (both running and not running)
+			if c.availableScripts != nil {
+				for scriptName := range c.availableScripts {
+					options = append(options, scriptName)
+				}
+			}
+			
+			currentText := ""
+			if c.currentIndex < len(c.segments) {
+				currentText = c.segments[c.currentIndex]
+			}
+			return c.filterSuggestions(options, currentText)
 			
 		case "/show", "/hide":
 			// Common patterns for log filtering
@@ -405,6 +422,31 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		}
 		return true, ""
 		
+	case "/clear":
+		if len(parts) < 2 {
+			// Default to "all" if no target specified
+			return true, ""
+		}
+		target := parts[1]
+		
+		// Check if it's a valid clear target
+		validTargets := map[string]bool{
+			"all": true,
+			"logs": true,
+			"errors": true,
+		}
+		
+		if validTargets[target] {
+			return true, ""
+		}
+		
+		// Check if it's a valid script name
+		if _, exists := c.availableScripts[target]; exists {
+			return true, ""
+		}
+		
+		return false, fmt.Sprintf("Invalid clear target '%s'. Use: all, logs, errors, or a script name", target)
+		
 	case "/show", "/hide":
 		if len(parts) < 2 {
 			return false, fmt.Sprintf("Please specify a pattern for %s", command)
@@ -413,12 +455,12 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		
 	default:
 		// Check if it's a partial command
-		for _, cmd := range []string{"run", "restart", "stop", "show", "hide"} {
+		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide"} {
 			if strings.HasPrefix(cmd, strings.TrimPrefix(command, "/")) {
 				return false, fmt.Sprintf("Incomplete command. Did you mean /%s?", cmd)
 			}
 		}
-		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /show, /hide", command)
+		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /clear, /show, /hide", command)
 	}
 }
 

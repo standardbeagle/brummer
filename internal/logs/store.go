@@ -353,6 +353,45 @@ func (s *Store) ClearErrors() {
 	s.errorParser.ClearErrors()
 }
 
+// ClearLogsForProcess clears all logs for a specific process
+func (s *Store) ClearLogsForProcess(processName string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Create new entries slice without logs from the specified process
+	newEntries := make([]LogEntry, 0, s.maxEntries)
+	for _, entry := range s.entries {
+		if entry.ProcessName != processName {
+			newEntries = append(newEntries, entry)
+		}
+	}
+	s.entries = newEntries
+	
+	// Rebuild the byProcess index
+	s.byProcess = make(map[string][]int)
+	for i, entry := range s.entries {
+		s.byProcess[entry.ProcessID] = append(s.byProcess[entry.ProcessID], i)
+	}
+	
+	// Also clear errors from this process
+	newErrors := make([]LogEntry, 0, 100)
+	for _, err := range s.errors {
+		if err.ProcessName != processName {
+			newErrors = append(newErrors, err)
+		}
+	}
+	s.errors = newErrors
+	
+	// Clear error contexts from this process
+	newErrorContexts := make([]ErrorContext, 0, 100)
+	for _, ctx := range s.errorContexts {
+		if ctx.ProcessName != processName {
+			newErrorContexts = append(newErrorContexts, ctx)
+		}
+	}
+	s.errorContexts = newErrorContexts
+}
+
 // GetErrorContexts returns parsed error contexts with full details
 func (s *Store) GetErrorContexts() []ErrorContext {
 	s.mu.RLock()
