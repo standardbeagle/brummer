@@ -523,6 +523,12 @@ func (s *Server) createReverseProxyHandler() http.Handler {
 // createURLProxyHandler creates a handler for a specific URL mapping
 func (s *Server) createURLProxyHandler(mapping *URLMapping) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		// Handle telemetry endpoint
+		if r.URL.Path == "/__brummer_telemetry__" && r.Method == "POST" {
+			s.handleTelemetry(w, r)
+			return
+		}
+		
 		// Parse target URL
 		targetURL, err := url.Parse(mapping.TargetURL)
 		if err != nil {
@@ -609,25 +615,99 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.HandlerFunc {
 			},
 		})
 		
-		// Copy response headers
-		for key, values := range resp.Header {
-			for _, value := range values {
-				w.Header().Add(key, value)
-			}
-		}
+		// Check if this is an HTML response that we should inject telemetry into
+		contentType := resp.Header.Get("Content-Type")
+		isHTML := strings.Contains(contentType, "text/html")
 		
-		// Set status code
-		w.WriteHeader(resp.StatusCode)
-		
-		// Copy response body
-		buf := make([]byte, 4096)
-		for {
-			n, err := resp.Body.Read(buf)
-			if n > 0 {
-				w.Write(buf[:n])
-			}
+		if s.enableTelemetry && isHTML && resp.StatusCode == 200 {
+			// Read the entire response body for injection
+			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
-				break
+				http.Error(w, "Failed to read response", http.StatusInternalServerError)
+				return
+			}
+			
+			// Handle gzip encoding
+			encoding := resp.Header.Get("Content-Encoding")
+			if encoding == "gzip" {
+				reader, err := gzip.NewReader(bytes.NewReader(body))
+				if err == nil {
+					body, _ = ioutil.ReadAll(reader)
+					reader.Close()
+				}
+			}
+			
+			// Inject telemetry script
+			bodyStr := string(body)
+			injectionScript := fmt.Sprintf(`
+<!-- Brummer Monitoring Script -->
+<script>
+// Set process name and proxy host for telemetry
+window.__brummerProcessName = '%s';
+window.__brummerProxyHost = 'localhost:%d';
+</script>
+<script>
+%s
+</script>
+<!-- End Brummer Monitoring Script -->
+`, mapping.ProcessName, s.port, monitoringScript)
+			
+			// Try to inject before </body> or </html>
+			injected := false
+			for _, tag := range []string{"</body>", "</html>"} {
+				if idx := strings.LastIndex(strings.ToLower(bodyStr), tag); idx != -1 {
+					bodyStr = bodyStr[:idx] + injectionScript + bodyStr[idx:]
+					injected = true
+					break
+				}
+			}
+			
+			// If no suitable tag found, append to end
+			if !injected {
+				bodyStr += injectionScript
+			}
+			
+			// Update content length
+			modifiedBody := []byte(bodyStr)
+			resp.Header.Del("Content-Length")
+			resp.Header.Del("Content-Encoding") // Remove gzip encoding since we decoded it
+			
+			// Copy headers except the ones we're modifying
+			for key, values := range resp.Header {
+				if key != "Content-Length" && key != "Content-Encoding" {
+					for _, value := range values {
+						w.Header().Add(key, value)
+					}
+				}
+			}
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(modifiedBody)))
+			
+			// Remove CSP headers that might block our script
+			w.Header().Del("Content-Security-Policy")
+			w.Header().Del("Content-Security-Policy-Report-Only")
+			
+			w.WriteHeader(resp.StatusCode)
+			w.Write(modifiedBody)
+		} else {
+			// For non-HTML responses, just copy as-is
+			for key, values := range resp.Header {
+				for _, value := range values {
+					w.Header().Add(key, value)
+				}
+			}
+			
+			w.WriteHeader(resp.StatusCode)
+			
+			// Copy response body
+			buf := make([]byte, 4096)
+			for {
+				n, err := resp.Body.Read(buf)
+				if n > 0 {
+					w.Write(buf[:n])
+				}
+				if err != nil {
+					break
+				}
 			}
 		}
 	}
