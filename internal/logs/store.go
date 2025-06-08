@@ -47,6 +47,7 @@ type Store struct {
 
 type URLEntry struct {
 	URL        string
+	ProxyURL   string    // Proxy URL if using reverse proxy mode
 	ProcessID  string
 	ProcessName string
 	Timestamp  time.Time
@@ -451,4 +452,21 @@ func (s *Store) RemoveURLsForProcess(processID string) {
 	
 	// Rebuild the urls list
 	s.rebuildURLsList()
+}
+
+// UpdateProxyURL updates the proxy URL for a given URL
+func (s *Store) UpdateProxyURL(originalURL, proxyURL string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if entry, exists := s.urlMap[originalURL]; exists {
+		entry.ProxyURL = proxyURL
+		// Update the urls list
+		for i := range s.urls {
+			if s.urls[i].URL == originalURL {
+				s.urls[i].ProxyURL = proxyURL
+				break
+			}
+		}
+	}
 }

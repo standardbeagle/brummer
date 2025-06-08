@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +16,7 @@ import (
 	"github.com/beagle/brummer/internal/mcp"
 	"github.com/beagle/brummer/internal/parser"
 	"github.com/beagle/brummer/internal/process"
+	"github.com/beagle/brummer/internal/proxy"
 	"github.com/beagle/brummer/pkg/events"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -33,6 +35,7 @@ const (
 	ViewLogs View = "logs"
 	ViewErrors View = "errors"
 	ViewURLs View = "urls"
+	ViewWeb View = "web"
 	ViewSettings View = "settings"
 	ViewSearch View = "search"
 	ViewFilters View = "filters"
@@ -44,6 +47,7 @@ type Model struct {
 	logStore     *logs.Store
 	eventBus     *events.EventBus
 	mcpServer    *mcp.Server
+	proxyServer  *proxy.Server
 	
 	currentView  View
 	width        int
@@ -56,6 +60,7 @@ type Model struct {
 	selectedError   *logs.ErrorContext
 	errorDetailView viewport.Model
 	urlsViewport    viewport.Model
+	webViewport     viewport.Model
 	settingsList    list.Model
 	searchInput     textinput.Model
 	
@@ -403,6 +408,25 @@ func (i mcpFileBrowserItem) Title() string        { return "Browse for Custom Co
 func (i mcpFileBrowserItem) Description() string  { return "Browse for a JSON config file to add Brummer" }
 func (i mcpFileBrowserItem) isSettingsItem()      {}
 
+type proxyInfoItem struct {
+	pacURL string
+	mode   proxy.ProxyMode
+	port   int
+}
+
+func (i proxyInfoItem) FilterValue() string { return "proxy" }
+func (i proxyInfoItem) Title() string { 
+	modeStr := "Full Proxy"
+	if i.mode == proxy.ProxyModeReverse {
+		modeStr = "Reverse Proxy"
+	}
+	return fmt.Sprintf("🌐 %s (Port %d)", modeStr, i.port)
+}
+func (i proxyInfoItem) Description() string {
+	return fmt.Sprintf("PAC URL: %s (Press Enter to copy)", i.pacURL)
+}
+func (i proxyInfoItem) isSettingsItem() {}
+
 type FileItem struct {
 	Name  string
 	Path  string
@@ -427,11 +451,11 @@ func (i FileItem) Description() string {
 	return fmt.Sprintf("File (%d bytes)", i.Size)
 }
 
-func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server) Model {
-	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, ViewProcesses)
+func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, proxyServer *proxy.Server) Model {
+	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, ViewProcesses)
 }
 
-func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, initialView View) Model {
+func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, proxyServer *proxy.Server, initialView View) Model {
 	scripts := processMgr.GetScripts()
 
 	processesList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
@@ -452,12 +476,14 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		logStore:       logStore,
 		eventBus:       eventBus,
 		mcpServer:      mcpServer,
+		proxyServer:    proxyServer,
 		currentView:    initialView,
 		processesList:  processesList,
 		settingsList:   settingsList,
 		logsViewport:   viewport.New(0, 0),
 		errorsViewport: viewport.New(0, 0),
 		urlsViewport:   viewport.New(0, 0),
+		webViewport:    viewport.New(0, 0),
 		searchInput:    searchInput,
 		help:           help.New(),
 		keys:           keys,
@@ -523,6 +549,11 @@ func (m Model) Init() tea.Cmd {
 	m.eventBus.Subscribe(events.ErrorDetected, func(e events.Event) {
 		m.updateChan <- errorUpdateMsg{}
 	})
+	
+	// Subscribe to proxy events
+	m.eventBus.Subscribe(events.EventType("proxy.request"), func(e events.Event) {
+		m.updateChan <- webUpdateMsg{}
+	})
 
 	return tea.Batch(
 		textinput.Blink,
@@ -557,7 +588,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		
-		// Handle number keys 1-5 for tab switching
+		// Handle number keys 1-6 for tab switching
 		switch msg.String() {
 		case "1":
 			m.currentView = ViewProcesses
@@ -572,6 +603,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentView = ViewURLs
 			return m, nil
 		case "5":
+			m.currentView = ViewWeb
+			return m, nil
+		case "6":
 			m.currentView = ViewSettings
 			return m, nil
 		}
@@ -659,6 +693,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		
 	case errorUpdateMsg:
 		m.updateErrorsList()
+		cmds = append(cmds, m.waitForUpdates())
+	
+	case webUpdateMsg:
+		if m.currentView == ViewWeb {
+			m.updateWebView()
+		}
 		cmds = append(cmds, m.waitForUpdates())
 		
 	case tickMsg:
@@ -826,6 +866,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				} else if _, ok := m.settingsList.SelectedItem().(mcpFileBrowserItem); ok {
 					m.showingFileBrowser = true
 					m.loadFileList()
+				} else if i, ok := m.settingsList.SelectedItem().(proxyInfoItem); ok {
+					// Copy PAC URL to clipboard
+					if err := copyToClipboard(i.pacURL); err != nil {
+						m.logStore.Add("system", "System", fmt.Sprintf("Failed to copy PAC URL: %v", err), true)
+					} else {
+						m.logStore.Add("system", "System", "PAC URL copied to clipboard", false)
+					}
 				}
 			}
 		}
@@ -862,6 +909,8 @@ func (m Model) View() string {
 			content = m.renderErrorsViewSplit()
 		case ViewURLs:
 			content = m.renderURLsView()
+		case ViewWeb:
+			content = m.renderWebView()
 		case ViewSettings:
 			if m.showingFileBrowser {
 				content = m.renderFileBrowser()
@@ -900,10 +949,12 @@ func (m *Model) updateSizes() {
 	m.errorDetailView.Height = contentHeight
 	m.urlsViewport.Width = m.width
 	m.urlsViewport.Height = contentHeight
+	m.webViewport.Width = m.width
+	m.webViewport.Height = contentHeight
 }
 
 func (m *Model) cycleView() {
-	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewSettings}
+	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
 	for i, v := range views {
 		if v == m.currentView {
 			m.currentView = views[(i+1)%len(views)]
@@ -1168,7 +1219,7 @@ func (m Model) renderHeader() string {
 	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
 	inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
-	tabViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewSettings}
+	tabViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
 	for i, v := range tabViews {
 		label := fmt.Sprintf("%d.%s", i+1, string(v))
 		if v == m.currentView {
@@ -1179,7 +1230,7 @@ func (m Model) renderHeader() string {
 	}
 
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Left, 
-		tabs[0], " | ", tabs[1], " | ", tabs[2], " | ", tabs[3], " | ", tabs[4])
+		tabs[0], " | ", tabs[1], " | ", tabs[2], " | ", tabs[3], " | ", tabs[4], " | ", tabs[5])
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -1373,28 +1424,45 @@ func (m *Model) renderURLsView() string {
 		contextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 		
 		// URLs are already deduplicated and sorted by the store
-		for _, url := range urls {
-			// No longer adding browser extension tokens
-			urlWithToken := url.URL
+		for _, urlEntry := range urls {
+			// Use proxy URL if available, otherwise original URL
+			displayURL := urlEntry.URL
+			if urlEntry.ProxyURL != "" {
+				displayURL = urlEntry.ProxyURL
+			}
 			
 			content.WriteString(fmt.Sprintf("%s %s\n%s\n",
-				timeStyle.Render(url.Timestamp.Format("15:04:05")),
-				processStyle.Render(fmt.Sprintf("[%s]", url.ProcessName)),
-				urlStyle.Render(urlWithToken),
+				timeStyle.Render(urlEntry.Timestamp.Format("15:04:05")),
+				processStyle.Render(fmt.Sprintf("[%s]", urlEntry.ProcessName)),
+				urlStyle.Render(displayURL),
 			))
 			
 			// Add connection info
 			connectionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-			content.WriteString(connectionStyle.Render(fmt.Sprintf("  🔗 process=%s time=%d\n", 
-				url.ProcessName, url.Timestamp.Unix())))
+			proxyIndicator := ""
+			if urlEntry.ProxyURL != "" {
+				// Extract port from proxy URL
+				if proxyParsed, err := url.Parse(urlEntry.ProxyURL); err == nil {
+					proxyIndicator = fmt.Sprintf(" (proxied on port %s)", proxyParsed.Port())
+				} else {
+					proxyIndicator = " (proxied)"
+				}
+			}
+			content.WriteString(connectionStyle.Render(fmt.Sprintf("  🔗 process=%s time=%d%s\n", 
+				urlEntry.ProcessName, urlEntry.Timestamp.Unix(), proxyIndicator)))
+			
+			// Show original URL if using proxy
+			if urlEntry.ProxyURL != "" {
+				content.WriteString(contextStyle.Render("  → Original: " + urlEntry.URL) + "\n")
+			}
 			
 			// Show context if it's not too long
-			contextLen := len(url.Context)
+			contextLen := len(urlEntry.Context)
 			if contextLen > 80 {
-				context := url.Context[:40] + "..." + url.Context[contextLen-37:]
+				context := urlEntry.Context[:40] + "..." + urlEntry.Context[contextLen-37:]
 				content.WriteString(contextStyle.Render("  → " + context) + "\n")
 			} else {
-				content.WriteString(contextStyle.Render("  → " + url.Context) + "\n")
+				content.WriteString(contextStyle.Render("  → " + urlEntry.Context) + "\n")
 			}
 			content.WriteString("\n")
 		}
@@ -1404,9 +1472,162 @@ func (m *Model) renderURLsView() string {
 	return m.urlsViewport.View()
 }
 
+func (m Model) renderWebView() string {
+	var content strings.Builder
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Web Proxy Requests") + "\n")
+	
+	// Show proxy status
+	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	if m.proxyServer != nil && m.proxyServer.IsRunning() {
+		modeStr := "Full Proxy"
+		if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
+			modeStr = "Reverse Proxy (Per-URL Ports)"
+		}
+		content.WriteString(statusStyle.Render(fmt.Sprintf("🟢 %s mode active", modeStr)) + "\n")
+		
+		// Show PAC file URL
+		pacStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Underline(true)
+		content.WriteString(statusStyle.Render("Browser Auto-Config (PAC): "))
+		content.WriteString(pacStyle.Render(m.proxyServer.GetPACURL()) + "\n")
+		content.WriteString(statusStyle.Render("Configure this URL in your browser's automatic proxy settings") + "\n\n")
+	} else {
+		content.WriteString(statusStyle.Render("🔴 Proxy not running") + "\n\n")
+		m.webViewport.SetContent(content.String())
+		return m.webViewport.View()
+	}
+	
+	// Show active mappings in reverse proxy mode
+	if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
+		mappings := m.proxyServer.GetURLMappings()
+		if len(mappings) > 0 {
+			content.WriteString(lipgloss.NewStyle().Bold(true).Render("Active Proxy Mappings:") + "\n")
+			mappingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86"))
+			for _, mapping := range mappings {
+				content.WriteString(mappingStyle.Render(fmt.Sprintf("  Port %d → %s\n", mapping.ProxyPort, mapping.TargetURL)))
+			}
+			content.WriteString("\n")
+		}
+	}
+	
+	// Get all proxy requests
+	requests := m.proxyServer.GetRequests()
+	
+	if len(requests) == 0 {
+		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No proxy requests yet"))
+	} else {
+		// Header
+		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true)
+		content.WriteString(headerStyle.Render("Time     Status Method Dur    URL") + "\n")
+		content.WriteString(strings.Repeat("─", 80) + "\n")
+		
+		// Styles for rendering
+		timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+		
+		// Show requests in chronological order (oldest first) for auto-scroll
+		startIdx := 0
+		if len(requests) > 200 { // Limit to last 200 requests
+			startIdx = len(requests) - 200
+		}
+		
+		for i := startIdx; i < len(requests); i++ {
+			req := requests[i]
+			
+			// Color code method
+			var methodColor string
+			switch req.Method {
+			case "GET":
+				methodColor = "82" // Green
+			case "POST":
+				methodColor = "220" // Yellow
+			case "PUT", "PATCH":
+				methodColor = "208" // Orange
+			case "DELETE":
+				methodColor = "196" // Red
+			default:
+				methodColor = "245" // Gray
+			}
+			
+			// Color code status
+			var statusColor string
+			switch {
+			case req.StatusCode >= 200 && req.StatusCode < 300:
+				statusColor = "82" // Green for success
+			case req.StatusCode >= 300 && req.StatusCode < 400:
+				statusColor = "220" // Yellow for redirects
+			case req.StatusCode >= 400 && req.StatusCode < 500:
+				statusColor = "208" // Orange for client errors
+			case req.StatusCode >= 500:
+				statusColor = "196" // Red for server errors
+			default:
+				statusColor = "245" // Gray for unknown
+			}
+			
+			// Format duration
+			dur := fmt.Sprintf("%4.0fms", req.Duration.Seconds()*1000)
+			if req.Duration.Seconds()*1000 > 999 {
+				dur = fmt.Sprintf("%4.1fs", req.Duration.Seconds())
+			}
+			
+			// Truncate URL if too long
+			urlStr := req.URL
+			maxURLLen := 45
+			if len(urlStr) > maxURLLen {
+				// Try to keep the domain visible
+				parsed, err := url.Parse(urlStr)
+				if err == nil && len(parsed.Host) < 30 {
+					urlStr = parsed.Host + "/..." + urlStr[len(urlStr)-15:]
+				} else {
+					urlStr = urlStr[:maxURLLen-3] + "..."
+				}
+			}
+			
+			// Single line format: time status method duration url
+			line := fmt.Sprintf("%s %s %s %s %s",
+				timeStyle.Render(req.StartTime.Format("15:04:05")),
+				lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Bold(true).Render(fmt.Sprintf("%3d", req.StatusCode)),
+				lipgloss.NewStyle().Foreground(lipgloss.Color(methodColor)).Bold(true).Render(fmt.Sprintf("%-6s", req.Method)),
+				lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(dur),
+				lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render(urlStr),
+			)
+			
+			// Add error indicator if request failed
+			if req.Error != "" {
+				line += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" ❌")
+			}
+			
+			content.WriteString(line + "\n")
+		}
+	}
+	
+	m.webViewport.SetContent(content.String())
+	
+	// Auto-scroll to bottom
+	m.webViewport.GotoBottom()
+	
+	return m.webViewport.View()
+}
+
+// formatSize formats bytes into human-readable format
+func formatSize(bytes int64) string {
+	if bytes == 0 {
+		return "-"
+	}
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
 type processUpdateMsg struct{}
 type logUpdateMsg struct{}
 type errorUpdateMsg struct{}
+type webUpdateMsg struct{}
 type tickMsg struct{}
 
 func (m Model) waitForUpdates() tea.Cmd {
@@ -1459,6 +1680,16 @@ func (m *Model) updateSettingsList() {
 	
 	// Add custom file browser option
 	items = append(items, mcpFileBrowserItem{})
+	
+	// Proxy Settings section
+	if m.proxyServer != nil && m.proxyServer.IsRunning() {
+		items = append(items, settingsSectionItem{title: "Proxy Settings"})
+		items = append(items, proxyInfoItem{
+			pacURL: m.proxyServer.GetPACURL(),
+			mode:   m.proxyServer.GetMode(),
+			port:   m.proxyServer.GetPort(),
+		})
+	}
 	
 	m.settingsList.SetItems(items)
 }
@@ -1930,6 +2161,16 @@ func (m *Model) updateErrorsList() {
 	}
 }
 
+func (m *Model) updateWebView() {
+	if m.proxyServer == nil {
+		return
+	}
+	
+	// Update the web viewport with latest proxy requests
+	content := m.renderWebView()
+	m.webViewport.SetContent(content)
+}
+
 func (m *Model) updateErrorDetailView() {
 	if m.selectedError == nil {
 		m.errorDetailView.SetContent("Select an error to view details")
@@ -2283,7 +2524,10 @@ func (m *Model) handleSlashCommand(input string) {
 		case "all":
 			m.logStore.ClearLogs()
 			m.logStore.ClearErrors()
-			m.logStore.Add("system", "System", "🗑️ Cleared all logs and errors", false)
+			if m.proxyServer != nil {
+				m.proxyServer.ClearRequests()
+			}
+			m.logStore.Add("system", "System", "🗑️ Cleared all logs, errors, and web requests", false)
 			
 		case "logs":
 			m.logStore.ClearLogs()
@@ -2292,6 +2536,14 @@ func (m *Model) handleSlashCommand(input string) {
 		case "errors":
 			m.logStore.ClearErrors()
 			m.logStore.Add("system", "System", "🗑️ Cleared all errors", false)
+			
+		case "web":
+			if m.proxyServer != nil {
+				m.proxyServer.ClearRequests()
+				m.logStore.Add("system", "System", "🌐 Cleared all web requests", false)
+			} else {
+				m.logStore.Add("system", "System", "Proxy server is not enabled", true)
+			}
 			
 		default:
 			// Check if it's a script name

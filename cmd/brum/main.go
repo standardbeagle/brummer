@@ -13,6 +13,7 @@ import (
 	"github.com/beagle/brummer/internal/logs"
 	"github.com/beagle/brummer/internal/mcp"
 	"github.com/beagle/brummer/internal/process"
+	"github.com/beagle/brummer/internal/proxy"
 	"github.com/beagle/brummer/internal/tui"
 	"github.com/beagle/brummer/pkg/events"
 	tea "github.com/charmbracelet/bubbletea"
@@ -20,10 +21,13 @@ import (
 )
 
 var (
-	workDir  string
-	mcpPort  int
-	noMCP    bool
-	noTUI    bool
+	workDir    string
+	mcpPort    int
+	proxyPort  int
+	proxyMode  string
+	noMCP      bool
+	noTUI      bool
+	noProxy    bool
 )
 
 var rootCmd = &cobra.Command{
@@ -38,7 +42,11 @@ Examples:
   brum dev                # Start 'dev' script and show logs
   brum dev test           # Start both 'dev' and 'test' scripts
   brum 'node server.js'   # Run arbitrary command
-  brum -d ../app dev      # Run 'dev' in ../app directory`,
+  brum -d ../app dev      # Run 'dev' in ../app directory
+
+Proxy Modes:
+  --proxy-mode reverse    # Default: Creates shareable URLs for detected endpoints
+  --proxy-mode full       # Traditional HTTP proxy requiring app configuration`,
 	Args: cobra.ArbitraryArgs,
 	Run: runApp,
 }
@@ -46,8 +54,11 @@ Examples:
 func init() {
 	rootCmd.Flags().StringVarP(&workDir, "dir", "d", ".", "Working directory containing package.json")
 	rootCmd.Flags().IntVarP(&mcpPort, "port", "p", 7777, "MCP server port")
+	rootCmd.Flags().IntVar(&proxyPort, "proxy-port", 19888, "HTTP proxy server port")
+	rootCmd.Flags().StringVar(&proxyMode, "proxy-mode", "reverse", "Proxy mode: 'full' (traditional proxy) or 'reverse' (create shareable URLs)")
 	rootCmd.Flags().BoolVar(&noMCP, "no-mcp", false, "Disable MCP server")
 	rootCmd.Flags().BoolVar(&noTUI, "no-tui", false, "Run in headless mode (MCP server only)")
+	rootCmd.Flags().BoolVar(&noProxy, "no-proxy", false, "Disable HTTP proxy server")
 }
 
 func main() {
@@ -79,12 +90,52 @@ func runApp(cmd *cobra.Command, args []string) {
 
 	logStore := logs.NewStore(10000)
 	detector := logs.NewEventDetector(eventBus)
+	
+	// Initialize proxy server if enabled
+	var proxyServer *proxy.Server
+	if !noProxy {
+		// Parse proxy mode
+		mode := proxy.ProxyModeReverse
+		if proxyMode == "full" {
+			mode = proxy.ProxyModeFull
+		}
+		
+		proxyServer = proxy.NewServerWithMode(proxyPort, mode, eventBus)
+		if err := proxyServer.Start(); err != nil {
+			log.Printf("Failed to start proxy server: %v", err)
+			// Continue without proxy
+			proxyServer = nil
+		} else {
+			modeDesc := "reverse proxy (shareable URLs)"
+			if mode == proxy.ProxyModeFull {
+				modeDesc = "full proxy"
+			}
+			fmt.Printf("Started HTTP proxy server on port %d in %s mode\n", proxyPort, modeDesc)
+			fmt.Printf("PAC file available at: %s\n", proxyServer.GetPACURL())
+			fmt.Printf("Configure browser automatic proxy: %s\n", proxyServer.GetPACURL())
+		}
+	}
 
 	// Set up log processing with event detection
 	processMgr.RegisterLogCallback(func(processID, line string, isError bool) {
 		if proc, exists := processMgr.GetProcess(processID); exists {
-			logStore.Add(processID, proc.Name, line, isError)
+			entry := logStore.Add(processID, proc.Name, line, isError)
 			detector.ProcessLogLine(processID, proc.Name, line, isError)
+			
+			// Register URLs with proxy server
+			if proxyServer != nil && entry != nil {
+				urls := logStore.GetURLs()
+				for _, urlEntry := range urls {
+					if urlEntry.ProcessID == processID {
+						// Register URL and get proxy URL if in reverse mode
+						proxyURL := proxyServer.RegisterURL(urlEntry.URL, proc.Name)
+						// Store the proxy URL if different
+						if proxyURL != urlEntry.URL {
+							logStore.UpdateProxyURL(urlEntry.URL, proxyURL)
+						}
+					}
+				}
+			}
 		}
 	})
 
@@ -163,6 +214,12 @@ func runApp(cmd *cobra.Command, args []string) {
 			
 			fmt.Println("Stopping MCP server...")
 			mcpServer.Stop()
+			
+			if proxyServer != nil {
+				fmt.Println("Stopping proxy server...")
+				proxyServer.Stop()
+			}
+			
 			fmt.Println("Cleanup complete.")
 			return
 		} else {
@@ -187,7 +244,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		if startedFromCLI {
 			initialView = tui.ViewLogs
 		}
-		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, initialView)
+		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, initialView)
 		p := tea.NewProgram(model, tea.WithAltScreen())
 
 		// Run TUI in goroutine so we can handle signals
@@ -218,6 +275,11 @@ func runApp(cmd *cobra.Command, args []string) {
 		if mcpServer != nil {
 			fmt.Println("Stopping MCP server...")
 			mcpServer.Stop()
+		}
+		
+		if proxyServer != nil {
+			fmt.Println("Stopping proxy server...")
+			proxyServer.Stop()
 		}
 		
 		fmt.Println("Cleanup complete.")

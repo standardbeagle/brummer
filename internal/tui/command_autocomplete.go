@@ -223,8 +223,8 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 			return c.filterSuggestions(processes, currentText)
 			
 		case "/clear":
-			// Options: all, logs, errors, or script names
-			options := []string{"all", "logs", "errors"}
+			// Options: all, logs, errors, web, or script names
+			options := []string{"all", "logs", "errors", "web"}
 			
 			// Add all script names (both running and not running)
 			if c.availableScripts != nil {
@@ -434,6 +434,7 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 			"all": true,
 			"logs": true,
 			"errors": true,
+			"web": true,
 		}
 		
 		if validTargets[target] {
