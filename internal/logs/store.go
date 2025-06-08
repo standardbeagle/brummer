@@ -39,6 +39,7 @@ type Store struct {
 	errorContexts []ErrorContext
 	errorParser   *ErrorParser
 	urls          []URLEntry
+	urlMap        map[string]*URLEntry  // Map URL to its entry for deduplication
 	maxEntries    int
 	filters       []filters.Filter
 	mu            sync.RWMutex
@@ -60,6 +61,7 @@ func NewStore(maxEntries int) *Store {
 		errorContexts: make([]ErrorContext, 0, 100),
 		errorParser:   NewErrorParser(),
 		urls:          make([]URLEntry, 0, 100),
+		urlMap:        make(map[string]*URLEntry),
 		maxEntries:    maxEntries,
 		filters:       []filters.Filter{},
 	}
@@ -111,19 +113,28 @@ func (s *Store) Add(processID, processName, content string, isError bool) *LogEn
 		}
 	}
 
-	// Detect and track URLs
+	// Detect and track URLs (with deduplication)
 	urls := s.detectURLs(content)
 	for _, url := range urls {
-		urlEntry := URLEntry{
-			URL:         url,
-			ProcessID:   processID,
-			ProcessName: processName,
-			Timestamp:   entry.Timestamp,
-			Context:     content,
-		}
-		s.urls = append(s.urls, urlEntry)
-		if len(s.urls) > 100 {
-			s.urls = s.urls[1:]
+		// Check if we already have this URL
+		if existing, exists := s.urlMap[url]; exists {
+			// Update the existing entry with the most recent occurrence
+			existing.Timestamp = entry.Timestamp
+			existing.Context = content
+			existing.ProcessID = processID
+			existing.ProcessName = processName
+		} else {
+			// New URL, add it
+			urlEntry := URLEntry{
+				URL:         url,
+				ProcessID:   processID,
+				ProcessName: processName,
+				Timestamp:   entry.Timestamp,
+				Context:     content,
+			}
+			s.urlMap[url] = &urlEntry
+			// Rebuild the urls slice from the map
+			s.rebuildURLsList()
 		}
 	}
 
@@ -350,4 +361,55 @@ func (s *Store) GetErrorContexts() []ErrorContext {
 	result := make([]ErrorContext, len(s.errorContexts))
 	copy(result, s.errorContexts)
 	return result
+}
+
+// rebuildURLsList rebuilds the urls slice from the urlMap
+func (s *Store) rebuildURLsList() {
+	s.urls = make([]URLEntry, 0, len(s.urlMap))
+	for _, urlEntry := range s.urlMap {
+		s.urls = append(s.urls, *urlEntry)
+	}
+	
+	// Sort by timestamp (most recent first)
+	for i := 0; i < len(s.urls)-1; i++ {
+		for j := i + 1; j < len(s.urls); j++ {
+			if s.urls[j].Timestamp.After(s.urls[i].Timestamp) {
+				s.urls[i], s.urls[j] = s.urls[j], s.urls[i]
+			}
+		}
+	}
+	
+	// Keep only the most recent 100 URLs
+	if len(s.urls) > 100 {
+		s.urls = s.urls[:100]
+		// Remove the oldest entries from the map
+		for url := range s.urlMap {
+			found := false
+			for i := 0; i < 100; i++ {
+				if s.urls[i].URL == url {
+					found = true
+					break
+				}
+			}
+			if !found {
+				delete(s.urlMap, url)
+			}
+		}
+	}
+}
+
+// RemoveURLsForProcess removes all URLs associated with a specific process
+func (s *Store) RemoveURLsForProcess(processID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Remove URLs from the map that belong to this process
+	for url, entry := range s.urlMap {
+		if entry.ProcessID == processID {
+			delete(s.urlMap, url)
+		}
+	}
+	
+	// Rebuild the urls list
+	s.rebuildURLsList()
 }

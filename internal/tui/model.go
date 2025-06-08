@@ -486,6 +486,10 @@ func (m Model) Init() tea.Cmd {
 	})
 	
 	m.eventBus.Subscribe(events.ProcessExited, func(e events.Event) {
+		// Clean up URLs from the exited process
+		if e.ProcessID != "" {
+			m.logStore.RemoveURLsForProcess(e.ProcessID)
+		}
 		m.updateChan <- processUpdateMsg{}
 	})
 	
@@ -1237,16 +1241,8 @@ func (m *Model) renderURLsView() string {
 		processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
 		contextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 		
-		// Show most recent URLs first
-		seen := make(map[string]bool)
-		for i := len(urls) - 1; i >= 0; i-- {
-			url := urls[i]
-			// Deduplicate URLs
-			if seen[url.URL] {
-				continue
-			}
-			seen[url.URL] = true
-			
+		// URLs are already deduplicated and sorted by the store
+		for _, url := range urls {
 			// No longer adding browser extension tokens
 			urlWithToken := url.URL
 			
