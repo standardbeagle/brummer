@@ -36,6 +36,7 @@ const (
 	ViewSettings View = "settings"
 	ViewSearch View = "search"
 	ViewFilters View = "filters"
+	ViewScriptSelector View = "script-selector"
 )
 
 type Model struct {
@@ -48,7 +49,6 @@ type Model struct {
 	width        int
 	height       int
 	
-	scriptsList     list.Model
 	processesList   list.Model
 	logsViewport    viewport.Model
 	errorsViewport  viewport.Model
@@ -70,6 +70,9 @@ type Model struct {
 	// Command window state
 	showingCommandWindow bool
 	commandAutocomplete  CommandAutocomplete
+	
+	// Script selector state (for initial view)
+	scriptSelector CommandAutocomplete
 	
 	// File browser state
 	showingFileBrowser bool
@@ -416,20 +419,11 @@ func (i FileItem) Description() string {
 }
 
 func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server) Model {
-	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, ViewScripts)
+	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, ViewProcesses)
 }
 
 func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, initialView View) Model {
 	scripts := processMgr.GetScripts()
-	scriptItems := make([]list.Item, 0, len(scripts))
-	for name, script := range scripts {
-		scriptItems = append(scriptItems, scriptItem{name: name, script: script})
-	}
-
-	scriptsList := list.New(scriptItems, list.NewDefaultDelegate(), 0, 0)
-	scriptsList.Title = "Available Scripts"
-	scriptsList.SetShowStatusBar(false)
-	scriptsList.SetFilteringEnabled(true)
 
 	processesList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	processesList.Title = "Running Processes"
@@ -450,7 +444,6 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		eventBus:       eventBus,
 		mcpServer:      mcpServer,
 		currentView:    initialView,
-		scriptsList:    scriptsList,
 		processesList:  processesList,
 		settingsList:   settingsList,
 		logsViewport:   viewport.New(0, 0),
@@ -487,6 +480,13 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	
 	// Check for monorepo on startup
 	m.monorepoInfo, _ = processMgr.GetMonorepoInfo()
+	
+	// Initialize script selector if starting in that view
+	if initialView == ViewScriptSelector {
+		m.scriptSelector = NewScriptSelectorAutocomplete(scripts)
+		m.scriptSelector.SetWidth(60)
+		m.scriptSelector.Focus()
+	}
 
 	return m
 }
@@ -531,6 +531,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateSizes()
 
 	case tea.KeyMsg:
+		// Handle script selector view
+		if m.currentView == ViewScriptSelector {
+			return m.handleScriptSelector(msg)
+		}
+		
 		// Handle command window first
 		if m.showingCommandWindow {
 			return m.handleCommandWindow(msg)
@@ -542,24 +547,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		
-		// Handle number keys 1-6 for tab switching
+		// Handle number keys 1-5 for tab switching
 		switch msg.String() {
 		case "1":
-			m.currentView = ViewScripts
-			return m, nil
-		case "2":
 			m.currentView = ViewProcesses
 			return m, nil
-		case "3":
+		case "2":
 			m.currentView = ViewLogs
 			return m, nil
-		case "4":
+		case "3":
 			m.currentView = ViewErrors
 			return m, nil
-		case "5":
+		case "4":
 			m.currentView = ViewURLs
 			return m, nil
-		case "6":
+		case "5":
 			m.currentView = ViewSettings
 			return m, nil
 		}
@@ -632,7 +634,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, m.handleEnter())
 			
 		case key.Matches(msg, m.keys.RunDialog):
-			if m.currentView == ViewScripts && !m.showingRunDialog {
+			if !m.showingRunDialog {
 				m.showRunDialog()
 			}
 		}
@@ -677,11 +679,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.currentView {
-	case ViewScripts:
-		newList, cmd := m.scriptsList.Update(msg)
-		m.scriptsList = newList
-		cmds = append(cmds, cmd)
-
 	case ViewProcesses:
 		// Handle process-specific key commands BEFORE list update
 		// This ensures our keys take precedence over list navigation
@@ -780,15 +777,18 @@ func (m Model) View() string {
 
 	var content string
 	
-	// Show command window if active (highest priority)
+	// Show script selector if in that view (highest priority)
+	if m.currentView == ViewScriptSelector {
+		return m.renderScriptSelector()
+	}
+	
+	// Show command window if active
 	if m.showingCommandWindow {
 		return m.renderCommandWindow()
 	} else if m.showingRunDialog {
 		content = m.renderRunDialog()
 	} else {
 		switch m.currentView {
-		case ViewScripts:
-			content = m.renderScriptsView()
 		case ViewProcesses:
 			content = m.renderProcessesView()
 		case ViewLogs:
@@ -823,7 +823,6 @@ func (m *Model) updateSizes() {
 	helpHeight := 3
 	contentHeight := m.height - headerHeight - helpHeight
 
-	m.scriptsList.SetSize(m.width, contentHeight)
 	m.processesList.SetSize(m.width, contentHeight)
 	m.settingsList.SetSize(m.width, contentHeight)
 	m.commandsList.SetSize(m.width, contentHeight)
@@ -839,7 +838,7 @@ func (m *Model) updateSizes() {
 }
 
 func (m *Model) cycleView() {
-	views := []View{ViewScripts, ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewSettings}
+	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewSettings}
 	for i, v := range views {
 		if v == m.currentView {
 			m.currentView = views[(i+1)%len(views)]
@@ -850,22 +849,6 @@ func (m *Model) cycleView() {
 
 func (m *Model) handleEnter() tea.Cmd {
 	switch m.currentView {
-	case ViewScripts:
-		if i, ok := m.scriptsList.SelectedItem().(scriptItem); ok {
-			go func() {
-				_, err := m.processMgr.StartScript(i.name)
-				if err != nil {
-					// Send error as a log message
-					m.logStore.Add("system", "System", fmt.Sprintf("Error starting script %s: %v", i.name, err), true)
-					m.updateChan <- logUpdateMsg{}
-				}
-			}()
-			m.currentView = ViewProcesses
-			// Force immediate process list update
-			m.updateProcessList()
-			return m.waitForUpdates()
-		}
-		
 	case ViewProcesses:
 		if i, ok := m.processesList.SelectedItem().(processItem); ok {
 			m.selectedProcess = i.process.ID
@@ -1115,7 +1098,7 @@ func (m Model) renderHeader() string {
 	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
 	inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
-	tabViews := []View{ViewScripts, ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewSettings}
+	tabViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewSettings}
 	for i, v := range tabViews {
 		label := fmt.Sprintf("%d.%s", i+1, string(v))
 		if v == m.currentView {
@@ -1126,7 +1109,7 @@ func (m Model) renderHeader() string {
 	}
 
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Left, 
-		tabs[0], " | ", tabs[1], " | ", tabs[2], " | ", tabs[3], " | ", tabs[4], " | ", tabs[5])
+		tabs[0], " | ", tabs[1], " | ", tabs[2], " | ", tabs[3], " | ", tabs[4])
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -1808,32 +1791,6 @@ func (m *Model) handleRunCommand() tea.Cmd {
 	return nil
 }
 
-func (m Model) renderScriptsView() string {
-	var content strings.Builder
-	
-	// Add instructions
-	instructions := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
-		Render("Select script: ↑/↓ | Run: Enter | Run Other Command: n | Switch View: Tab")
-	
-	content.WriteString(instructions)
-	content.WriteString("\n\n")
-	
-	// Show monorepo info if detected
-	if m.monorepoInfo != nil {
-		monoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
-		content.WriteString(monoStyle.Render(fmt.Sprintf("📦 %s Monorepo Detected", m.monorepoInfo.Type)))
-		content.WriteString("\n")
-		
-		pkgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-		content.WriteString(pkgStyle.Render(fmt.Sprintf("Found %d packages in workspaces", len(m.monorepoInfo.Packages))))
-		content.WriteString("\n\n")
-	}
-	
-	content.WriteString(m.scriptsList.View())
-	
-	return content.String()
-}
 
 func (m Model) renderRunDialog() string {
 	var content strings.Builder
@@ -2242,6 +2199,66 @@ func (m Model) renderCommandWindow() string {
 	)
 }
 
+
+func (m *Model) handleScriptSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		// Exit the application
+		return m, tea.Quit
+		
+	case "/":
+		// Switch to command window
+		m.showCommandWindow()
+		return m, nil
+		
+	case "enter":
+		// Get the selected script
+		if len(m.scriptSelector.suggestions) > 0 && m.scriptSelector.selected < len(m.scriptSelector.suggestions) {
+			scriptName := m.scriptSelector.suggestions[m.scriptSelector.selected]
+			
+			// Start the script
+			go func() {
+				_, err := m.processMgr.StartScript(scriptName)
+				if err != nil {
+					m.logStore.Add("system", "System", fmt.Sprintf("Error starting script %s: %v", scriptName, err), true)
+					m.updateChan <- logUpdateMsg{}
+				} else {
+					m.updateChan <- processUpdateMsg{}
+				}
+			}()
+			
+			// Switch to logs view
+			m.currentView = ViewLogs
+			return m, nil
+		}
+		return m, nil
+		
+	case "up":
+		if m.scriptSelector.showDropdown && m.scriptSelector.selected > 0 {
+			m.scriptSelector.selected--
+		}
+		return m, nil
+		
+	case "down":
+		if m.scriptSelector.showDropdown && m.scriptSelector.selected < len(m.scriptSelector.suggestions)-1 {
+			m.scriptSelector.selected++
+		}
+		return m, nil
+		
+	default:
+		// Update the input
+		prevValue := m.scriptSelector.input.Value()
+		var cmd tea.Cmd
+		m.scriptSelector.input, cmd = m.scriptSelector.input.Update(msg)
+		
+		// Update suggestions if value changed
+		if m.scriptSelector.input.Value() != prevValue {
+			m.scriptSelector.updateScriptSelectorSuggestions()
+		}
+		
+		return m, cmd
+	}
+}
 
 func min(a, b int) int {
 	if a < b {

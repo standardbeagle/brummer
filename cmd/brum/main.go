@@ -183,7 +183,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 		
 		// Create and run TUI
-		initialView := tui.ViewScripts
+		initialView := tui.ViewScriptSelector
 		if startedFromCLI {
 			initialView = tui.ViewLogs
 		}
