@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"sync"
 	"time"
 
@@ -64,12 +63,7 @@ func NewServer(port int, processMgr *process.Manager, logStore *logs.Store, even
 		logStore:       logStore,
 		eventBus:       eventBus,
 		clients:        make(map[string]*Client),
-		tokens:         make(map[string]string),
-		browserClients: make(map[string]time.Time),
 	}
-	
-	// Start browser client cleanup routine
-	go s.cleanupInactiveBrowsers()
 	
 	return s
 }
@@ -91,9 +85,6 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/mcp/search", s.handleSearchLogs)
 	mux.HandleFunc("/mcp/filters", s.handleFilters)
 	
-	// Browser extension API (not MCP protocol)
-	mux.HandleFunc("/api/browser-log", s.handleBrowserLog)
-	mux.HandleFunc("/api/ping", s.handlePing)
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -462,275 +453,17 @@ func (s *Server) broadcast(event Event) {
 	}
 }
 
-func (s *Server) handleBrowserLog(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Check for bearer token
-	authHeader := r.Header.Get("Authorization")
-	var clientID string
-	
-	if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		s.mu.RLock()
-		cid, exists := s.tokens[token]
-		s.mu.RUnlock()
-		
-		if !exists {
-			http.Error(w, "Invalid token", http.StatusUnauthorized)
-			return
-		}
-		clientID = cid
-		// Track browser activity
-		s.mu.Lock()
-		s.browserClients[clientID] = time.Now()
-		s.mu.Unlock()
-	}
-
-	var req struct {
-		ClientID string `json:"clientId"`
-		LogData  struct {
-			Type      string                 `json:"type"`
-			Level     string                 `json:"level"`
-			Message   string                 `json:"message"`
-			Details   map[string]interface{} `json:"details"`
-			URL       string                 `json:"url"`
-			Timestamp string                 `json:"timestamp"`
-			Source    string                 `json:"source"`
-			Tab       struct {
-				ID    int    `json:"id"`
-				URL   string `json:"url"`
-				Title string `json:"title"`
-			} `json:"tab"`
-		} `json:"logData"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	// Use clientID from bearer token if available, otherwise from request
-	if clientID == "" {
-		clientID = req.ClientID
-	}
-	
-	// Validate client exists
-	if clientID != "" {
-		s.mu.RLock()
-		_, exists := s.clients[clientID]
-		s.mu.RUnlock()
-
-		if !exists {
-			http.Error(w, "Client not found", http.StatusNotFound)
-			return
-		}
-	}
-
-	// Format browser log for Brummer's log system
-	processName := "[browser]"
-	if req.LogData.Tab.ID != 0 {
-		processName = fmt.Sprintf("[browser:%d]", req.LogData.Tab.ID)
-	}
-	
-	// Create a formatted log message
-	var logMessage string
-	switch req.LogData.Type {
-	case "console":
-		logMessage = fmt.Sprintf("[%s] %s", req.LogData.Level, req.LogData.Message)
-	case "javascript-error":
-		if details := req.LogData.Details; details != nil {
-			if filename, ok := details["filename"].(string); ok && filename != "" {
-				logMessage = fmt.Sprintf("JS Error: %s (%s:%v:%v)", 
-					req.LogData.Message, filename, details["lineno"], details["colno"])
-			} else {
-				logMessage = fmt.Sprintf("JS Error: %s", req.LogData.Message)
-			}
-		} else {
-			logMessage = fmt.Sprintf("JS Error: %s", req.LogData.Message)
-		}
-	case "promise-rejection":
-		logMessage = fmt.Sprintf("Promise Rejection: %s", req.LogData.Message)
-	case "resource-error":
-		logMessage = fmt.Sprintf("Resource Error: %s", req.LogData.Message)
-	case "network-request":
-		if details := req.LogData.Details; details != nil {
-			status := ""
-			if s, ok := details["status"].(float64); ok {
-				status = fmt.Sprintf(" (%d)", int(s))
-			}
-			duration := ""
-			if d, ok := details["duration"].(float64); ok {
-				duration = fmt.Sprintf(" %dms", int(d))
-			}
-			logMessage = fmt.Sprintf("Network: %s%s%s", req.LogData.Message, status, duration)
-		} else {
-			logMessage = fmt.Sprintf("Network: %s", req.LogData.Message)
-		}
-	case "network-error":
-		logMessage = fmt.Sprintf("Network Error: %s", req.LogData.Message)
-	case "navigation":
-		logMessage = fmt.Sprintf("Navigation: %s", req.LogData.Message)
-	default:
-		logMessage = fmt.Sprintf("[%s] %s", req.LogData.Type, req.LogData.Message)
-	}
-
-	// Add browser context to message
-	if req.LogData.Tab.Title != "" {
-		logMessage = fmt.Sprintf("%s | Page: %s (%s)", logMessage, req.LogData.Tab.Title, req.LogData.Tab.URL)
-	} else {
-		logMessage = fmt.Sprintf("%s | Page: %s", logMessage, req.LogData.Tab.URL)
-	}
-
-	// Determine if it's an error
-	isError := req.LogData.Level == "error" || 
-		       req.LogData.Type == "javascript-error" || 
-		       req.LogData.Type == "promise-rejection" || 
-		       req.LogData.Type == "resource-error" || 
-		       req.LogData.Type == "network-error"
-
-	// Add to log store
-	s.logStore.Add("browser", processName, logMessage, isError)
-
-	// Broadcast event
-	s.broadcast(Event{
-		Type: "log.line",
-		Data: map[string]interface{}{
-			"processId":   "browser",
-			"processName": processName,
-			"content":     logMessage,
-			"isError":     isError,
-			"timestamp":   req.LogData.Timestamp,
-			"source":      req.LogData.Source,
-			"type":        req.LogData.Type,
-		},
-	})
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]bool{"success": true})
-}
 
 func generateID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
 
-// GenerateURLToken creates a token for a specific URL that will be opened
-func (s *Server) GenerateURLToken(processName string) string {
-	token := fmt.Sprintf("bt_%s_%d", processName, time.Now().UnixNano())
-	
-	// Create a temporary client for this browser tab
-	clientID := generateID()
-	client := &Client{
-		ID:       clientID,
-		Name:     fmt.Sprintf("Browser Tab (%s)", processName),
-		SSE:      make(chan Event, 100),
-		Commands: make(chan Command, 10),
-	}
-	
-	s.mu.Lock()
-	s.clients[clientID] = client
-	s.tokens[token] = clientID
-	s.mu.Unlock()
-	
-	return token
-}
 
 // GetPort returns the server port
 func (s *Server) GetPort() int {
 	return s.port
 }
 
-// HasActiveBrowsers returns true if any browser clients are currently active
-func (s *Server) HasActiveBrowsers() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	
-	cutoff := time.Now().Add(-30 * time.Second) // Consider active if seen in last 30 seconds
-	for _, lastSeen := range s.browserClients {
-		if lastSeen.After(cutoff) {
-			return true
-		}
-	}
-	return false
-}
 
-// cleanupInactiveBrowsers removes browser clients that haven't been active
-func (s *Server) cleanupInactiveBrowsers() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-	
-	for range ticker.C {
-		s.mu.Lock()
-		cutoff := time.Now().Add(-60 * time.Second) // Remove after 60 seconds of inactivity
-		for clientID, lastSeen := range s.browserClients {
-			if lastSeen.Before(cutoff) {
-				delete(s.browserClients, clientID)
-				// Also cleanup associated client and token
-				if token := s.findTokenForClient(clientID); token != "" {
-					delete(s.tokens, token)
-				}
-				delete(s.clients, clientID)
-			}
-		}
-		s.mu.Unlock()
-	}
-}
 
-// findTokenForClient finds the token associated with a client ID
-func (s *Server) findTokenForClient(clientID string) string {
-	for token, cid := range s.tokens {
-		if cid == clientID {
-			return token
-		}
-	}
-	return ""
-}
 
-// handlePing handles ping requests from browser extensions
-func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Check for bearer token
-	authHeader := r.Header.Get("Authorization")
-	if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-		http.Error(w, "Authorization required", http.StatusUnauthorized)
-		return
-	}
-
-	token := strings.TrimPrefix(authHeader, "Bearer ")
-	s.mu.RLock()
-	clientID, exists := s.tokens[token]
-	s.mu.RUnlock()
-
-	if !exists {
-		http.Error(w, "Invalid token", http.StatusUnauthorized)
-		return
-	}
-
-	// Update browser activity
-	s.mu.Lock()
-	s.browserClients[clientID] = time.Now()
-	s.mu.Unlock()
-
-	// Parse request body
-	var req struct {
-		Timestamp string `json:"timestamp"`
-	}
-	json.NewDecoder(r.Body).Decode(&req)
-
-	// Send pong response
-	response := map[string]interface{}{
-		"status":    "pong",
-		"timestamp": time.Now().Format(time.RFC3339),
-		"clientId":  clientID,
-		"active":    true,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}

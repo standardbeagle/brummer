@@ -307,13 +307,6 @@ Click on file paths to open in VSCode:
 brummer config set editor "code --goto"
 ```
 
-### Browser Extension
-
-Errors are synchronized with the browser extension:
-- See errors in browser DevTools
-- Get notifications for critical errors
-- Navigate to error source
-
 ### MCP Integration
 
 External tools can query errors:
@@ -377,4 +370,4 @@ error_detection:
 4. **Set up ignore patterns** for known non-issues
 5. **Monitor error rates** to catch regression
 6. **Export critical errors** for post-mortem analysis
-7. **Integrate with your workflow** using MCP or browser extension
+7. **Integrate with your workflow** using MCP

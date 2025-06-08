@@ -11,7 +11,6 @@ import (
 	"github.com/beagle/brummer/internal/logs"
 	"github.com/beagle/brummer/internal/mcp"
 	"github.com/beagle/brummer/internal/process"
-	"github.com/beagle/brummer/internal/proxy"
 	"github.com/beagle/brummer/internal/tui"
 	"github.com/beagle/brummer/pkg/events"
 	tea "github.com/charmbracelet/bubbletea"
@@ -81,13 +80,8 @@ func runApp(cmd *cobra.Command, args []string) {
 
 	// Start MCP server if enabled
 	var mcpServer *mcp.Server
-	var proxyManager *proxy.ProxyManager
 	if !noMCP || noTUI {
 		mcpServer = mcp.NewServer(mcpPort, processMgr, logStore, eventBus)
-		// Create proxy manager
-		if mcpServer != nil {
-			proxyManager = proxy.NewProxyManager(mcpServer, eventBus, logStore)
-		}
 		if noTUI {
 			// In headless mode, run MCP server in foreground
 			fmt.Printf("Starting MCP server on port %d (headless mode)...\n", mcpPort)
@@ -135,7 +129,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 		
 		// Create and run TUI
-		model := tui.NewModel(processMgr, logStore, eventBus, mcpServer, proxyManager)
+		model := tui.NewModel(processMgr, logStore, eventBus, mcpServer)
 		p := tea.NewProgram(model, tea.WithAltScreen())
 
 		// Run TUI in goroutine so we can handle signals

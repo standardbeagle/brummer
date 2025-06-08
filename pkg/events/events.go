@@ -16,8 +16,6 @@ const (
 	BuildEvent     EventType = "build.event"
 	TestFailed     EventType = "test.failed"
 	TestPassed     EventType = "test.passed"
-	ProxyStarted   EventType = "proxy.started"
-	ProxyStopped   EventType = "proxy.stopped"
 )
 
 type Event struct {

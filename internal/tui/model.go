@@ -15,7 +15,6 @@ import (
 	"github.com/beagle/brummer/internal/mcp"
 	"github.com/beagle/brummer/internal/parser"
 	"github.com/beagle/brummer/internal/process"
-	"github.com/beagle/brummer/internal/proxy"
 	"github.com/beagle/brummer/pkg/events"
 	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/key"
@@ -44,7 +43,6 @@ type Model struct {
 	logStore     *logs.Store
 	eventBus     *events.EventBus
 	mcpServer    *mcp.Server
-	proxyMgr     *proxy.ProxyManager
 	
 	currentView  View
 	width        int
@@ -245,45 +243,57 @@ func (i errorItem) Description() string {
 
 type processItem struct {
 	process   *process.Process
-	proxyInfo *proxy.ProxyInfo
+	isHeader  bool
+	headerText string
 }
 
-func (i processItem) FilterValue() string { return i.process.Name }
+func (i processItem) FilterValue() string { 
+	if i.isHeader {
+		return ""
+	}
+	return i.process.Name 
+}
 func (i processItem) Title() string {
+	if i.isHeader {
+		// Return section header with styling
+		headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("82"))
+		if i.headerText == "Closed Processes" {
+			headerStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("245"))
+		}
+		return headerStyle.Render(i.headerText)
+	}
+	
 	status := string(i.process.Status)
 	var statusEmoji string
 	switch i.process.Status {
 	case process.StatusRunning:
 		statusEmoji = "🟢"
 	case process.StatusStopped:
-		statusEmoji = "🔴"
+		statusEmoji = "✓"  // Thin checkmark for gracefully stopped
 	case process.StatusFailed:
 		statusEmoji = "❌"
 	case process.StatusSuccess:
-		statusEmoji = "✅"
+		statusEmoji = "✓"  // Thin checkmark for success
 	default:
 		statusEmoji = "⏸️"
 	}
 	title := fmt.Sprintf("%s [%s] %s", statusEmoji, status, i.process.Name)
 	
-	// Add proxy indicator if proxy is running
-	if i.proxyInfo != nil && i.proxyInfo.Status == "running" {
-		title += " 🔗"  // Link emoji indicates proxy is active
-	}
 	
 	return title
 }
 func (i processItem) Description() string {
+	if i.isHeader {
+		// Return separator line for headers
+		return strings.Repeat("─", 40)
+	}
+	
 	var parts []string
 	
 	// Add PID and start time
 	parts = append(parts, fmt.Sprintf("PID: %s", i.process.ID))
 	parts = append(parts, fmt.Sprintf("Started: %s", i.process.StartTime.Format("15:04:05")))
 	
-	// Add proxy info if available
-	if i.proxyInfo != nil && i.proxyInfo.Status == "running" {
-		parts = append(parts, fmt.Sprintf("Proxy: %s", i.proxyInfo.ProxyURL))
-	}
 	
 	// Add actions
 	var actions string
@@ -397,7 +407,7 @@ func (i FileItem) Description() string {
 	return fmt.Sprintf("File (%d bytes)", i.Size)
 }
 
-func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, proxyMgr *proxy.ProxyManager) Model {
+func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server) Model {
 	scripts := processMgr.GetScripts()
 	scriptItems := make([]list.Item, 0, len(scripts))
 	for name, script := range scripts {
@@ -427,7 +437,6 @@ func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *event
 		logStore:       logStore,
 		eventBus:       eventBus,
 		mcpServer:      mcpServer,
-		proxyMgr:       proxyMgr,
 		currentView:    ViewScripts,
 		scriptsList:    scriptsList,
 		processesList:  processesList,
@@ -484,13 +493,6 @@ func (m Model) Init() tea.Cmd {
 		m.updateChan <- logUpdateMsg{}
 	})
 	
-	m.eventBus.Subscribe(events.ProxyStarted, func(e events.Event) {
-		m.updateChan <- processUpdateMsg{}
-	})
-	
-	m.eventBus.Subscribe(events.ProxyStopped, func(e events.Event) {
-		m.updateChan <- processUpdateMsg{}
-	})
 	
 	m.eventBus.Subscribe(events.ErrorDetected, func(e events.Event) {
 		m.updateChan <- errorUpdateMsg{}
@@ -664,7 +666,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg, ok := msg.(tea.KeyMsg); ok {
 			switch {
 			case key.Matches(msg, m.keys.Stop):
-				if i, ok := m.processesList.SelectedItem().(processItem); ok {
+				if i, ok := m.processesList.SelectedItem().(processItem); ok && !i.isHeader && i.process != nil {
 					if err := m.processMgr.StopProcess(i.process.ID); err != nil {
 						m.logStore.Add("system", "System", fmt.Sprintf("Failed to stop process %s: %v", i.process.Name, err), true)
 					} else {
@@ -678,7 +680,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, tea.Batch(cmds...)
 				
 			case key.Matches(msg, m.keys.Restart):
-				if i, ok := m.processesList.SelectedItem().(processItem); ok {
+				if i, ok := m.processesList.SelectedItem().(processItem); ok && !i.isHeader && i.process != nil {
 					cmds = append(cmds, m.handleRestartProcess(i.process))
 					m.logStore.Add("system", "System", fmt.Sprintf("Restarting process: %s", i.process.Name), false)
 				} else {
@@ -865,20 +867,69 @@ func (m *Model) handleEnter() tea.Cmd {
 
 func (m *Model) updateProcessList() {
 	processes := m.processMgr.GetAllProcesses()
-	items := make([]list.Item, len(processes))
-	for i, p := range processes {
-		var proxyInfo *proxy.ProxyInfo
-		if m.proxyMgr != nil {
-			if info, exists := m.proxyMgr.GetProxyForProcess(p.ID); exists {
-				proxyInfo = info
-			}
-		}
-		items[i] = processItem{
-			process:   p,
-			proxyInfo: proxyInfo,
+	
+	// Separate and sort processes: running first, then closed
+	var runningProcesses []*process.Process
+	var closedProcesses []*process.Process
+	
+	for _, p := range processes {
+		if p.Status == process.StatusRunning || p.Status == process.StatusPending {
+			runningProcesses = append(runningProcesses, p)
+		} else {
+			closedProcesses = append(closedProcesses, p)
 		}
 	}
+	
+	var items []list.Item
+	
+	// Add running processes with header
+	if len(runningProcesses) > 0 {
+		items = append(items, processItem{
+			isHeader:   true,
+			headerText: "Running Processes",
+		})
+		
+		for _, p := range runningProcesses {
+			items = append(items, processItem{
+				process: p,
+			})
+		}
+	}
+	
+	// Add closed processes with header
+	if len(closedProcesses) > 0 {
+		if len(runningProcesses) > 0 {
+			// Add a blank separator between sections
+			items = append(items, processItem{
+				isHeader:   true,
+				headerText: "",
+			})
+		}
+		
+		items = append(items, processItem{
+			isHeader:   true,
+			headerText: "Closed Processes",
+		})
+		
+		for _, p := range closedProcesses {
+			items = append(items, processItem{
+				process: p,
+			})
+		}
+	}
+	
 	m.processesList.SetItems(items)
+	
+	// Update title to show counts
+	if len(runningProcesses) > 0 && len(closedProcesses) > 0 {
+		m.processesList.Title = fmt.Sprintf("Processes (%d running, %d closed)", len(runningProcesses), len(closedProcesses))
+	} else if len(runningProcesses) > 0 {
+		m.processesList.Title = fmt.Sprintf("Processes (%d running)", len(runningProcesses))
+	} else if len(closedProcesses) > 0 {
+		m.processesList.Title = fmt.Sprintf("Processes (%d closed)", len(closedProcesses))
+	} else {
+		m.processesList.Title = "Processes"
+	}
 }
 
 func (m *Model) updateLogsView() {
@@ -983,11 +1034,8 @@ func (m Model) renderHeader() string {
 		}
 	}
 	
-	// Add browser connection status icon
+	// Browser connection removed
 	browserIcon := ""
-	if m.mcpServer != nil && m.mcpServer.HasActiveBrowsers() {
-		browserIcon = " 🌐" // Connected browser icon
-	}
 	
 	// Add copy notification if recent
 	notification := ""
@@ -1177,44 +1225,9 @@ func (m *Model) renderURLsView() string {
 	urls := m.logStore.GetURLs()
 	
 	var content strings.Builder
-	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Detected URLs & Proxies") + "\n")
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Detected URLs") + "\n")
 	
-	// Add MCP connection info for Firefox extension
-	mcpInfoStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Italic(true)
-	if m.mcpServer != nil {
-		content.WriteString(mcpInfoStyle.Render(fmt.Sprintf("🦊 Firefox Extension: Connect to http://localhost:%d", m.mcpServer.GetPort())) + "\n\n")
-	} else {
-		content.WriteString(mcpInfoStyle.Render("🦊 Firefox Extension: MCP server not running") + "\n\n")
-	}
 	
-	// Show active proxies first
-	if m.proxyMgr != nil {
-		proxies := m.proxyMgr.GetActiveProxies()
-		if len(proxies) > 0 {
-			proxyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Bold(true)
-			content.WriteString(proxyStyle.Render("🔗 Active Proxies:") + "\n")
-			
-			for _, proxy := range proxies {
-				if proxy.Status == "running" {
-					urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Underline(true)
-					processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-					targetStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-					
-					content.WriteString(fmt.Sprintf("%s [%s]\n",
-						processStyle.Render(proxy.ProcessName),
-						proxy.StartTime.Format("15:04:05"),
-					))
-					content.WriteString(fmt.Sprintf("  Proxy: %s\n", urlStyle.Render(proxy.ProxyURL)))
-					content.WriteString(fmt.Sprintf("  Target: %s\n", targetStyle.Render(proxy.TargetURL)))
-					content.WriteString("\n")
-				}
-			}
-			
-			if len(urls) > 0 {
-				content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("─────────────────") + "\n\n")
-			}
-		}
-	}
 	
 	if len(urls) == 0 {
 		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No URLs detected yet"))
@@ -1234,20 +1247,8 @@ func (m *Model) renderURLsView() string {
 			}
 			seen[url.URL] = true
 			
-			// Generate token for this URL if MCP server is available
+			// No longer adding browser extension tokens
 			urlWithToken := url.URL
-			if m.mcpServer != nil {
-				token := m.mcpServer.GenerateURLToken(url.ProcessName)
-				// Add token as query parameter
-				port := m.mcpServer.GetPort()
-				baseURL := fmt.Sprintf("http://localhost:%d", port)
-				
-				if strings.Contains(url.URL, "?") {
-					urlWithToken = fmt.Sprintf("%s&brummer_token=%s&brummer_base=%s", url.URL, token, baseURL)
-				} else {
-					urlWithToken = fmt.Sprintf("%s?brummer_token=%s&brummer_base=%s", url.URL, token, baseURL)
-				}
-			}
 			
 			content.WriteString(fmt.Sprintf("%s %s\n%s\n",
 				timeStyle.Render(url.Timestamp.Format("15:04:05")),
@@ -1255,15 +1256,10 @@ func (m *Model) renderURLsView() string {
 				urlStyle.Render(urlWithToken),
 			))
 			
-			// Add connection info for Firefox extension
+			// Add connection info
 			connectionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-			if m.mcpServer != nil {
-				content.WriteString(connectionStyle.Render(fmt.Sprintf("  🔗 process=%s time=%d port=%d\n", 
-					url.ProcessName, url.Timestamp.Unix(), m.mcpServer.GetPort())))
-			} else {
-				content.WriteString(connectionStyle.Render(fmt.Sprintf("  🔗 process=%s time=%d\n", 
-					url.ProcessName, url.Timestamp.Unix())))
-			}
+			content.WriteString(connectionStyle.Render(fmt.Sprintf("  🔗 process=%s time=%d\n", 
+				url.ProcessName, url.Timestamp.Unix())))
 			
 			// Show context if it's not too long
 			contextLen := len(url.Context)

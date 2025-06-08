@@ -61,11 +61,6 @@ Connect your IDE for enhanced development:
 - **Process Management**: Run multiple scripts simultaneously
 - **Log Filtering**: Use `/` to search through logs
 
-### Install Browser Extension (Alpha)
-
-For browser debugging integration:
-1. See [Browser Extension Guide](./browser-extension/overview)
-2. Currently in Alpha - expect some rough edges!
 
 ## Common Commands
 

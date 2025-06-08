@@ -273,15 +273,6 @@ Test multiple URLs simultaneously:
 └─────────────────────────────────────────────┘
 ```
 
-## Integration with Browser Extension
-
-The browser extension enhances URL detection:
-
-1. **Automatic navigation** to detected URLs
-2. **Status badges** in browser toolbar
-3. **Quick switching** between environments
-4. **Request inspection** for detected endpoints
-
 ## MCP Integration
 
 External tools can access URL information:

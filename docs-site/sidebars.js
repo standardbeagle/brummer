@@ -56,16 +56,6 @@ const sidebars = {
     },
     {
       type: 'category',
-      label: 'Browser Extension (Alpha)',
-      items: [
-        'browser-extension/overview',
-        'browser-extension/installation',
-        'browser-extension/features',
-        'browser-extension/troubleshooting',
-      ],
-    },
-    {
-      type: 'category',
       label: 'Development',
       items: [
         'development/architecture',

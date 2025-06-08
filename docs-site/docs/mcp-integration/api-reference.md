@@ -14,8 +14,7 @@ The Brummer MCP server provides a JSON-RPC 2.0 interface for external tools to i
 
 - **Protocol**: JSON-RPC 2.0
 - **Transport**: stdio (standard input/output)
-- **Additional**: WebSocket (for browser extension)
-- **Default Port**: 3280 (WebSocket only)
+- **Default Port**: 3280
 
 ## Core Methods
 
@@ -615,7 +614,7 @@ const mcp = new MCPClient({
 
 ## WebSocket API
 
-For browser extension and web clients:
+For web clients:
 
 ```javascript
 const ws = new WebSocket('ws://localhost:3280');

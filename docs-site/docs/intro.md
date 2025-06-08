@@ -14,7 +14,6 @@ Brummer is a terminal-based tool that revolutionizes how you manage and monitor 
 - 📊 **Real-time monitoring** of running processes
 - 🔍 **Intelligent log management** with error detection
 - 🔌 **MCP server integration** for external tool access
-- 🌐 **Browser extension** for enhanced debugging (Alpha)
 
 ## Why Brummer?
 

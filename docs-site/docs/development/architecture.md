@@ -106,7 +106,6 @@ Model Context Protocol server for external integrations.
 
 **Protocol Implementation**:
 - JSON-RPC 2.0 over stdio
-- WebSocket support for browser extension
 - Event streaming
 - Resource management
 

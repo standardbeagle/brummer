@@ -14,7 +14,6 @@ A TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts with inte
   - Automatic error detection and prioritization
   - Log filtering and search capabilities
   - Build event and test result detection
-- **Automatic Proxy**: Auto-proxy development servers to capture browser console logs
 - **MCP Server Integration**: Allows external tools (VSCode, Claude Code, etc.) to:
   - Access log output and errors
   - Execute commands asynchronously
@@ -219,7 +218,6 @@ brummer/
 ├── pkg/
 │   ├── events/          # Event system
 │   └── filters/         # Log filtering
-├── browser-extension/   # Firefox DevTools extension
 └── go.mod
 ```
 
@@ -256,7 +254,6 @@ Comprehensive documentation is available at [https://beagle.github.io/brummer/](
 - [Getting Started Guide](https://beagle.github.io/brummer/docs/getting-started)
 - [Installation Options](https://beagle.github.io/brummer/docs/installation)
 - [MCP Integration](https://beagle.github.io/brummer/docs/mcp-integration/overview)
-- [Browser Extension (Alpha)](https://beagle.github.io/brummer/docs/browser-extension/overview)
 
 ## License
 

@@ -388,7 +388,6 @@ We follow [Semantic Versioning](https://semver.org/):
 
 - @maintainer1 - Core architecture
 - @maintainer2 - TUI components
-- @maintainer3 - Browser extension
 
 ## Recognition
 

@@ -64,4 +64,3 @@ wget -qO- https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh
 - Learn about [Advanced Installation Options](./installation)
 - Explore the [User Guide](./user-guide/navigation)
 - Set up [MCP Integration](./mcp-integration/overview) with your IDE
-- Try the [Browser Extension](./browser-extension/overview) (Alpha)

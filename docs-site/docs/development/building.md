@@ -18,7 +18,7 @@ This guide covers building Brummer from source for development or custom deploym
 
 - **golangci-lint** - For code linting
 - **goreleaser** - For building releases
-- **Node.js 18+** - For browser extension development
+- **Node.js 18+** - For documentation site development
 
 ## Getting the Source
 
@@ -85,36 +85,6 @@ GOOS=darwin GOARCH=arm64 go build -o brummer-darwin-arm64 cmd/brummer/main.go
 GOOS=windows GOARCH=amd64 go build -o brummer.exe cmd/brummer/main.go
 ```
 
-## Building the Browser Extension
-
-### Development Build
-
-```bash
-cd browser-extension
-./build.sh dev
-```
-
-This creates an unpacked extension in `browser-extension/build/dev/`.
-
-### Production Build
-
-```bash
-cd browser-extension
-./build.sh prod
-```
-
-This creates:
-- `browser-extension/build/chrome/` - Chrome extension
-- `browser-extension/build/firefox/` - Firefox extension
-- `browser-extension/build/*.zip` - Packaged extensions
-
-### Manual Build
-
-1. **Install dependencies**:
-   ```bash
-   cd browser-extension
-   npm install
-   ```
 
 2. **Build for Chrome**:
    ```bash
