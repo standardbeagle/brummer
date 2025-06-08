@@ -4,6 +4,26 @@
 (function() {
     'use strict';
     
+    // Check if already initialized to prevent multiple injections
+    if (window.__brummerInitialized) {
+        console.log('%c⚠️ BRUMMER: Script already initialized, skipping duplicate injection', 'color: #f59e0b;');
+        return;
+    }
+    
+    // Mark as initialized immediately
+    window.__brummerInitialized = true;
+    
+    // Immediate debug output to verify script loading
+    console.log('%c🔧 BRUMMER TELEMETRY SCRIPT LOADING...', 'font-size: 16px; font-weight: bold; color: #f59e0b; background: #fffbeb; padding: 8px;');
+    console.log('📍 Script injection detected at:', new Date().toLocaleTimeString());
+    console.log('🌐 Current URL:', window.location.href);
+    console.log('🔗 Referrer:', document.referrer || 'Direct');
+    
+    // Emergency error handler to catch any script errors
+    window.addEventListener('error', function(e) {
+        console.error('🚨 BRUMMER SCRIPT ERROR:', e.message, 'at', e.filename + ':' + e.lineno);
+    });
+    
     // Configuration
     const BRUMMER_CONFIG = {
         telemetryEndpoint: (function() {
@@ -18,12 +38,152 @@
         collectPerformanceMetrics: true,
         collectMemoryMetrics: true,
         collectConsoleMetrics: true,
-        processName: window.__brummerProcessName || 'unknown'
+        processName: window.__brummerProcessName || 'unknown',
+        debugMode: true, // Enable visual debugging
+        debugLevel: 'verbose' // verbose, normal, minimal
+    };
+    
+    // Debug utilities for visual output
+    const DEBUG = {
+        colors: {
+            success: '#22c55e',
+            warning: '#f59e0b', 
+            error: '#ef4444',
+            info: '#3b82f6',
+            debug: '#8b5cf6'
+        },
+        icons: {
+            success: '✅',
+            warning: '⚠️',
+            error: '❌',
+            info: 'ℹ️',
+            debug: '🐛',
+            network: '🌐',
+            timer: '⏱️',
+            buffer: '📊',
+            send: '📤',
+            receive: '📥',
+            user: '👤',
+            performance: '🚀',
+            memory: '🧠',
+            console: '💬'
+        },
+        
+        formatTime: function(timestamp) {
+            const now = Date.now();
+            const diff = now - timestamp;
+            
+            if (diff < 1000) return 'just now';
+            if (diff < 60000) return `${Math.floor(diff/1000)}s ago`;
+            if (diff < 3600000) return `${Math.floor(diff/60000)}m ago`;
+            return `${Math.floor(diff/3600000)}h ago`;
+        },
+        
+        formatDuration: function(ms) {
+            if (ms < 100) return `${this.icons.timer} ${ms}ms`;
+            if (ms < 1000) return `⏳ ${ms}ms`;
+            if (ms < 5000) return `🐌 ${(ms/1000).toFixed(1)}s`;
+            return `🚨 ${(ms/1000).toFixed(1)}s`;
+        },
+        
+        formatSize: function(bytes) {
+            if (bytes < 1024) return `${bytes}B`;
+            if (bytes < 1024 * 1024) return `${(bytes/1024).toFixed(1)}KB`;
+            return `${(bytes/(1024*1024)).toFixed(1)}MB`;
+        },
+        
+        progressBar: function(current, max, width = 10) {
+            const filled = Math.floor((current / max) * width);
+            const empty = width - filled;
+            const percentage = Math.floor((current / max) * 100);
+            return `[${'█'.repeat(filled)}${'░'.repeat(empty)}] ${percentage}% (${current}/${max})`;
+        },
+        
+        log: function(level, category, message, data = null) {
+            if (!BRUMMER_CONFIG.debugMode) return;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            const icon = this.icons[level] || this.icons.debug;
+            const categoryIcon = this.icons[category] || '📋';
+            
+            const style = `color: ${this.colors[level]}; font-weight: bold;`;
+            
+            console.groupCollapsed(`${icon} ${categoryIcon} BRUMMER: ${message} [${timestamp}]`);
+            console.log(`%c${message}`, style);
+            
+            if (data) {
+                console.log('📊 Data:', data);
+            }
+            
+            // Add to debug timeline
+            if (window.__brummer && window.__brummer.debug && window.__brummer.debug.eventTimeline) {
+                window.__brummer.debug.eventTimeline.push({
+                    timestamp: Date.now(),
+                    level,
+                    category,
+                    message,
+                    data
+                });
+                
+                // Keep only last 50 entries
+                if (window.__brummer.debug.eventTimeline.length > 50) {
+                    window.__brummer.debug.eventTimeline.shift();
+                }
+            }
+            
+            console.groupEnd();
+        },
+        
+        status: function() {
+            if (!window.__brummer) return;
+            
+            const stats = window.__brummer.stats;
+            const buffer = telemetryBuffer;
+            const now = Date.now();
+            
+            console.clear();
+            console.log('%c🔍 BRUMMER TELEMETRY DEBUG DASHBOARD', 'font-size: 18px; font-weight: bold; color: #3b82f6;');
+            console.log('═══════════════════════════════════════');
+            console.log(`${this.icons.buffer} Buffer: ${this.progressBar(buffer.length, BRUMMER_CONFIG.maxBatchSize)}`);
+            console.log(`${this.icons.network} Endpoint: ${BRUMMER_CONFIG.telemetryEndpoint} ${stats.lastPingSuccess ? '🟢 ONLINE' : '🔴 OFFLINE'} (${stats.lastPingTime || 'unknown'})`);
+            console.log(`${this.icons.send} Last Send: ${stats.lastSendTime ? this.formatTime(stats.lastSendTime) : 'never'} ${stats.lastSendSuccess ? '✅ SUCCESS' : '❌ FAILED'}`);
+            console.log(`${this.icons.timer} Next Flush: ${batchTimer ? `in ${Math.ceil((BRUMMER_CONFIG.batchInterval - (now - stats.lastBatchStart))/1000)}s` : 'not scheduled'}`);
+            console.log(`${this.icons.receive} Total Sent: ${stats.totalEvents} events (${this.formatSize(stats.totalBytes)})`);
+            console.log(`${this.icons.error} Errors: ${stats.errorCount} failures`);
+            console.log(`${this.icons.performance} Session: ${this.formatTime(pageMetadata.pageLoadTime)} (${this.formatDuration(now - pageMetadata.pageLoadTime)})`);
+        }
     };
     
     // Telemetry buffer
     const telemetryBuffer = [];
     let batchTimer = null;
+    
+    // Statistics tracking
+    const stats = {
+        totalEvents: 0,
+        totalBytes: 0,
+        errorCount: 0,
+        lastSendTime: null,
+        lastSendSuccess: null,
+        lastBatchStart: null,
+        lastPingTime: null,
+        lastPingSuccess: null,
+        eventCounts: {
+            page_load: 0,
+            user_interaction: 0,
+            performance_metrics: 0,
+            memory_usage: 0,
+            console_output: 0,
+            javascript_error: 0,
+            resource_timing: 0
+        },
+        networkStats: {
+            requestCount: 0,
+            successCount: 0,
+            failureCount: 0,
+            totalLatency: 0
+        }
+    };
     
     // Page metadata
     const pageMetadata = {
@@ -31,7 +191,46 @@
         referrer: document.referrer,
         userAgent: navigator.userAgent,
         sessionId: generateSessionId(),
-        pageLoadTime: Date.now()
+        pageLoadTime: Date.now(),
+        cookies: document.cookie ? document.cookie.split(';').length : 0,
+        localStorage: typeof(Storage) !== "undefined" && localStorage.length || 0,
+        sessionStorage: typeof(Storage) !== "undefined" && sessionStorage.length || 0
+    };
+    
+    // Global debug interface
+    window.__brummer = {
+        config: BRUMMER_CONFIG,
+        stats: stats,
+        metadata: pageMetadata,
+        buffer: telemetryBuffer,
+        debug: {
+            eventTimeline: [],
+            status: DEBUG.status.bind(DEBUG),
+            flush: () => flushTelemetry(),
+            ping: () => pingEndpoint(),
+            clear: () => {
+                telemetryBuffer.length = 0;
+                DEBUG.log('info', 'debug', 'Buffer cleared manually');
+            },
+            timeline: () => {
+                console.log('%c⏰ TELEMETRY TIMELINE (last 30 events)', 'font-size: 16px; font-weight: bold; color: #8b5cf6;');
+                console.log('════════════════════════════════════');
+                window.__brummer.debug.eventTimeline.slice(-30).forEach(entry => {
+                    console.log(`${DEBUG.formatTime(entry.timestamp)} │ ${DEBUG.icons[entry.level]} ${DEBUG.icons[entry.category]} ${entry.message}`);
+                });
+            },
+            headers: () => {
+                console.log('%c📡 REQUEST HEADERS & CONTEXT', 'font-size: 16px; font-weight: bold; color: #3b82f6;');
+                console.log('════════════════════════════════════');
+                console.log(`🔐 Authorization: ${document.cookie.includes('auth') ? 'Present' : 'Not found'}`);
+                console.log(`🍪 Cookies: ${pageMetadata.cookies} items`);
+                console.log(`💾 Local Storage: ${pageMetadata.localStorage} items`);
+                console.log(`💾 Session Storage: ${pageMetadata.sessionStorage} items`);
+                console.log(`🌐 Origin: ${window.location.origin}`);
+                console.log(`🔗 Referrer: ${pageMetadata.referrer || 'Direct'}`);
+                console.log(`📱 User Agent: ${navigator.userAgent.substring(0, 80)}...`);
+            }
+        }
     };
     
     // Generate a unique session ID
@@ -39,51 +238,203 @@
         return 'brummer_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
     
+    // Ping endpoint to test connectivity
+    function pingEndpoint() {
+        const startTime = Date.now();
+        DEBUG.log('info', 'network', '🏓 Pinging telemetry endpoint...');
+        
+        fetch(BRUMMER_CONFIG.telemetryEndpoint, {
+            method: 'OPTIONS',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        })
+        .then(response => {
+            const latency = Date.now() - startTime;
+            stats.lastPingTime = DEBUG.formatDuration(latency);
+            stats.lastPingSuccess = response.ok;
+            
+            DEBUG.log('success', 'network', `Endpoint reachable`, {
+                status: response.status,
+                latency: `${latency}ms`,
+                headers: Object.fromEntries(response.headers.entries())
+            });
+        })
+        .catch(error => {
+            const latency = Date.now() - startTime;
+            stats.lastPingTime = DEBUG.formatDuration(latency);
+            stats.lastPingSuccess = false;
+            stats.errorCount++;
+            
+            DEBUG.log('error', 'network', `Endpoint unreachable: ${error.message}`, {
+                error: error.name,
+                latency: `${latency}ms`,
+                suggestion: 'Check if proxy server is running on the correct port'
+            });
+        });
+    }
+    
     // Send telemetry data to the server
     function sendTelemetry(data) {
-        telemetryBuffer.push({
+        const eventData = {
             ...data,
             timestamp: Date.now(),
             sessionId: pageMetadata.sessionId,
             url: pageMetadata.url
+        };
+        
+        telemetryBuffer.push(eventData);
+        
+        // Update stats
+        stats.totalEvents++;
+        if (stats.eventCounts[data.type]) {
+            stats.eventCounts[data.type]++;
+        }
+        
+        const bufferStatus = DEBUG.progressBar(telemetryBuffer.length, BRUMMER_CONFIG.maxBatchSize);
+        DEBUG.log('info', 'buffer', `Event buffered: ${data.type}`, {
+            eventType: data.type,
+            bufferSize: `${telemetryBuffer.length}/${BRUMMER_CONFIG.maxBatchSize}`,
+            bufferStatus: bufferStatus,
+            estimatedSize: DEBUG.formatSize(JSON.stringify(eventData).length)
         });
         
         // Start batch timer if not already running
         if (!batchTimer) {
+            stats.lastBatchStart = Date.now();
             batchTimer = setTimeout(flushTelemetry, BRUMMER_CONFIG.batchInterval);
+            DEBUG.log('info', 'timer', `Batch timer started (${BRUMMER_CONFIG.batchInterval}ms)`);
         }
         
         // Flush immediately if buffer is full
         if (telemetryBuffer.length >= BRUMMER_CONFIG.maxBatchSize) {
+            DEBUG.log('warning', 'buffer', 'Buffer full, flushing immediately');
             flushTelemetry();
         }
     }
     
     // Flush telemetry buffer
     function flushTelemetry() {
-        if (telemetryBuffer.length === 0) return;
+        if (telemetryBuffer.length === 0) {
+            DEBUG.log('info', 'send', 'No events to flush');
+            return;
+        }
         
         const batch = telemetryBuffer.splice(0, telemetryBuffer.length);
+        const startTime = Date.now();
         
         // Use sendBeacon if available for reliability
         const payload = JSON.stringify({
             sessionId: pageMetadata.sessionId,
-            events: batch
+            events: batch,
+            metadata: {
+                url: pageMetadata.url,
+                referrer: pageMetadata.referrer,
+                userAgent: navigator.userAgent,
+                timestamp: Date.now(),
+                cookies: document.cookie,
+                viewport: {
+                    width: window.innerWidth,
+                    height: window.innerHeight
+                },
+                connection: navigator.connection ? {
+                    effectiveType: navigator.connection.effectiveType,
+                    downlink: navigator.connection.downlink
+                } : null
+            }
+        });
+        
+        const payloadSize = payload.length;
+        stats.totalBytes += payloadSize;
+        stats.networkStats.requestCount++;
+        
+        DEBUG.log('info', 'send', `Flushing ${batch.length} events`, {
+            batchSize: batch.length,
+            payloadSize: DEBUG.formatSize(payloadSize),
+            method: navigator.sendBeacon ? 'sendBeacon' : 'fetch',
+            endpoint: BRUMMER_CONFIG.telemetryEndpoint,
+            eventTypes: batch.reduce((acc, event) => {
+                acc[event.type] = (acc[event.type] || 0) + 1;
+                return acc;
+            }, {})
         });
         
         if (navigator.sendBeacon) {
-            navigator.sendBeacon(BRUMMER_CONFIG.telemetryEndpoint, payload);
+            const success = navigator.sendBeacon(BRUMMER_CONFIG.telemetryEndpoint, payload);
+            const duration = Date.now() - startTime;
+            
+            stats.lastSendTime = Date.now();
+            stats.lastSendSuccess = success;
+            
+            if (success) {
+                stats.networkStats.successCount++;
+                stats.networkStats.totalLatency += duration;
+                DEBUG.log('success', 'send', `Beacon sent successfully`, {
+                    duration: DEBUG.formatDuration(duration),
+                    success: true
+                });
+            } else {
+                stats.networkStats.failureCount++;
+                stats.errorCount++;
+                DEBUG.log('error', 'send', 'Beacon failed to send', {
+                    duration: DEBUG.formatDuration(duration),
+                    suggestion: 'Browser may have blocked the beacon or endpoint is unreachable'
+                });
+            }
         } else {
-            // Fallback to fetch
+            // Fallback to fetch with detailed error handling
             fetch(BRUMMER_CONFIG.telemetryEndpoint, {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json'
+                    'Content-Type': 'application/json',
+                    'X-Brummer-Session': pageMetadata.sessionId,
+                    'X-Brummer-Process': BRUMMER_CONFIG.processName
                 },
                 body: payload,
                 keepalive: true
-            }).catch(() => {
-                // Silently fail - we don't want to disrupt the page
+            })
+            .then(response => {
+                const duration = Date.now() - startTime;
+                stats.lastSendTime = Date.now();
+                stats.lastSendSuccess = response.ok;
+                stats.networkStats.totalLatency += duration;
+                
+                if (response.ok) {
+                    stats.networkStats.successCount++;
+                    DEBUG.log('success', 'send', `Fetch completed successfully`, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        duration: DEBUG.formatDuration(duration),
+                        headers: Object.fromEntries(response.headers.entries())
+                    });
+                } else {
+                    stats.networkStats.failureCount++;
+                    stats.errorCount++;
+                    DEBUG.log('error', 'send', `Server returned error: ${response.status}`, {
+                        status: response.status,
+                        statusText: response.statusText,
+                        duration: DEBUG.formatDuration(duration),
+                        headers: Object.fromEntries(response.headers.entries()),
+                        suggestion: response.status === 404 ? 'Telemetry endpoint not found' : 
+                                   response.status === 403 ? 'Permission denied' :
+                                   response.status === 500 ? 'Server error' : 'Check server logs'
+                    });
+                }
+            })
+            .catch(error => {
+                const duration = Date.now() - startTime;
+                stats.lastSendTime = Date.now();
+                stats.lastSendSuccess = false;
+                stats.networkStats.failureCount++;
+                stats.errorCount++;
+                
+                DEBUG.log('error', 'send', `Network error: ${error.message}`, {
+                    error: error.name,
+                    duration: DEBUG.formatDuration(duration),
+                    suggestion: error.name === 'TypeError' ? 'Network connection failed' :
+                               error.name === 'AbortError' ? 'Request was aborted' :
+                               'Check network connectivity and CORS settings'
+                });
             });
         }
         
@@ -91,6 +442,7 @@
         if (batchTimer) {
             clearTimeout(batchTimer);
             batchTimer = null;
+            DEBUG.log('info', 'timer', 'Batch timer cleared');
         }
     }
     
@@ -389,26 +741,94 @@
     
     // Initialize monitoring
     function initialize() {
+        // Display startup banner
+        if (BRUMMER_CONFIG.debugMode) {
+            console.log('%c🚀 BRUMMER TELEMETRY INITIALIZED', 'font-size: 20px; font-weight: bold; color: #22c55e; background: #f0fdf4; padding: 10px;');
+            console.log('%c═══════════════════════════════════════', 'color: #22c55e;');
+            console.log(`${DEBUG.icons.performance} Process: ${BRUMMER_CONFIG.processName}`);
+            console.log(`${DEBUG.icons.network} Endpoint: ${BRUMMER_CONFIG.telemetryEndpoint}`);
+            console.log(`${DEBUG.icons.timer} Batch Interval: ${BRUMMER_CONFIG.batchInterval}ms`);
+            console.log(`${DEBUG.icons.buffer} Max Batch Size: ${BRUMMER_CONFIG.maxBatchSize} events`);
+            console.log('%c═══════════════════════════════════════', 'color: #22c55e;');
+            console.log('%cDebug Commands:', 'font-weight: bold; color: #3b82f6;');
+            console.log('  __brummer.debug.status() - Show telemetry dashboard');
+            console.log('  __brummer.debug.timeline() - Show event timeline');
+            console.log('  __brummer.debug.headers() - Show request context');
+            console.log('  __brummer.debug.ping() - Test endpoint connectivity');
+            console.log('  __brummer.debug.flush() - Force send buffered events');
+            console.log('  __brummer.debug.clear() - Clear event buffer');
+            console.log('%c═══════════════════════════════════════', 'color: #22c55e;');
+        }
+        
+        // Ping endpoint to test connectivity
+        setTimeout(() => {
+            pingEndpoint();
+        }, 1000);
+        
         // Send initial telemetry
         sendTelemetry({
             type: 'monitor_initialized',
             data: {
                 config: BRUMMER_CONFIG,
-                pageMetadata: pageMetadata
+                pageMetadata: pageMetadata,
+                capabilities: {
+                    sendBeacon: !!navigator.sendBeacon,
+                    performanceObserver: 'PerformanceObserver' in window,
+                    memoryAPI: !!performance.memory,
+                    connectionAPI: !!navigator.connection,
+                    storageAPI: typeof(Storage) !== "undefined"
+                },
+                environment: {
+                    language: navigator.language,
+                    platform: navigator.platform,
+                    cookieEnabled: navigator.cookieEnabled,
+                    onLine: navigator.onLine,
+                    viewport: {
+                        width: window.innerWidth,
+                        height: window.innerHeight,
+                        devicePixelRatio: window.devicePixelRatio
+                    }
+                }
             }
         });
         
         // Start monitors
+        DEBUG.log('info', 'performance', 'Starting DOM timing monitor');
         monitorDOMTiming();
+        
+        DEBUG.log('info', 'performance', 'Starting performance monitor');
         monitorPerformance();
+        
+        DEBUG.log('info', 'memory', 'Starting memory monitor');
         monitorMemory();
+        
+        DEBUG.log('info', 'console', 'Starting console monitor');
         monitorConsole();
+        
+        DEBUG.log('info', 'user', 'Starting interaction monitor');
         monitorInteractions();
+        
+        DEBUG.log('info', 'network', 'Starting network activity monitor');
         monitorNetworkActivity();
         
         // Flush telemetry on page unload
-        window.addEventListener('beforeunload', flushTelemetry);
-        window.addEventListener('pagehide', flushTelemetry);
+        window.addEventListener('beforeunload', () => {
+            DEBUG.log('info', 'send', 'Page unloading, flushing telemetry');
+            flushTelemetry();
+        });
+        window.addEventListener('pagehide', () => {
+            DEBUG.log('info', 'send', 'Page hidden, flushing telemetry');
+            flushTelemetry();
+        });
+        
+        // Status display timer
+        if (BRUMMER_CONFIG.debugMode && BRUMMER_CONFIG.debugLevel === 'verbose') {
+            setInterval(() => {
+                if (telemetryBuffer.length > 0 || stats.totalEvents > 0) {
+                    DEBUG.status();
+                }
+            }, 10000); // Show status every 10 seconds if there's activity
+        }
     }
     
     // Start monitoring when DOM is ready

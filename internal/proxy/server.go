@@ -6,7 +6,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -48,12 +48,13 @@ const (
 
 // URLMapping represents a reverse proxy mapping
 type URLMapping struct {
-	TargetURL   string      // e.g., "http://localhost:3000"
-	ProxyPort   int         // e.g., 8889
-	ProxyURL    string      // e.g., "http://localhost:8889"
+	TargetURL   string                   // e.g., "http://localhost:3000"
+	ProxyPort   int                      // e.g., 8889
+	ProxyURL    string                   // e.g., "http://localhost:8889"
 	ProcessName string
 	CreatedAt   time.Time
-	Server      *http.Server // The HTTP server for this mapping
+	Server      *http.Server             // The HTTP server for this mapping
+	Proxy       *goproxy.ProxyHttpServer // The goproxy instance for this mapping
 }
 
 //go:embed monitor.js
@@ -200,8 +201,13 @@ func (s *Server) injectMonitoringScript(resp *http.Response, processName string)
 		return resp
 	}
 	
+	// Check if this is an AJAX/fetch request - skip injection for those
+	if s.isBackgroundRequest(resp.Request) {
+		return resp
+	}
+	
 	// Read the response body
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return resp
 	}
@@ -212,19 +218,26 @@ func (s *Server) injectMonitoringScript(resp *http.Response, processName string)
 	if encoding == "gzip" {
 		reader, err := gzip.NewReader(bytes.NewReader(body))
 		if err != nil {
-			resp.Body = ioutil.NopCloser(bytes.NewReader(body))
+			resp.Body = io.NopCloser(bytes.NewReader(body))
 			return resp
 		}
-		body, err = ioutil.ReadAll(reader)
+		body, err = io.ReadAll(reader)
 		reader.Close()
 		if err != nil {
-			resp.Body = ioutil.NopCloser(bytes.NewReader(body))
+			resp.Body = io.NopCloser(bytes.NewReader(body))
 			return resp
 		}
 	}
 	
 	// Convert body to string for manipulation
 	bodyStr := string(body)
+	
+	// Check if script is already injected
+	if strings.Contains(bodyStr, "<!-- Brummer Monitoring Script -->") {
+		// Script already injected, return response as-is
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		return resp
+	}
 	
 	// Create the injection script with metadata
 	injectionScript := fmt.Sprintf(`
@@ -270,7 +283,7 @@ window.__brummerProxyHost = 'localhost:%d';
 	}
 	
 	// Update response
-	resp.Body = ioutil.NopCloser(bytes.NewReader(newBody))
+	resp.Body = io.NopCloser(bytes.NewReader(newBody))
 	resp.ContentLength = int64(len(newBody))
 	resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(newBody)))
 	
@@ -281,6 +294,128 @@ window.__brummerProxyHost = 'localhost:%d';
 	return resp
 }
 
+// injectMonitoringScriptForMapping injects telemetry script using mapping-specific port
+func (s *Server) injectMonitoringScriptForMapping(resp *http.Response, mapping *URLMapping, req *http.Request) *http.Response {
+	// Check content type
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(strings.ToLower(contentType), "text/html") {
+		return resp
+	}
+	
+	// Skip injection for XHR/AJAX requests
+	if req != nil {
+		// Check for common AJAX headers
+		if req.Header.Get("X-Requested-With") == "XMLHttpRequest" {
+			return resp
+		}
+		// Check for Fetch API requests
+		if req.Header.Get("Sec-Fetch-Mode") == "cors" || req.Header.Get("Sec-Fetch-Dest") == "empty" {
+			return resp
+		}
+		// Check Accept header for non-HTML requests
+		accept := req.Header.Get("Accept")
+		if accept != "" && !strings.Contains(accept, "text/html") && !strings.Contains(accept, "*/*") {
+			return resp
+		}
+	}
+	
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp
+	}
+	resp.Body.Close()
+	
+	// Decompress if needed
+	encoding := resp.Header.Get("Content-Encoding")
+	if encoding == "gzip" {
+		reader, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			resp.Body = io.NopCloser(bytes.NewReader(body))
+			return resp
+		}
+		body, err = io.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			resp.Body = io.NopCloser(bytes.NewReader(body))
+			return resp
+		}
+	}
+	
+	// Convert body to string for manipulation
+	bodyStr := string(body)
+	
+	// Check if script is already injected
+	if strings.Contains(bodyStr, "<!-- Brummer Monitoring Script -->") {
+		// Script already injected, return response as-is
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		return resp
+	}
+	
+	// Create the injection script with idempotent guard - use mapping's proxy port, not control port
+	injectionScript := fmt.Sprintf(`
+<!-- Brummer Monitoring Script -->
+<script>
+(function() {
+    // Idempotent guard - only initialize once
+    if (window.__brummerInitialized) {
+        return;
+    }
+    window.__brummerInitialized = true;
+    
+    // Set process name and proxy host for telemetry
+    window.__brummerProcessName = '%s';
+    window.__brummerProxyHost = 'localhost:%d';
+    
+    // Load the full monitoring script immediately (non-deferred)
+    (function() {
+        %s
+    })();
+})();
+</script>
+<!-- End Brummer Monitoring Script -->
+`, mapping.ProcessName, mapping.ProxyPort, monitoringScript)
+	
+	// Try to inject before </body> or </html>
+	injected := false
+	for _, tag := range []string{"</body>", "</html>"} {
+		if idx := strings.LastIndex(strings.ToLower(bodyStr), tag); idx != -1 {
+			bodyStr = bodyStr[:idx] + injectionScript + bodyStr[idx:]
+			injected = true
+			break
+		}
+	}
+	
+	// If no suitable tag found, append to the end
+	if !injected {
+		bodyStr += injectionScript
+	}
+	
+	// Update body
+	newBody := []byte(bodyStr)
+	
+	// Re-compress if needed
+	if encoding == "gzip" {
+		var buf bytes.Buffer
+		gw := gzip.NewWriter(&buf)
+		_, err = gw.Write(newBody)
+		gw.Close()
+		if err == nil {
+			newBody = buf.Bytes()
+		}
+	}
+	
+	// Update response
+	resp.Body = io.NopCloser(bytes.NewReader(newBody))
+	resp.ContentLength = int64(len(newBody))
+	resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(newBody)))
+	
+	// Remove content security policy that might block our script
+	resp.Header.Del("Content-Security-Policy")
+	resp.Header.Del("X-Content-Security-Policy")
+	
+	return resp
+}
 
 // getProcessForURL returns the process name associated with a URL
 func (s *Server) getProcessForURL(urlStr string) string {
@@ -530,176 +665,117 @@ func (s *Server) createReverseProxyHandler() http.Handler {
 	return mux
 }
 
-// createURLProxyHandler creates a handler for a specific URL mapping
-func (s *Server) createURLProxyHandler(mapping *URLMapping) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Handle telemetry endpoint
-		if r.URL.Path == "/__brummer_telemetry__" && r.Method == "POST" {
-			s.handleTelemetry(w, r)
-			return
-		}
-		
-		// Parse target URL
-		targetURL, err := url.Parse(mapping.TargetURL)
-		if err != nil {
-			http.Error(w, "Invalid target URL", http.StatusInternalServerError)
-			return
-		}
-		
-		// Build the full target URL with the request path
-		targetURLStr := fmt.Sprintf("%s://%s%s", targetURL.Scheme, targetURL.Host, r.URL.Path)
-		if r.URL.RawQuery != "" {
-			targetURLStr += "?" + r.URL.RawQuery
-		}
-		
-		// Create the proxied request
-		proxyReq, err := http.NewRequest(r.Method, targetURLStr, r.Body)
-		if err != nil {
-			http.Error(w, "Failed to create request", http.StatusInternalServerError)
-			return
-		}
+// createURLProxyHandler creates a goproxy-based handler for a specific URL mapping
+func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
+	// Create a new goproxy instance for this URL mapping
+	proxy := goproxy.NewProxyHttpServer()
+	proxy.Verbose = false
+	mapping.Proxy = proxy
 	
-		// Copy headers
-		for key, values := range r.Header {
-			for _, value := range values {
-				proxyReq.Header.Add(key, value)
+	// Parse target URL
+	targetURL, err := url.Parse(mapping.TargetURL)
+	if err != nil {
+		log.Printf("Invalid target URL for mapping: %s", mapping.TargetURL)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "Invalid target URL configuration", http.StatusInternalServerError)
+		})
+	}
+	
+	// Handle telemetry endpoint directly
+	mux := http.NewServeMux()
+	mux.HandleFunc("/__brummer_telemetry__", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" {
+			s.handleTelemetry(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
+	
+	// For all other requests, use goproxy with URL rewriting
+	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Rewrite the request URL to point to the target
+		r.URL.Scheme = targetURL.Scheme
+		r.URL.Host = targetURL.Host
+		r.Host = targetURL.Host
+		
+		// Set up request tracking in goproxy context
+		proxy.OnRequest().DoFunc(func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+			startTime := time.Now()
+			reqID := fmt.Sprintf("%d", time.Now().UnixNano())
+			
+			// Store request info in context
+			ctx.UserData = &Request{
+				ID:          reqID,
+				Method:      r.Method,
+				URL:         r.URL.String(),
+				Host:        r.Host,
+				Path:        r.URL.Path,
+				StartTime:   startTime,
+				ProcessName: mapping.ProcessName,
 			}
-		}
-		
-		// Set forwarding headers
-		proxyReq.Header.Set("X-Forwarded-For", r.RemoteAddr)
-		proxyReq.Header.Set("X-Forwarded-Host", r.Host)
-		proxyReq.Header.Set("X-Forwarded-Proto", "http")
-		
-		// Record request start
-		startTime := time.Now()
-		reqID := fmt.Sprintf("%d", time.Now().UnixNano())
-		
-		// Perform the request
-		client := &http.Client{
-			Timeout: 30 * time.Second,
-		}
-		resp, err := client.Do(proxyReq)
-		
-		duration := time.Since(startTime)
-		
-		// Create request record
-		req := Request{
-			ID:          reqID,
-			Method:      r.Method,
-			URL:         targetURLStr,
-			Host:        targetURL.Host,
-			Path:        r.URL.Path,
-			StartTime:   startTime,
-			Duration:    duration,
-			ProcessName: mapping.ProcessName,
-		}
-		
-		if err != nil {
-			req.Error = err.Error()
-			s.addRequest(req)
-			http.Error(w, "Failed to proxy request", http.StatusBadGateway)
-			return
-		}
-		defer resp.Body.Close()
-		
-		req.StatusCode = resp.StatusCode
-		if resp.ContentLength > 0 {
-			req.Size = resp.ContentLength
-		}
-		
-		// Store the request
-		s.addRequest(req)
-		
-		// Publish event
-		s.eventBus.Publish(events.Event{
-			Type:      events.EventType("proxy.request"),
-			ProcessID: req.ProcessName,
-			Data: map[string]interface{}{
-				"method":      req.Method,
-				"url":         req.URL,
-				"status":      req.StatusCode,
-				"duration":    req.Duration.Milliseconds(),
-				"size":        req.Size,
-				"processName": req.ProcessName,
-			},
+			
+			return r, nil
 		})
 		
-		// Check if we should inject telemetry (only for HTML responses)
-		contentType := resp.Header.Get("Content-Type")
-		isHTML := strings.Contains(contentType, "text/html")
-		
-		// For HTML responses with telemetry enabled, inject the script
-		if s.enableTelemetry && isHTML && resp.StatusCode == 200 {
-			// Read entire body to inject script
-			body, err := ioutil.ReadAll(resp.Body)
-			resp.Body.Close()
-			if err != nil {
-				// If we can't read the body, just pass through
-				http.Error(w, "Failed to read response", http.StatusInternalServerError)
-				return
-			}
-			
-			// Convert to string and inject script
-			bodyStr := string(body)
-			injectionScript := fmt.Sprintf(`<script>
-window.__brummerProcessName = '%s';
-window.__brummerProxyHost = 'localhost:%d';
-</script>
-<script>
-%s
-</script>`, mapping.ProcessName, s.port, monitoringScript)
-			
-			// Try to inject before </body> or </html>
-			injected := false
-			for _, tag := range []string{"</body>", "</html>"} {
-				if idx := strings.LastIndex(strings.ToLower(bodyStr), tag); idx != -1 {
-					bodyStr = bodyStr[:idx] + injectionScript + bodyStr[idx:]
-					injected = true
-					break
-				}
-			}
-			
-			if !injected {
-				bodyStr += injectionScript
-			}
-			
-			// Copy headers and update content-length
-			for key, values := range resp.Header {
-				if key != "Content-Length" {
-					for _, value := range values {
-						w.Header().Add(key, value)
+		// Handle responses with telemetry injection
+		proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+			if ctx.UserData != nil {
+				req := ctx.UserData.(*Request)
+				req.Duration = time.Since(req.StartTime)
+				if resp != nil {
+					req.StatusCode = resp.StatusCode
+					
+					// Get response size
+					if resp.ContentLength > 0 {
+						req.Size = resp.ContentLength
 					}
 				}
-			}
-			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(bodyStr)))
-			
-			// Write response
-			w.WriteHeader(resp.StatusCode)
-			w.Write([]byte(bodyStr))
-		} else {
-			// Non-HTML or telemetry disabled - just pass through
-			for key, values := range resp.Header {
-				for _, value := range values {
-					w.Header().Add(key, value)
+				
+				// Store the request
+				s.addRequest(*req)
+				
+				// Publish event
+				s.eventBus.Publish(events.Event{
+					Type:      events.EventType("proxy.request"),
+					ProcessID: req.ProcessName,
+					Data: map[string]interface{}{
+						"method":      req.Method,
+						"url":         req.URL,
+						"status":      req.StatusCode,
+						"duration":    req.Duration.Milliseconds(),
+						"size":        req.Size,
+						"processName": req.ProcessName,
+					},
+				})
+				
+				// Inject monitoring script into HTML responses - use correct port for this mapping
+				if s.enableTelemetry && resp != nil && resp.StatusCode == 200 && ctx.Req != nil {
+					resp = s.injectMonitoringScriptForMapping(resp, mapping, ctx.Req)
 				}
 			}
 			
-			w.WriteHeader(resp.StatusCode)
-			
-			// Copy response body
-			buf := make([]byte, 4096)
-			for {
-				n, err := resp.Body.Read(buf)
-				if n > 0 {
-					w.Write(buf[:n])
-				}
-				if err != nil {
-					break
-				}
+			return resp
+		})
+		
+		// Handle errors
+		proxy.OnResponse(goproxy.StatusCodeIs(0)).DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+			if ctx.UserData != nil {
+				req := ctx.UserData.(*Request)
+				req.Duration = time.Since(req.StartTime)
+				req.Error = "Connection failed"
+				
+				// Store the failed request
+				s.addRequest(*req)
 			}
-		}
-	}
+			
+			return resp
+		})
+		
+		// Use goproxy to handle the request
+		proxy.ServeHTTP(w, r)
+	})
+	
+	return mux
 }
 
 // RegisterURL associates a URL with a process name and returns the proxy URL
@@ -837,7 +913,7 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	// Read body
-	body, err := ioutil.ReadAll(r.Body)
+	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "Failed to read request body", http.StatusBadRequest)
 		return
@@ -906,4 +982,41 @@ func (s *Server) GetTelemetryForProcess(processName string) []*PageSession {
 // ClearTelemetryForProcess clears telemetry data for a specific process
 func (s *Server) ClearTelemetryForProcess(processName string) {
 	s.telemetry.ClearSessionsForProcess(processName)
+}
+
+// isBackgroundRequest checks if this is an AJAX/fetch request based on headers
+func (s *Server) isBackgroundRequest(req *http.Request) bool {
+	if req == nil {
+		return false
+	}
+	
+	// Check for XMLHttpRequest header (used by jQuery and older AJAX libraries)
+	if req.Header.Get("X-Requested-With") == "XMLHttpRequest" {
+		return true
+	}
+	
+	// Check Fetch metadata headers (modern browsers)
+	fetchMode := req.Header.Get("Sec-Fetch-Mode")
+	fetchDest := req.Header.Get("Sec-Fetch-Dest")
+	
+	// Skip injection for cors, no-cors, and same-origin modes (typically AJAX)
+	// Only inject for navigate mode (actual page navigation)
+	if fetchMode != "" && fetchMode != "navigate" {
+		return true
+	}
+	
+	// Skip injection for non-document destinations
+	if fetchDest != "" && fetchDest != "document" {
+		return true
+	}
+	
+	// Check Accept header - if it's specifically asking for JSON or XML, skip
+	accept := req.Header.Get("Accept")
+	if strings.Contains(accept, "application/json") || 
+	   strings.Contains(accept, "application/xml") ||
+	   strings.Contains(accept, "text/xml") {
+		return true
+	}
+	
+	return false
 }

@@ -61,6 +61,7 @@ type Model struct {
 	errorDetailView viewport.Model
 	urlsViewport    viewport.Model
 	webViewport     viewport.Model
+	webDetailViewport viewport.Model
 	settingsList    list.Model
 	searchInput     textinput.Model
 	
@@ -79,6 +80,11 @@ type Model struct {
 	// Command window state
 	showingCommandWindow bool
 	commandAutocomplete  CommandAutocomplete
+	
+	// Web view state
+	webFilter        string            // Current filter: "all", "pages", "api", "images", "other"
+	selectedRequest  *proxy.Request    // Selected request for detail view
+	webRequestIndex  int               // Index of selected request
 	
 	// Script selector state (for initial view)
 	scriptSelector CommandAutocomplete
@@ -484,7 +490,9 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		errorsViewport: viewport.New(0, 0),
 		urlsViewport:   viewport.New(0, 0),
 		webViewport:    viewport.New(0, 0),
+		webDetailViewport: viewport.New(0, 0),
 		searchInput:    searchInput,
+		webFilter:      "all", // Default to showing all requests
 		help:           help.New(),
 		keys:           keys,
 		updateChan:     make(chan tea.Msg, 100),
@@ -729,6 +737,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch m.currentView {
+	case ViewWeb:
+		// Handle web view specific keys
+		if msg, ok := msg.(tea.KeyMsg); ok {
+			switch msg.String() {
+			case "f":
+				// Cycle through filters: all -> pages -> api -> images -> other -> all
+				switch m.webFilter {
+				case "all":
+					m.webFilter = "pages"
+				case "pages":
+					m.webFilter = "api"
+				case "api":
+					m.webFilter = "images"
+				case "images":
+					m.webFilter = "other"
+				case "other":
+					m.webFilter = "all"
+				default:
+					m.webFilter = "all"
+				}
+				return m, nil
+			case "up", "k":
+				// Navigate up in request list
+				if m.webRequestIndex > 0 {
+					m.webRequestIndex--
+					m.updateSelectedRequest()
+				}
+				return m, nil
+			case "down", "j":
+				// Navigate down in request list
+				requests := m.getFilteredRequests()
+				if m.webRequestIndex < len(requests)-1 {
+					m.webRequestIndex++
+					m.updateSelectedRequest()
+				}
+				return m, nil
+			case "enter":
+				// Toggle detail view or select request
+				m.updateSelectedRequest()
+				return m, nil
+			}
+		}
+		
 	case ViewProcesses:
 		// Handle process-specific key commands BEFORE list update
 		// This ensures our keys take precedence over list navigation
@@ -1473,6 +1524,58 @@ func (m *Model) renderURLsView() string {
 }
 
 func (m Model) renderWebView() string {
+	if m.width < 100 {
+		// For narrow screens, use the simple view
+		return m.renderWebViewSimple()
+	}
+	
+	// Split view: requests list on left, detail on right
+	listWidth := m.width * 2 / 3
+	detailWidth := m.width - listWidth - 3
+	contentHeight := m.height - 6
+	
+	// Update viewport sizes
+	m.webViewport.Width = listWidth
+	m.webViewport.Height = contentHeight
+	m.webDetailViewport.Width = detailWidth
+	m.webDetailViewport.Height = contentHeight
+	
+	// Get filtered requests
+	requests := m.getFilteredRequests()
+	
+	// Update selected request if needed
+	if len(requests) > 0 && (m.selectedRequest == nil || m.webRequestIndex >= len(requests)) {
+		const_m := &m
+		const_m.updateSelectedRequest()
+	}
+	
+	// Render requests list
+	listContent := m.renderRequestsList(requests, listWidth)
+	m.webViewport.SetContent(listContent)
+	
+	// Render detail panel
+	detailContent := m.renderRequestDetail()
+	m.webDetailViewport.SetContent(detailContent)
+	
+	// Create bordered views
+	borderStyle := lipgloss.NewStyle().
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240"))
+	
+	listView := borderStyle.
+		Width(listWidth).
+		Height(contentHeight).
+		Render(m.webViewport.View())
+	
+	detailView := borderStyle.
+		Width(detailWidth).
+		Height(contentHeight).
+		Render(m.webDetailViewport.View())
+	
+	return lipgloss.JoinHorizontal(lipgloss.Top, listView, " ", detailView)
+}
+
+func (m Model) renderWebViewSimple() string {
 	var content strings.Builder
 	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Web Proxy Requests") + "\n")
 	
@@ -1484,140 +1587,406 @@ func (m Model) renderWebView() string {
 			modeStr = "Reverse Proxy (Per-URL Ports)"
 		}
 		content.WriteString(statusStyle.Render(fmt.Sprintf("🟢 %s mode active", modeStr)) + "\n")
-		
-		// Show PAC file URL
-		pacStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Underline(true)
-		content.WriteString(statusStyle.Render("Browser Auto-Config (PAC): "))
-		content.WriteString(pacStyle.Render(m.proxyServer.GetPACURL()) + "\n")
-		content.WriteString(statusStyle.Render("Configure this URL in your browser's automatic proxy settings") + "\n\n")
 	} else {
 		content.WriteString(statusStyle.Render("🔴 Proxy not running") + "\n\n")
-		m.webViewport.SetContent(content.String())
-		return m.webViewport.View()
+		return content.String()
 	}
 	
-	// Show active mappings in reverse proxy mode
-	if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
-		mappings := m.proxyServer.GetURLMappings()
-		if len(mappings) > 0 {
-			content.WriteString(lipgloss.NewStyle().Bold(true).Render("Active Proxy Mappings:") + "\n")
-			mappingStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86"))
-			for _, mapping := range mappings {
-				content.WriteString(mappingStyle.Render(fmt.Sprintf("  Port %d → %s\n", mapping.ProxyPort, mapping.TargetURL)))
-			}
-			content.WriteString("\n")
-		}
-	}
-	
-	// Get all proxy requests
-	requests := m.proxyServer.GetRequests()
+	// Get filtered requests
+	requests := m.getFilteredRequests()
 	
 	if len(requests) == 0 {
 		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No proxy requests yet"))
 	} else {
-		// Header
-		headerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true)
-		content.WriteString(headerStyle.Render("Time     Status Method Dur    URL") + "\n")
-		content.WriteString(strings.Repeat("─", 80) + "\n")
+		// Show filter header and simple list
+		content.WriteString(fmt.Sprintf("Filter: %s (f to change)\n", m.webFilter))
+		content.WriteString(strings.Repeat("─", 60) + "\n")
 		
-		// Styles for rendering
-		timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-		
-		// Show requests in chronological order (oldest first) for auto-scroll
-		startIdx := 0
-		if len(requests) > 200 { // Limit to last 200 requests
-			startIdx = len(requests) - 200
-		}
-		
-		for i := startIdx; i < len(requests); i++ {
-			req := requests[i]
-			
-			// Color code method
-			var methodColor string
-			switch req.Method {
-			case "GET":
-				methodColor = "82" // Green
-			case "POST":
-				methodColor = "220" // Yellow
-			case "PUT", "PATCH":
-				methodColor = "208" // Orange
-			case "DELETE":
-				methodColor = "196" // Red
-			default:
-				methodColor = "245" // Gray
+		for i, req := range requests {
+			if i >= 50 { // Limit for simple view
+				break
 			}
 			
-			// Color code status
-			var statusColor string
-			switch {
-			case req.StatusCode >= 200 && req.StatusCode < 300:
-				statusColor = "82" // Green for success
-			case req.StatusCode >= 300 && req.StatusCode < 400:
-				statusColor = "220" // Yellow for redirects
-			case req.StatusCode >= 400 && req.StatusCode < 500:
-				statusColor = "208" // Orange for client errors
-			case req.StatusCode >= 500:
-				statusColor = "196" // Red for server errors
-			default:
-				statusColor = "245" // Gray for unknown
-			}
+			line := fmt.Sprintf("%s %d %s %s",
+				req.StartTime.Format("15:04:05"),
+				req.StatusCode,
+				req.Method,
+				req.URL)
 			
-			// Format duration
-			dur := fmt.Sprintf("%4.0fms", req.Duration.Seconds()*1000)
-			if req.Duration.Seconds()*1000 > 999 {
-				dur = fmt.Sprintf("%4.1fs", req.Duration.Seconds())
-			}
-			
-			// Truncate URL if too long
-			urlStr := req.URL
-			maxURLLen := 45
-			if len(urlStr) > maxURLLen {
-				// Try to keep the domain visible
-				parsed, err := url.Parse(urlStr)
-				if err == nil && len(parsed.Host) < 30 {
-					urlStr = parsed.Host + "/..." + urlStr[len(urlStr)-15:]
-				} else {
-					urlStr = urlStr[:maxURLLen-3] + "..."
-				}
-			}
-			
-			// Single line format: time status method duration url
-			line := fmt.Sprintf("%s %s %s %s %s",
-				timeStyle.Render(req.StartTime.Format("15:04:05")),
-				lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Bold(true).Render(fmt.Sprintf("%3d", req.StatusCode)),
-				lipgloss.NewStyle().Foreground(lipgloss.Color(methodColor)).Bold(true).Render(fmt.Sprintf("%-6s", req.Method)),
-				lipgloss.NewStyle().Foreground(lipgloss.Color("242")).Render(dur),
-				lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render(urlStr),
-			)
-			
-			// Add error indicator if request failed
-			if req.Error != "" {
-				line += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" ❌")
-			}
-			
-			// Add telemetry indicator if available
 			if req.HasTelemetry {
-				line += lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(" 📊")
+				line += " 📊"
 			}
-			
 			content.WriteString(line + "\n")
-			
-			// Show telemetry summary on second line if available
-			if req.HasTelemetry && req.Telemetry != nil {
-				telemetryLine := m.renderTelemetrySummary(req.Telemetry)
-				if telemetryLine != "" {
-					content.WriteString(telemetryLine + "\n")
-				}
-			}
 		}
 	}
 	
-	m.webViewport.SetContent(content.String())
+	return content.String()
+}
+
+func (m Model) renderRequestsList(requests []proxy.Request, width int) string {
+	var content strings.Builder
 	
-	// Auto-scroll to bottom
-	m.webViewport.GotoBottom()
+	// Header with filter info
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("33"))
+	content.WriteString(headerStyle.Render("Web Proxy Requests") + "\n")
 	
-	return m.webViewport.View()
+	// Filter buttons
+	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+	
+	filters := []string{"all", "pages", "api", "images", "other"}
+	var filterParts []string
+	for _, filter := range filters {
+		if filter == m.webFilter {
+			filterParts = append(filterParts, activeFilterStyle.Render("["+filter+"]"))
+		} else {
+			filterParts = append(filterParts, filterStyle.Render(filter))
+		}
+	}
+	content.WriteString("Filter: " + strings.Join(filterParts, " ") + " (f to cycle)\n\n")
+	
+	// Proxy status
+	if m.proxyServer != nil && m.proxyServer.IsRunning() {
+		modeStr := "Full Proxy"
+		if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
+			modeStr = "Reverse Proxy"
+		}
+		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("🟢 " + modeStr) + "\n\n")
+	}
+	
+	if len(requests) == 0 {
+		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No matching requests"))
+		return content.String()
+	}
+	
+	// Requests table header
+	headerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true)
+	content.WriteString(headerStyle.Render("Time     St Method  URL") + "\n")
+	content.WriteString(strings.Repeat("─", width-4) + "\n")
+	
+	// Show recent requests (limit for performance)
+	startIdx := 0
+	if len(requests) > 100 {
+		startIdx = len(requests) - 100
+	}
+	
+	for i := startIdx; i < len(requests); i++ {
+		req := requests[i]
+		
+		// Highlight selected request
+		isSelected := m.selectedRequest != nil && req.ID == m.selectedRequest.ID
+		
+		// Color code status
+		var statusColor string
+		switch {
+		case req.StatusCode >= 200 && req.StatusCode < 300:
+			statusColor = "82" // Green
+		case req.StatusCode >= 300 && req.StatusCode < 400:
+			statusColor = "220" // Yellow
+		case req.StatusCode >= 400 && req.StatusCode < 500:
+			statusColor = "208" // Orange
+		case req.StatusCode >= 500:
+			statusColor = "196" // Red
+		default:
+			statusColor = "245" // Gray
+		}
+		
+		// Color code method
+		var methodColor string
+		switch req.Method {
+		case "GET":
+			methodColor = "82"
+		case "POST":
+			methodColor = "220"
+		case "PUT", "PATCH":
+			methodColor = "208"
+		case "DELETE":
+			methodColor = "196"
+		default:
+			methodColor = "245"
+		}
+		
+		// Truncate URL for display
+		urlStr := req.URL
+		maxURLLen := width - 25
+		if len(urlStr) > maxURLLen {
+			urlStr = urlStr[:maxURLLen-3] + "..."
+		}
+		
+		// Format line
+		line := fmt.Sprintf("%s %s %s %s",
+			lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(req.StartTime.Format("15:04:05")),
+			lipgloss.NewStyle().Foreground(lipgloss.Color(statusColor)).Bold(true).Render(fmt.Sprintf("%3d", req.StatusCode)),
+			lipgloss.NewStyle().Foreground(lipgloss.Color(methodColor)).Render(fmt.Sprintf("%-6s", req.Method)),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render(urlStr),
+		)
+		
+		// Add indicators
+		if req.Error != "" {
+			line += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" ❌")
+		}
+		if req.HasTelemetry {
+			line += lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(" 📊")
+		}
+		
+		// Highlight if selected
+		if isSelected {
+			line = lipgloss.NewStyle().Background(lipgloss.Color("237")).Render(line)
+		}
+		
+		content.WriteString(line + "\n")
+	}
+	
+	// Navigation help
+	content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑/↓ navigate, Enter select, f filter"))
+	
+	return content.String()
+}
+
+func (m Model) renderRequestDetail() string {
+	if m.selectedRequest == nil {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("Select a request to view details")
+	}
+	
+	req := *m.selectedRequest
+	var content strings.Builder
+	
+	// Request header
+	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("33"))
+	content.WriteString(headerStyle.Render("Request Details") + "\n\n")
+	
+	// Basic info
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true)
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	
+	content.WriteString(labelStyle.Render("Method: ") + valueStyle.Render(req.Method) + "\n")
+	content.WriteString(labelStyle.Render("URL: ") + valueStyle.Render(req.URL) + "\n")
+	content.WriteString(labelStyle.Render("Status: ") + m.formatStatus(req.StatusCode) + "\n")
+	content.WriteString(labelStyle.Render("Duration: ") + valueStyle.Render(fmt.Sprintf("%.0fms", req.Duration.Seconds()*1000)) + "\n")
+	content.WriteString(labelStyle.Render("Time: ") + valueStyle.Render(req.StartTime.Format("15:04:05")) + "\n")
+	content.WriteString(labelStyle.Render("Process: ") + valueStyle.Render(req.ProcessName) + "\n")
+	
+	if req.Size > 0 {
+		content.WriteString(labelStyle.Render("Size: ") + valueStyle.Render(formatSize(req.Size)) + "\n")
+	}
+	
+	if req.Error != "" {
+		content.WriteString(labelStyle.Render("Error: ") + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(req.Error) + "\n")
+	}
+	
+	// Telemetry section
+	if req.HasTelemetry && req.Telemetry != nil {
+		content.WriteString("\n" + headerStyle.Render("📊 Telemetry Data") + "\n\n")
+		content.WriteString(m.renderTelemetryDetails(req.Telemetry))
+	} else if m.isPageRequest(req) {
+		content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("No telemetry data available\n(Page may not have loaded completely)") + "\n")
+	}
+	
+	return content.String()
+}
+
+func (m Model) formatStatus(status int) string {
+	var color string
+	switch {
+	case status >= 200 && status < 300:
+		color = "82" // Green
+	case status >= 300 && status < 400:
+		color = "220" // Yellow
+	case status >= 400 && status < 500:
+		color = "208" // Orange
+	case status >= 500:
+		color = "196" // Red
+	default:
+		color = "245" // Gray
+	}
+	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(fmt.Sprintf("%d", status))
+}
+
+func (m Model) renderTelemetryDetails(session *proxy.PageSession) string {
+	var content strings.Builder
+	
+	if len(session.Events) == 0 {
+		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("No telemetry events recorded"))
+		return content.String()
+	}
+	
+	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true)
+	valueStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	
+	// Summary stats
+	var pageLoadTime, domReadyTime float64
+	var jsErrors, consoleLogs, interactions int
+	var hasMemoryData bool
+	
+	for _, event := range session.Events {
+		switch event.Type {
+		case proxy.TelemetryPageLoad:
+			if timing, ok := event.Data["timing"].(map[string]interface{}); ok {
+				if domComplete, ok := timing["domComplete"].(float64); ok {
+					domReadyTime = domComplete
+				}
+				if loadEventEnd, ok := timing["loadEventEnd"].(float64); ok {
+					pageLoadTime = loadEventEnd
+				}
+			}
+		case proxy.TelemetryJSError, proxy.TelemetryUnhandledReject:
+			jsErrors++
+		case proxy.TelemetryConsoleOutput:
+			consoleLogs++
+		case proxy.TelemetryUserInteraction:
+			interactions++
+		case proxy.TelemetryMemoryUsage:
+			hasMemoryData = true
+		}
+	}
+	
+	// Display summary
+	content.WriteString(labelStyle.Render("Events: ") + valueStyle.Render(fmt.Sprintf("%d", len(session.Events))) + "\n")
+	
+	if pageLoadTime > 0 {
+		content.WriteString(labelStyle.Render("Page Load: ") + valueStyle.Render(fmt.Sprintf("%.0fms", pageLoadTime)) + "\n")
+	}
+	if domReadyTime > 0 {
+		content.WriteString(labelStyle.Render("DOM Ready: ") + valueStyle.Render(fmt.Sprintf("%.0fms", domReadyTime)) + "\n")
+	}
+	if jsErrors > 0 {
+		content.WriteString(labelStyle.Render("JS Errors: ") + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(fmt.Sprintf("%d", jsErrors)) + "\n")
+	}
+	if consoleLogs > 0 {
+		content.WriteString(labelStyle.Render("Console Logs: ") + valueStyle.Render(fmt.Sprintf("%d", consoleLogs)) + "\n")
+	}
+	if interactions > 0 {
+		content.WriteString(labelStyle.Render("Interactions: ") + valueStyle.Render(fmt.Sprintf("%d", interactions)) + "\n")
+	}
+	if hasMemoryData {
+		content.WriteString(labelStyle.Render("Memory Data: ") + lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("✓") + "\n")
+	}
+	
+	// Show recent events
+	content.WriteString("\n" + labelStyle.Render("Recent Events:") + "\n")
+	
+	// Get last few events
+	startIdx := 0
+	if len(session.Events) > 10 {
+		startIdx = len(session.Events) - 10
+	}
+	
+	for i := startIdx; i < len(session.Events); i++ {
+		event := session.Events[i]
+		eventTime := time.Unix(event.Timestamp/1000, (event.Timestamp%1000)*1000000)
+		
+		eventStr := fmt.Sprintf("%s %s",
+			lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(eventTime.Format("15:04:05")),
+			m.formatTelemetryEvent(event),
+		)
+		content.WriteString("  " + eventStr + "\n")
+	}
+	
+	return content.String()
+}
+
+func (m Model) formatTelemetryEvent(event proxy.TelemetryEvent) string {
+	switch event.Type {
+	case proxy.TelemetryPageLoad:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("Page Loaded")
+	case proxy.TelemetryDOMState:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render("DOM Ready")
+	case proxy.TelemetryJSError:
+		if msg, ok := event.Data["message"].(string); ok {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("JS Error: " + msg)
+		}
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render("JS Error")
+	case proxy.TelemetryConsoleOutput:
+		if level, ok := event.Data["level"].(string); ok {
+			if msg, ok := event.Data["message"].(string); ok {
+				return fmt.Sprintf("Console %s: %s", level, msg)
+			}
+			return fmt.Sprintf("Console %s", level)
+		}
+		return "Console Output"
+	case proxy.TelemetryUserInteraction:
+		if eventType, ok := event.Data["type"].(string); ok {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render("User " + eventType)
+		}
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render("User Interaction")
+	case proxy.TelemetryMemoryUsage:
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Render("Memory Snapshot")
+	default:
+		return string(event.Type)
+	}
+}
+
+// getFilteredRequests returns requests filtered by current filter
+func (m Model) getFilteredRequests() []proxy.Request {
+	if m.proxyServer == nil {
+		return []proxy.Request{}
+	}
+	
+	allRequests := m.proxyServer.GetRequests()
+	if m.webFilter == "all" {
+		return allRequests
+	}
+	
+	var filtered []proxy.Request
+	for _, req := range allRequests {
+		switch m.webFilter {
+		case "pages":
+			if m.isPageRequest(req) {
+				filtered = append(filtered, req)
+			}
+		case "api":
+			if m.isAPIRequest(req) {
+				filtered = append(filtered, req)
+			}
+		case "images":
+			if m.isImageRequest(req) {
+				filtered = append(filtered, req)
+			}
+		case "other":
+			if !m.isPageRequest(req) && !m.isAPIRequest(req) && !m.isImageRequest(req) {
+				filtered = append(filtered, req)
+			}
+		}
+	}
+	return filtered
+}
+
+// isPageRequest checks if request is for an HTML page
+func (m Model) isPageRequest(req proxy.Request) bool {
+	return strings.Contains(req.Path, ".html") || req.Path == "/" || (!strings.Contains(req.Path, ".") && !strings.Contains(req.Path, "/api/"))
+}
+
+// isAPIRequest checks if request is an API call
+func (m Model) isAPIRequest(req proxy.Request) bool {
+	return strings.Contains(req.Path, "/api/") || strings.Contains(req.Path, "/graphql") || 
+		req.Method == "POST" || req.Method == "PUT" || req.Method == "DELETE" || req.Method == "PATCH"
+}
+
+// isImageRequest checks if request is for an image
+func (m Model) isImageRequest(req proxy.Request) bool {
+	return strings.HasSuffix(req.Path, ".jpg") || strings.HasSuffix(req.Path, ".jpeg") ||
+		strings.HasSuffix(req.Path, ".png") || strings.HasSuffix(req.Path, ".gif") ||
+		strings.HasSuffix(req.Path, ".webp") || strings.HasSuffix(req.Path, ".svg") ||
+		strings.HasSuffix(req.Path, ".ico")
+}
+
+// updateSelectedRequest updates the selected request based on current index
+func (m *Model) updateSelectedRequest() {
+	requests := m.getFilteredRequests()
+	if len(requests) == 0 {
+		m.selectedRequest = nil
+		return
+	}
+	
+	// Ensure index is within bounds
+	if m.webRequestIndex >= len(requests) {
+		m.webRequestIndex = len(requests) - 1
+	}
+	if m.webRequestIndex < 0 {
+		m.webRequestIndex = 0
+	}
+	
+	m.selectedRequest = &requests[m.webRequestIndex]
 }
 
 // renderTelemetrySummary renders a one-line summary of telemetry data
