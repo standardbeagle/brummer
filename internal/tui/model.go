@@ -2087,6 +2087,11 @@ func (m *Model) handleCommandWindow(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		
 	case "enter":
+		// If there's a selected suggestion, apply it first
+		if m.commandAutocomplete.showDropdown && len(m.commandAutocomplete.suggestions) > 0 {
+			m.commandAutocomplete.applySelectedSuggestion()
+		}
+		
 		// Validate the command first
 		if valid, errMsg := m.commandAutocomplete.ValidateInput(); !valid {
 			// Set error message in the autocomplete component
@@ -2212,25 +2217,49 @@ func (m *Model) handleScriptSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 		
 	case "enter":
-		// Get the selected script
+		// If there's a selected suggestion, use it; otherwise try to use exact input
+		var scriptName string
 		if len(m.scriptSelector.suggestions) > 0 && m.scriptSelector.selected < len(m.scriptSelector.suggestions) {
-			scriptName := m.scriptSelector.suggestions[m.scriptSelector.selected]
-			
-			// Start the script
-			go func() {
-				_, err := m.processMgr.StartScript(scriptName)
-				if err != nil {
-					m.logStore.Add("system", "System", fmt.Sprintf("Error starting script %s: %v", scriptName, err), true)
-					m.updateChan <- logUpdateMsg{}
-				} else {
-					m.updateChan <- processUpdateMsg{}
-				}
-			}()
-			
-			// Switch to logs view
-			m.currentView = ViewLogs
+			scriptName = m.scriptSelector.suggestions[m.scriptSelector.selected]
+		} else if m.scriptSelector.input.Value() != "" {
+			// Check if the typed value is a valid script
+			inputValue := m.scriptSelector.input.Value()
+			if _, exists := m.scriptSelector.availableScripts[inputValue]; exists {
+				scriptName = inputValue
+			} else {
+				// Set error message
+				m.scriptSelector.errorMessage = fmt.Sprintf("Script '%s' not found", inputValue)
+				return m, nil
+			}
+		} else {
+			// No selection and no input
+			m.scriptSelector.errorMessage = "Please select a script to run"
 			return m, nil
 		}
+		
+		// Check if script is already running
+		if m.scriptSelector.processMgr != nil {
+			for _, proc := range m.scriptSelector.processMgr.GetAllProcesses() {
+				if proc.Name == scriptName && proc.Status == process.StatusRunning {
+					m.scriptSelector.errorMessage = fmt.Sprintf("Script '%s' is already running", scriptName)
+					return m, nil
+				}
+			}
+		}
+		
+		// Start the script
+		go func() {
+			_, err := m.processMgr.StartScript(scriptName)
+			if err != nil {
+				m.logStore.Add("system", "System", fmt.Sprintf("Error starting script %s: %v", scriptName, err), true)
+				m.updateChan <- logUpdateMsg{}
+			} else {
+				m.updateChan <- processUpdateMsg{}
+			}
+		}()
+		
+		// Switch to logs view
+		m.currentView = ViewLogs
 		return m, nil
 		
 	case "up":
