@@ -63,6 +63,10 @@ type Model struct {
 	searchResults   []logs.LogEntry
 	showHighPriority bool
 	
+	// Slash command filters
+	showPattern     string  // Regex pattern for /show command
+	hidePattern     string  // Regex pattern for /hide command
+	
 	// File browser state
 	showingFileBrowser bool
 	currentPath        string
@@ -428,7 +432,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	processesList.SetShowStatusBar(false)
 
 	searchInput := textinput.New()
-	searchInput.Placeholder = "Search logs..."
+	searchInput.Placeholder = "Commands: /show <pattern> | /hide <pattern>"
 	searchInput.Focus()
 
 	// Create settings list with package managers
@@ -760,7 +764,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, cmd)
 
 		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, m.keys.Enter) {
-			m.searchResults = m.logStore.Search(m.searchInput.Value())
+			m.handleSlashCommand(m.searchInput.Value())
+			m.searchInput.SetValue("")  // Clear the search input
 			m.currentView = ViewLogs
 			m.updateLogsView()
 		}
@@ -941,20 +946,68 @@ func (m *Model) updateProcessList() {
 }
 
 func (m *Model) updateLogsView() {
-	var logs []logs.LogEntry
+	var logEntries []logs.LogEntry
 	
 	if len(m.searchResults) > 0 {
-		logs = m.searchResults
+		logEntries = m.searchResults
 	} else if m.showHighPriority {
-		logs = m.logStore.GetHighPriority(30)
+		logEntries = m.logStore.GetHighPriority(30)
 	} else if m.selectedProcess != "" {
-		logs = m.logStore.GetByProcess(m.selectedProcess)
+		logEntries = m.logStore.GetByProcess(m.selectedProcess)
 	} else {
-		logs = m.logStore.GetAll()
+		logEntries = m.logStore.GetAll()
+	}
+
+	// Apply regex filters if set
+	if m.showPattern != "" || m.hidePattern != "" {
+		var filtered []logs.LogEntry
+		
+		// Compile regex patterns
+		var showRegex, hideRegex *regexp.Regexp
+		var err error
+		
+		if m.showPattern != "" {
+			showRegex, err = regexp.Compile(m.showPattern)
+			if err != nil {
+				// Invalid regex, show error in logs
+				m.logStore.Add("system", "System", fmt.Sprintf("Invalid /show regex: %v", err), true)
+				showRegex = nil
+			}
+		}
+		
+		if m.hidePattern != "" {
+			hideRegex, err = regexp.Compile(m.hidePattern)
+			if err != nil {
+				// Invalid regex, show error in logs
+				m.logStore.Add("system", "System", fmt.Sprintf("Invalid /hide regex: %v", err), true)
+				hideRegex = nil
+			}
+		}
+		
+		// Apply filters
+		for _, log := range logEntries {
+			// For /show: only include if pattern matches
+			if showRegex != nil {
+				if !showRegex.MatchString(log.Content) {
+					continue
+				}
+			}
+			
+			// For /hide: exclude if pattern matches
+			if hideRegex != nil {
+				if hideRegex.MatchString(log.Content) {
+					continue
+				}
+			}
+			
+			filtered = append(filtered, log)
+		}
+		
+		logEntries = filtered
 	}
 
 	var content strings.Builder
-	for _, log := range logs {
+	for _, log := range logEntries {
 		// Skip empty log entries (used for separation)
 		if strings.TrimSpace(log.Content) == "" {
 			continue
@@ -1120,16 +1173,30 @@ func (m Model) renderLogsView() string {
 	if m.showHighPriority {
 		title += " [High Priority]"
 	}
+	if m.showPattern != "" {
+		title += fmt.Sprintf(" [Show: %s]", m.showPattern)
+	}
+	if m.hidePattern != "" {
+		title += fmt.Sprintf(" [Hide: %s]", m.hidePattern)
+	}
 	
 	header := lipgloss.NewStyle().Bold(true).Render(title)
 	return lipgloss.JoinVertical(lipgloss.Left, header, m.logsViewport.View())
 }
 
 func (m Model) renderSearchView() string {
+	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		"Search Logs:",
+		"Search Commands:",
 		m.searchInput.View(),
+		"",
+		instructionStyle.Render("Examples:"),
+		instructionStyle.Render("  /show db           - Show only lines containing 'db'"),
+		instructionStyle.Render("  /show db|database  - Show lines containing 'db' OR 'database'"),
+		instructionStyle.Render("  /hide error        - Hide lines containing 'error'"),
+		instructionStyle.Render("  /hide ^\\[debug\\]   - Hide lines starting with '[debug]'"),
+		instructionStyle.Render("  search term        - Legacy search (no slash)"),
 	)
 }
 
@@ -2003,4 +2070,39 @@ func (m Model) renderErrorsViewSplit() string {
 		Render(m.errorDetailView.View())
 	
 	return lipgloss.JoinHorizontal(lipgloss.Top, listView, " ", detailView)
+}
+
+func (m *Model) handleSlashCommand(input string) {
+	// Clear previous search results and filters
+	m.searchResults = nil
+	m.showPattern = ""
+	m.hidePattern = ""
+	
+	// Parse the command
+	input = strings.TrimSpace(input)
+	if !strings.HasPrefix(input, "/") {
+		// Legacy behavior: treat as plain search
+		m.searchResults = m.logStore.Search(input)
+		return
+	}
+	
+	// Parse slash commands
+	parts := strings.SplitN(input, " ", 2)
+	if len(parts) < 2 {
+		// Invalid command, clear filters
+		return
+	}
+	
+	command := parts[0]
+	pattern := strings.TrimSpace(parts[1])
+	
+	switch command {
+	case "/show":
+		m.showPattern = pattern
+	case "/hide":
+		m.hidePattern = pattern
+	default:
+		// Unknown command, treat as legacy search
+		m.searchResults = m.logStore.Search(input)
+	}
 }
