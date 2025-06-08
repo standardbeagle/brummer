@@ -542,7 +542,6 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.HandlerFunc {
 		// Parse target URL
 		targetURL, err := url.Parse(mapping.TargetURL)
 		if err != nil {
-			log.Printf("Error parsing target URL %s: %v", mapping.TargetURL, err)
 			http.Error(w, "Invalid target URL", http.StatusInternalServerError)
 			return
 		}
@@ -579,12 +578,7 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.HandlerFunc {
 		// Perform the request
 		client := &http.Client{
 			Timeout: 30 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				return http.ErrUseLastResponse // Don't follow redirects automatically
-			},
 		}
-		
-		log.Printf("Proxying request: %s %s -> %s", r.Method, r.URL.Path, targetURLStr)
 		resp, err := client.Do(proxyReq)
 		
 		duration := time.Since(startTime)
@@ -631,43 +625,30 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.HandlerFunc {
 			},
 		})
 		
-		// Check if this is an HTML response that we should inject telemetry into
+		// Check if we should inject telemetry (only for HTML responses)
 		contentType := resp.Header.Get("Content-Type")
 		isHTML := strings.Contains(contentType, "text/html")
 		
-		// Just read telemetry enabled directly - it's a bool, so it's atomic
+		// For HTML responses with telemetry enabled, inject the script
 		if s.enableTelemetry && isHTML && resp.StatusCode == 200 {
-			// Read the entire response body for injection
+			// Read entire body to inject script
 			body, err := ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
 			if err != nil {
+				// If we can't read the body, just pass through
 				http.Error(w, "Failed to read response", http.StatusInternalServerError)
 				return
 			}
 			
-			// Handle gzip encoding
-			encoding := resp.Header.Get("Content-Encoding")
-			if encoding == "gzip" {
-				reader, err := gzip.NewReader(bytes.NewReader(body))
-				if err == nil {
-					body, _ = ioutil.ReadAll(reader)
-					reader.Close()
-				}
-			}
-			
-			// Inject telemetry script
+			// Convert to string and inject script
 			bodyStr := string(body)
-			injectionScript := fmt.Sprintf(`
-<!-- Brummer Monitoring Script -->
-<script>
-// Set process name and proxy host for telemetry
+			injectionScript := fmt.Sprintf(`<script>
 window.__brummerProcessName = '%s';
 window.__brummerProxyHost = 'localhost:%d';
 </script>
 <script>
 %s
-</script>
-<!-- End Brummer Monitoring Script -->
-`, mapping.ProcessName, s.port, monitoringScript)
+</script>`, mapping.ProcessName, s.port, monitoringScript)
 			
 			// Try to inject before </body> or </html>
 			injected := false
@@ -679,34 +660,25 @@ window.__brummerProxyHost = 'localhost:%d';
 				}
 			}
 			
-			// If no suitable tag found, append to end
 			if !injected {
 				bodyStr += injectionScript
 			}
 			
-			// Update content length
-			modifiedBody := []byte(bodyStr)
-			resp.Header.Del("Content-Length")
-			resp.Header.Del("Content-Encoding") // Remove gzip encoding since we decoded it
-			
-			// Copy headers except the ones we're modifying
+			// Copy headers and update content-length
 			for key, values := range resp.Header {
-				if key != "Content-Length" && key != "Content-Encoding" {
+				if key != "Content-Length" {
 					for _, value := range values {
 						w.Header().Add(key, value)
 					}
 				}
 			}
-			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(modifiedBody)))
+			w.Header().Set("Content-Length", fmt.Sprintf("%d", len(bodyStr)))
 			
-			// Remove CSP headers that might block our script
-			w.Header().Del("Content-Security-Policy")
-			w.Header().Del("Content-Security-Policy-Report-Only")
-			
+			// Write response
 			w.WriteHeader(resp.StatusCode)
-			w.Write(modifiedBody)
+			w.Write([]byte(bodyStr))
 		} else {
-			// For non-HTML responses, just copy as-is
+			// Non-HTML or telemetry disabled - just pass through
 			for key, values := range resp.Header {
 				for _, value := range values {
 					w.Header().Add(key, value)
