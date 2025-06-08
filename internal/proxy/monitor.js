@@ -6,23 +6,11 @@
     
     // Check if already initialized to prevent multiple injections
     if (window.__brummerInitialized) {
-        console.log('%c⚠️ BRUMMER: Script already initialized, skipping duplicate injection', 'color: #f59e0b;');
         return;
     }
     
     // Mark as initialized immediately
     window.__brummerInitialized = true;
-    
-    // Immediate debug output to verify script loading
-    console.log('%c🔧 BRUMMER TELEMETRY SCRIPT LOADING...', 'font-size: 16px; font-weight: bold; color: #f59e0b; background: #fffbeb; padding: 8px;');
-    console.log('📍 Script injection detected at:', new Date().toLocaleTimeString());
-    console.log('🌐 Current URL:', window.location.href);
-    console.log('🔗 Referrer:', document.referrer || 'Direct');
-    
-    // Emergency error handler to catch any script errors
-    window.addEventListener('error', function(e) {
-        console.error('🚨 BRUMMER SCRIPT ERROR:', e.message, 'at', e.filename + ':' + e.lineno);
-    });
     
     // Configuration
     const BRUMMER_CONFIG = {
@@ -32,15 +20,21 @@
             const proxyHost = window.__brummerProxyHost || 'localhost:8888';
             return 'http://' + proxyHost + '/__brummer_telemetry__';
         })(),
+        websocketEndpoint: (function() {
+            // WebSocket endpoint for real-time telemetry
+            const proxyHost = window.__brummerProxyHost || 'localhost:8888';
+            return 'ws://' + proxyHost + '/__brummer_ws__';
+        })(),
         batchInterval: 2000, // Send data every 2 seconds
         maxBatchSize: 100,
         collectInteractionMetrics: true,
         collectPerformanceMetrics: true,
         collectMemoryMetrics: true,
-        collectConsoleMetrics: true,
+        collectConsoleMetrics: false,
         processName: window.__brummerProcessName || 'unknown',
-        debugMode: true, // Enable visual debugging
-        debugLevel: 'verbose' // verbose, normal, minimal
+        debugMode: true, // Enable visual debugging temporarily
+        debugLevel: 'verbose', // verbose, normal, minimal
+        useWebSocket: true // Use WebSocket instead of HTTP
     };
     
     // Debug utilities for visual output
@@ -158,6 +152,13 @@
     const telemetryBuffer = [];
     let batchTimer = null;
     
+    // WebSocket connection
+    let websocket = null;
+    let wsConnected = false;
+    let wsReconnectAttempts = 0;
+    const wsMaxReconnectAttempts = 5;
+    const wsReconnectDelay = 2000;
+    
     // Statistics tracking
     const stats = {
         totalEvents: 0,
@@ -207,11 +208,13 @@
             eventTimeline: [],
             status: DEBUG.status.bind(DEBUG),
             flush: () => flushTelemetry(),
-            ping: () => pingEndpoint(),
+            ping: () => BRUMMER_CONFIG.useWebSocket ? pingWebSocket() : pingEndpoint(),
             clear: () => {
                 telemetryBuffer.length = 0;
                 DEBUG.log('info', 'debug', 'Buffer cleared manually');
             },
+            ws: () => websocket,
+            reconnect: () => connectWebSocket(),
             timeline: () => {
                 console.log('%c⏰ TELEMETRY TIMELINE (last 30 events)', 'font-size: 16px; font-weight: bold; color: #8b5cf6;');
                 console.log('════════════════════════════════════');
@@ -236,6 +239,138 @@
     // Generate a unique session ID
     function generateSessionId() {
         return 'brummer_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+    
+    // Connect to WebSocket for real-time telemetry
+    function connectWebSocket() {
+        if (!BRUMMER_CONFIG.useWebSocket) return;
+        
+        if (websocket && (websocket.readyState === WebSocket.CONNECTING || websocket.readyState === WebSocket.OPEN)) {
+            DEBUG.log('info', 'network', 'WebSocket already connected or connecting');
+            return;
+        }
+        
+        DEBUG.log('info', 'network', `🔌 Connecting to WebSocket: ${BRUMMER_CONFIG.websocketEndpoint}`);
+        
+        try {
+            websocket = new WebSocket(BRUMMER_CONFIG.websocketEndpoint);
+            
+            websocket.onopen = function(event) {
+                wsConnected = true;
+                wsReconnectAttempts = 0;
+                stats.lastPingSuccess = true;
+                stats.lastPingTime = DEBUG.formatTime(Date.now());
+                
+                DEBUG.log('success', 'network', '🔗 WebSocket connected successfully', {
+                    readyState: websocket.readyState,
+                    url: BRUMMER_CONFIG.websocketEndpoint
+                });
+            };
+            
+            websocket.onmessage = function(event) {
+                try {
+                    const message = JSON.parse(event.data);
+                    handleWebSocketMessage(message);
+                } catch (error) {
+                    DEBUG.log('error', 'network', 'Failed to parse WebSocket message', {
+                        error: error.message,
+                        data: event.data
+                    });
+                }
+            };
+            
+            websocket.onclose = function(event) {
+                wsConnected = false;
+                stats.lastPingSuccess = false;
+                
+                DEBUG.log('warning', 'network', `WebSocket connection closed`, {
+                    code: event.code,
+                    reason: event.reason,
+                    wasClean: event.wasClean
+                });
+                
+                // Attempt to reconnect if not intentionally closed
+                if (event.code !== 1000 && wsReconnectAttempts < wsMaxReconnectAttempts) {
+                    wsReconnectAttempts++;
+                    DEBUG.log('info', 'network', `Attempting reconnect ${wsReconnectAttempts}/${wsMaxReconnectAttempts} in ${wsReconnectDelay}ms`);
+                    setTimeout(connectWebSocket, wsReconnectDelay);
+                }
+            };
+            
+            websocket.onerror = function(error) {
+                wsConnected = false;
+                stats.lastPingSuccess = false;
+                stats.errorCount++;
+                
+                DEBUG.log('error', 'network', 'WebSocket error occurred', {
+                    error: error,
+                    readyState: websocket ? websocket.readyState : 'null'
+                });
+            };
+            
+        } catch (error) {
+            DEBUG.log('error', 'network', 'Failed to create WebSocket connection', {
+                error: error.message,
+                endpoint: BRUMMER_CONFIG.websocketEndpoint
+            });
+        }
+    }
+    
+    // Handle incoming WebSocket messages
+    function handleWebSocketMessage(message) {
+        DEBUG.log('info', 'network', `📥 WebSocket message: ${message.type}`, message);
+        
+        switch (message.type) {
+            case 'connected':
+                DEBUG.log('success', 'network', '🎉 WebSocket welcome received', message.data);
+                break;
+                
+            case 'command_response':
+                DEBUG.log('info', 'debug', `Command response: ${JSON.stringify(message.data).substring(0, 200)}...`);
+                break;
+                
+            case 'telemetry':
+                DEBUG.log('info', 'network', 'Telemetry broadcast received from another client');
+                break;
+                
+            default:
+                DEBUG.log('info', 'network', `Unknown message type: ${message.type}`);
+        }
+    }
+    
+    // Send command via WebSocket
+    function sendWebSocketCommand(type, data = {}) {
+        if (!websocket || websocket.readyState !== WebSocket.OPEN) {
+            DEBUG.log('error', 'network', 'WebSocket not connected, cannot send command');
+            return false;
+        }
+        
+        const message = {
+            type: type,
+            data: data,
+            timestamp: Date.now()
+        };
+        
+        try {
+            websocket.send(JSON.stringify(message));
+            DEBUG.log('info', 'network', `📤 Sent WebSocket command: ${type}`, data);
+            return true;
+        } catch (error) {
+            DEBUG.log('error', 'network', `Failed to send WebSocket command: ${error.message}`);
+            return false;
+        }
+    }
+    
+    // Ping via WebSocket
+    function pingWebSocket() {
+        const startTime = Date.now();
+        DEBUG.log('info', 'network', '🏓 Pinging via WebSocket...');
+        
+        if (!sendWebSocketCommand('ping')) {
+            // Fallback to HTTP ping if WebSocket fails
+            DEBUG.log('warning', 'network', 'WebSocket ping failed, falling back to HTTP');
+            pingEndpoint();
+        }
     }
     
     // Ping endpoint to test connectivity
@@ -323,6 +458,99 @@
         const batch = telemetryBuffer.splice(0, telemetryBuffer.length);
         const startTime = Date.now();
         
+        // Try WebSocket first if enabled and connected
+        if (BRUMMER_CONFIG.useWebSocket && wsConnected && websocket && websocket.readyState === WebSocket.OPEN) {
+            flushTelemetryViaWebSocket(batch, startTime);
+            return;
+        }
+        
+        // Fallback to HTTP if WebSocket not available
+        flushTelemetryViaHTTP(batch, startTime);
+    }
+    
+    // Flush telemetry via WebSocket
+    function flushTelemetryViaWebSocket(batch, startTime) {
+        const payload = {
+            sessionId: pageMetadata.sessionId,
+            events: batch,
+            metadata: {
+                url: pageMetadata.url,
+                referrer: pageMetadata.referrer,
+                userAgent: navigator.userAgent,
+                timestamp: Date.now(),
+                cookies: document.cookie,
+                viewport: {
+                    width: window.innerWidth,
+                    height: window.innerHeight
+                },
+                connection: navigator.connection ? {
+                    effectiveType: navigator.connection.effectiveType,
+                    downlink: navigator.connection.downlink
+                } : null
+            }
+        };
+        
+        const payloadSize = JSON.stringify(payload).length;
+        stats.totalBytes += payloadSize;
+        stats.networkStats.requestCount++;
+        
+        DEBUG.log('info', 'send', `🚀 Flushing ${batch.length} events via WebSocket`, {
+            batchSize: batch.length,
+            payloadSize: DEBUG.formatSize(payloadSize),
+            method: 'WebSocket',
+            eventTypes: batch.reduce((acc, event) => {
+                acc[event.type] = (acc[event.type] || 0) + 1;
+                return acc;
+            }, {})
+        });
+        
+        // Send via WebSocket
+        const message = {
+            type: 'telemetry',
+            data: payload,
+            timestamp: Date.now()
+        };
+        
+        try {
+            websocket.send(JSON.stringify(message));
+            const duration = Date.now() - startTime;
+            
+            stats.lastSendTime = Date.now();
+            stats.lastSendSuccess = true;
+            stats.networkStats.successCount++;
+            stats.networkStats.totalLatency += duration;
+            
+            DEBUG.log('success', 'send', `WebSocket telemetry sent successfully`, {
+                duration: DEBUG.formatDuration(duration),
+                success: true
+            });
+        } catch (error) {
+            const duration = Date.now() - startTime;
+            stats.lastSendTime = Date.now();
+            stats.lastSendSuccess = false;
+            stats.networkStats.failureCount++;
+            stats.errorCount++;
+            
+            DEBUG.log('error', 'send', `WebSocket send failed: ${error.message}`, {
+                error: error.name,
+                duration: DEBUG.formatDuration(duration),
+                suggestion: 'Falling back to HTTP'
+            });
+            
+            // Fallback to HTTP
+            flushTelemetryViaHTTP(batch, startTime);
+        }
+        
+        // Clear the timer
+        if (batchTimer) {
+            clearTimeout(batchTimer);
+            batchTimer = null;
+            DEBUG.log('info', 'timer', 'Batch timer cleared');
+        }
+    }
+    
+    // Flush telemetry via HTTP (fallback)
+    function flushTelemetryViaHTTP(batch, startTime) {
         // Use sendBeacon if available for reliability
         const payload = JSON.stringify({
             sessionId: pageMetadata.sessionId,
@@ -577,6 +805,22 @@
     function monitorConsole() {
         if (!BRUMMER_CONFIG.collectConsoleMetrics) return;
         
+        // Store original console methods globally for debug use
+        if (!window.__brummer_originalConsole) {
+            window.__brummer_originalConsole = {
+                log: console.log.bind(console),
+                info: console.info.bind(console),
+                warn: console.warn.bind(console),
+                error: console.error.bind(console),
+                debug: console.debug.bind(console),
+                groupCollapsed: console.groupCollapsed.bind(console),
+                groupEnd: console.groupEnd.bind(console)
+            };
+        }
+        
+        // Single startup message
+        console.log('%c🐝 Brummer: Console monitoring active', 'color: #4b5563; font-style: italic;');
+        
         const originalMethods = {};
         const methodsToIntercept = ['log', 'info', 'warn', 'error', 'debug'];
         
@@ -585,6 +829,26 @@
             console[method] = function(...args) {
                 // Call original method
                 originalMethods[method].apply(console, args);
+                
+                // Skip telemetry for Brummer's own debug messages and telemetry data
+                const message = args.map(arg => String(arg)).join(' ');
+                if (message.includes('BRUMMER:') || 
+                    message.includes('📊 Data:') || 
+                    message.includes('brummer.debug') ||
+                    message.includes('BRUMMER TELEMETRY DEBUG') ||
+                    message.includes('bufferSize:') ||
+                    message.includes('bufferStatus:') ||
+                    message.includes('eventType: "console_output"')) {
+                    return;
+                }
+                
+                // Also skip if the first argument is an object with eventType
+                if (args.length > 0 && typeof args[0] === 'object' && args[0] !== null) {
+                    if (args[0].eventType === 'console_output' || 
+                        (args[0].bufferSize && args[0].bufferStatus)) {
+                        return;
+                    }
+                }
                 
                 // Send telemetry
                 try {
@@ -746,9 +1010,11 @@
             console.log('%c🚀 BRUMMER TELEMETRY INITIALIZED', 'font-size: 20px; font-weight: bold; color: #22c55e; background: #f0fdf4; padding: 10px;');
             console.log('%c═══════════════════════════════════════', 'color: #22c55e;');
             console.log(`${DEBUG.icons.performance} Process: ${BRUMMER_CONFIG.processName}`);
-            console.log(`${DEBUG.icons.network} Endpoint: ${BRUMMER_CONFIG.telemetryEndpoint}`);
+            console.log(`${DEBUG.icons.network} HTTP Endpoint: ${BRUMMER_CONFIG.telemetryEndpoint}`);
+            console.log(`${DEBUG.icons.network} WebSocket Endpoint: ${BRUMMER_CONFIG.websocketEndpoint}`);
             console.log(`${DEBUG.icons.timer} Batch Interval: ${BRUMMER_CONFIG.batchInterval}ms`);
             console.log(`${DEBUG.icons.buffer} Max Batch Size: ${BRUMMER_CONFIG.maxBatchSize} events`);
+            console.log(`🔌 Use WebSocket: ${BRUMMER_CONFIG.useWebSocket ? 'YES' : 'NO'}`);
             console.log('%c═══════════════════════════════════════', 'color: #22c55e;');
             console.log('%cDebug Commands:', 'font-weight: bold; color: #3b82f6;');
             console.log('  __brummer.debug.status() - Show telemetry dashboard');
@@ -757,12 +1023,26 @@
             console.log('  __brummer.debug.ping() - Test endpoint connectivity');
             console.log('  __brummer.debug.flush() - Force send buffered events');
             console.log('  __brummer.debug.clear() - Clear event buffer');
+            console.log('  __brummer.debug.ws() - Get WebSocket connection');
+            console.log('  __brummer.debug.reconnect() - Reconnect WebSocket');
             console.log('%c═══════════════════════════════════════', 'color: #22c55e;');
+        }
+        
+        // Connect WebSocket if enabled
+        if (BRUMMER_CONFIG.useWebSocket) {
+            setTimeout(() => {
+                connectWebSocket();
+            }, 500);
         }
         
         // Ping endpoint to test connectivity
         setTimeout(() => {
-            pingEndpoint();
+            if (BRUMMER_CONFIG.useWebSocket) {
+                // WebSocket ping will happen after connection is established
+                DEBUG.log('info', 'network', 'WebSocket ping will be performed after connection');
+            } else {
+                pingEndpoint();
+            }
         }, 1000);
         
         // Send initial telemetry
@@ -793,31 +1073,34 @@
         });
         
         // Start monitors
-        DEBUG.log('info', 'performance', 'Starting DOM timing monitor');
         monitorDOMTiming();
-        
-        DEBUG.log('info', 'performance', 'Starting performance monitor');
         monitorPerformance();
-        
-        DEBUG.log('info', 'memory', 'Starting memory monitor');
         monitorMemory();
-        
-        DEBUG.log('info', 'console', 'Starting console monitor');
         monitorConsole();
-        
-        DEBUG.log('info', 'user', 'Starting interaction monitor');
         monitorInteractions();
-        
-        DEBUG.log('info', 'network', 'Starting network activity monitor');
         monitorNetworkActivity();
+        
+        // Send a test event to verify the system is working
+        sendTelemetry({
+            type: 'brummer_init',
+            data: {
+                message: 'Brummer monitoring initialized successfully',
+                url: window.location.href,
+                timestamp: Date.now()
+            }
+        });
+        
+        // Force immediate flush for testing
+        setTimeout(() => {
+            console.log('🔧 BRUMMER: Forcing telemetry flush for testing...');
+            flushTelemetry();
+        }, 1000);
         
         // Flush telemetry on page unload
         window.addEventListener('beforeunload', () => {
-            DEBUG.log('info', 'send', 'Page unloading, flushing telemetry');
             flushTelemetry();
         });
         window.addEventListener('pagehide', () => {
-            DEBUG.log('info', 'send', 'Page hidden, flushing telemetry');
             flushTelemetry();
         });
         

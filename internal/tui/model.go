@@ -110,6 +110,96 @@ type Model struct {
 	updateChan   chan tea.Msg
 }
 
+// handleGlobalKeys handles keys that should work in all views
+func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	switch {
+	case key.Matches(msg, m.keys.Quit):
+		// Check if there are running processes
+		runningProcesses := 0
+		for _, proc := range m.processMgr.GetAllProcesses() {
+			if proc.Status == process.StatusRunning {
+				runningProcesses++
+			}
+		}
+		
+		if runningProcesses > 0 {
+			return m, tea.Sequence(
+				tea.Printf("Stopping %d running processes...\n", runningProcesses),
+				func() tea.Msg {
+					m.processMgr.Cleanup()
+					return tea.Msg(nil)
+				},
+				tea.Printf(renderExitScreen()),
+				tea.Quit,
+			), true
+		} else {
+			return m, tea.Sequence(
+				tea.Printf(renderExitScreen()),
+				tea.Quit,
+			), true
+		}
+
+	case key.Matches(msg, m.keys.Tab):
+		m.cycleView()
+		return m, nil, true
+
+	case key.Matches(msg, m.keys.Back):
+		if m.currentView == ViewFilters {
+			m.currentView = ViewLogs
+		} else if m.currentView == ViewLogs || m.currentView == ViewErrors || m.currentView == ViewURLs {
+			m.currentView = ViewProcesses
+		}
+		return m, nil, true
+
+	case key.Matches(msg, m.keys.Priority):
+		if m.currentView == ViewLogs {
+			m.showHighPriority = !m.showHighPriority
+			m.updateLogsView()
+		}
+		return m, nil, true
+
+	case key.Matches(msg, m.keys.RestartAll):
+		if m.currentView == ViewProcesses {
+			m.logStore.Add("system", "System", "Restarting all running processes...", false)
+			return m, m.handleRestartAll(), true
+		}
+		return m, nil, true
+
+	case key.Matches(msg, m.keys.CopyError):
+		return m, m.handleCopyError(), true
+
+	case key.Matches(msg, m.keys.ClearLogs):
+		if m.currentView == ViewLogs {
+			m.handleClearLogs()
+		}
+		return m, nil, true
+	}
+
+	// Handle number keys for view switching
+	switch msg.String() {
+	case "1":
+		m.currentView = ViewProcesses
+		return m, nil, true
+	case "2":
+		m.currentView = ViewLogs
+		return m, nil, true
+	case "3":
+		m.currentView = ViewErrors
+		return m, nil, true
+	case "4":
+		m.currentView = ViewURLs
+		return m, nil, true
+	case "5":
+		m.currentView = ViewWeb
+		return m, nil, true
+	case "6":
+		m.currentView = ViewSettings
+		return m, nil, true
+	}
+
+	return m, nil, false // Key not handled
+}
+
 type keyMap struct {
 	Up          key.Binding
 	Down        key.Binding
@@ -145,12 +235,12 @@ var keys = keyMap{
 		key.WithHelp("enter", "select"),
 	),
 	Back: key.NewBinding(
-		key.WithKeys("esc", "q"),
-		key.WithHelp("esc/q", "back"),
+		key.WithKeys("esc"),
+		key.WithHelp("esc", "back"),
 	),
 	Quit: key.NewBinding(
-		key.WithKeys("ctrl+c"),
-		key.WithHelp("ctrl+c", "quit"),
+		key.WithKeys("ctrl+c", "q"),
+		key.WithHelp("ctrl+c/q", "quit"),
 	),
 	Tab: key.NewBinding(
 		key.WithKeys("tab"),
@@ -596,87 +686,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		
-		// Handle number keys 1-6 for tab switching
-		switch msg.String() {
-		case "1":
-			m.currentView = ViewProcesses
-			return m, nil
-		case "2":
-			m.currentView = ViewLogs
-			return m, nil
-		case "3":
-			m.currentView = ViewErrors
-			return m, nil
-		case "4":
-			m.currentView = ViewURLs
-			return m, nil
-		case "5":
-			m.currentView = ViewWeb
-			return m, nil
-		case "6":
-			m.currentView = ViewSettings
-			return m, nil
+		// Handle global keys first
+		if model, cmd, handled := m.handleGlobalKeys(msg); handled {
+			return model, cmd
 		}
-		
+
 		switch {
-		case key.Matches(msg, m.keys.Quit):
-			// Check if there are running processes
-			runningProcesses := 0
-			for _, proc := range m.processMgr.GetAllProcesses() {
-				if proc.Status == process.StatusRunning {
-					runningProcesses++
-				}
-			}
-			
-			if runningProcesses > 0 {
-				// Add a message about stopping processes
-				return m, tea.Sequence(
-					tea.Printf("Stopping %d running processes...\n", runningProcesses),
-					func() tea.Msg {
-						m.processMgr.Cleanup()
-						return tea.Msg(nil)
-					},
-					tea.Printf(renderExitScreen()),
-					tea.Quit,
-				)
-			} else {
-				return m, tea.Sequence(
-					tea.Printf(renderExitScreen()),
-					tea.Quit,
-				)
-			}
-
-		case key.Matches(msg, m.keys.Tab):
-			m.cycleView()
-
-		case key.Matches(msg, m.keys.Back):
-			if m.currentView == ViewFilters {
-				m.currentView = ViewLogs
-			} else if m.currentView == ViewLogs || m.currentView == ViewErrors || m.currentView == ViewURLs {
-				m.currentView = ViewProcesses
-			}
-
-
-		case key.Matches(msg, m.keys.Priority):
-			if m.currentView == ViewLogs {
-				m.showHighPriority = !m.showHighPriority
-				m.updateLogsView()
-			}
-
-		case key.Matches(msg, m.keys.RestartAll):
-			if m.currentView == ViewProcesses {
-				m.logStore.Add("system", "System", "Restarting all running processes...", false)
-				cmds = append(cmds, m.handleRestartAll())
-			}
-
-		case key.Matches(msg, m.keys.CopyError):
-			cmds = append(cmds, m.handleCopyError())
-
-		case key.Matches(msg, m.keys.ClearLogs):
-			if m.currentView == ViewLogs {
-				m.handleClearLogs()
-			}
-
 		case key.Matches(msg, m.keys.ClearErrors):
 			if m.currentView == ViewErrors {
 				m.handleClearErrors()

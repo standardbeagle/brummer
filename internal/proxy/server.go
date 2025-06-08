@@ -16,6 +16,7 @@ import (
 
 	"github.com/beagle/brummer/pkg/events"
 	"github.com/elazarl/goproxy"
+	"github.com/gorilla/websocket"
 )
 
 // Request represents a proxied HTTP request with its metadata
@@ -81,6 +82,11 @@ type Server struct {
 	telemetry   *TelemetryStore
 	enableTelemetry bool
 	
+	// WebSocket connections for real-time telemetry
+	wsUpgrader  websocket.Upgrader
+	wsClients   map[*websocket.Conn]bool
+	wsMutex     sync.RWMutex
+	
 	running     bool
 }
 
@@ -102,6 +108,12 @@ func NewServerWithMode(port int, mode ProxyMode, eventBus *events.EventBus) *Ser
 		nextPort:    port + 1000, // Start allocating from port+1000 for reverse proxy URLs
 		telemetry:   NewTelemetryStore(),
 		enableTelemetry: true,
+		wsUpgrader: websocket.Upgrader{
+			CheckOrigin: func(r *http.Request) bool {
+				return true // Allow all origins for development
+			},
+		},
+		wsClients: make(map[*websocket.Conn]bool),
 	}
 	
 	if mode == ProxyModeFull {
@@ -352,26 +364,16 @@ func (s *Server) injectMonitoringScriptForMapping(resp *http.Response, mapping *
 		return resp
 	}
 	
-	// Create the injection script with idempotent guard - use mapping's proxy port, not control port
+	// Create the injection script with metadata - use mapping's proxy port, not control port
 	injectionScript := fmt.Sprintf(`
 <!-- Brummer Monitoring Script -->
 <script>
-(function() {
-    // Idempotent guard - only initialize once
-    if (window.__brummerInitialized) {
-        return;
-    }
-    window.__brummerInitialized = true;
-    
-    // Set process name and proxy host for telemetry
-    window.__brummerProcessName = '%s';
-    window.__brummerProxyHost = 'localhost:%d';
-    
-    // Load the full monitoring script immediately (non-deferred)
-    (function() {
-        %s
-    })();
-})();
+// Set process name and proxy host for telemetry
+window.__brummerProcessName = '%s';
+window.__brummerProxyHost = 'localhost:%d';
+</script>
+<script>
+%s
 </script>
 <!-- End Brummer Monitoring Script -->
 `, mapping.ProcessName, mapping.ProxyPort, monitoringScript)
@@ -544,6 +546,12 @@ func (s *Server) Start() error {
 				return
 			}
 			
+			// Handle WebSocket telemetry endpoint
+			if r.URL.Path == "/__brummer_ws__" {
+				s.handleWebSocketTelemetry(w, r)
+				return
+			}
+			
 			// Handle direct browsing to proxy server (not proxy requests)
 			if r.Header.Get("Host") == r.Host && (r.URL.Path == "/" || r.URL.Path == "") {
 				fmt.Fprintf(w, "Brummer Proxy Server\n\n")
@@ -681,14 +689,92 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 		})
 	}
 	
+	// Set up request tracking ONCE when creating the handler
+	proxy.OnRequest().DoFunc(func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
+		startTime := time.Now()
+		reqID := fmt.Sprintf("%d", time.Now().UnixNano())
+		
+		// Store request info in context
+		ctx.UserData = &Request{
+			ID:          reqID,
+			Method:      r.Method,
+			URL:         r.URL.String(),
+			Host:        r.Host,
+			Path:        r.URL.Path,
+			StartTime:   startTime,
+			ProcessName: mapping.ProcessName,
+		}
+		
+		return r, nil
+	})
+	
+	// Handle responses with telemetry injection ONCE when creating the handler
+	proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+		if ctx.UserData != nil {
+			req := ctx.UserData.(*Request)
+			req.Duration = time.Since(req.StartTime)
+			if resp != nil {
+				req.StatusCode = resp.StatusCode
+				
+				// Get response size
+				if resp.ContentLength > 0 {
+					req.Size = resp.ContentLength
+				}
+			}
+			
+			// Store the request
+			s.addRequest(*req)
+			
+			// Publish event
+			s.eventBus.Publish(events.Event{
+				Type:      events.EventType("proxy.request"),
+				ProcessID: req.ProcessName,
+				Data: map[string]interface{}{
+					"method":      req.Method,
+					"url":         req.URL,
+					"status":      req.StatusCode,
+					"duration":    req.Duration.Milliseconds(),
+					"size":        req.Size,
+					"processName": req.ProcessName,
+				},
+			})
+			
+			// Inject monitoring script into HTML responses - use correct port for this mapping
+			if s.enableTelemetry && resp != nil && resp.StatusCode == 200 && ctx.Req != nil {
+				resp = s.injectMonitoringScriptForMapping(resp, mapping, ctx.Req)
+			}
+		}
+		
+		return resp
+	})
+	
+	// Handle errors ONCE when creating the handler
+	proxy.OnResponse(goproxy.StatusCodeIs(0)).DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
+		if ctx.UserData != nil {
+			req := ctx.UserData.(*Request)
+			req.Duration = time.Since(req.StartTime)
+			req.Error = "Connection failed"
+			
+			// Store the failed request
+			s.addRequest(*req)
+		}
+		
+		return resp
+	})
+	
 	// Handle telemetry endpoint directly
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__brummer_telemetry__", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == "POST" {
+		if r.Method == "POST" || r.Method == "OPTIONS" {
 			s.handleTelemetry(w, r)
 		} else {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
+	})
+	
+	// Handle WebSocket telemetry endpoint directly  
+	mux.HandleFunc("/__brummer_ws__", func(w http.ResponseWriter, r *http.Request) {
+		s.handleWebSocketTelemetry(w, r)
 	})
 	
 	// For all other requests, use goproxy with URL rewriting
@@ -697,79 +783,6 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 		r.URL.Scheme = targetURL.Scheme
 		r.URL.Host = targetURL.Host
 		r.Host = targetURL.Host
-		
-		// Set up request tracking in goproxy context
-		proxy.OnRequest().DoFunc(func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-			startTime := time.Now()
-			reqID := fmt.Sprintf("%d", time.Now().UnixNano())
-			
-			// Store request info in context
-			ctx.UserData = &Request{
-				ID:          reqID,
-				Method:      r.Method,
-				URL:         r.URL.String(),
-				Host:        r.Host,
-				Path:        r.URL.Path,
-				StartTime:   startTime,
-				ProcessName: mapping.ProcessName,
-			}
-			
-			return r, nil
-		})
-		
-		// Handle responses with telemetry injection
-		proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-			if ctx.UserData != nil {
-				req := ctx.UserData.(*Request)
-				req.Duration = time.Since(req.StartTime)
-				if resp != nil {
-					req.StatusCode = resp.StatusCode
-					
-					// Get response size
-					if resp.ContentLength > 0 {
-						req.Size = resp.ContentLength
-					}
-				}
-				
-				// Store the request
-				s.addRequest(*req)
-				
-				// Publish event
-				s.eventBus.Publish(events.Event{
-					Type:      events.EventType("proxy.request"),
-					ProcessID: req.ProcessName,
-					Data: map[string]interface{}{
-						"method":      req.Method,
-						"url":         req.URL,
-						"status":      req.StatusCode,
-						"duration":    req.Duration.Milliseconds(),
-						"size":        req.Size,
-						"processName": req.ProcessName,
-					},
-				})
-				
-				// Inject monitoring script into HTML responses - use correct port for this mapping
-				if s.enableTelemetry && resp != nil && resp.StatusCode == 200 && ctx.Req != nil {
-					resp = s.injectMonitoringScriptForMapping(resp, mapping, ctx.Req)
-				}
-			}
-			
-			return resp
-		})
-		
-		// Handle errors
-		proxy.OnResponse(goproxy.StatusCodeIs(0)).DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-			if ctx.UserData != nil {
-				req := ctx.UserData.(*Request)
-				req.Duration = time.Since(req.StartTime)
-				req.Error = "Connection failed"
-				
-				// Store the failed request
-				s.addRequest(*req)
-			}
-			
-			return resp
-		})
 		
 		// Use goproxy to handle the request
 		proxy.ServeHTTP(w, r)
@@ -937,6 +950,9 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 	// Store telemetry data
 	s.telemetry.AddBatch(batch, processName)
 	
+	// Broadcast to WebSocket clients
+	s.SendTelemetryToWebSockets(batch, processName)
+	
 	// Publish telemetry event
 	s.eventBus.Publish(events.Event{
 		Type:      events.EventType("telemetry.received"),
@@ -1019,4 +1035,239 @@ func (s *Server) isBackgroundRequest(req *http.Request) bool {
 	}
 	
 	return false
+}
+
+// WebSocket message types
+type WSMessage struct {
+	Type      string      `json:"type"`
+	Data      interface{} `json:"data"`
+	Timestamp int64       `json:"timestamp"`
+}
+
+// handleWebSocketTelemetry handles WebSocket connections for real-time telemetry
+func (s *Server) handleWebSocketTelemetry(w http.ResponseWriter, r *http.Request) {
+	// Upgrade HTTP connection to WebSocket
+	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Printf("WebSocket upgrade failed: %v", err)
+		return
+	}
+	defer conn.Close()
+
+	// Register client
+	s.wsMutex.Lock()
+	s.wsClients[conn] = true
+	clientCount := len(s.wsClients)
+	s.wsMutex.Unlock()
+
+	log.Printf("WebSocket client connected. Total clients: %d", clientCount)
+
+	// Send welcome message
+	welcomeMsg := WSMessage{
+		Type: "connected",
+		Data: map[string]interface{}{
+			"message":     "Connected to Brummer telemetry",
+			"serverTime":  time.Now().UnixMilli(),
+			"clientCount": clientCount,
+		},
+		Timestamp: time.Now().UnixMilli(),
+	}
+	conn.WriteJSON(welcomeMsg)
+
+	// Handle incoming messages (for REPL commands)
+	for {
+		var msg WSMessage
+		err := conn.ReadJSON(&msg)
+		if err != nil {
+			log.Printf("WebSocket read error: %v", err)
+			break
+		}
+
+		// Handle REPL commands
+		s.handleWSCommand(conn, msg)
+	}
+
+	// Unregister client
+	s.wsMutex.Lock()
+	delete(s.wsClients, conn)
+	clientCount = len(s.wsClients)
+	s.wsMutex.Unlock()
+
+	log.Printf("WebSocket client disconnected. Total clients: %d", clientCount)
+}
+
+// handleWSCommand processes incoming WebSocket commands for REPL functionality
+func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
+	response := WSMessage{
+		Type:      "command_response",
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	switch msg.Type {
+	case "ping":
+		response.Data = map[string]interface{}{
+			"pong": true,
+			"serverTime": time.Now().UnixMilli(),
+		}
+
+	case "status":
+		response.Data = map[string]interface{}{
+			"requests": len(s.requests),
+			"telemetryEnabled": s.enableTelemetry,
+			"mode": s.mode,
+			"port": s.port,
+			"sessions": s.telemetry.GetAllSessions(),
+		}
+
+	case "clear_buffer":
+		response.Data = map[string]interface{}{
+			"message": "Buffer cleared",
+			"cleared": true,
+		}
+
+	case "get_requests":
+		limit := 100 // Default limit
+		if data, ok := msg.Data.(map[string]interface{}); ok {
+			if l, ok := data["limit"].(float64); ok {
+				limit = int(l)
+			}
+		}
+		
+		requests := s.GetRequests()
+		if len(requests) > limit {
+			requests = requests[len(requests)-limit:]
+		}
+		
+		response.Data = map[string]interface{}{
+			"requests": requests,
+			"total": len(s.requests),
+			"returned": len(requests),
+		}
+
+	case "get_telemetry":
+		sessions := s.telemetry.GetAllSessions()
+		response.Data = map[string]interface{}{
+			"sessions": sessions,
+			"count": len(sessions),
+		}
+
+	case "telemetry":
+		// Handle incoming telemetry data via WebSocket
+		if data, ok := msg.Data.(map[string]interface{}); ok {
+			// Convert the data back to TelemetryBatch format
+			batch := TelemetryBatch{}
+			
+			// Extract sessionId
+			if sessionId, ok := data["sessionId"].(string); ok {
+				batch.SessionID = sessionId
+			}
+			
+			// Extract events
+			if events, ok := data["events"].([]interface{}); ok {
+				for _, event := range events {
+					if eventMap, ok := event.(map[string]interface{}); ok {
+						telemetryEvent := TelemetryEvent{}
+						
+						if eventType, ok := eventMap["type"].(string); ok {
+							telemetryEvent.Type = TelemetryEventType(eventType)
+						}
+						if timestamp, ok := eventMap["timestamp"].(float64); ok {
+							telemetryEvent.Timestamp = int64(timestamp)
+						}
+						if sessionId, ok := eventMap["sessionId"].(string); ok {
+							telemetryEvent.SessionID = sessionId
+						}
+						if url, ok := eventMap["url"].(string); ok {
+							telemetryEvent.URL = url
+						}
+						if data, ok := eventMap["data"].(map[string]interface{}); ok {
+							telemetryEvent.Data = data
+						}
+						
+						batch.Events = append(batch.Events, telemetryEvent)
+					}
+				}
+			}
+			
+			// Determine process name from metadata or use default
+			processName := "unknown"
+			if metadata, ok := data["metadata"].(map[string]interface{}); ok {
+				if url, ok := metadata["url"].(string); ok {
+					processName = s.getProcessForURL(url)
+				}
+			}
+			
+			// Store telemetry data (same as HTTP handler)
+			s.telemetry.AddBatch(batch, processName)
+			
+			// Broadcast to other WebSocket clients
+			s.SendTelemetryToWebSockets(batch, processName)
+			
+			// Publish telemetry event
+			s.eventBus.Publish(events.Event{
+				Type:      events.EventType("telemetry.received"),
+				ProcessID: processName,
+				Data: map[string]interface{}{
+					"sessionId":  batch.SessionID,
+					"eventCount": len(batch.Events),
+					"source":     "websocket",
+				},
+			})
+			
+			response.Data = map[string]interface{}{
+				"status": "ok",
+				"received": len(batch.Events),
+				"sessionId": batch.SessionID,
+			}
+		} else {
+			response.Data = map[string]interface{}{
+				"error": "Invalid telemetry data format",
+			}
+		}
+		
+		// Send response back to client
+		conn.WriteJSON(response)
+		return // Don't send another response below
+
+	default:
+		response.Data = map[string]interface{}{
+			"error": "Unknown command type: " + msg.Type,
+		}
+	}
+
+	conn.WriteJSON(response)
+}
+
+// broadcastToWebSockets sends a message to all connected WebSocket clients
+func (s *Server) broadcastToWebSockets(msgType string, data interface{}) {
+	s.wsMutex.RLock()
+	defer s.wsMutex.RUnlock()
+
+	if len(s.wsClients) == 0 {
+		return
+	}
+
+	msg := WSMessage{
+		Type:      msgType,
+		Data:      data,
+		Timestamp: time.Now().UnixMilli(),
+	}
+
+	// Send to all clients
+	for conn := range s.wsClients {
+		err := conn.WriteJSON(msg)
+		if err != nil {
+			log.Printf("WebSocket broadcast error: %v", err)
+			// Note: We should probably remove the client here, but that would
+			// require holding the write lock, which could cause deadlock
+		}
+	}
+}
+
+// SendTelemetryToWebSockets broadcasts telemetry data to WebSocket clients
+func (s *Server) SendTelemetryToWebSockets(batch TelemetryBatch, processName string) {
+	s.broadcastToWebSockets("telemetry", map[string]interface{}{
+		"batch":       batch,
+		"processName": processName,
+	})
 }
