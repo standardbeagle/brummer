@@ -67,6 +67,10 @@ type Model struct {
 	showPattern     string  // Regex pattern for /show command
 	hidePattern     string  // Regex pattern for /hide command
 	
+	// Command window state
+	showingCommandWindow bool
+	commandAutocomplete  CommandAutocomplete
+	
 	// File browser state
 	showingFileBrowser bool
 	currentPath        string
@@ -95,7 +99,7 @@ type keyMap struct {
 	Back        key.Binding
 	Quit        key.Binding
 	Tab         key.Binding
-	Search      key.Binding
+	Command     key.Binding
 	Filter      key.Binding
 	Stop        key.Binding
 	Restart     key.Binding
@@ -133,9 +137,9 @@ var keys = keyMap{
 		key.WithKeys("tab"),
 		key.WithHelp("tab", "switch view"),
 	),
-	Search: key.NewBinding(
+	Command: key.NewBinding(
 		key.WithKeys("/"),
-		key.WithHelp("/", "search"),
+		key.WithHelp("/", "command palette"),
 	),
 	Filter: key.NewBinding(
 		key.WithKeys("f"),
@@ -186,7 +190,7 @@ func (k keyMap) ShortHelp() []key.Binding {
 func (k keyMap) FullHelp() [][]key.Binding {
 	return [][]key.Binding{
 		{k.Up, k.Down, k.Enter, k.Back},
-		{k.Tab, k.Search, k.Filter, k.Priority},
+		{k.Tab, k.Command, k.Filter, k.Priority},
 		{k.Stop, k.Restart, k.RestartAll, k.CopyError},
 		{k.ClearLogs, k.ClearErrors, k.Help, k.Quit},
 	}
@@ -527,6 +531,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateSizes()
 
 	case tea.KeyMsg:
+		// Handle command window first
+		if m.showingCommandWindow {
+			return m.handleCommandWindow(msg)
+		}
+		
+		// Handle "/" key to open command window
+		if msg.String() == "/" && m.width > 0 && m.height > 0 {
+			m.showCommandWindow()
+			return m, nil
+		}
+		
 		// Handle number keys 1-6 for tab switching
 		switch msg.String() {
 		case "1":
@@ -581,17 +596,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.cycleView()
 
 		case key.Matches(msg, m.keys.Back):
-			if m.currentView == ViewSearch || m.currentView == ViewFilters {
+			if m.currentView == ViewFilters {
 				m.currentView = ViewLogs
 			} else if m.currentView == ViewLogs || m.currentView == ViewErrors || m.currentView == ViewURLs {
 				m.currentView = ViewProcesses
 			}
 
-		case key.Matches(msg, m.keys.Search):
-			if m.currentView == ViewLogs {
-				m.currentView = ViewSearch
-				m.searchInput.Focus()
-			}
 
 		case key.Matches(msg, m.keys.Priority):
 			if m.currentView == ViewLogs {
@@ -758,17 +768,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-	case ViewSearch:
-		newInput, cmd := m.searchInput.Update(msg)
-		m.searchInput = newInput
-		cmds = append(cmds, cmd)
-
-		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, m.keys.Enter) {
-			m.handleSlashCommand(m.searchInput.Value())
-			m.searchInput.SetValue("")  // Clear the search input
-			m.currentView = ViewLogs
-			m.updateLogsView()
-		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -781,8 +780,10 @@ func (m Model) View() string {
 
 	var content string
 	
-	// Show run dialog if active
-	if m.showingRunDialog {
+	// Show command window if active (highest priority)
+	if m.showingCommandWindow {
+		return m.renderCommandWindow()
+	} else if m.showingRunDialog {
 		content = m.renderRunDialog()
 	} else {
 		switch m.currentView {
@@ -802,8 +803,6 @@ func (m Model) View() string {
 			} else {
 				content = m.settingsList.View()
 			}
-		case ViewSearch:
-			content = m.renderSearchView()
 		case ViewFilters:
 			content = m.renderFiltersView()
 		}
@@ -1184,21 +1183,6 @@ func (m Model) renderLogsView() string {
 	return lipgloss.JoinVertical(lipgloss.Left, header, m.logsViewport.View())
 }
 
-func (m Model) renderSearchView() string {
-	instructionStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		"Search Commands:",
-		m.searchInput.View(),
-		"",
-		instructionStyle.Render("Examples:"),
-		instructionStyle.Render("  /show db           - Show only lines containing 'db'"),
-		instructionStyle.Render("  /show db|database  - Show lines containing 'db' OR 'database'"),
-		instructionStyle.Render("  /hide error        - Hide lines containing 'error'"),
-		instructionStyle.Render("  /hide ^\\[debug\\]   - Hide lines starting with '[debug]'"),
-		instructionStyle.Render("  search term        - Legacy search (no slash)"),
-	)
-}
 
 func (m Model) renderFiltersView() string {
 	filters := m.logStore.GetFilters()
@@ -2080,29 +2064,188 @@ func (m *Model) handleSlashCommand(input string) {
 	
 	// Parse the command
 	input = strings.TrimSpace(input)
-	if !strings.HasPrefix(input, "/") {
-		// Legacy behavior: treat as plain search
-		m.searchResults = m.logStore.Search(input)
-		return
-	}
-	
-	// Parse slash commands
-	parts := strings.SplitN(input, " ", 2)
-	if len(parts) < 2 {
-		// Invalid command, clear filters
+	// Parse the command
+	parts := strings.Fields(input)
+	if len(parts) == 0 {
 		return
 	}
 	
 	command := parts[0]
-	pattern := strings.TrimSpace(parts[1])
 	
 	switch command {
 	case "/show":
-		m.showPattern = pattern
+		if len(parts) < 2 {
+			return
+		}
+		m.showPattern = strings.Join(parts[1:], " ")
 	case "/hide":
-		m.hidePattern = pattern
+		if len(parts) < 2 {
+			return
+		}
+		m.hidePattern = strings.Join(parts[1:], " ")
+	case "/run":
+		if len(parts) < 2 {
+			return
+		}
+		scriptName := parts[1]
+		// Execute the script
+		go func() {
+			_, err := m.processMgr.StartScript(scriptName)
+			if err != nil {
+				m.logStore.Add("system", "System", fmt.Sprintf("Error starting script %s: %v", scriptName, err), true)
+				m.updateChan <- logUpdateMsg{}
+			} else {
+				m.updateChan <- processUpdateMsg{}
+			}
+		}()
+		// Switch to logs view immediately
+		m.currentView = ViewLogs
 	default:
-		// Unknown command, treat as legacy search
+		// Unknown command, treat as search
 		m.searchResults = m.logStore.Search(input)
 	}
+}
+
+
+
+func (m *Model) showCommandWindow() {
+	m.showingCommandWindow = true
+	scripts := m.processMgr.GetScripts()
+	m.commandAutocomplete = NewCommandAutocomplete(scripts)
+	m.commandAutocomplete.SetWidth(min(60, m.width - 10))
+	// Force initial focus
+	m.commandAutocomplete.Focus()
+}
+
+func (m *Model) handleCommandWindow(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc":
+		m.showingCommandWindow = false
+		return m, nil
+		
+	case "backspace":
+		if m.commandAutocomplete.Value() == "" {
+			m.showingCommandWindow = false
+			return m, nil
+		}
+		
+	case "enter":
+		// Validate the command first
+		if valid, errMsg := m.commandAutocomplete.ValidateInput(); !valid {
+			// Set error message in the autocomplete component
+			m.commandAutocomplete.errorMessage = errMsg
+			return m, nil
+		}
+		
+		// Execute the command
+		value := m.commandAutocomplete.Value()
+		// Add slash prefix if not present
+		if !strings.HasPrefix(value, "/") && value != "" {
+			value = "/" + value
+		}
+		m.handleSlashCommand(value)
+		m.showingCommandWindow = false
+		m.updateLogsView()
+		return m, nil
+	}
+	
+	// Let the autocomplete component handle the update
+	var cmd tea.Cmd
+	m.commandAutocomplete, cmd = m.commandAutocomplete.Update(msg)
+	
+	return m, cmd
+}
+
+
+func (m Model) renderCommandWindow() string {
+	// Safety check for minimum dimensions
+	if m.width < 20 || m.height < 10 {
+		// Just return empty string if window is too small
+		return ""
+	}
+	
+	// Create the command window
+	windowWidth := min(60, m.width - 10)
+	maxSuggestions := 10
+	
+	windowStyle := lipgloss.NewStyle().
+		Width(windowWidth).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("226")).
+		Background(lipgloss.Color("235")).
+		Padding(1, 2)
+	
+	// Title
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("226")).
+		MarginBottom(1)
+	
+	title := titleStyle.Render("Command Palette")
+	
+	// Input
+	inputStyle := lipgloss.NewStyle().
+		Width(windowWidth - 6).
+		MarginBottom(1)
+	
+	inputView := inputStyle.Render(m.commandAutocomplete.View())
+	
+	// Get the dropdown suggestions
+	dropdownView := m.commandAutocomplete.RenderDropdown(maxSuggestions)
+	
+	// Help text
+	helpStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		MarginTop(1)
+	
+	helpText := helpStyle.Render("↑↓ Navigate • Tab/Enter Select • Esc Cancel")
+	
+	// Error message if any
+	errorMsg := m.commandAutocomplete.GetErrorMessage()
+	if errorMsg != "" {
+		errorStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("196")).
+			Bold(true).
+			MarginTop(1)
+		errorView := errorStyle.Render("⚠ " + errorMsg)
+		inputView = lipgloss.JoinVertical(lipgloss.Left, inputView, errorView)
+	}
+	
+	// Combine all elements
+	var contentParts []string
+	contentParts = append(contentParts, title)
+	contentParts = append(contentParts, inputView)
+	if dropdownView != "" && errorMsg == "" {
+		contentParts = append(contentParts, dropdownView)
+	}
+	contentParts = append(contentParts, helpText)
+	
+	content := lipgloss.JoinVertical(lipgloss.Left, contentParts...)
+	window := windowStyle.Render(content)
+	
+	// Create a full-screen overlay with the centered window
+	overlay := lipgloss.Place(
+		m.width, m.height-7, // Account for header and help
+		lipgloss.Center, lipgloss.Center,
+		window,
+		lipgloss.WithWhitespaceBackground(lipgloss.Color("236")), // Dim background
+	)
+	
+	// Return the complete view with header and help
+	helpView := m.help.View(m.keys)
+	
+	return lipgloss.JoinVertical(
+		lipgloss.Left,
+		m.renderHeader(),
+		overlay,
+		helpView,
+	)
+}
+
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
