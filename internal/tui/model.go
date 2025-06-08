@@ -1595,7 +1595,20 @@ func (m Model) renderWebView() string {
 				line += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" ❌")
 			}
 			
+			// Add telemetry indicator if available
+			if req.HasTelemetry {
+				line += lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(" 📊")
+			}
+			
 			content.WriteString(line + "\n")
+			
+			// Show telemetry summary on second line if available
+			if req.HasTelemetry && req.Telemetry != nil {
+				telemetryLine := m.renderTelemetrySummary(req.Telemetry)
+				if telemetryLine != "" {
+					content.WriteString(telemetryLine + "\n")
+				}
+			}
 		}
 	}
 	
@@ -1605,6 +1618,76 @@ func (m Model) renderWebView() string {
 	m.webViewport.GotoBottom()
 	
 	return m.webViewport.View()
+}
+
+// renderTelemetrySummary renders a one-line summary of telemetry data
+func (m Model) renderTelemetrySummary(session *proxy.PageSession) string {
+	if session == nil || len(session.Events) == 0 {
+		return ""
+	}
+	
+	// Extract key metrics from telemetry
+	var loadTime, domReady float64
+	var jsErrors, consoleLogs int
+	var hasMemoryData, hasInteractions bool
+	
+	for _, event := range session.Events {
+		switch event.Type {
+		case proxy.TelemetryPageLoad:
+			if timing, ok := event.Data["timing"].(map[string]interface{}); ok {
+				if domComplete, ok := timing["domComplete"].(float64); ok {
+					domReady = domComplete
+				}
+				if loadEventEnd, ok := timing["loadEventEnd"].(float64); ok {
+					loadTime = loadEventEnd
+				}
+			}
+		case proxy.TelemetryJSError, proxy.TelemetryUnhandledReject:
+			jsErrors++
+		case proxy.TelemetryConsoleOutput:
+			consoleLogs++
+		case proxy.TelemetryMemoryUsage:
+			hasMemoryData = true
+		case proxy.TelemetryUserInteraction:
+			hasInteractions = true
+		}
+	}
+	
+	// Build summary line
+	parts := []string{}
+	detailStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
+	
+	// Add timing info
+	if domReady > 0 {
+		parts = append(parts, fmt.Sprintf("DOM: %.0fms", domReady))
+	}
+	if loadTime > 0 {
+		parts = append(parts, fmt.Sprintf("Load: %.0fms", loadTime))
+	}
+	
+	// Add error count
+	if jsErrors > 0 {
+		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+		parts = append(parts, errorStyle.Render(fmt.Sprintf("%d errors", jsErrors)))
+	}
+	
+	// Add console log count
+	if consoleLogs > 0 {
+		parts = append(parts, fmt.Sprintf("%d logs", consoleLogs))
+	}
+	
+	// Add indicators for other data
+	if hasMemoryData {
+		parts = append(parts, "mem")
+	}
+	if hasInteractions {
+		parts = append(parts, "interactions")
+	}
+	
+	if len(parts) > 0 {
+		return "         " + detailStyle.Render("→ "+strings.Join(parts, " | "))
+	}
+	return ""
 }
 
 // formatSize formats bytes into human-readable format

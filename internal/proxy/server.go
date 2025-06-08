@@ -1,7 +1,12 @@
 package proxy
 
 import (
+	"bytes"
+	"compress/gzip"
+	_ "embed"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
@@ -26,6 +31,11 @@ type Request struct {
 	Size        int64
 	Error       string
 	ProcessName string
+	
+	// Telemetry data
+	SessionID    string
+	HasTelemetry bool
+	Telemetry    *PageSession // Link to telemetry session if available
 }
 
 // ProxyMode defines the proxy operation mode
@@ -46,6 +56,9 @@ type URLMapping struct {
 	Server      *http.Server // The HTTP server for this mapping
 }
 
+//go:embed monitor.js
+var monitoringScript string
+
 // Server manages the HTTP proxy server
 type Server struct {
 	port      int
@@ -62,6 +75,10 @@ type Server struct {
 	urlMappings map[string]*URLMapping // Maps target URL to mapping
 	nextPort    int                    // Next available port for reverse proxy
 	basePort    int                    // Base port for reverse proxy mode
+	
+	// Telemetry
+	telemetry   *TelemetryStore
+	enableTelemetry bool
 	
 	running     bool
 }
@@ -82,6 +99,8 @@ func NewServerWithMode(port int, mode ProxyMode, eventBus *events.EventBus) *Ser
 		urlMappings: make(map[string]*URLMapping),
 		basePort:    port,
 		nextPort:    port + 1000, // Start allocating from port+1000 for reverse proxy URLs
+		telemetry:   NewTelemetryStore(),
+		enableTelemetry: true,
 	}
 	
 	if mode == ProxyModeFull {
@@ -148,6 +167,11 @@ func (s *Server) setupHandlers() {
 					"processName": req.ProcessName,
 				},
 			})
+			
+			// Inject monitoring script into HTML responses
+			if s.enableTelemetry && resp != nil && resp.StatusCode == 200 {
+				resp = s.injectMonitoringScript(resp, req.ProcessName)
+			}
 		}
 		
 		return resp
@@ -166,6 +190,95 @@ func (s *Server) setupHandlers() {
 		
 		return resp
 	})
+}
+
+// injectMonitoringScript injects the monitoring JavaScript into HTML responses
+func (s *Server) injectMonitoringScript(resp *http.Response, processName string) *http.Response {
+	// Check if response is HTML
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.Contains(strings.ToLower(contentType), "text/html") {
+		return resp
+	}
+	
+	// Read the response body
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		return resp
+	}
+	resp.Body.Close()
+	
+	// Decompress if needed
+	encoding := resp.Header.Get("Content-Encoding")
+	if encoding == "gzip" {
+		reader, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			resp.Body = ioutil.NopCloser(bytes.NewReader(body))
+			return resp
+		}
+		body, err = ioutil.ReadAll(reader)
+		reader.Close()
+		if err != nil {
+			resp.Body = ioutil.NopCloser(bytes.NewReader(body))
+			return resp
+		}
+	}
+	
+	// Convert body to string for manipulation
+	bodyStr := string(body)
+	
+	// Create the injection script with metadata
+	injectionScript := fmt.Sprintf(`
+<!-- Brummer Monitoring Script -->
+<script>
+// Set process name and proxy host for telemetry
+window.__brummerProcessName = '%s';
+window.__brummerProxyHost = 'localhost:%d';
+</script>
+<script>
+%s
+</script>
+<!-- End Brummer Monitoring Script -->
+`, processName, s.port, monitoringScript)
+	
+	// Try to inject before </body> or </html>
+	injected := false
+	for _, tag := range []string{"</body>", "</html>"} {
+		if idx := strings.LastIndex(strings.ToLower(bodyStr), tag); idx != -1 {
+			bodyStr = bodyStr[:idx] + injectionScript + bodyStr[idx:]
+			injected = true
+			break
+		}
+	}
+	
+	// If no suitable tag found, append to the end
+	if !injected {
+		bodyStr += injectionScript
+	}
+	
+	// Update body
+	newBody := []byte(bodyStr)
+	
+	// Re-compress if needed
+	if encoding == "gzip" {
+		var buf bytes.Buffer
+		gw := gzip.NewWriter(&buf)
+		_, err = gw.Write(newBody)
+		gw.Close()
+		if err == nil {
+			newBody = buf.Bytes()
+		}
+	}
+	
+	// Update response
+	resp.Body = ioutil.NopCloser(bytes.NewReader(newBody))
+	resp.ContentLength = int64(len(newBody))
+	resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(newBody)))
+	
+	// Remove content security policy that might block our script
+	resp.Header.Del("Content-Security-Policy")
+	resp.Header.Del("X-Content-Security-Policy")
+	
+	return resp
 }
 
 
@@ -217,6 +330,17 @@ func normalizeURL(urlStr string) string {
 func (s *Server) addRequest(req Request) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	
+	// Try to find telemetry session for this URL
+	if s.telemetry != nil {
+		sessions := s.telemetry.GetSessionsForURL(req.URL)
+		if len(sessions) > 0 {
+			// Link to the most recent session for this URL
+			req.SessionID = sessions[0].SessionID
+			req.HasTelemetry = true
+			req.Telemetry = sessions[0]
+		}
+	}
 	
 	s.requests = append(s.requests, req)
 	
@@ -276,6 +400,12 @@ func (s *Server) Start() error {
 			// Handle PAC file requests
 			if r.URL.Path == "/proxy.pac" || r.URL.Path == "/pac" {
 				s.servePACFile(w, r)
+				return
+			}
+			
+			// Handle telemetry endpoint
+			if r.URL.Path == "/__brummer_telemetry__" && r.Method == "POST" {
+				s.handleTelemetry(w, r)
 				return
 			}
 			
@@ -622,4 +752,91 @@ function FindProxyForURL(url, host) {
 // GetPACURL returns the URL for the PAC file
 func (s *Server) GetPACURL() string {
 	return fmt.Sprintf("http://localhost:%d/proxy.pac", s.port)
+}
+
+// handleTelemetry handles incoming telemetry data from the monitoring script
+func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
+	// Enable CORS for telemetry endpoint
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	
+	// Handle preflight
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+	
+	// Read body
+	body, err := ioutil.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusBadRequest)
+		return
+	}
+	defer r.Body.Close()
+	
+	// Parse telemetry batch
+	var batch TelemetryBatch
+	if err := json.Unmarshal(body, &batch); err != nil {
+		http.Error(w, "Invalid telemetry data", http.StatusBadRequest)
+		return
+	}
+	
+	// Get process name from referer or use default
+	processName := "unknown"
+	referer := r.Header.Get("Referer")
+	if referer != "" {
+		processName = s.getProcessForURL(referer)
+	}
+	
+	// Store telemetry data
+	s.telemetry.AddBatch(batch, processName)
+	
+	// Publish telemetry event
+	s.eventBus.Publish(events.Event{
+		Type:      events.EventType("telemetry.received"),
+		ProcessID: processName,
+		Data: map[string]interface{}{
+			"sessionId":  batch.SessionID,
+			"eventCount": len(batch.Events),
+		},
+	})
+	
+	// Return success
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprint(w, `{"status":"ok"}`)
+}
+
+// GetTelemetryStore returns the telemetry store
+func (s *Server) GetTelemetryStore() *TelemetryStore {
+	return s.telemetry
+}
+
+// EnableTelemetry enables or disables telemetry collection
+func (s *Server) EnableTelemetry(enable bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.enableTelemetry = enable
+}
+
+// IsTelemetryEnabled returns whether telemetry is enabled
+func (s *Server) IsTelemetryEnabled() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.enableTelemetry
+}
+
+// GetTelemetrySession returns telemetry data for a specific session
+func (s *Server) GetTelemetrySession(sessionID string) (*PageSession, bool) {
+	return s.telemetry.GetSession(sessionID)
+}
+
+// GetTelemetryForProcess returns all telemetry sessions for a process
+func (s *Server) GetTelemetryForProcess(processName string) []*PageSession {
+	return s.telemetry.GetSessionsForProcess(processName)
+}
+
+// ClearTelemetryForProcess clears telemetry data for a specific process
+func (s *Server) ClearTelemetryForProcess(processName string) {
+	s.telemetry.ClearSessionsForProcess(processName)
 }

@@ -17,6 +17,8 @@
     "color-test": "node color-test.js",
     "browser-test": "node browser-test.js",
     "proxy-test": "node proxy-test.js",
+    "telemetry-test": "node telemetry-test.js",
+    "telemetry-demo": "node telemetry-demo.js",
     "mongo-error": "node mongo-error-test.js",
     "multi-error": "node multi-error-test.js"
   },
