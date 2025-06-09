@@ -1,0 +1,10 @@
+{
+  "name": "brummer-mcp-test",
+  "version": "1.0.0",
+  "description": "Test MCP client for Brummer",
+  "scripts": {
+    "test": "npx @anthropic/test-mcp-server http://localhost:7777/mcp",
+    "test-tools": "node test-tools.js"
+  },
+  "dependencies": {}
+}

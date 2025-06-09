@@ -437,6 +437,13 @@ func (m *Manager) updatePackageManager() {
 	m.packageMgr = parser.GetPreferredPackageManager(m.packageJSON, m.workDir, m.userPackageMgr)
 }
 
+// AddLogCallback adds a callback function to be called when log lines are received
+func (m *Manager) AddLogCallback(cb LogCallback) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.logCallbacks = append(m.logCallbacks, cb)
+}
+
 // StopAllProcesses stops all running processes
 func (m *Manager) StopAllProcesses() error {
 	m.mu.RLock()

@@ -117,7 +117,7 @@ func runApp(cmd *cobra.Command, args []string) {
 	}
 
 	// Set up log processing with event detection
-	processMgr.RegisterLogCallback(func(processID, line string, isError bool) {
+	processMgr.AddLogCallback(func(processID, line string, isError bool) {
 		if proc, exists := processMgr.GetProcess(processID); exists {
 			entry := logStore.Add(processID, proc.Name, line, isError)
 			detector.ProcessLogLine(processID, proc.Name, line, isError)
@@ -184,9 +184,11 @@ func runApp(cmd *cobra.Command, args []string) {
 	}
 
 	// Start MCP server if enabled
-	var mcpServer *mcp.Server
+	var mcpServerInterface interface{ Start() error; Stop() error }
+	var mcpServer *mcp.Server // For TUI compatibility
 	if !noMCP || noTUI {
-		mcpServer = mcp.NewServer(mcpPort, processMgr, logStore, eventBus)
+		// Use new StreamableServer by default
+		mcpServerInterface = mcp.NewStreamableServer(mcpPort, processMgr, logStore, proxyServer, eventBus)
 		if noTUI {
 			// In headless mode, run MCP server in foreground
 			fmt.Printf("Starting MCP server on port %d (headless mode)...\n", mcpPort)
@@ -197,7 +199,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 			
 			go func() {
-				if err := mcpServer.Start(); err != nil {
+				if err := mcpServerInterface.Start(); err != nil {
 					log.Fatal("MCP server error:", err)
 				}
 			}()
@@ -213,7 +215,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			}
 			
 			fmt.Println("Stopping MCP server...")
-			mcpServer.Stop()
+			mcpServerInterface.Stop()
 			
 			if proxyServer != nil {
 				fmt.Println("Stopping proxy server...")
@@ -226,7 +228,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			// In TUI mode, run MCP server in background
 			go func() {
 				fmt.Printf("Starting MCP server on port %d...\n", mcpPort)
-				if err := mcpServer.Start(); err != nil {
+				if err := mcpServerInterface.Start(); err != nil {
 					log.Printf("MCP server error: %v", err)
 				}
 			}()
@@ -274,7 +276,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		
 		if mcpServer != nil {
 			fmt.Println("Stopping MCP server...")
-			mcpServer.Stop()
+			mcpServerInterface.Stop()
 		}
 		
 		if proxyServer != nil {

@@ -1448,8 +1448,8 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 	conn.WriteJSON(response)
 }
 
-// broadcastToWebSockets sends a message to all connected WebSocket clients
-func (s *Server) broadcastToWebSockets(msgType string, data interface{}) {
+// BroadcastToWebSockets sends a message to all connected WebSocket clients
+func (s *Server) BroadcastToWebSockets(msgType string, data interface{}) {
 	s.wsMutex.RLock()
 	defer s.wsMutex.RUnlock()
 
@@ -1476,7 +1476,7 @@ func (s *Server) broadcastToWebSockets(msgType string, data interface{}) {
 
 // SendTelemetryToWebSockets broadcasts telemetry data to WebSocket clients
 func (s *Server) SendTelemetryToWebSockets(batch TelemetryBatch, processName string) {
-	s.broadcastToWebSockets("telemetry", map[string]interface{}{
+	s.BroadcastToWebSockets("telemetry", map[string]interface{}{
 		"batch":       batch,
 		"processName": processName,
 	})
