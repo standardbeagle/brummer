@@ -4,7 +4,7 @@ sidebar_position: 1
 
 # Introduction
 
-Welcome to **Brummer** - a powerful TUI (Terminal User Interface) package script manager designed for modern development workflows.
+Welcome to **Brummer** - your Terminal UI Development Buddy designed for modern development workflows.
 
 ## What is Brummer?
 

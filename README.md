@@ -1,6 +1,6 @@
 # 🐝 Brummer
 
-*A TUI package script manager with intelligent monitoring*
+*Your Terminal UI Development Buddy with intelligent monitoring*
 
 A TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts with integrated MCP server for external tool access. Brummer provides intelligent log management, real-time monitoring, and seamless integration with development tools.
 

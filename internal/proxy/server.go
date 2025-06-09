@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	_ "embed"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,6 +38,19 @@ type Request struct {
 	SessionID    string
 	HasTelemetry bool
 	Telemetry    *PageSession // Link to telemetry session if available
+	
+	// Authentication data
+	HasAuth      bool                   // True if request has Authorization header
+	AuthType     string                 // Type of auth (Bearer, Basic, etc.)
+	JWTClaims    map[string]interface{} // Decoded JWT claims if present
+	JWTError     string                 // JWT decoding error if any
+	
+	// Error tracking
+	IsError      bool                   // True if status code is 4xx or 5xx
+	
+	// Request type
+	IsXHR        bool                   // True if X-Requested-With: XMLHttpRequest header present
+	ContentType  string                 // Response Content-Type header
 }
 
 // ProxyMode defines the proxy operation mode
@@ -90,6 +104,73 @@ type Server struct {
 	running     bool
 }
 
+// decodeJWT attempts to decode a JWT token without verification
+// This is for display purposes only - we're not validating signatures
+func decodeJWT(tokenString string) (map[string]interface{}, error) {
+	// JWT has 3 parts separated by dots
+	parts := strings.Split(tokenString, ".")
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("invalid JWT format: expected 3 parts, got %d", len(parts))
+	}
+	
+	// Decode the payload (second part)
+	payload := parts[1]
+	
+	// Add padding if necessary
+	switch len(payload) % 4 {
+	case 2:
+		payload += "=="
+	case 3:
+		payload += "="
+	}
+	
+	// Decode base64
+	decoded, err := base64.URLEncoding.DecodeString(payload)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode JWT payload: %v", err)
+	}
+	
+	// Parse JSON
+	var claims map[string]interface{}
+	if err := json.Unmarshal(decoded, &claims); err != nil {
+		return nil, fmt.Errorf("failed to parse JWT claims: %v", err)
+	}
+	
+	return claims, nil
+}
+
+// extractAuthInfo extracts authentication information from request headers
+func extractAuthInfo(r *http.Request) (hasAuth bool, authType string, jwtClaims map[string]interface{}, jwtError string) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return false, "", nil, ""
+	}
+	
+	hasAuth = true
+	
+	// Parse auth type and token
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) < 2 {
+		authType = "Unknown"
+		return
+	}
+	
+	authType = parts[0]
+	token := parts[1]
+	
+	// If it's a Bearer token, try to decode as JWT
+	if strings.EqualFold(authType, "Bearer") {
+		claims, err := decodeJWT(token)
+		if err != nil {
+			jwtError = err.Error()
+		} else {
+			jwtClaims = claims
+		}
+	}
+	
+	return
+}
+
 // NewServer creates a new proxy server
 func NewServer(port int, eventBus *events.EventBus) *Server {
 	return NewServerWithMode(port, ProxyModeFull, eventBus)
@@ -138,6 +219,9 @@ func (s *Server) setupHandlers() {
 		// Get the process name for this URL
 		processName := s.getProcessForURL(r.URL.String())
 		
+		// Extract authentication info
+		hasAuth, authType, jwtClaims, jwtError := extractAuthInfo(r)
+		
 		// Store request info in context
 		ctx.UserData = &Request{
 			ID:          reqID,
@@ -147,6 +231,11 @@ func (s *Server) setupHandlers() {
 			Path:        r.URL.Path,
 			StartTime:   startTime,
 			ProcessName: processName,
+			HasAuth:     hasAuth,
+			AuthType:    authType,
+			JWTClaims:   jwtClaims,
+			JWTError:    jwtError,
+			IsXHR:       r.Header.Get("X-Requested-With") == "XMLHttpRequest",
 		}
 		
 		return r, nil
@@ -158,6 +247,10 @@ func (s *Server) setupHandlers() {
 			req := ctx.UserData.(*Request)
 			req.Duration = time.Since(req.StartTime)
 			req.StatusCode = resp.StatusCode
+			req.ContentType = resp.Header.Get("Content-Type")
+			
+			// Check if this is an error response
+			req.IsError = resp.StatusCode >= 400
 			
 			// Get response size
 			if resp.ContentLength > 0 {
@@ -487,6 +580,45 @@ func (s *Server) addRequest(req Request) {
 	}
 }
 
+// linkTelemetryToRequests links telemetry data to existing requests
+func (s *Server) linkTelemetryToRequests(sessionID string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	session, exists := s.telemetry.GetSession(sessionID)
+	if !exists || session == nil {
+		return
+	}
+	
+	// Find requests that match this session's URL and link them
+	sessionURL := session.URL
+	if sessionURL == "" {
+		return
+	}
+	
+	// Normalize the session URL for comparison
+	normalizedSessionURL := normalizeURL(sessionURL)
+	
+	for i := range s.requests {
+		req := &s.requests[i]
+		
+		// Skip if already has telemetry
+		if req.HasTelemetry {
+			continue
+		}
+		
+		// Check if URLs match (normalized comparison)
+		normalizedReqURL := normalizeURL(req.URL)
+		if normalizedReqURL == normalizedSessionURL || req.URL == sessionURL {
+			req.SessionID = sessionID
+			req.HasTelemetry = true
+			req.Telemetry = session
+			log.Printf("Linked telemetry session %s to request %s (Process: %s, Events: %d)", 
+				sessionID, req.URL, req.ProcessName, len(session.Events))
+		}
+	}
+}
+
 // GetRequests returns all stored requests
 func (s *Server) GetRequests() []Request {
 	s.mu.RLock()
@@ -694,15 +826,31 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 		startTime := time.Now()
 		reqID := fmt.Sprintf("%d", time.Now().UnixNano())
 		
+		// Use original URL if available (for reverse proxy mode)
+		requestURL := r.URL.String()
+		if originalURL := r.Header.Get("X-Original-URL"); originalURL != "" {
+			requestURL = originalURL
+			// Remove the header so it doesn't go to the target
+			r.Header.Del("X-Original-URL")
+		}
+		
+		// Extract authentication info
+		hasAuth, authType, jwtClaims, jwtError := extractAuthInfo(r)
+		
 		// Store request info in context
 		ctx.UserData = &Request{
 			ID:          reqID,
 			Method:      r.Method,
-			URL:         r.URL.String(),
+			URL:         requestURL,
 			Host:        r.Host,
 			Path:        r.URL.Path,
 			StartTime:   startTime,
 			ProcessName: mapping.ProcessName,
+			HasAuth:     hasAuth,
+			AuthType:    authType,
+			JWTClaims:   jwtClaims,
+			JWTError:    jwtError,
+			IsXHR:       r.Header.Get("X-Requested-With") == "XMLHttpRequest",
 		}
 		
 		return r, nil
@@ -715,6 +863,9 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 			req.Duration = time.Since(req.StartTime)
 			if resp != nil {
 				req.StatusCode = resp.StatusCode
+				
+				// Check if this is an error response
+				req.IsError = resp.StatusCode >= 400
 				
 				// Get response size
 				if resp.ContentLength > 0 {
@@ -779,6 +930,20 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 	
 	// For all other requests, use goproxy with URL rewriting
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Capture original URL before rewriting
+		originalURL := r.URL.String()
+		if r.URL.Scheme == "" {
+			// Reconstruct full URL for HTTP requests
+			scheme := "http"
+			if r.TLS != nil {
+				scheme = "https"
+			}
+			originalURL = fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
+		}
+		
+		// Store original URL in header for the proxy handler to use
+		r.Header.Set("X-Original-URL", originalURL)
+		
 		// Rewrite the request URL to point to the target
 		r.URL.Scheme = targetURL.Scheme
 		r.URL.Host = targetURL.Host
@@ -830,9 +995,28 @@ func (s *Server) RegisterURL(urlStr, processName string) string {
 		
 		// Start the server
 		go func() {
-			log.Printf("Starting reverse proxy for %s on port %d", normalized, port)
+			msg := fmt.Sprintf("%s started for %s", mapping.ProxyURL, normalized)
+			log.Printf(msg)
+			// Publish event for TUI to show in system messages
+			s.eventBus.Publish(events.Event{
+				Type: events.EventType("system.message"),
+				Data: map[string]interface{}{
+					"level":   "info",
+					"context": "Proxy",
+					"message": msg,
+				},
+			})
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				log.Printf("Reverse proxy error for %s: %v", normalized, err)
+				errorMsg := fmt.Sprintf("Reverse proxy error for %s: %v", normalized, err)
+				log.Printf(errorMsg)
+				s.eventBus.Publish(events.Event{
+					Type: events.EventType("system.message"),
+					Data: map[string]interface{}{
+						"level":   "error",
+						"context": "Proxy",
+						"message": errorMsg,
+					},
+				})
 			}
 		}()
 		
@@ -954,6 +1138,9 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 	
 	// Store telemetry data
 	s.telemetry.AddBatch(batch, processName)
+	
+	// Retroactively link telemetry to existing requests
+	s.linkTelemetryToRequests(batch.SessionID)
 	
 	// Broadcast to WebSocket clients
 	s.SendTelemetryToWebSockets(batch, processName)
@@ -1219,6 +1406,9 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 			
 			// Store telemetry data (same as HTTP handler)
 			s.telemetry.AddBatch(batch, processName)
+			
+			// Retroactively link telemetry to existing requests
+			s.linkTelemetryToRequests(batch.SessionID)
 			
 			// Broadcast to other WebSocket clients
 			s.SendTelemetryToWebSockets(batch, processName)

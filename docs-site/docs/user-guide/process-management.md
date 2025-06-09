@@ -55,7 +55,7 @@ Press **Ctrl+R** to restart all running processes simultaneously.
 ### Real-time Status
 The header shows process count:
 ```
-🐝 Brummer - Package Script Manager (3 processes, 2 running)
+🐝 Brummer - Development Buddy (3 processes, 2 running)
 ```
 
 ### Process Details

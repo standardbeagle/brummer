@@ -11,7 +11,7 @@ Master the Brummer TUI with these navigation tips and keyboard shortcuts.
 The Brummer interface consists of several views accessible via tabs:
 
 ```
-🐝 Brummer - Package Script Manager (2 processes, 1 running) 🌐
+🐝 Brummer - Development Buddy (2 processes, 1 running) 🌐
 ▶ 1.scripts | 2.processes | 3.logs | 4.errors | 5.urls | 6.settings
 ─────────────────────────────────────────────────────────────────
 [Main Content Area]

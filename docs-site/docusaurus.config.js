@@ -9,7 +9,7 @@ import {themes as prismThemes} from 'prism-react-renderer';
 /** @type {import('@docusaurus/types').Config} */
 const config = {
   title: 'Brummer',
-  tagline: 'A powerful TUI package script manager with intelligent monitoring',
+  tagline: 'Your Terminal UI Development Buddy with intelligent monitoring',
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
