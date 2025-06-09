@@ -90,6 +90,21 @@ var viewConfigs = map[View]ViewConfig{
 	},
 }
 
+// SystemMessage represents an internal Brummer system message for display at the bottom
+type SystemMessage struct {
+	Timestamp   time.Time
+	Level       string // "error", "warning", "info", "success"
+	Message     string
+	Context     string // Where the message originated (e.g., "Process Control", "Settings")
+}
+
+// UnreadIndicator tracks unread content in a view
+type UnreadIndicator struct {
+	Count    int    // Number of unread items
+	Severity string // "error", "warning", "info", "success"
+	Icon     string // Icon to display (based on severity)
+}
+
 type Model struct {
 	processMgr   *process.Manager
 	logStore     *logs.Store
@@ -152,6 +167,16 @@ type Model struct {
 	copyNotification string
 	notificationTime time.Time
 	
+	// System message panel state (for internal Brummer messages)
+	systemPanelExpanded bool             // Whether system message panel is expanded to full screen
+	systemMessages      []SystemMessage  // Recent system messages (errors, warnings, info)
+	systemPanelViewport viewport.Model   // Viewport for full-screen system message view
+	
+	// Unread content tracking
+	unreadIndicators map[View]UnreadIndicator // Track unread content per view
+	lastErrorCount   int                      // Track last error count
+	lastWebCount     int                      // Track last web request count
+	
 	help         help.Model
 	keys         keyMap
 	
@@ -171,7 +196,7 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		}
 		
 		if runningProcesses > 0 {
-			return m, tea.Sequence(
+			return *m, tea.Sequence(
 				tea.Printf("Stopping %d running processes...\n", runningProcesses),
 				func() tea.Msg {
 					m.processMgr.Cleanup()
@@ -181,7 +206,7 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 				tea.Quit,
 			), true
 		} else {
-			return m, tea.Sequence(
+			return *m, tea.Sequence(
 				tea.Printf(renderExitScreen()),
 				tea.Quit,
 			), true
@@ -189,7 +214,7 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 
 	case key.Matches(msg, m.keys.Tab):
 		m.cycleView()
-		return m, nil, true
+		return *m, nil, true
 
 	case key.Matches(msg, m.keys.Back):
 		if m.currentView == ViewFilters {
@@ -197,41 +222,63 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		} else if m.currentView == ViewLogs || m.currentView == ViewErrors || m.currentView == ViewURLs {
 			m.currentView = ViewProcesses
 		}
-		return m, nil, true
+		return *m, nil, true
 
 	case key.Matches(msg, m.keys.Priority):
 		if m.currentView == ViewLogs {
 			m.showHighPriority = !m.showHighPriority
 			m.updateLogsView()
 		}
-		return m, nil, true
+		return *m, nil, true
 
 	case key.Matches(msg, m.keys.RestartAll):
 		if m.currentView == ViewProcesses {
 			m.logStore.Add("system", "System", "Restarting all running processes...", false)
-			return m, m.handleRestartAll(), true
+			return *m, m.handleRestartAll(), true
 		}
-		return m, nil, true
+		return *m, nil, true
 
 	case key.Matches(msg, m.keys.CopyError):
-		return m, m.handleCopyError(), true
+		return *m, m.handleCopyError(), true
 
 	case key.Matches(msg, m.keys.ClearLogs):
 		if m.currentView == ViewLogs {
 			m.handleClearLogs()
 		}
-		return m, nil, true
+		return *m, nil, true
+	
+	case key.Matches(msg, m.keys.ToggleError):
+		if len(m.systemMessages) > 0 {
+			m.systemPanelExpanded = !m.systemPanelExpanded
+			if m.systemPanelExpanded {
+				// Update system panel viewport when expanding
+				m.updateSystemPanelViewport()
+			}
+		}
+		return *m, nil, true
+	
+	case key.Matches(msg, m.keys.ClearMessages):
+		// Clear system messages
+		if len(m.systemMessages) > 0 {
+			m.systemMessages = []SystemMessage{}
+			m.systemPanelExpanded = false
+			// Clear the viewport content explicitly
+			m.systemPanelViewport.SetContent("")
+			// Force immediate re-render
+			return *m, tea.ClearScreen, true
+		}
+		return *m, nil, true
 	}
 
 	// Handle number keys for view switching
 	for viewType, cfg := range viewConfigs {
 		if msg.String() == cfg.KeyBinding {
 			m.switchToView(viewType)
-			return m, nil, true
+			return *m, nil, true
 		}
 	}
 
-	return m, nil, false // Key not handled
+	return *m, nil, false // Key not handled
 }
 
 type keyMap struct {
@@ -250,9 +297,11 @@ type keyMap struct {
 	Priority    key.Binding
 	ClearLogs   key.Binding
 	ClearErrors key.Binding
-	Help        key.Binding
-	RunDialog   key.Binding
-	AutoScroll  key.Binding
+	Help         key.Binding
+	RunDialog    key.Binding
+	AutoScroll   key.Binding
+	ToggleError  key.Binding
+	ClearMessages key.Binding
 }
 
 var keys = keyMap{
@@ -328,6 +377,14 @@ var keys = keyMap{
 		key.WithKeys("end"),
 		key.WithHelp("end", "auto-scroll"),
 	),
+	ToggleError: key.NewBinding(
+		key.WithKeys("e"),
+		key.WithHelp("e", "toggle system messages"),
+	),
+	ClearMessages: key.NewBinding(
+		key.WithKeys("m"),
+		key.WithHelp("m", "clear system messages"),
+	),
 }
 
 func (k keyMap) ShortHelp() []key.Binding {
@@ -339,7 +396,7 @@ func (k keyMap) FullHelp() [][]key.Binding {
 		{k.Up, k.Down, k.Enter, k.Back},
 		{k.Tab, k.Command, k.Filter, k.Priority},
 		{k.Stop, k.Restart, k.RestartAll, k.CopyError},
-		{k.ClearLogs, k.ClearErrors, k.Help, k.Quit},
+		{k.ClearLogs, k.ClearErrors, k.ToggleError, k.ClearMessages, k.Help, k.Quit},
 	}
 }
 
@@ -646,6 +703,13 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// Initialize error detail view
 	m.errorDetailView = viewport.New(0, 0)
 	
+	// Initialize system message panel
+	m.systemPanelViewport = viewport.New(0, 0)
+	m.systemMessages = make([]SystemMessage, 0, 100) // Keep up to 100 messages
+	
+	// Initialize unread indicators
+	m.unreadIndicators = make(map[View]UnreadIndicator)
+	
 	// Check for monorepo on startup
 	m.monorepoInfo, _ = processMgr.GetMonorepoInfo()
 	
@@ -670,6 +734,12 @@ func (m Model) Init() tea.Cmd {
 		if e.ProcessID != "" {
 			m.logStore.RemoveURLsForProcess(e.ProcessID)
 		}
+		
+		// Check if process failed and add unread indicator
+		if exitCode, ok := e.Data["exitCode"].(int); ok && exitCode != 0 && m.currentView != ViewProcesses {
+			m.updateUnreadIndicator(ViewProcesses, "error", 1)
+		}
+		
 		m.updateChan <- processUpdateMsg{}
 	})
 	
@@ -690,6 +760,23 @@ func (m Model) Init() tea.Cmd {
 	// Subscribe to telemetry events
 	m.eventBus.Subscribe(events.EventType("telemetry.received"), func(e events.Event) {
 		m.updateChan <- webUpdateMsg{} // Update web view when telemetry is received
+	})
+	
+	// Subscribe to system messages
+	m.eventBus.Subscribe(events.EventType("system.message"), func(e events.Event) {
+		level, _ := e.Data["level"].(string)
+		context, _ := e.Data["context"].(string)
+		message, _ := e.Data["message"].(string)
+		if message != "" {
+			// Send the message data through the update channel
+			go func() {
+				m.updateChan <- systemMessageMsg{
+					level:   level,
+					context: context,
+					message: message,
+				}
+			}()
+		}
 	})
 
 	return tea.Batch(
@@ -761,6 +848,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.currentView == ViewWeb {
 			m.updateWebView()
 		}
+		cmds = append(cmds, m.waitForUpdates())
+	
+	case systemMessageMsg:
+		m.addSystemMessage(msg.level, msg.context, msg.message)
 		cmds = append(cmds, m.waitForUpdates())
 		
 	case tickMsg:
@@ -842,13 +933,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case key.Matches(msg, m.keys.Stop):
 				if i, ok := m.processesList.SelectedItem().(processItem); ok && !i.isHeader && i.process != nil {
 					if err := m.processMgr.StopProcess(i.process.ID); err != nil {
-						m.logStore.Add("system", "System", fmt.Sprintf("Failed to stop process %s: %v", i.process.Name, err), true)
+						msg := fmt.Sprintf("Failed to stop process %s: %v", i.process.Name, err)
+						m.logStore.Add("system", "System", msg, true)
+						m.addSystemMessage("error", "Process Control", msg)
 					} else {
-						m.logStore.Add("system", "System", fmt.Sprintf("Stopping process: %s", i.process.Name), false)
+						msg := fmt.Sprintf("Stopping process: %s", i.process.Name)
+						m.logStore.Add("system", "System", msg, false)
+						m.addSystemMessage("info", "Process Control", msg)
 					}
 					cmds = append(cmds, m.waitForUpdates())
 				} else {
-					m.logStore.Add("system", "System", "No process selected to stop", true)
+					msg := "No process selected to stop"
+					m.logStore.Add("system", "System", msg, true)
+					m.addSystemMessage("error", "Process Control", msg)
 				}
 				// Don't update the list for this key, we handled it
 				return m, tea.Batch(cmds...)
@@ -856,9 +953,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case key.Matches(msg, m.keys.Restart):
 				if i, ok := m.processesList.SelectedItem().(processItem); ok && !i.isHeader && i.process != nil {
 					cmds = append(cmds, m.handleRestartProcess(i.process))
-					m.logStore.Add("system", "System", fmt.Sprintf("Restarting process: %s", i.process.Name), false)
+					msg := fmt.Sprintf("Restarting process: %s", i.process.Name)
+					m.logStore.Add("system", "System", msg, false)
+					m.addSystemMessage("info", "Process Control", msg)
 				} else {
-					m.logStore.Add("system", "System", "No process selected to restart", true)
+					msg := "No process selected to restart"
+					m.logStore.Add("system", "System", msg, true)
+					m.addSystemMessage("error", "Process Control", msg)
 				}
 				// Don't update the list for this key, we handled it
 				return m, tea.Batch(cmds...)
@@ -1000,18 +1101,43 @@ func (m Model) View() string {
 		return m.renderCommandWindow()
 	}
 
+
 	// Render main content with consistent layout
 	return m.renderLayout(m.renderContent())
 }
 
 // renderLayout provides consistent layout for all views
 func (m Model) renderLayout(content string) string {
-	return lipgloss.JoinVertical(
-		lipgloss.Left,
-		m.renderHeader(),
-		content,
-		m.help.View(m.keys),
-	)
+	// Calculate content height
+	contentHeight := m.height - 4 // Header (2) + Help (2)
+	
+	// Build main layout parts
+	parts := []string{m.renderHeader()}
+	
+	// If system panel is expanded, show it instead of main content
+	if m.systemPanelExpanded && len(m.systemMessages) > 0 {
+		// Full screen mode - system panel takes most of the space
+		errorPanelHeight := m.height - 8 // Leave room for header and help
+		m.systemPanelViewport.Height = errorPanelHeight
+		parts = append(parts, m.renderSystemPanel())
+	} else {
+		// Normal content - always use full height
+		contentStyle := lipgloss.NewStyle().Height(contentHeight)
+		parts = append(parts, contentStyle.Render(content))
+	}
+	
+	// Add help at the bottom
+	parts = append(parts, m.help.View(m.keys))
+	
+	// Join all parts
+	mainLayout := lipgloss.JoinVertical(lipgloss.Left, parts...)
+	
+	// If we have system messages in non-expanded mode, overlay them
+	if len(m.systemMessages) > 0 && !m.systemPanelExpanded {
+		return m.overlaySystemPanel(mainLayout)
+	}
+	
+	return mainLayout
 }
 
 // renderContent renders the main content area based on current view
@@ -1114,6 +1240,9 @@ func (m *Model) cycleView() {
 // switchToView changes the current view and performs any necessary setup
 func (m *Model) switchToView(view View) {
 	m.currentView = view
+	
+	// Clear unread indicator for this view
+	m.clearUnreadIndicator(view)
 	
 	// Perform view-specific initialization if needed
 	switch view {
@@ -1355,7 +1484,7 @@ func (m Model) renderHeader() string {
 	}
 	
 	// Build title with process info
-	baseTitle := "🐝 Brummer - Package Script Manager"
+	baseTitle := "🐝 Brummer - Development Buddy"
 	var processInfo string
 	if len(processes) > 0 {
 		if runningCount > 0 {
@@ -1385,26 +1514,46 @@ func (m Model) renderHeader() string {
 	tabs := []string{}
 	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
 	inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// Use ordered list of views
 	orderedViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
-	for _, viewType := range orderedViews {
+	for i, viewType := range orderedViews {
 		if cfg, ok := viewConfigs[viewType]; ok {
+			// Build the base label with icon directly before number
 			label := fmt.Sprintf("%s.%s", cfg.KeyBinding, cfg.Title)
 			if cfg.Icon != "" {
-				label = cfg.Icon + " " + label
+				label = cfg.Icon + label
 			}
 			
-			if viewType == m.currentView {
-				tabs = append(tabs, activeStyle.Render("▶ " + label))
+			// Get unread indicator for this view
+			var indicatorIcon string
+			if indicator, exists := m.unreadIndicators[viewType]; exists && indicator.Count > 0 {
+				indicatorIcon = indicator.Icon
 			} else {
-				tabs = append(tabs, inactiveStyle.Render("  " + label))
+				indicatorIcon = "" // No space when no indicator
 			}
+			
+			// Format the tab
+			var tab string
+			if viewType == m.currentView {
+				// Active tab: ▶icon1.Titleindicator
+				tab = activeStyle.Render("▶" + label + indicatorIcon)
+			} else {
+				// Inactive tab:  icon1.Titleindicator
+				tab = inactiveStyle.Render(" " + label + indicatorIcon)
+			}
+			
+			// Add separator except for the last tab
+			if i < len(orderedViews)-1 {
+				tab += separatorStyle.Render(" | ")
+			}
+			
+			tabs = append(tabs, tab)
 		}
 	}
 
-	tabBar := lipgloss.JoinHorizontal(lipgloss.Left, 
-		tabs[0], " | ", tabs[1], " | ", tabs[2], " | ", tabs[3], " | ", tabs[4], " | ", tabs[5])
+	tabBar := lipgloss.JoinHorizontal(lipgloss.Left, tabs...)
 
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
@@ -1736,6 +1885,12 @@ func (m Model) renderWebViewSimple() string {
 				req.Method,
 				req.URL)
 			
+			if req.Error != "" {
+				line += " ❌"
+			}
+			if req.HasAuth {
+				line += " 🔐"
+			}
 			if req.HasTelemetry {
 				line += " 📊"
 			}
@@ -1848,6 +2003,9 @@ func (m Model) renderRequestsList(requests []proxy.Request, width int) string {
 		if req.Error != "" {
 			line += lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(" ❌")
 		}
+		if req.HasAuth {
+			line += lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render(" 🔐")
+		}
 		if req.HasTelemetry {
 			line += lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render(" 📊")
 		}
@@ -1862,6 +2020,7 @@ func (m Model) renderRequestsList(requests []proxy.Request, width int) string {
 	
 	// Navigation help
 	content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("↑/↓ navigate, Enter select, f filter"))
+	content.WriteString("\n" + lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render("Indicators: ❌ error, 🔐 auth, 📊 telemetry"))
 	
 	return content.String()
 }
@@ -1895,6 +2054,51 @@ func (m Model) renderRequestDetail() string {
 	
 	if req.Error != "" {
 		content.WriteString(labelStyle.Render("Error: ") + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(req.Error) + "\n")
+	}
+	
+	// Authentication section
+	if req.HasAuth {
+		content.WriteString("\n" + headerStyle.Render("🔐 Authentication") + "\n\n")
+		content.WriteString(labelStyle.Render("Type: ") + valueStyle.Render(req.AuthType) + "\n")
+		
+		if req.JWTError != "" {
+			content.WriteString(labelStyle.Render("JWT Error: ") + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(req.JWTError) + "\n")
+		} else if req.JWTClaims != nil && len(req.JWTClaims) > 0 {
+			content.WriteString(labelStyle.Render("JWT Claims:") + "\n")
+			
+			// Display common JWT claims
+			claimOrder := []string{"sub", "iss", "aud", "exp", "iat", "nbf", "jti", "email", "name", "role", "scope"}
+			displayedClaims := make(map[string]bool)
+			
+			// Display known claims in order
+			for _, key := range claimOrder {
+				if value, exists := req.JWTClaims[key]; exists {
+					formattedValue := fmt.Sprintf("%v", value)
+					
+					// Format timestamp claims
+					if key == "exp" || key == "iat" || key == "nbf" {
+						if numVal, ok := value.(float64); ok {
+							t := time.Unix(int64(numVal), 0)
+							formattedValue = fmt.Sprintf("%v (%s)", value, t.Format("2006-01-02 15:04:05"))
+						}
+					}
+					
+					content.WriteString(fmt.Sprintf("  %s: %s\n", 
+						lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(key),
+						valueStyle.Render(formattedValue)))
+					displayedClaims[key] = true
+				}
+			}
+			
+			// Display any remaining claims
+			for key, value := range req.JWTClaims {
+				if !displayedClaims[key] {
+					content.WriteString(fmt.Sprintf("  %s: %v\n", 
+						lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(key),
+						valueStyle.Render(fmt.Sprintf("%v", value))))
+				}
+			}
+		}
 	}
 	
 	// Telemetry section
@@ -2076,11 +2280,35 @@ func (m Model) getFilteredRequests() []proxy.Request {
 
 // isPageRequest checks if request is for an HTML page
 func (m Model) isPageRequest(req proxy.Request) bool {
+	// XHR requests are never pages
+	if req.IsXHR {
+		return false
+	}
 	return strings.Contains(req.Path, ".html") || req.Path == "/" || (!strings.Contains(req.Path, ".") && !strings.Contains(req.Path, "/api/"))
 }
 
 // isAPIRequest checks if request is an API call
 func (m Model) isAPIRequest(req proxy.Request) bool {
+	// Check content type for response (if available)
+	contentType := ""
+	if req.Telemetry != nil && len(req.Telemetry.Events) > 0 {
+		// Look for response headers in telemetry
+		for _, event := range req.Telemetry.Events {
+			if event.Type == "response" {
+				if headers, ok := event.Data["headers"].(map[string]interface{}); ok {
+					if ct, ok := headers["content-type"].(string); ok {
+						contentType = ct
+					}
+				}
+			}
+		}
+	}
+	
+	// Exclude HTML responses from API category
+	if strings.Contains(contentType, "text/html") {
+		return false
+	}
+	
 	return strings.Contains(req.Path, "/api/") || strings.Contains(req.Path, "/graphql") || 
 		req.Method == "POST" || req.Method == "PUT" || req.Method == "DELETE" || req.Method == "PATCH"
 }
@@ -2203,6 +2431,11 @@ type processUpdateMsg struct{}
 type logUpdateMsg struct{}
 type errorUpdateMsg struct{}
 type webUpdateMsg struct{}
+type systemMessageMsg struct{
+	level   string
+	context string
+	message string
+}
 type tickMsg struct{}
 
 func (m Model) waitForUpdates() tea.Cmd {
@@ -2719,6 +2952,7 @@ func (m Model) renderRunDialog() string {
 
 func (m *Model) updateErrorsList() {
 	errorContexts := m.logStore.GetErrorContexts()
+	newCount := len(errorContexts)
 	
 	items := make([]list.Item, 0, len(errorContexts))
 	for i := len(errorContexts) - 1; i >= 0; i-- {
@@ -2726,6 +2960,12 @@ func (m *Model) updateErrorsList() {
 	}
 	
 	m.errorsList.SetItems(items)
+	
+	// Update unread indicator if we have new errors
+	if newCount > m.lastErrorCount && m.currentView != ViewErrors {
+		m.updateUnreadIndicator(ViewErrors, "error", newCount-m.lastErrorCount)
+	}
+	m.lastErrorCount = newCount
 	
 	// Select first item if we have errors and nothing selected
 	if len(items) > 0 && m.selectedError == nil {
@@ -2740,6 +2980,29 @@ func (m *Model) updateWebView() {
 	if m.proxyServer == nil {
 		return
 	}
+	
+	// Check for new requests
+	requests := m.proxyServer.GetRequests()
+	newCount := len(requests)
+	
+	// Update unread indicator if we have new requests with errors
+	if newCount > m.lastWebCount && m.currentView != ViewWeb {
+		// Check if any of the new requests are errors
+		hasError := false
+		for i := m.lastWebCount; i < newCount; i++ {
+			if requests[i].IsError {
+				hasError = true
+				break
+			}
+		}
+		
+		severity := "info"
+		if hasError {
+			severity = "error"
+		}
+		m.updateUnreadIndicator(ViewWeb, severity, newCount-m.lastWebCount)
+	}
+	m.lastWebCount = newCount
 	
 	// Update the web viewport with latest proxy requests
 	content := m.renderWebView()
@@ -3379,4 +3642,297 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// addSystemMessage adds a new system message to the bottom panel
+func (m *Model) addSystemMessage(level, context, message string) {
+	msg := SystemMessage{
+		Timestamp: time.Now(),
+		Level:     level,
+		Message:   message,
+		Context:   context,
+	}
+	
+	// Add to the beginning of the list (most recent first)
+	m.systemMessages = append([]SystemMessage{msg}, m.systemMessages...)
+	
+	// Keep only the last 100 messages
+	if len(m.systemMessages) > 100 {
+		m.systemMessages = m.systemMessages[:100]
+	}
+	
+	// Update the system panel viewport
+	m.updateSystemPanelViewport()
+}
+
+// NOTE: HTTP errors from proxied requests are tracked in the Web tab,
+// not in the system message panel. The system panel is only for internal
+// Brummer messages (process control errors, settings errors, etc.)
+
+// NOTE: JavaScript errors from telemetry are tracked in the Errors tab,
+// not in the system message panel. The system panel is only for internal
+// Brummer messages.
+
+// getSystemMessageIcon returns the appropriate icon for a system message level
+func (m Model) getSystemMessageIcon(level string) string {
+	switch level {
+	case "error":
+		return "❌"
+	case "warning":
+		return "⚠️"
+	case "success":
+		return "✅"
+	default:
+		return "ℹ️"
+	}
+}
+
+// updateUnreadIndicator updates the unread indicator for a specific view
+func (m *Model) updateUnreadIndicator(view View, severity string, increment int) {
+	if view == m.currentView {
+		// Don't mark as unread if we're currently viewing this tab
+		return
+	}
+	
+	indicator := m.unreadIndicators[view]
+	indicator.Count += increment
+	
+	// Update severity and icon based on priority
+	if shouldUpdateSeverity(indicator.Severity, severity) {
+		indicator.Severity = severity
+		indicator.Icon = getIndicatorIcon(severity)
+	}
+	
+	m.unreadIndicators[view] = indicator
+}
+
+// clearUnreadIndicator clears the unread indicator for a specific view
+func (m *Model) clearUnreadIndicator(view View) {
+	delete(m.unreadIndicators, view)
+}
+
+// shouldUpdateSeverity determines if the new severity is higher priority
+func shouldUpdateSeverity(current, new string) bool {
+	priority := map[string]int{
+		"error":   4,
+		"warning": 3,
+		"success": 2,
+		"info":    1,
+		"":        0,
+	}
+	return priority[new] > priority[current]
+}
+
+// getIndicatorIcon returns the appropriate icon for a severity level
+func getIndicatorIcon(severity string) string {
+	switch severity {
+	case "error":
+		return "🔴"
+	case "warning":
+		return "🟡"
+	case "success":
+		return "🟢"
+	case "info":
+		return "🔵"
+	default:
+		return "⚪"
+	}
+}
+
+// updateSystemPanelViewport updates the system panel viewport with formatted messages
+func (m *Model) updateSystemPanelViewport() {
+	if m.height == 0 {
+		return
+	}
+	
+	// Calculate viewport height
+	height := m.height - 4 // Account for header and help
+	if !m.systemPanelExpanded {
+		height = 5 // Show only 5 lines when not expanded
+	}
+	
+	m.systemPanelViewport.Width = m.width
+	m.systemPanelViewport.Height = height
+	
+	// Format messages for display
+	content := m.formatSystemMessagesForDisplay()
+	m.systemPanelViewport.SetContent(content)
+}
+
+// formatSystemMessagesForDisplay formats system messages for the panel
+func (m *Model) formatSystemMessagesForDisplay() string {
+	if len(m.systemMessages) == 0 {
+		return "No system messages"
+	}
+	
+	var b strings.Builder
+	
+	// Determine how many messages to show
+	messagesToShow := m.systemMessages
+	if !m.systemPanelExpanded && len(m.systemMessages) > 5 {
+		messagesToShow = m.systemMessages[:5]
+	}
+	
+	// Format each message
+	for i, msg := range messagesToShow {
+		if i > 0 {
+			b.WriteString("\n")
+		}
+		
+		// Format timestamp
+		timestamp := msg.Timestamp.Format("15:04:05")
+		
+		// Choose icon based on level
+		icon := m.getSystemMessageIcon(msg.Level)
+		
+		// Build message line
+		msgLine := fmt.Sprintf("[%s] %s %s: %s",
+			timestamp,
+			icon,
+			msg.Context,
+			msg.Message,
+		)
+		
+		b.WriteString(msgLine)
+	}
+	
+	// Add count if not showing all messages
+	if !m.systemPanelExpanded && len(m.systemMessages) > 5 {
+		b.WriteString(fmt.Sprintf("\n... and %d more messages (press 'e' to expand, 'm' to clear)", len(m.systemMessages)-5))
+	} else if len(m.systemMessages) > 0 {
+		// Add clear hint when showing all messages
+		b.WriteString("\n(Press 'm' to clear messages)")
+	}
+	
+	return b.String()
+}
+
+// overlaySystemPanel overlays the system panel on top of the main content
+func (m Model) overlaySystemPanel(mainContent string) string {
+	// Split main content into lines
+	lines := strings.Split(mainContent, "\n")
+	
+	// Calculate panel height (5 messages + title + border = 8 lines)
+	panelHeight := 8
+	if len(m.systemMessages) < 5 {
+		panelHeight = len(m.systemMessages) + 3 // messages + title + border
+	}
+	
+	// Position panel at bottom, but above help (2 lines)
+	startLine := len(lines) - panelHeight - 2
+	if startLine < 2 { // Keep below header
+		startLine = 2
+	}
+	
+	// Render the panel
+	panel := m.renderSystemPanelOverlay()
+	panelLines := strings.Split(panel, "\n")
+	
+	// Overlay panel lines onto main content
+	for i, panelLine := range panelLines {
+		if startLine+i < len(lines)-2 { // Don't overlay help
+			lines[startLine+i] = panelLine
+		}
+	}
+	
+	return strings.Join(lines, "\n")
+}
+
+// renderSystemPanelOverlay renders the system panel for overlay mode
+func (m Model) renderSystemPanelOverlay() string {
+	// Create a semi-transparent style with background
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(0, 1).
+		Width(m.width - 2).
+		Background(lipgloss.Color("235")) // Dark background for visibility
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("255")).
+		Bold(true).
+		Background(lipgloss.Color("235"))
+	
+	// Title
+	title := titleStyle.Render("System Messages")
+	
+	// Get messages (max 5 for overlay)
+	messageCount := len(m.systemMessages)
+	start := 0
+	if messageCount > 5 {
+		start = messageCount - 5
+	}
+	
+	// Format messages
+	var lines []string
+	for i := start; i < messageCount; i++ {
+		msg := m.systemMessages[i]
+		icon := m.getSystemMessageIcon(msg.Level)
+		
+		// Create message with background
+		msgStyle := lipgloss.NewStyle().
+			Background(lipgloss.Color("235")).
+			Width(m.width - 6) // Account for border and padding
+		
+		line := fmt.Sprintf("[%s] %s %s: %s",
+			msg.Timestamp.Format("15:04:05"),
+			icon,
+			msg.Context,
+			msg.Message)
+		
+		lines = append(lines, msgStyle.Render(line))
+	}
+	
+	// Add hint with background
+	hintStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("243")).
+		Background(lipgloss.Color("235")).
+		Width(m.width - 6)
+	
+	if messageCount > 5 {
+		hint := fmt.Sprintf("... and %d more (press 'e' to expand, 'm' to clear)", messageCount-5)
+		lines = append(lines, hintStyle.Render(hint))
+	} else {
+		lines = append(lines, hintStyle.Render("(Press 'm' to clear messages)"))
+	}
+	
+	// Combine title and content
+	content := strings.Join(lines, "\n")
+	panel := lipgloss.JoinVertical(lipgloss.Left, title, content)
+	
+	return panelStyle.Render(panel)
+}
+
+// renderSystemPanel renders the system message panel at the bottom of the screen
+func (m Model) renderSystemPanel() string {
+	// Don't show if no messages
+	if len(m.systemMessages) == 0 {
+		return ""
+	}
+	
+	// Create styles
+	panelStyle := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")). // Gray border
+		Padding(0, 1).
+		Width(m.width - 2)
+	
+	titleStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("255")).
+		Bold(true)
+	
+	// Title
+	title := "System Messages"
+	if m.systemPanelExpanded {
+		title = fmt.Sprintf("All System Messages (%d)", len(m.systemMessages))
+	}
+	title = titleStyle.Render(title)
+	
+	// Content
+	content := m.systemPanelViewport.View()
+	
+	// Combine title and content
+	panel := lipgloss.JoinVertical(lipgloss.Left, title, content)
+	
+	return panelStyle.Render(panel)
 }
