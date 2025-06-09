@@ -90,6 +90,8 @@ brum -p 8888                # Custom MCP port (default: 7777)
 ### Key Design Patterns
 
 1. **Variable Shadowing**: Be careful not to shadow package names with variables (e.g., don't use `logs` as a variable name when importing the `logs` package)
+   - Never shadow variables in go, double check before naming variables
+   - Use different naming conventions for go variables and go types to prevent shadowing
 
 2. **Process Cleanup**: All processes are tracked and cleaned up on exit via `processMgr.Cleanup()`
 
@@ -107,4 +109,4 @@ brum -p 8888                # Custom MCP port (default: 7777)
 - Slash commands use Go regex syntax for pattern matching
 - Process IDs are generated as `<scriptname>-<timestamp>`
 - URLs are automatically extracted from logs and deduplicated per process
-- Rewrite test-script.sh to write proxy testing code so you don't have get your scripts manually approved
+- Rewrite test-script.sh to write proxy testing code so you don't get your scripts manually approved

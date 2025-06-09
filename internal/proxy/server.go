@@ -838,6 +838,11 @@ func (s *Server) RegisterURL(urlStr, processName string) string {
 		
 		s.urlMappings[normalized] = mapping
 		
+		// Also register the proxy URL so telemetry can map it back to the process
+		// This handles cases where telemetry comes from the proxied URL (localhost:20888)
+		proxyURLNormalized := normalizeURL(mapping.ProxyURL)
+		s.urlMap[proxyURLNormalized] = processName
+		
 		return mapping.ProxyURL
 	}
 	
@@ -1192,8 +1197,23 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 			// Determine process name from metadata or use default
 			processName := "unknown"
 			if metadata, ok := data["metadata"].(map[string]interface{}); ok {
-				if url, ok := metadata["url"].(string); ok {
-					processName = s.getProcessForURL(url)
+				if urlStr, ok := metadata["url"].(string); ok {
+					processName = s.getProcessForURL(urlStr)
+					
+					// If still unknown, try to extract from the URL host
+					if processName == "unknown" {
+						if u, err := url.Parse(urlStr); err == nil {
+							// Check if this is one of our proxy URLs
+							for proxyURL, mappedProcess := range s.urlMap {
+								if pu, err := url.Parse(proxyURL); err == nil {
+									if u.Host == pu.Host {
+										processName = mappedProcess
+										break
+									}
+								}
+							}
+						}
+					}
 				}
 			}
 			

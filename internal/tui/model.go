@@ -42,6 +42,54 @@ const (
 	ViewScriptSelector View = "script-selector"
 )
 
+// ViewConfig holds configuration for each view
+type ViewConfig struct {
+	Title       string
+	Description string
+	KeyBinding  string
+	Icon        string
+}
+
+// viewConfigs defines the configuration for each view
+var viewConfigs = map[View]ViewConfig{
+	ViewProcesses: {
+		Title:       "Processes",
+		Description: "Process management",
+		KeyBinding:  "1",
+		Icon:        "🏃",
+	},
+	ViewLogs: {
+		Title:       "Logs",
+		Description: "Process logs",
+		KeyBinding:  "2",
+		Icon:        "📄",
+	},
+	ViewErrors: {
+		Title:       "Errors",
+		Description: "Error tracking",
+		KeyBinding:  "3",
+		Icon:        "❌",
+	},
+	ViewURLs: {
+		Title:       "URLs",
+		Description: "Detected URLs",
+		KeyBinding:  "4",
+		Icon:        "🔗",
+	},
+	ViewWeb: {
+		Title:       "Web",
+		Description: "Proxy requests",
+		KeyBinding:  "5",
+		Icon:        "🌐",
+	},
+	ViewSettings: {
+		Title:       "Settings",
+		Description: "Configuration",
+		KeyBinding:  "6",
+		Icon:        "⚙️",
+	},
+}
+
 type Model struct {
 	processMgr   *process.Manager
 	logStore     *logs.Store
@@ -176,25 +224,11 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	}
 
 	// Handle number keys for view switching
-	switch msg.String() {
-	case "1":
-		m.currentView = ViewProcesses
-		return m, nil, true
-	case "2":
-		m.currentView = ViewLogs
-		return m, nil, true
-	case "3":
-		m.currentView = ViewErrors
-		return m, nil, true
-	case "4":
-		m.currentView = ViewURLs
-		return m, nil, true
-	case "5":
-		m.currentView = ViewWeb
-		return m, nil, true
-	case "6":
-		m.currentView = ViewSettings
-		return m, nil, true
+	for viewType, cfg := range viewConfigs {
+		if msg.String() == cfg.KeyBinding {
+			m.switchToView(viewType)
+			return m, nil, true
+		}
 	}
 
 	return m, nil, false // Key not handled
@@ -652,6 +686,11 @@ func (m Model) Init() tea.Cmd {
 	m.eventBus.Subscribe(events.EventType("proxy.request"), func(e events.Event) {
 		m.updateChan <- webUpdateMsg{}
 	})
+	
+	// Subscribe to telemetry events
+	m.eventBus.Subscribe(events.EventType("telemetry.received"), func(e events.Event) {
+		m.updateChan <- webUpdateMsg{} // Update web view when telemetry is received
+	})
 
 	return tea.Batch(
 		textinput.Blink,
@@ -953,49 +992,92 @@ func (m Model) View() string {
 		return "Loading..."
 	}
 
-	var content string
-	
-	// Show script selector if in that view (highest priority)
+	// Special views that take over the entire screen
 	if m.currentView == ViewScriptSelector {
 		return m.renderScriptSelector()
 	}
-	
-	// Show command window if active
 	if m.showingCommandWindow {
 		return m.renderCommandWindow()
-	} else if m.showingRunDialog {
-		content = m.renderRunDialog()
-	} else {
-		switch m.currentView {
-		case ViewProcesses:
-			content = m.renderProcessesView()
-		case ViewLogs:
-			content = m.renderLogsView()
-		case ViewErrors:
-			content = m.renderErrorsViewSplit()
-		case ViewURLs:
-			content = m.renderURLsView()
-		case ViewWeb:
-			content = m.renderWebView()
-		case ViewSettings:
-			if m.showingFileBrowser {
-				content = m.renderFileBrowser()
-			} else {
-				content = m.settingsList.View()
-			}
-		case ViewFilters:
-			content = m.renderFiltersView()
-		}
 	}
 
-	helpView := m.help.View(m.keys)
-	
+	// Render main content with consistent layout
+	return m.renderLayout(m.renderContent())
+}
+
+// renderLayout provides consistent layout for all views
+func (m Model) renderLayout(content string) string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		m.renderHeader(),
 		content,
-		helpView,
+		m.help.View(m.keys),
 	)
+}
+
+// renderContent renders the main content area based on current view
+func (m Model) renderContent() string {
+	if m.showingRunDialog {
+		return m.renderRunDialog()
+	}
+
+	switch m.currentView {
+	case ViewProcesses:
+		return m.renderProcessesView()
+	case ViewLogs:
+		return m.renderLogsView()
+	case ViewErrors:
+		return m.renderErrorsViewSplit()
+	case ViewURLs:
+		return m.renderURLsView()
+	case ViewWeb:
+		return m.renderWebView()
+	case ViewSettings:
+		if m.showingFileBrowser {
+			return m.renderFileBrowser()
+		}
+		return m.settingsList.View()
+	case ViewFilters:
+		return m.renderFiltersView()
+	default:
+		return "Unknown view"
+	}
+}
+
+// getViewStatus returns status information for the current view
+func (m Model) getViewStatus() string {
+	switch m.currentView {
+	case ViewProcesses:
+		processes := m.processMgr.GetAllProcesses()
+		running := 0
+		for _, p := range processes {
+			if p.Status == process.StatusRunning {
+				running++
+			}
+		}
+		return fmt.Sprintf("%d processes, %d running", len(processes), running)
+		
+	case ViewLogs:
+		if m.selectedProcess != "" {
+			return fmt.Sprintf("Process: %s", m.selectedProcess)
+		}
+		return "All processes"
+		
+	case ViewErrors:
+		errors := m.logStore.GetErrors()
+		errorCount := len(errors)
+		return fmt.Sprintf("%d errors", errorCount)
+		
+	case ViewURLs:
+		urls := m.logStore.GetURLs()
+		return fmt.Sprintf("%d URLs detected", len(urls))
+		
+	case ViewWeb:
+		requests := m.proxyServer.GetRequests()
+		return fmt.Sprintf("%d requests", len(requests))
+		
+	default:
+		return ""
+	}
 }
 
 func (m *Model) updateSizes() {
@@ -1025,6 +1107,25 @@ func (m *Model) cycleView() {
 		if v == m.currentView {
 			m.currentView = views[(i+1)%len(views)]
 			break
+		}
+	}
+}
+
+// switchToView changes the current view and performs any necessary setup
+func (m *Model) switchToView(view View) {
+	m.currentView = view
+	
+	// Perform view-specific initialization if needed
+	switch view {
+	case ViewLogs:
+		// Ensure logs are updated
+		m.updateLogsView()
+	case ViewErrors:
+		// Errors view updates automatically via subscription
+	case ViewWeb:
+		// Update web request index if needed
+		if m.webRequestIndex < 0 {
+			m.webRequestIndex = 0
 		}
 	}
 }
@@ -1285,13 +1386,20 @@ func (m Model) renderHeader() string {
 	activeStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
 	inactiveStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 
-	tabViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
-	for i, v := range tabViews {
-		label := fmt.Sprintf("%d.%s", i+1, string(v))
-		if v == m.currentView {
-			tabs = append(tabs, activeStyle.Render("▶ " + label))
-		} else {
-			tabs = append(tabs, inactiveStyle.Render("  " + label))
+	// Use ordered list of views
+	orderedViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
+	for _, viewType := range orderedViews {
+		if cfg, ok := viewConfigs[viewType]; ok {
+			label := fmt.Sprintf("%s.%s", cfg.KeyBinding, cfg.Title)
+			if cfg.Icon != "" {
+				label = cfg.Icon + " " + label
+			}
+			
+			if viewType == m.currentView {
+				tabs = append(tabs, activeStyle.Render("▶ " + label))
+			} else {
+				tabs = append(tabs, inactiveStyle.Render("  " + label))
+			}
 		}
 	}
 
