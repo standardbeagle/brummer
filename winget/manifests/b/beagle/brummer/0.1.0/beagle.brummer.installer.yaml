@@ -1,0 +1,13 @@
+PackageIdentifier: beagle.brummer
+PackageVersion: 0.1.0
+InstallerType: portable
+Commands:
+  - brum
+  - brummer
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/beagle/brummer/releases/download/v0.1.0/brum-windows-amd64.exe
+    InstallerSha256: PLACEHOLDER_SHA256_WINDOWS_AMD64
+    PortableCommandAlias: brum
+ManifestType: installer
+ManifestVersion: 1.4.0

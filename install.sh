@@ -81,7 +81,7 @@ install_from_source() {
     
     # Build the binary
     print_info "Building Brummer..."
-    go build -o "$BINARY_NAME" cmd/brummer/main.go
+    go build -o "$BINARY_NAME" cmd/brum/main.go
     
     if [[ ! -f "$BINARY_NAME" ]]; then
         print_error "Build failed - binary not created"

@@ -23,17 +23,90 @@ A TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts with inte
 
 ## Installation
 
-### Quick Install (Recommended)
+### Quick Install (One-Liner)
+
+<details>
+<summary><b>🐧 Linux/macOS</b></summary>
 
 ```bash
-# Using curl
 curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
-
-# Or using wget
-wget -qO- https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
 ```
 
+Or with wget:
+```bash
+wget -qO- https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+```
+</details>
+
+<details>
+<summary><b>🪟 Windows (PowerShell)</b></summary>
+
+```powershell
+irm https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | iex
+```
+</details>
+
+### Package Managers
+
+<details>
+<summary><b>📦 NPM/NPX</b></summary>
+
+```bash
+# Run directly with npx (no installation)
+npx brummer
+
+# Install globally
+npm install -g brummer
+
+# Or with yarn
+yarn global add brummer
+
+# Or with pnpm
+pnpm add -g brummer
+```
+</details>
+
+<details>
+<summary><b>🍺 Homebrew</b> (macOS/Linux)</summary>
+
+```bash
+# Add tap and install
+brew tap beagle/brummer
+brew install brummer
+
+# Or directly
+brew install beagle/brummer/brummer
+```
+</details>
+
+<details>
+<summary><b>🍫 Chocolatey</b> (Windows)</summary>
+
+```powershell
+choco install brummer
+```
+</details>
+
+<details>
+<summary><b>📦 Winget</b> (Windows)</summary>
+
+```powershell
+winget install beagle.brummer
+```
+</details>
+
+<details>
+<summary><b>🐹 Go Install</b></summary>
+
+```bash
+go install github.com/beagle/brummer/cmd/brum@latest
+```
+</details>
+
 ### Install from Source
+
+<details>
+<summary><b>Build from source</b></summary>
 
 ```bash
 # Clone the repository
@@ -41,28 +114,18 @@ git clone https://github.com/beagle/brummer
 cd brummer
 
 # Using Make (recommended)
-make install-user    # Install for current user
+make install-user    # Install for current user (~/.local/bin)
 # OR
 make install        # Install system-wide (requires sudo)
 
 # Using the interactive installer
 ./install.sh
-```
 
-### Manual Build
-
-```bash
-git clone https://github.com/beagle/brummer
-cd brummer
-go build -o brum ./cmd/brummer
+# Manual build
+go build -o brum ./cmd/brum
 mv brum ~/.local/bin/  # Add to PATH
 ```
-
-### Using Go Install
-
-```bash
-go install github.com/beagle/brummer/cmd/brummer@latest
-```
+</details>
 
 ## Usage
 
@@ -208,7 +271,7 @@ brum --no-tui
 
 ```
 brummer/
-├── cmd/brummer/         # Main application entry point
+├── cmd/brum/            # Main application entry point
 ├── internal/
 │   ├── tui/             # Terminal UI components
 │   ├── process/         # Process management
@@ -224,7 +287,7 @@ brummer/
 ### Building
 
 ```bash
-go build -o brum ./cmd/brummer
+go build -o brum ./cmd/brum
 ```
 
 ### Testing

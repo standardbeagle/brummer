@@ -26,6 +26,30 @@ const sidebars = {
     },
     {
       type: 'category',
+      label: 'Tutorials',
+      items: [
+        'tutorials/first-project',
+        'tutorials/migrate-from-terminal',
+        'tutorials/team-collaboration',
+        'tutorials/custom-scripts',
+        'tutorials/ide-integration',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Examples',
+      items: [
+        'examples/react-development',
+        'examples/nextjs-fullstack',
+        'examples/monorepo-workflows',
+        'examples/microservices',
+        'examples/vue-vite',
+        'examples/debugging-workflows',
+        'examples/performance-monitoring',
+      ],
+    },
+    {
+      type: 'category',
       label: 'User Guide',
       items: [
         'user-guide/navigation',
@@ -52,6 +76,15 @@ const sidebars = {
         'mcp-integration/api-reference',
         'mcp-integration/client-setup',
         'mcp-integration/events',
+      ],
+    },
+    {
+      type: 'category',
+      label: 'Troubleshooting',
+      items: [
+        'troubleshooting/common-issues',
+        'troubleshooting/performance',
+        'troubleshooting/compatibility',
       ],
     },
     {

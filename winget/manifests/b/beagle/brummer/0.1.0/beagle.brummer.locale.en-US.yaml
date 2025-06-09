@@ -1,0 +1,41 @@
+PackageIdentifier: beagle.brummer
+PackageVersion: 0.1.0
+PackageLocale: en-US
+Publisher: beagle
+PublisherUrl: https://github.com/beagle
+PublisherSupportUrl: https://github.com/beagle/brummer/issues
+PackageName: Brummer
+PackageUrl: https://github.com/beagle/brummer
+License: MIT
+LicenseUrl: https://github.com/beagle/brummer/blob/main/LICENSE
+Copyright: Copyright (c) 2024 beagle
+ShortDescription: Terminal UI for managing npm/yarn/pnpm/bun scripts with intelligent monitoring
+Description: |
+  Brummer is a Terminal UI (TUI) for managing npm/yarn/pnpm/bun scripts with integrated MCP server for external tool access. 
+  It provides intelligent log management, real-time monitoring, and seamless integration with development tools.
+  
+  Features:
+  - Multi-Package Manager Support (npm, yarn, pnpm, bun)
+  - Monorepo Support (workspaces, Lerna, Nx, Rush)
+  - Multi-Language Detection
+  - Interactive TUI with real-time monitoring
+  - Smart Log Management with error detection
+  - MCP Server Integration for external tools
+  - Process Management
+Moniker: brum
+Tags:
+  - cli
+  - tui
+  - terminal
+  - npm
+  - yarn
+  - pnpm
+  - bun
+  - development
+  - devtools
+  - process-manager
+  - mcp
+ReleaseNotes: Initial release
+ReleaseNotesUrl: https://github.com/beagle/brummer/releases/tag/v0.1.0
+ManifestType: defaultLocale
+ManifestVersion: 1.4.0
