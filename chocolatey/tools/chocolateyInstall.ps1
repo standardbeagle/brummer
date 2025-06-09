@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 
 $toolsDir = "$(Split-Path -parent $MyInvocation.MyCommand.Definition)"
 $packageName = 'brummer'
-$url64 = 'https://github.com/beagle/brummer/releases/download/v0.1.0/brum-windows-amd64.exe'
+$url64 = 'https://github.com/standardbeagle/brummer/releases/download/v0.1.0/brum-windows-amd64.exe'
 
 $packageArgs = @{
   packageName    = $packageName

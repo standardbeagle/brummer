@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/beagle/brummer/internal/logs"
-	"github.com/beagle/brummer/internal/mcp"
-	"github.com/beagle/brummer/internal/process"
-	"github.com/beagle/brummer/internal/proxy"
-	"github.com/beagle/brummer/internal/tui"
-	"github.com/beagle/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/mcp"
+	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/proxy"
+	"github.com/standardbeagle/brummer/internal/tui"
+	"github.com/standardbeagle/brummer/pkg/events"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )

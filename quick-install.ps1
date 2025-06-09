@@ -4,7 +4,7 @@
 $ErrorActionPreference = 'Stop'
 
 # Configuration
-$repo = "beagle/brummer"
+$repo = "standardbeagle/brummer"
 $binaryName = "brum"
 $installDir = "$env:USERPROFILE\.local\bin"
 $version = "latest"

@@ -3,11 +3,11 @@ PackageVersion: 0.1.0
 PackageLocale: en-US
 Publisher: beagle
 PublisherUrl: https://github.com/beagle
-PublisherSupportUrl: https://github.com/beagle/brummer/issues
+PublisherSupportUrl: https://github.com/standardbeagle/brummer/issues
 PackageName: Brummer
-PackageUrl: https://github.com/beagle/brummer
+PackageUrl: https://github.com/standardbeagle/brummer
 License: MIT
-LicenseUrl: https://github.com/beagle/brummer/blob/main/LICENSE
+LicenseUrl: https://github.com/standardbeagle/brummer/blob/main/LICENSE
 Copyright: Copyright (c) 2024 beagle
 ShortDescription: Terminal UI for managing npm/yarn/pnpm/bun scripts with intelligent monitoring
 Description: |
@@ -36,6 +36,6 @@ Tags:
   - process-manager
   - mcp
 ReleaseNotes: Initial release
-ReleaseNotesUrl: https://github.com/beagle/brummer/releases/tag/v0.1.0
+ReleaseNotesUrl: https://github.com/standardbeagle/brummer/releases/tag/v0.1.0
 ManifestType: defaultLocale
 ManifestVersion: 1.4.0

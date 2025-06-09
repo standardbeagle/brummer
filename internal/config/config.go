@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/beagle/brummer/internal/parser"
+	"github.com/standardbeagle/brummer/internal/parser"
 )
 
 type Config struct {

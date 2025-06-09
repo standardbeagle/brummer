@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beagle/brummer/internal/logs"
-	"github.com/beagle/brummer/internal/process"
-	"github.com/beagle/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/pkg/events"
 )
 
 type Server struct {

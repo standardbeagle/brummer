@@ -13,7 +13,7 @@ const config = {
   favicon: 'img/favicon.ico',
 
   // Set the production url of your site here
-  url: 'https://beagle.github.io',
+  url: 'https://standardbeagle.github.io',
   // Set the /<baseUrl>/ pathname under which your site is served
   // For GitHub pages deployment, it is often '/<projectName>/'
   baseUrl: '/brummer/',
@@ -40,7 +40,7 @@ const config = {
       ({
         docs: {
           sidebarPath: './sidebars.js',
-          editUrl: 'https://github.com/beagle/brummer/tree/main/docs-site/',
+          editUrl: 'https://github.com/standardbeagle/brummer/tree/main/docs-site/',
         },
         blog: false,
         theme: {
@@ -69,7 +69,7 @@ const config = {
             label: 'Documentation',
           },
           {
-            href: 'https://github.com/beagle/brummer',
+            href: 'https://github.com/standardbeagle/brummer',
             label: 'GitHub',
             position: 'right',
           },
@@ -100,11 +100,11 @@ const config = {
             items: [
               {
                 label: 'GitHub',
-                href: 'https://github.com/beagle/brummer',
+                href: 'https://github.com/standardbeagle/brummer',
               },
               {
                 label: 'Issues',
-                href: 'https://github.com/beagle/brummer/issues',
+                href: 'https://github.com/standardbeagle/brummer/issues',
               },
             ],
           },

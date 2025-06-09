@@ -12,10 +12,10 @@ The fastest way to get started:
 
 ```bash
 # Using curl
-curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+curl -sSL https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 
 # Using wget
-wget -qO- https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+wget -qO- https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 ```
 
 This script will:
@@ -31,7 +31,7 @@ This script will:
 Clone the repository and use the Makefile:
 
 ```bash
-git clone https://github.com/beagle/brummer
+git clone https://github.com/standardbeagle/brummer
 cd brummer
 
 # Install for current user (recommended)
@@ -46,7 +46,7 @@ make install
 For a guided installation experience:
 
 ```bash
-git clone https://github.com/beagle/brummer
+git clone https://github.com/standardbeagle/brummer
 cd brummer
 ./install.sh
 ```
@@ -62,7 +62,7 @@ The interactive installer will:
 For full control over the installation:
 
 ```bash
-git clone https://github.com/beagle/brummer
+git clone https://github.com/standardbeagle/brummer
 cd brummer
 go build -o brum ./cmd/brummer
 mv brum ~/.local/bin/  # Or your preferred location
@@ -73,7 +73,7 @@ mv brum ~/.local/bin/  # Or your preferred location
 If you have Go installed and configured:
 
 ```bash
-go install github.com/beagle/brummer/cmd/brummer@latest
+go install github.com/standardbeagle/brummer/cmd/brummer@latest
 ```
 
 ## Verifying Installation
@@ -132,7 +132,7 @@ To update to the latest version:
 
 ```bash
 # Using quick install
-curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+curl -sSL https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 
 # Using make
 cd brummer

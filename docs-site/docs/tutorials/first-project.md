@@ -28,7 +28,7 @@ By the end, you'll understand how Brummer transforms chaotic terminal management
 First, let's install Brummer using the quick install method:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+curl -sSL https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 ```
 
 Verify installation:

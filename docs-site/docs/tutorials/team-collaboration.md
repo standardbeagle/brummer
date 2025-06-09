@@ -183,7 +183,7 @@ Add Brummer section to README:
 ```markdown title="README.md"
 ## Development with Brummer
 
-This project uses [Brummer](https://github.com/beagle/brummer) for development process management.
+This project uses [Brummer](https://github.com/standardbeagle/brummer) for development process management.
 
 ### Quick Start
 
@@ -403,7 +403,7 @@ jobs:
     
     - name: Install Brummer
       run: |
-        curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+        curl -sSL https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
         echo "$HOME/.local/bin" >> $GITHUB_PATH
     
     - name: Install dependencies

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 	
-	"github.com/beagle/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/pkg/events"
 	"github.com/google/uuid"
 )
 

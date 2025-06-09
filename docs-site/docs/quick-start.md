@@ -9,7 +9,7 @@ Get Brummer running in under 2 minutes!
 ## 1. Install Brummer
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+curl -sSL https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 ```
 
 ## 2. Navigate to Your Project

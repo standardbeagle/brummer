@@ -36,7 +36,7 @@ Quick solutions to frequently encountered problems with Brummer.
 
 3. **Reinstall**:
    ```bash
-   curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+   curl -sSL https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
    ```
 
 ### "Permission denied" during installation
@@ -410,8 +410,8 @@ cat package.json | grep -A 10 scripts
 
 ### Community Support
 
-- GitHub Issues: [github.com/beagle/brummer/issues](https://github.com/beagle/brummer/issues)
-- Documentation: [beagle.github.io/brummer](https://beagle.github.io/brummer)
+- GitHub Issues: [github.com/standardbeagle/brummer/issues](https://github.com/standardbeagle/brummer/issues)
+- Documentation: [standardbeagle.github.io/brummer](https://standardbeagle.github.io/brummer)
 
 ### Logs Location
 

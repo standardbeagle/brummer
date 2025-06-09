@@ -15,7 +15,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/beagle/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/pkg/events"
 	"github.com/elazarl/goproxy"
 	"github.com/gorilla/websocket"
 )

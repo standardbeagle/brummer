@@ -164,7 +164,7 @@ Connect your favorite tools:
 
 ```bash
 # Install
-curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+curl -sSL https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 
 # Or with npm
 npm install -g brummer
@@ -190,7 +190,7 @@ Ready to transform your development workflow?
 <div style="text-align: center; margin-top: 50px;">
   <h3>Join thousands of developers who've simplified their workflow with Brummer</h3>
   <p>
-    <a href="https://github.com/beagle/brummer" target="_blank">⭐ Star on GitHub</a> | 
+    <a href="https://github.com/standardbeagle/brummer" target="_blank">⭐ Star on GitHub</a> | 
     <a href="./installation">📦 Install Now</a> | 
     <a href="./tutorials/first-project">📚 Tutorial</a>
   </p>

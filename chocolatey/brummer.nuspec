@@ -6,19 +6,19 @@
     <title>Brummer</title>
     <authors>beagle</authors>
     <owners>beagle</owners>
-    <licenseUrl>https://github.com/beagle/brummer/blob/main/LICENSE</licenseUrl>
-    <projectUrl>https://github.com/beagle/brummer</projectUrl>
-    <iconUrl>https://raw.githubusercontent.com/beagle/brummer/main/logo.png</iconUrl>
+    <licenseUrl>https://github.com/standardbeagle/brummer/blob/main/LICENSE</licenseUrl>
+    <projectUrl>https://github.com/standardbeagle/brummer</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/standardbeagle/brummer/main/logo.png</iconUrl>
     <requireLicenseAcceptance>false</requireLicenseAcceptance>
     <description>🐝 Your Terminal UI Development Buddy - A TUI for managing npm/yarn/pnpm/bun scripts with intelligent monitoring</description>
     <summary>Terminal UI for managing package scripts with intelligent log management and MCP server integration</summary>
-    <releaseNotes>https://github.com/beagle/brummer/releases/tag/v0.1.0</releaseNotes>
+    <releaseNotes>https://github.com/standardbeagle/brummer/releases/tag/v0.1.0</releaseNotes>
     <copyright>Copyright (c) 2024 beagle</copyright>
     <tags>cli tui terminal npm yarn pnpm bun development devtools process-manager</tags>
-    <projectSourceUrl>https://github.com/beagle/brummer</projectSourceUrl>
-    <packageSourceUrl>https://github.com/beagle/brummer/tree/main/chocolatey</packageSourceUrl>
-    <docsUrl>https://beagle.github.io/brummer/</docsUrl>
-    <bugTrackerUrl>https://github.com/beagle/brummer/issues</bugTrackerUrl>
+    <projectSourceUrl>https://github.com/standardbeagle/brummer</projectSourceUrl>
+    <packageSourceUrl>https://github.com/standardbeagle/brummer/tree/main/chocolatey</packageSourceUrl>
+    <docsUrl>https://standardbeagle.github.io/brummer/</docsUrl>
+    <bugTrackerUrl>https://github.com/standardbeagle/brummer/issues</bugTrackerUrl>
   </metadata>
   <files>
     <file src="tools\**" target="tools" />

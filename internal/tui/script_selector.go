@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/beagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 )

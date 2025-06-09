@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	
-	"github.com/beagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/logs"
 )
 
 // Helper methods to convert logs to interface{} for MCP

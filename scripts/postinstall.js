@@ -8,7 +8,7 @@ const { pipeline } = require('stream');
 const streamPipeline = promisify(pipeline);
 
 // Configuration
-const REPO = 'beagle/brummer';
+const REPO = 'standardbeagle/brummer';
 const BINARY_NAME = 'brum';
 
 // Detect platform
@@ -156,7 +156,7 @@ async function install() {
   } catch (error) {
     console.error('❌ Installation failed:', error.message);
     console.error('\nYou can try installing from source instead:');
-    console.error('  git clone https://github.com/beagle/brummer');
+    console.error('  git clone https://github.com/standardbeagle/brummer');
     console.error('  cd brummer');
     console.error('  make install-user');
     process.exit(1);

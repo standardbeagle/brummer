@@ -18,13 +18,13 @@
     "mcp",
     "logs"
   ],
-  "homepage": "https://github.com/beagle/brummer",
+  "homepage": "https://github.com/standardbeagle/brummer",
   "bugs": {
-    "url": "https://github.com/beagle/brummer/issues"
+    "url": "https://github.com/standardbeagle/brummer/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/beagle/brummer.git"
+    "url": "git+https://github.com/standardbeagle/brummer.git"
   },
   "license": "MIT",
   "author": "beagle",

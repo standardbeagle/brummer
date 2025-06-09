@@ -14,9 +14,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/beagle/brummer/internal/config"
-	"github.com/beagle/brummer/internal/parser"
-	"github.com/beagle/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/internal/config"
+	"github.com/standardbeagle/brummer/internal/parser"
+	"github.com/standardbeagle/brummer/pkg/events"
 )
 
 type Process struct {

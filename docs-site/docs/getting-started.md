@@ -19,13 +19,13 @@ Before installing Brummer, ensure you have:
 The fastest way to install Brummer:
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+curl -sSL https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 ```
 
 Or using wget:
 
 ```bash
-wget -qO- https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+wget -qO- https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 ```
 
 ## First Run

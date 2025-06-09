@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Installation configuration
 INSTALL_DIR="/usr/local/bin"
 BINARY_NAME="brum"
-REPO_URL="https://github.com/beagle/brummer"
+REPO_URL="https://github.com/standardbeagle/brummer"
 
 # Print colored output
 print_info() {
@@ -245,7 +245,7 @@ main() {
     echo "2. Press '?' in the TUI for help"
     echo "3. Install the browser extension for enhanced debugging"
     echo
-    echo "For more information: https://github.com/beagle/brummer"
+    echo "For more information: https://github.com/standardbeagle/brummer"
 }
 
 # Run main installation

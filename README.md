@@ -29,12 +29,12 @@ A TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts with inte
 <summary><b>🐧 Linux/macOS</b></summary>
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+curl -sSL https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 ```
 
 Or with wget:
 ```bash
-wget -qO- https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | bash
+wget -qO- https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | bash
 ```
 </details>
 
@@ -42,7 +42,7 @@ wget -qO- https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh
 <summary><b>🪟 Windows (PowerShell)</b></summary>
 
 ```powershell
-irm https://raw.githubusercontent.com/beagle/brummer/main/quick-install.sh | iex
+irm https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | iex
 ```
 </details>
 
@@ -71,11 +71,11 @@ pnpm add -g brummer
 
 ```bash
 # Add tap and install
-brew tap beagle/brummer
+brew tap standardbeagle/brummer
 brew install brummer
 
 # Or directly
-brew install beagle/brummer/brummer
+brew install standardbeagle/brummer/brummer
 ```
 </details>
 
@@ -99,7 +99,7 @@ winget install beagle.brummer
 <summary><b>🐹 Go Install</b></summary>
 
 ```bash
-go install github.com/beagle/brummer/cmd/brum@latest
+go install github.com/standardbeagle/brummer/cmd/brum@latest
 ```
 </details>
 
@@ -110,7 +110,7 @@ go install github.com/beagle/brummer/cmd/brum@latest
 
 ```bash
 # Clone the repository
-git clone https://github.com/beagle/brummer
+git clone https://github.com/standardbeagle/brummer
 cd brummer
 
 # Using Make (recommended)
@@ -312,11 +312,11 @@ These tools help manage orphaned development processes that can occur during tes
 
 ## Documentation
 
-Comprehensive documentation is available at [https://beagle.github.io/brummer/](https://beagle.github.io/brummer/)
+Comprehensive documentation is available at [https://standardbeagle.github.io/brummer/](https://standardbeagle.github.io/brummer/)
 
-- [Getting Started Guide](https://beagle.github.io/brummer/docs/getting-started)
-- [Installation Options](https://beagle.github.io/brummer/docs/installation)
-- [MCP Integration](https://beagle.github.io/brummer/docs/mcp-integration/overview)
+- [Getting Started Guide](https://standardbeagle.github.io/brummer/docs/getting-started)
+- [Installation Options](https://standardbeagle.github.io/brummer/docs/installation)
+- [MCP Integration](https://standardbeagle.github.io/brummer/docs/mcp-integration/overview)
 
 ## License
 
