@@ -490,13 +490,13 @@ func (m *Manager) killProcessTree(pid int) {
 	if runtime.GOOS == "windows" {
 		// On Windows, try to kill the process directly
 		if proc, err := os.FindProcess(pid); err == nil {
-			proc.Kill()
+			_ = proc.Kill() // Ignore errors during forced cleanup
 		}
 	} else {
 		// On Unix systems, kill the entire process group
-		syscall.Kill(-pid, syscall.SIGTERM)
+		_ = syscall.Kill(-pid, syscall.SIGTERM) // Ignore errors during cleanup
 		time.Sleep(50 * time.Millisecond)
-		syscall.Kill(-pid, syscall.SIGKILL)
+		_ = syscall.Kill(-pid, syscall.SIGKILL) // Ignore errors during cleanup
 
 		// Also try to find and kill child processes
 		m.killChildProcesses(pid)
@@ -527,9 +527,9 @@ func (m *Manager) killChildProcesses(parentPID int) {
 			m.killChildProcesses(childPID)
 			// Then kill this child
 			if proc, err := os.FindProcess(childPID); err == nil {
-				proc.Signal(syscall.SIGTERM)
+				_ = proc.Signal(syscall.SIGTERM) // Ignore errors during cleanup
 				time.Sleep(50 * time.Millisecond)
-				proc.Kill()
+				_ = proc.Kill() // Ignore errors during cleanup
 			}
 		}
 	}
@@ -541,7 +541,7 @@ func (m *Manager) ensureProcessDead(pid int) {
 		// Try to send signal 0 to check if process exists
 		if err := proc.Signal(syscall.Signal(0)); err == nil {
 			// Process still exists, kill it
-			proc.Kill()
+			_ = proc.Kill() // Ignore errors during forced cleanup
 		}
 	}
 }
@@ -581,9 +581,9 @@ func (m *Manager) killProcessUsingPort(port int) {
 	for _, line := range strings.Split(lines, "\n") {
 		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
 			if proc, err := os.FindProcess(pid); err == nil {
-				proc.Signal(syscall.SIGTERM)
+				_ = proc.Signal(syscall.SIGTERM) // Ignore errors during cleanup
 				time.Sleep(50 * time.Millisecond)
-				proc.Kill()
+				_ = proc.Kill() // Ignore errors during cleanup
 			}
 		}
 	}
@@ -605,9 +605,9 @@ func (m *Manager) killProcessesByPattern(pattern string) {
 	for _, line := range strings.Split(lines, "\n") {
 		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
 			if proc, err := os.FindProcess(pid); err == nil {
-				proc.Signal(syscall.SIGTERM)
+				_ = proc.Signal(syscall.SIGTERM) // Ignore errors during cleanup
 				time.Sleep(50 * time.Millisecond)
-				proc.Kill()
+				_ = proc.Kill() // Ignore errors during cleanup
 			}
 		}
 	}

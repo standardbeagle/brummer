@@ -354,11 +354,11 @@ func runApp(cmd *cobra.Command, args []string) {
 			}
 
 			fmt.Println("Stopping MCP server...")
-			mcpServerInterface.Stop()
+			_ = mcpServerInterface.Stop() // Ignore cleanup errors during shutdown
 
 			if proxyServer != nil {
 				fmt.Println("Stopping proxy server...")
-				proxyServer.Stop()
+				_ = proxyServer.Stop() // Ignore cleanup errors during shutdown
 			}
 
 			fmt.Println("Cleanup complete.")
@@ -417,12 +417,12 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		if mcpServerInterface != nil {
 			fmt.Println("Stopping MCP server...")
-			mcpServerInterface.Stop()
+			_ = mcpServerInterface.Stop() // Ignore cleanup errors during shutdown
 		}
 
 		if proxyServer != nil {
 			fmt.Println("Stopping proxy server...")
-			proxyServer.Stop()
+			_ = proxyServer.Stop() // Ignore cleanup errors during shutdown
 		}
 
 		fmt.Println("Cleanup complete.")
