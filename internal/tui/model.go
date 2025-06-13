@@ -1016,6 +1016,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				default:
 					m.webFilter = "all"
 				}
+				
+				// Update the list with new filtered requests and reset selection
+				requests := m.getFilteredRequests()
+				m.updateWebRequestsList(requests)
+				
+				// Reset selection to first item if available
+				if len(requests) > 0 {
+					m.webRequestsList.Select(0)
+					m.updateSelectedRequestFromList()
+				}
+				
 				return m, nil
 			case "up", "k":
 				// Navigate up in request list - delegate to list component
@@ -2538,12 +2549,33 @@ func (m *Model) updateWebRequestsList(requests []proxy.Request) {
 		items[i] = proxyRequestItem{Request: req}
 	}
 	
+	// Store current selection index before updating
+	currentIndex := m.webRequestsList.Index()
+	
 	// Set the items in the list
 	m.webRequestsList.SetItems(items)
 	
-	// Auto-scroll to bottom if enabled and new requests were added
-	if m.webAutoScroll && len(items) > 0 {
+	// Handle selection after items are updated
+	if len(items) == 0 {
+		// No items to select
+		return
+	}
+	
+	if m.webAutoScroll {
+		// Auto-scroll: select last item
 		m.webRequestsList.Select(len(items) - 1)
+	} else {
+		// Manual mode: try to maintain current selection or clamp to valid range
+		if currentIndex >= len(items) {
+			// If current index is out of bounds, select last item
+			m.webRequestsList.Select(len(items) - 1)
+		} else if currentIndex >= 0 {
+			// Keep current selection if valid
+			m.webRequestsList.Select(currentIndex)
+		} else {
+			// Default to first item
+			m.webRequestsList.Select(0)
+		}
 	}
 }
 
