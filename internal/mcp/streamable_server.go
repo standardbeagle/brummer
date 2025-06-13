@@ -519,3 +519,8 @@ func mustMarshal(v interface{}) json.RawMessage {
 func (s *StreamableServer) GetPort() int {
 	return s.port
 }
+
+// IsRunning returns true if the MCP server is currently running
+func (s *StreamableServer) IsRunning() bool {
+	return s.server != nil
+}

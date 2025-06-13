@@ -96,6 +96,7 @@ build-all:
 	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-amd64 cmd/brum/main.go
 	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-arm64 cmd/brum/main.go
 	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-windows-amd64.exe cmd/brum/main.go
+	@GOOS=windows GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-windows-arm64.exe cmd/brum/main.go
 	@echo "✅ Multi-platform build complete. Binaries in ./dist/"
 
 # Package browser extension

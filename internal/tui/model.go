@@ -105,11 +105,16 @@ type UnreadIndicator struct {
 	Icon     string // Icon to display (based on severity)
 }
 
+// MCPServerInterface defines the methods needed by the TUI
+type MCPServerInterface interface {
+	IsRunning() bool
+}
+
 type Model struct {
 	processMgr  *process.Manager
 	logStore    *logs.Store
 	eventBus    *events.EventBus
-	mcpServer   *mcp.Server
+	mcpServer   MCPServerInterface
 	mcpPort     int
 	proxyServer *proxy.Server
 
@@ -785,11 +790,11 @@ func formatBytes(bytes int64) string {
 	}
 }
 
-func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, proxyServer *proxy.Server, mcpPort int) Model {
+func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int) Model {
 	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewProcesses)
 }
 
-func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, proxyServer *proxy.Server, mcpPort int, initialView View) Model {
+func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View) Model {
 	scripts := processMgr.GetScripts()
 
 	processesList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
@@ -2786,7 +2791,7 @@ func (m *Model) updateSettingsList() {
 
 	// MCP Server info
 	mcpStatus := "🔴 Not Running"
-	if m.mcpServer != nil {
+	if m.mcpServer != nil && m.mcpServer.IsRunning() {
 		mcpStatus = "🟢 Running"
 	}
 	items = append(items, mcpServerInfoItem{
@@ -2794,16 +2799,14 @@ func (m *Model) updateSettingsList() {
 		status: mcpStatus,
 	})
 
-	// Add MCP endpoint information - single URL for all tools/resources/prompts
-	if m.mcpServer != nil {
-		mcpURL := fmt.Sprintf("http://localhost:%d/mcp", m.mcpPort)
-		items = append(items, infoDisplayItem{
-			title:       "🔗 MCP Endpoint",
-			description: fmt.Sprintf("%s (JSON-RPC 2.0 - all tools, resources & prompts)", mcpURL),
-			value:       mcpURL,
-			copyable:    true,
-		})
-	}
+	// Add MCP endpoint information - always show URL for easy access
+	mcpURL := fmt.Sprintf("http://localhost:%d/mcp", m.mcpPort)
+	items = append(items, infoDisplayItem{
+		title:       "🔗 MCP Endpoint",
+		description: fmt.Sprintf("%s (JSON-RPC 2.0 - all tools, resources & prompts)", mcpURL),
+		value:       mcpURL,
+		copyable:    true,
+	})
 
 	// Proxy Server info (if running and in full mode for PAC)
 	if m.proxyServer != nil && m.proxyServer.IsRunning() && m.proxyServer.GetMode() == proxy.ProxyModeFull {

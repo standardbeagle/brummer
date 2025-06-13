@@ -102,6 +102,11 @@ func (s *Server) Stop() error {
 	return nil
 }
 
+// IsRunning returns true if the MCP server is currently running
+func (s *Server) IsRunning() bool {
+	return s.server != nil
+}
+
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")

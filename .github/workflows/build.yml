@@ -53,6 +53,9 @@ jobs:
           - goos: windows
             goarch: amd64
             suffix: windows-amd64.exe
+          - goos: windows
+            goarch: arm64
+            suffix: windows-arm64.exe
     
     steps:
       - name: Checkout code
@@ -69,7 +72,7 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           VERSION=$(git describe --tags --always --dirty)
-          go build -ldflags "-X main.Version=${VERSION}" -o brum-${{ matrix.suffix }} ./cmd/brummer
+          go build -ldflags "-X main.Version=${VERSION}" -o brum-${{ matrix.suffix }} ./cmd/brum/main.go
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

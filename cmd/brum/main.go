@@ -319,10 +319,15 @@ func runApp(cmd *cobra.Command, args []string) {
 		Start() error
 		Stop() error
 	}
-	var mcpServer *mcp.Server // For TUI compatibility
+	var mcpServer interface {
+		IsRunning() bool
+		Start() error
+		Stop() error
+	} // For TUI compatibility
 	if !noMCP || noTUI {
 		// Use new StreamableServer by default
-		mcpServerInterface = mcp.NewStreamableServer(mcpPort, processMgr, logStore, proxyServer, eventBus)
+		mcpServer = mcp.NewStreamableServer(mcpPort, processMgr, logStore, proxyServer, eventBus)
+		mcpServerInterface = mcpServer
 		if noTUI {
 			// In headless mode, run MCP server in foreground
 			fmt.Printf("Starting MCP server on port %d (headless mode)...\n", mcpPort)
