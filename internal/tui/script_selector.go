@@ -80,42 +80,122 @@ func (c *CommandAutocomplete) updateScriptSelectorSuggestions() {
 
 // RenderScriptSelector renders the script selector view
 func (m Model) renderScriptSelector() string {
-	// Create a centered container
+	// Adaptive sizing based on terminal size
+	var containerWidth, containerHeight int
+	var showSkipSection, showScriptCount bool
+	var padding int
+	
+	// Determine container size based on terminal dimensions
+	if m.width < 40 {
+		containerWidth = m.width - 4
+		padding = 1
+	} else if m.width < 80 {
+		containerWidth = min(70, m.width - 8)
+		padding = 2
+	} else {
+		containerWidth = 80
+		padding = 2
+	}
+	
+	if m.height < 15 {
+		containerHeight = m.height - 4
+		showSkipSection = false
+		showScriptCount = false
+	} else if m.height < 25 {
+		containerHeight = min(25, m.height - 4)
+		showSkipSection = true
+		showScriptCount = false
+	} else {
+		containerHeight = 30
+		showSkipSection = true
+		showScriptCount = true
+	}
+	
+	// Create a centered container with adaptive sizing
 	containerStyle := lipgloss.NewStyle().
-		Width(80).
-		Height(30).
-		Padding(2, 4).
+		Width(containerWidth).
+		Height(containerHeight).
+		Padding(padding, padding).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("226"))
+	
+	// Calculate content width
+	contentWidth := containerWidth - (2 * padding + 2) // Account for padding and border
 	
 	// Title
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226")).
 		MarginBottom(2).
-		Width(72).
+		Width(contentWidth).
 		Align(lipgloss.Center)
 	
-	title := titleStyle.Render("🐝 Brummer - Select a Script to Run")
+	var title string
+	if m.height < 12 {
+		title = titleStyle.Render("🐝 Select Script")
+	} else {
+		title = titleStyle.Render("🐝 Brummer - Select a Script to Run")
+	}
+	
+	// Skip scripts section (conditional)
+	var skipSection string
+	if showSkipSection {
+		skipStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("86")).
+			Bold(true).
+			MarginBottom(1).
+			Width(contentWidth).
+			Align(lipgloss.Center)
+		
+		if m.scriptSelector.arbitraryMode {
+			if containerWidth < 60 {
+				skipSection = skipStyle.Render("🚀 Arbitrary Command Mode")
+			} else {
+				skipSection = skipStyle.Render("🚀 Arbitrary Command Mode - Type any command to run")
+			}
+		} else {
+			if containerWidth < 60 {
+				skipSection = skipStyle.Render("💡 Ctrl+S: skip • Ctrl+N: arbitrary • /: commands")
+			} else {
+				skipSection = skipStyle.Render("💡 Skip Scripts: Ctrl+S to skip, Ctrl+N for arbitrary commands, or / for command palette")
+			}
+		}
+	}
 	
 	// Instructions
 	instructionStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
 		MarginBottom(2).
-		Width(72).
+		Width(contentWidth).
 		Align(lipgloss.Center)
 	
-	instructions := instructionStyle.Render("Type to search • ↑↓ Navigate • Enter to run • / for command palette")
+	var instructions string
+	if m.scriptSelector.arbitraryMode {
+		if containerWidth < 50 {
+			instructions = instructionStyle.Render("Enter: run command • Esc: exit")
+		} else {
+			instructions = instructionStyle.Render("Type any command (e.g., 'ls', 'node server.js') • Enter to run • Esc to exit")
+		}
+	} else {
+		if containerWidth < 50 {
+			instructions = instructionStyle.Render("↑↓ Navigate • Enter: run • Esc: exit")
+		} else {
+			instructions = instructionStyle.Render("Type script name or ↑↓ Navigate • Enter to run script • Esc/Ctrl+C to exit")
+		}
+	}
 	
 	// Input field
 	inputStyle := lipgloss.NewStyle().
-		Width(72).
+		Width(contentWidth).
 		MarginBottom(1)
 	
 	inputView := inputStyle.Render(m.scriptSelector.View())
 	
-	// Dropdown suggestions
-	dropdownView := m.scriptSelector.RenderScriptSelectorDropdown(10)
+	// Dropdown suggestions with proper width (hide in arbitrary mode)
+	var dropdownView string
+	if !m.scriptSelector.arbitraryMode {
+		dropdownView = m.scriptSelector.RenderScriptSelectorDropdownWithWidth(10, contentWidth)
+	}
 	
 	// Error message if any
 	errorMsg := m.scriptSelector.GetErrorMessage()
@@ -128,19 +208,25 @@ func (m Model) renderScriptSelector() string {
 		errorView = errorStyle.Render("⚠ " + errorMsg)
 	}
 	
-	// Available scripts info
-	scriptCountStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("242")).
-		MarginTop(2).
-		Width(72).
-		Align(lipgloss.Center)
-	
-	scriptCount := fmt.Sprintf("%d scripts available", len(m.scriptSelector.availableScripts))
-	scriptCountView := scriptCountStyle.Render(scriptCount)
+	// Available scripts info (conditional)
+	var scriptCountView string
+	if showScriptCount {
+		scriptCountStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("242")).
+			MarginTop(2).
+			Width(contentWidth).
+			Align(lipgloss.Center)
+		
+		scriptCount := fmt.Sprintf("%d scripts available", len(m.scriptSelector.availableScripts))
+		scriptCountView = scriptCountStyle.Render(scriptCount)
+	}
 	
 	// Combine all elements
 	var contentParts []string
 	contentParts = append(contentParts, title)
+	if showSkipSection && skipSection != "" {
+		contentParts = append(contentParts, skipSection)
+	}
 	contentParts = append(contentParts, instructions)
 	contentParts = append(contentParts, inputView)
 	if dropdownView != "" {
@@ -149,7 +235,9 @@ func (m Model) renderScriptSelector() string {
 	if errorView != "" {
 		contentParts = append(contentParts, errorView)
 	}
-	contentParts = append(contentParts, scriptCountView)
+	if showScriptCount && scriptCountView != "" {
+		contentParts = append(contentParts, scriptCountView)
+	}
 	
 	content := lipgloss.JoinVertical(lipgloss.Left, contentParts...)
 	container := containerStyle.Render(content)
@@ -164,22 +252,36 @@ func (m Model) renderScriptSelector() string {
 
 // RenderScriptSelectorDropdown renders the dropdown for script selector
 func (c CommandAutocomplete) RenderScriptSelectorDropdown(maxSuggestions int) string {
+	return c.RenderScriptSelectorDropdownWithWidth(maxSuggestions, c.width)
+}
+
+// RenderScriptSelectorDropdownWithWidth renders the dropdown with specific width
+func (c CommandAutocomplete) RenderScriptSelectorDropdownWithWidth(maxSuggestions int, containerWidth int) string {
 	if !c.showDropdown || len(c.suggestions) == 0 {
 		return ""
 	}
 	
 	var s strings.Builder
 	
+	// Use dynamic width based on container, with sensible limits
+	dropdownWidth := containerWidth
+	if dropdownWidth < 20 {
+		dropdownWidth = 20
+	}
+	if dropdownWidth > 80 {
+		dropdownWidth = 80
+	}
+	
 	selectedStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("226")).
 		Background(lipgloss.Color("237")).
-		Width(72).
-		Padding(0, 2)
+		Width(dropdownWidth).
+		Padding(0, 1)
 	
 	normalStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("252")).
-		Width(72).
-		Padding(0, 2)
+		Width(dropdownWidth).
+		Padding(0, 1)
 	
 	scriptDescStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("242")).
@@ -194,13 +296,31 @@ func (c CommandAutocomplete) RenderScriptSelectorDropdown(maxSuggestions int) st
 		scriptName := c.suggestions[i]
 		scriptCmd := c.availableScripts[scriptName]
 		
-		// Truncate command if too long
-		if len(scriptCmd) > 50 {
-			scriptCmd = scriptCmd[:47] + "..."
+		// Calculate available space for script command
+		prefixLength := 3 // "▶ " or "  "
+		nameLength := len(scriptName)
+		paddingLength := 4 // padding (2 chars each side)
+		spacerLength := 2 // space between name and command
+		
+		availableForCmd := dropdownWidth - prefixLength - nameLength - paddingLength - spacerLength
+		if availableForCmd < 0 {
+			availableForCmd = 0
 		}
 		
-		// Format the display
-		display := fmt.Sprintf("%-20s %s", scriptName, scriptDescStyle.Render(scriptCmd))
+		// Truncate command if necessary
+		if len(scriptCmd) > availableForCmd && availableForCmd > 3 {
+			scriptCmd = scriptCmd[:availableForCmd-3] + "..."
+		} else if len(scriptCmd) > availableForCmd {
+			scriptCmd = "" // Hide command if no space
+		}
+		
+		// Format the display without fixed width formatting
+		var display string
+		if scriptCmd != "" {
+			display = fmt.Sprintf("%s  %s", scriptName, scriptDescStyle.Render(scriptCmd))
+		} else {
+			display = scriptName
+		}
 		
 		if i == c.selected {
 			s.WriteString(selectedStyle.Render("▶ " + display))
@@ -218,7 +338,7 @@ func (c CommandAutocomplete) RenderScriptSelectorDropdown(maxSuggestions int) st
 		moreStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("241")).
 			Italic(true).
-			Width(72).
+			Width(dropdownWidth).
 			Align(lipgloss.Center)
 		s.WriteString("\n")
 		moreCount := len(c.suggestions) - maxSuggestions

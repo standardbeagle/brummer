@@ -146,6 +146,7 @@ type Model struct {
 	
 	// Web view state
 	webFilter        string            // Current filter: "all", "pages", "api", "images", "other"
+	webAutoScroll    bool              // Whether to auto-scroll to bottom
 	selectedRequest  *proxy.Request    // Selected request for detail view
 	webRequestIndex  int               // Index of selected request
 	
@@ -214,6 +215,10 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 
 	case key.Matches(msg, m.keys.Tab):
 		m.cycleView()
+		return *m, nil, true
+
+	case msg.String() == "shift+tab":
+		m.cyclePrevView()
 		return *m, nil, true
 
 	case key.Matches(msg, m.keys.Back):
@@ -674,6 +679,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		webDetailViewport: viewport.New(0, 0),
 		searchInput:    searchInput,
 		webFilter:      "all", // Default to showing all requests
+		webAutoScroll:  true,  // Start with auto-scroll enabled
 		help:           help.New(),
 		keys:           keys,
 		updateChan:     make(chan tea.Msg, 100),
@@ -908,6 +914,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.webRequestIndex > 0 {
 					m.webRequestIndex--
 					m.updateSelectedRequest()
+					m.webAutoScroll = false // Disable auto-scroll when manually navigating
 				}
 				return m, nil
 			case "down", "j":
@@ -916,11 +923,50 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.webRequestIndex < len(requests)-1 {
 					m.webRequestIndex++
 					m.updateSelectedRequest()
+					m.webAutoScroll = false // Disable auto-scroll when manually navigating
 				}
 				return m, nil
 			case "enter":
 				// Toggle detail view or select request
 				m.updateSelectedRequest()
+				return m, nil
+			case "pgup":
+				// Page up in web viewport, disable auto-scroll
+				m.webAutoScroll = false
+				m.webViewport.ViewUp()
+				return m, nil
+			case "pgdown":
+				// Page down in web viewport
+				m.webViewport.ViewDown()
+				if m.webViewport.AtBottom() {
+					m.webAutoScroll = true
+				}
+				return m, nil
+			case "end":
+				// End key re-enables auto-scroll and goes to bottom
+				m.webAutoScroll = true
+				m.webViewport.GotoBottom()
+				return m, nil
+			case "home":
+				// Home key goes to top and disables auto-scroll
+				m.webAutoScroll = false
+				m.webViewport.GotoTop()
+				return m, nil
+			}
+		}
+		
+		// Handle mouse wheel for scrolling
+		if msg, ok := msg.(tea.MouseMsg); ok {
+			switch msg.Type {
+			case tea.MouseWheelUp:
+				m.webAutoScroll = false
+				m.webViewport.LineUp(3)
+				return m, nil
+			case tea.MouseWheelDown:
+				m.webViewport.LineDown(3)
+				if m.webViewport.AtBottom() {
+					m.webAutoScroll = true
+				}
 				return m, nil
 			}
 		}
@@ -1232,6 +1278,18 @@ func (m *Model) cycleView() {
 	for i, v := range views {
 		if v == m.currentView {
 			m.currentView = views[(i+1)%len(views)]
+			break
+		}
+	}
+}
+
+func (m *Model) cyclePrevView() {
+	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
+	for i, v := range views {
+		if v == m.currentView {
+			// Go to previous view (with wrap-around)
+			prevIndex := (i - 1 + len(views)) % len(views)
+			m.currentView = views[prevIndex]
 			break
 		}
 	}
@@ -1848,8 +1906,20 @@ func (m Model) renderWebView() string {
 }
 
 func (m Model) renderWebViewSimple() string {
-	var content strings.Builder
-	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Web Proxy Requests") + "\n")
+	var header strings.Builder
+	
+	// Title with auto-scroll indicator
+	title := "Web Proxy Requests"
+	if !m.webAutoScroll {
+		scrollStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("226")).
+			Background(lipgloss.Color("235")).
+			Padding(0, 1).
+			Bold(true)
+		scrollIndicator := scrollStyle.Render("⏸ PAUSED - Press End to resume auto-scroll")
+		title += " " + scrollIndicator
+	}
+	header.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n")
 	
 	// Show proxy status
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
@@ -1858,33 +1928,61 @@ func (m Model) renderWebViewSimple() string {
 		if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
 			modeStr = "Reverse Proxy (Per-URL Ports)"
 		}
-		content.WriteString(statusStyle.Render(fmt.Sprintf("🟢 %s mode active", modeStr)) + "\n")
+		header.WriteString(statusStyle.Render(fmt.Sprintf("🟢 %s mode active", modeStr)) + "\n")
 	} else {
-		content.WriteString(statusStyle.Render("🔴 Proxy not running") + "\n\n")
-		return content.String()
+		header.WriteString(statusStyle.Render("🔴 Proxy not running") + "\n")
+		return header.String()
 	}
 	
-	// Get filtered requests
+	// Filter buttons
+	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+	
+	filters := []string{"all", "pages", "api", "images", "other"}
+	var filterParts []string
+	for _, filter := range filters {
+		if filter == m.webFilter {
+			filterParts = append(filterParts, activeFilterStyle.Render("["+filter+"]"))
+		} else {
+			filterParts = append(filterParts, filterStyle.Render(filter))
+		}
+	}
+	header.WriteString("Filter: " + strings.Join(filterParts, " ") + " (f to cycle)\n")
+	header.WriteString("↑/↓ navigate, Enter select, f filter\n")
+	header.WriteString("Indicators: ❌ error, 🔐 auth, 📊 telemetry\n")
+	header.WriteString(strings.Repeat("─", m.width) + "\n")
+
+	// Calculate viewport height (total height minus header lines minus tabs minus status)
+	headerLines := 6 // title, status, filter, help, indicators, separator
+	contentHeight := m.height - headerLines - 2 // -2 for tab and status bars
+	
+	// Setup viewport
+	m.webViewport.Width = m.width
+	m.webViewport.Height = contentHeight
+	
+	// Get filtered requests and render them into viewport
 	requests := m.getFilteredRequests()
+	var viewportContent strings.Builder
 	
 	if len(requests) == 0 {
-		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No proxy requests yet"))
+		viewportContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No matching requests"))
 	} else {
-		// Show filter header and simple list
-		content.WriteString(fmt.Sprintf("Filter: %s (f to change)\n", m.webFilter))
-		content.WriteString(strings.Repeat("─", 60) + "\n")
+		// Build table header
+		viewportContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true).Render(
+			fmt.Sprintf("%-8s %-3s %-6s %-s", "Time", "St", "Method", "URL")) + "\n")
+		viewportContent.WriteString(strings.Repeat("─", m.width) + "\n")
 		
+		// Add all requests to viewport content (no artificial limit)
 		for i, req := range requests {
-			if i >= 50 { // Limit for simple view
-				break
-			}
+			selected := i == m.webRequestIndex
 			
-			line := fmt.Sprintf("%s %d %s %s",
+			line := fmt.Sprintf("%-8s %-3d %-6s %s",
 				req.StartTime.Format("15:04:05"),
 				req.StatusCode,
 				req.Method,
 				req.URL)
 			
+			// Add indicators
 			if req.Error != "" {
 				line += " ❌"
 			}
@@ -1894,19 +1992,39 @@ func (m Model) renderWebViewSimple() string {
 			if req.HasTelemetry {
 				line += " 📊"
 			}
-			content.WriteString(line + "\n")
+			
+			// Highlight selected row if this is the selected request
+			if selected {
+				line = lipgloss.NewStyle().Background(lipgloss.Color("240")).Render(line)
+			}
+			
+			viewportContent.WriteString(line + "\n")
 		}
 	}
 	
-	return content.String()
+	// Set viewport content
+	m.webViewport.SetContent(viewportContent.String())
+	
+	// Combine header with viewport
+	return header.String() + m.webViewport.View()
 }
 
 func (m Model) renderRequestsList(requests []proxy.Request, width int) string {
 	var content strings.Builder
 	
-	// Header with filter info
+	// Header with filter info and auto-scroll indicator
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("33"))
-	content.WriteString(headerStyle.Render("Web Proxy Requests") + "\n")
+	title := "Web Proxy Requests"
+	if !m.webAutoScroll {
+		scrollStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("226")).
+			Background(lipgloss.Color("235")).
+			Padding(0, 1).
+			Bold(true)
+		scrollIndicator := scrollStyle.Render("⏸ PAUSED")
+		title += " " + scrollIndicator
+	}
+	content.WriteString(headerStyle.Render(title) + "\n")
 	
 	// Filter buttons
 	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
@@ -2339,6 +2457,7 @@ func (m *Model) updateSelectedRequest() {
 	
 	m.selectedRequest = &requests[m.webRequestIndex]
 }
+
 
 // renderTelemetrySummary renders a one-line summary of telemetry data
 func (m Model) renderTelemetrySummary(session *proxy.PageSession) string {
@@ -3004,9 +3123,14 @@ func (m *Model) updateWebView() {
 	}
 	m.lastWebCount = newCount
 	
-	// Update the web viewport with latest proxy requests
-	content := m.renderWebView()
-	m.webViewport.SetContent(content)
+	// Update the web viewport with latest proxy requests  
+	// Note: Don't call renderWebView() here as that's the complete UI layout
+	// The viewport content is updated within renderWebView() itself
+	
+	// Auto-scroll to bottom if enabled
+	if m.webAutoScroll {
+		m.webViewport.GotoBottom()
+	}
 }
 
 func (m *Model) updateErrorDetailView() {
@@ -3405,13 +3529,88 @@ func (m *Model) handleSlashCommand(input string) {
 			m.currentView = ViewLogs
 		}
 		
+	case "/proxy":
+		if len(parts) < 2 {
+			m.logStore.Add("system", "System", "Usage: /proxy <url> - Register an arbitrary URL for reverse proxy", true)
+			return
+		}
+		
+		urlStr := parts[1]
+		// Validate URL format
+		if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
+			m.logStore.Add("system", "System", "Error: URL must start with http:// or https://", true)
+			return
+		}
+		
+		// Check if proxy server is available and in reverse mode
+		if m.proxyServer == nil {
+			m.logStore.Add("system", "System", "Error: Proxy server is not enabled. Use --proxy-mode=reverse to enable.", true)
+			return
+		}
+		
+		if m.proxyServer.GetMode() != proxy.ProxyModeReverse {
+			m.logStore.Add("system", "System", "Error: Proxy URL registration requires reverse proxy mode. Use /toggle-proxy to switch modes.", true)
+			return
+		}
+		
+		// Register the URL
+		proxyResult := m.proxyServer.RegisterURL(urlStr, "manual")
+		if proxyResult != urlStr {
+			msg := fmt.Sprintf("🌐 Registered proxy: %s -> %s", urlStr, proxyResult)
+			m.logStore.Add("custom-proxy", "manual", msg, false)
+			// Update the proxy URL mapping for the URLs tab
+			m.logStore.UpdateProxyURL(urlStr, proxyResult)
+		} else {
+			msg := fmt.Sprintf("🌐 Proxy ready for: %s", urlStr)
+			m.logStore.Add("custom-proxy", "manual", msg, false)
+		}
+		
+		// Switch to URLs view to show the result
+		m.currentView = ViewURLs
+		
+	case "/toggle-proxy":
+		if m.proxyServer == nil {
+			m.logStore.Add("system", "System", "Error: Proxy server is not enabled", true)
+			return
+		}
+		
+		m.handleToggleProxy()
+		
 	default:
 		// Unknown command, treat as search
 		m.searchResults = m.logStore.Search(input)
 	}
 }
 
-
+func (m *Model) handleToggleProxy() {
+	if m.proxyServer == nil {
+		m.logStore.Add("system", "System", "Error: Proxy server is not enabled", true)
+		return
+	}
+	
+	currentMode := m.proxyServer.GetMode()
+	var newMode proxy.ProxyMode
+	var modeDesc string
+	
+	if currentMode == proxy.ProxyModeReverse {
+		newMode = proxy.ProxyModeFull
+		modeDesc = "full proxy mode"
+	} else {
+		newMode = proxy.ProxyModeReverse
+		modeDesc = "reverse proxy mode"
+	}
+	
+	if err := m.proxyServer.SwitchMode(newMode); err != nil {
+		msg := fmt.Sprintf("Error switching proxy mode: %v", err)
+		m.logStore.Add("system", "System", msg, true)
+	} else {
+		msg := fmt.Sprintf("🔄 Switched to %s", modeDesc)
+		m.logStore.Add("system", "System", msg, false)
+		
+		// Switch to URLs view to show the change
+		m.currentView = ViewURLs
+	}
+}
 
 func (m *Model) showCommandWindow() {
 	m.showingCommandWindow = true
@@ -3564,8 +3763,48 @@ func (m *Model) handleScriptSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.showCommandWindow()
 		return m, nil
 		
+	case "ctrl+n":
+		// Switch to arbitrary command mode
+		m.scriptSelector.input.SetValue("")
+		m.scriptSelector.input.Placeholder = "Type any command (e.g., 'ls', 'node server.js')..."
+		m.scriptSelector.suggestions = []string{}
+		m.scriptSelector.showDropdown = false
+		m.scriptSelector.errorMessage = ""
+		// Set a flag to indicate we're in arbitrary command mode
+		m.scriptSelector.arbitraryMode = true
+		return m, nil
+		
+	case "ctrl+s":
+		// Skip script selection and go directly to logs view
+		m.currentView = ViewLogs
+		return m, nil
+		
 	case "enter":
-		// If there's a selected suggestion, use it; otherwise try to use exact input
+		if m.scriptSelector.arbitraryMode {
+			// In arbitrary mode, run any command
+			command := strings.TrimSpace(m.scriptSelector.input.Value())
+			if command == "" {
+				m.scriptSelector.errorMessage = "Please enter a command to run"
+				return m, nil
+			}
+			
+			// Start the arbitrary command
+			go func() {
+				_, err := m.processMgr.StartCommand("custom", command, []string{})
+				if err != nil {
+					m.logStore.Add("system", "System", fmt.Sprintf("Error starting command '%s': %v", command, err), true)
+					m.updateChan <- logUpdateMsg{}
+				} else {
+					m.updateChan <- processUpdateMsg{}
+				}
+			}()
+			
+			// Switch to logs view
+			m.currentView = ViewLogs
+			return m, nil
+		}
+		
+		// Regular script mode
 		var scriptName string
 		if len(m.scriptSelector.suggestions) > 0 && m.scriptSelector.selected < len(m.scriptSelector.suggestions) {
 			scriptName = m.scriptSelector.suggestions[m.scriptSelector.selected]

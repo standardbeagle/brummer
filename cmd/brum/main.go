@@ -21,13 +21,15 @@ import (
 )
 
 var (
-	workDir    string
-	mcpPort    int
-	proxyPort  int
-	proxyMode  string
-	noMCP      bool
-	noTUI      bool
-	noProxy    bool
+	workDir      string
+	mcpPort      int
+	proxyPort    int
+	proxyMode    string
+	proxyURL     string
+	standardProxy bool
+	noMCP        bool
+	noTUI        bool
+	noProxy      bool
 )
 
 var rootCmd = &cobra.Command{
@@ -37,16 +39,40 @@ var rootCmd = &cobra.Command{
 It provides real-time log monitoring, error detection, and MCP server integration
 for external tool access.
 
-Examples:
-  brum                    # Start TUI in scripts view
-  brum dev                # Start 'dev' script and show logs
-  brum dev test           # Start both 'dev' and 'test' scripts
-  brum 'node server.js'   # Run arbitrary command
-  brum -d ../app dev      # Run 'dev' in ../app directory
+Basic Usage:
+  brum                          # Start TUI in scripts view
+  brum dev                      # Start 'dev' script and show logs
+  brum dev test                 # Start both 'dev' and 'test' scripts
+  brum 'node server.js'         # Run arbitrary command
+  brum -d ../app dev            # Run 'dev' in ../app directory
 
-Proxy Modes:
-  --proxy-mode reverse    # Default: Creates shareable URLs for detected endpoints
-  --proxy-mode full       # Traditional HTTP proxy requiring app configuration`,
+Proxy Examples:
+  brum --standard-proxy         # Start with traditional HTTP proxy (port 19888)
+  brum --proxy-url http://localhost:3000
+                                # Auto-proxy specific URL in reverse mode
+  brum --proxy-port 8888        # Use custom proxy port
+  brum --no-proxy               # Disable proxy entirely
+
+MCP Server Examples:
+  brum --no-mcp                 # Disable MCP server
+  brum -p 8080                  # Use custom MCP port (default: 7777)
+  brum --no-tui                 # Headless mode (MCP only)
+
+Proxy Modes (default: reverse):
+  reverse                       # Creates shareable URLs for detected endpoints
+                                # Each URL gets its own proxy port (e.g. localhost:20888)
+  full                          # Traditional HTTP proxy requiring browser config
+                                # Configure browser to use localhost:19888 as proxy
+
+Toggle proxy modes at runtime:
+  /toggle-proxy                 # Slash command in TUI
+  Press 't'                     # Key binding in URLs/Web view
+
+Default Ports & Settings:
+  MCP Server: 7777              # Model Context Protocol for external tools
+  Proxy Server: 19888           # HTTP proxy (PAC file: /proxy.pac)
+  Reverse Proxy URLs: 20888+    # Auto-allocated ports for each URL
+  Proxy Mode: reverse           # Creates shareable URLs by default`,
 	Args: cobra.ArbitraryArgs,
 	Run: runApp,
 }
@@ -56,6 +82,8 @@ func init() {
 	rootCmd.Flags().IntVarP(&mcpPort, "port", "p", 7777, "MCP server port")
 	rootCmd.Flags().IntVar(&proxyPort, "proxy-port", 19888, "HTTP proxy server port")
 	rootCmd.Flags().StringVar(&proxyMode, "proxy-mode", "reverse", "Proxy mode: 'full' (traditional proxy) or 'reverse' (create shareable URLs)")
+	rootCmd.Flags().StringVar(&proxyURL, "proxy-url", "", "URL to automatically proxy in reverse mode (e.g., http://localhost:3000)")
+	rootCmd.Flags().BoolVar(&standardProxy, "standard-proxy", false, "Start in standard/full proxy mode (equivalent to --proxy-mode=full)")
 	rootCmd.Flags().BoolVar(&noMCP, "no-mcp", false, "Disable MCP server")
 	rootCmd.Flags().BoolVar(&noTUI, "no-tui", false, "Run in headless mode (MCP server only)")
 	rootCmd.Flags().BoolVar(&noProxy, "no-proxy", false, "Disable HTTP proxy server")
@@ -96,13 +124,23 @@ func runApp(cmd *cobra.Command, args []string) {
 	if !noProxy {
 		// Parse proxy mode
 		mode := proxy.ProxyModeReverse
-		if proxyMode == "full" {
-			mode = proxy.ProxyModeFull
+		if proxyMode == "full" || standardProxy {
+			// Check if proxy-url is specified with full mode
+			if proxyURL != "" {
+				fmt.Printf("Warning: --proxy-url requires reverse proxy mode. Switching to reverse mode.\n")
+				mode = proxy.ProxyModeReverse
+			} else {
+				mode = proxy.ProxyModeFull
+			}
 		}
 		
 		proxyServer = proxy.NewServerWithMode(proxyPort, mode, eventBus)
 		if err := proxyServer.Start(); err != nil {
-			log.Printf("Failed to start proxy server: %v", err)
+			if noTUI {
+				log.Printf("Failed to start proxy server: %v", err)
+			} else {
+				logStore.Add("system", "proxy", fmt.Sprintf("❌ Failed to start proxy server: %v", err), true)
+			}
 			// Continue without proxy
 			proxyServer = nil
 		} else {
@@ -110,9 +148,34 @@ func runApp(cmd *cobra.Command, args []string) {
 			if mode == proxy.ProxyModeFull {
 				modeDesc = "full proxy"
 			}
-			fmt.Printf("Started HTTP proxy server on port %d in %s mode\n", proxyPort, modeDesc)
-			fmt.Printf("PAC file available at: %s\n", proxyServer.GetPACURL())
-			fmt.Printf("Configure browser automatic proxy: %s\n", proxyServer.GetPACURL())
+			// Only write to stdout if TUI is disabled
+			if noTUI {
+				fmt.Printf("Started HTTP proxy server on port %d in %s mode\n", proxyPort, modeDesc)
+				fmt.Printf("PAC file available at: %s\n", proxyServer.GetPACURL())
+				fmt.Printf("Configure browser automatic proxy: %s\n", proxyServer.GetPACURL())
+			} else {
+				logStore.Add("system", "proxy", fmt.Sprintf("🌐 Started HTTP proxy server on port %d in %s mode", proxyPort, modeDesc), false)
+				logStore.Add("system", "proxy", fmt.Sprintf("📄 PAC file available at: %s", proxyServer.GetPACURL()), false)
+			}
+			
+			// Register arbitrary URL if provided
+			if proxyURL != "" && mode == proxy.ProxyModeReverse {
+				if proxyResult := proxyServer.RegisterURL(proxyURL, "custom"); proxyResult != proxyURL {
+					if noTUI {
+						fmt.Printf("Registered custom URL: %s -> %s\n", proxyURL, proxyResult)
+					}
+					// Add the URL to the log store so it appears in the URLs tab
+					logStore.Add("custom-proxy", "custom", fmt.Sprintf("🌐 Proxy registered: %s", proxyURL), false)
+					// Update the proxy URL mapping
+					logStore.UpdateProxyURL(proxyURL, proxyResult)
+				} else {
+					if noTUI {
+						fmt.Printf("Note: Custom URL %s will be proxied when accessed\n", proxyURL)
+					}
+					// Add the URL to the log store so it appears in the URLs tab  
+					logStore.Add("custom-proxy", "custom", fmt.Sprintf("🌐 Proxy ready: %s", proxyURL), false)
+				}
+			}
 		}
 	}
 
@@ -151,9 +214,17 @@ func runApp(cmd *cobra.Command, args []string) {
 				// Start the script
 				proc, err := processMgr.StartScript(arg)
 				if err != nil {
-					log.Printf("Failed to start script '%s': %v", arg, err)
+					if noTUI {
+						log.Printf("Failed to start script '%s': %v", arg, err)
+					} else {
+						logStore.Add("system", "startup", fmt.Sprintf("❌ Failed to start script '%s': %v", arg, err), true)
+					}
 				} else {
-					fmt.Printf("Started script '%s' (PID: %s)\n", arg, proc.ID)
+					if noTUI {
+						fmt.Printf("Started script '%s' (PID: %s)\n", arg, proc.ID)
+					} else {
+						logStore.Add("system", "startup", fmt.Sprintf("✅ Started script '%s' (PID: %s)", arg, proc.ID), false)
+					}
 				}
 			} else if len(args) == 1 && strings.Contains(arg, " ") {
 				// Single argument with spaces - treat as a command
@@ -163,16 +234,28 @@ func runApp(cmd *cobra.Command, args []string) {
 					if err != nil {
 						log.Fatalf("Failed to start command '%s': %v", arg, err)
 					} else {
-						fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+						if noTUI {
+							fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+						} else {
+							logStore.Add("system", "startup", fmt.Sprintf("✅ Started command '%s' (PID: %s)", arg, proc.ID), false)
+						}
 					}
 				}
 			} else {
 				// Try to run it as a command
 				proc, err := processMgr.StartCommand(arg, arg, []string{})
 				if err != nil {
-					log.Printf("Failed to start command '%s': %v", arg, err)
+					if noTUI {
+						log.Printf("Failed to start command '%s': %v", arg, err)
+					} else {
+						logStore.Add("system", "startup", fmt.Sprintf("❌ Failed to start command '%s': %v", arg, err), true)
+					}
 				} else {
-					fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+					if noTUI {
+						fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+					} else {
+						logStore.Add("system", "startup", fmt.Sprintf("✅ Started command '%s' (PID: %s)", arg, proc.ID), false)
+					}
 				}
 			}
 		}
@@ -211,7 +294,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			// Cleanup all processes
 			fmt.Println("Stopping all running processes...")
 			if err := processMgr.Cleanup(); err != nil {
-				log.Printf("Error during process cleanup: %v", err)
+				// Error during cleanup (logged internally in headless mode)
 			}
 			
 			fmt.Println("Stopping MCP server...")
@@ -227,9 +310,8 @@ func runApp(cmd *cobra.Command, args []string) {
 		} else {
 			// In TUI mode, run MCP server in background
 			go func() {
-				fmt.Printf("Starting MCP server on port %d...\n", mcpPort)
 				if err := mcpServerInterface.Start(); err != nil {
-					log.Printf("MCP server error: %v", err)
+					// MCP server error (logged internally)
 				}
 			}()
 		}
@@ -271,10 +353,10 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Cleanup all processes and resources
 		fmt.Println("Stopping all running processes...")
 		if err := processMgr.Cleanup(); err != nil {
-			log.Printf("Error during process cleanup: %v", err)
+			// Error during cleanup (logged internally)
 		}
 		
-		if mcpServer != nil {
+		if mcpServerInterface != nil {
 			fmt.Println("Stopping MCP server...")
 			mcpServerInterface.Stop()
 		}

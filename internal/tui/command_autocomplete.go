@@ -21,6 +21,7 @@ type CommandAutocomplete struct {
 	showDropdown bool
 	width        int
 	errorMessage string            // Error message to display
+	arbitraryMode bool             // True when in arbitrary command mode (Ctrl+N)
 	
 	// Command-specific data
 	availableScripts map[string]string // Script name -> script command
@@ -150,7 +151,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 	// Always show dropdown if we have suggestions or if we're at the beginning
 	if len(c.suggestions) == 0 && c.currentIndex == 0 && (value == "" || value == "/") {
 		// Show initial commands when empty
-		c.suggestions = []string{"run", "restart", "stop", "clear", "show", "hide"}
+		c.suggestions = []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy"}
 		c.showDropdown = true
 	}
 	
@@ -163,7 +164,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 	if c.currentIndex == 0 {
 		// First segment - show root commands
-		rootCommands := []string{"run", "restart", "stop", "clear", "show", "hide"}
+		rootCommands := []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy"}
 		currentText := ""
 		if len(c.segments) > 0 {
 			currentText = c.segments[0]
@@ -247,6 +248,15 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 				currentText = c.segments[c.currentIndex]
 			}
 			return c.filterSuggestions(patterns, currentText)
+			
+		case "/proxy":
+			// URL format suggestions
+			urlExamples := []string{"http://localhost:3000", "http://localhost:8080", "https://example.com"}
+			currentText := ""
+			if c.currentIndex < len(c.segments) {
+				currentText = c.segments[c.currentIndex]
+			}
+			return c.filterSuggestions(urlExamples, currentText)
 		}
 	}
 
@@ -367,9 +377,9 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		return false, "Please enter a command"
 	}
 	
-	// Add slash prefix for parsing
+	// If it doesn't start with /, treat as arbitrary command (always valid)
 	if !strings.HasPrefix(value, "/") {
-		value = "/" + value
+		return true, ""
 	}
 	
 	parts := strings.Fields(value)
@@ -454,14 +464,29 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		}
 		return true, ""
 		
+	case "/proxy":
+		if len(parts) < 2 {
+			return false, "Please specify a URL (e.g. /proxy http://localhost:3000)"
+		}
+		
+		urlStr := parts[1]
+		if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
+			return false, "URL must start with http:// or https://"
+		}
+		return true, ""
+		
+	case "/toggle-proxy":
+		// No additional parameters needed
+		return true, ""
+		
 	default:
 		// Check if it's a partial command
-		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide"} {
+		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy"} {
 			if strings.HasPrefix(cmd, strings.TrimPrefix(command, "/")) {
 				return false, fmt.Sprintf("Incomplete command. Did you mean /%s?", cmd)
 			}
 		}
-		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /clear, /show, /hide", command)
+		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy", command)
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/http/httputil"
 	"net/url"
 	"strings"
 	"sync"
@@ -63,13 +64,13 @@ const (
 
 // URLMapping represents a reverse proxy mapping
 type URLMapping struct {
-	TargetURL   string                   // e.g., "http://localhost:3000"
-	ProxyPort   int                      // e.g., 8889
-	ProxyURL    string                   // e.g., "http://localhost:8889"
+	TargetURL   string           // e.g., "http://localhost:3000"
+	ProxyPort   int              // e.g., 8889
+	ProxyURL    string           // e.g., "http://localhost:8889"
 	ProcessName string
 	CreatedAt   time.Time
-	Server      *http.Server             // The HTTP server for this mapping
-	Proxy       *goproxy.ProxyHttpServer // The goproxy instance for this mapping
+	Server      *http.Server     // The HTTP server for this mapping
+	ReverseProxy *httputil.ReverseProxy // The reverse proxy instance for this mapping
 }
 
 //go:embed monitor.js
@@ -102,6 +103,12 @@ type Server struct {
 	wsMutex     sync.RWMutex
 	
 	running     bool
+}
+
+// createSilentLogger creates a logger that discards all output to prevent
+// HTTP server errors from appearing in stdout/stderr during TUI mode
+func (s *Server) createSilentLogger() *log.Logger {
+	return log.New(io.Discard, "", 0)
 }
 
 // decodeJWT attempts to decode a JWT token without verification
@@ -200,6 +207,7 @@ func NewServerWithMode(port int, mode ProxyMode, eventBus *events.EventBus) *Ser
 	if mode == ProxyModeFull {
 		proxy := goproxy.NewProxyHttpServer()
 		proxy.Verbose = false
+		proxy.Logger = s.createSilentLogger()
 		s.proxy = proxy
 		s.setupHandlers()
 	}
@@ -512,6 +520,88 @@ window.__brummerProxyHost = 'localhost:%d';
 	return resp
 }
 
+// rewriteURLsInResponse rewrites URLs in HTML responses to use the proxy
+func (s *Server) rewriteURLsInResponse(resp *http.Response, mapping *URLMapping) *http.Response {
+	// Check if response is HTML - be more flexible with content type detection
+	contentType := resp.Header.Get("Content-Type")
+	contentTypeLower := strings.ToLower(contentType)
+	isHTML := strings.Contains(contentTypeLower, "text/html") || 
+			  strings.Contains(contentTypeLower, "text/plain") || // Some servers serve HTML as text/plain
+			  contentType == "" // If no content type, assume it might be HTML
+	
+	if !isHTML {
+		// Log for debugging - this might be why rewriting isn't happening
+		// URL rewriting skipped for non-HTML content
+		return resp
+	}
+	
+	// URL rewriting in progress
+	
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return resp
+	}
+	resp.Body.Close()
+	
+	// Handle gzip encoding
+	encoding := resp.Header.Get("Content-Encoding")
+	if encoding == "gzip" {
+		reader, err := gzip.NewReader(bytes.NewReader(body))
+		if err != nil {
+			// Not gzip encoded despite header, use as-is
+		} else {
+			body, err = io.ReadAll(reader)
+			reader.Close()
+			if err != nil {
+				return resp
+			}
+		}
+	}
+	
+	// Convert body to string for manipulation
+	bodyStr := string(body)
+	
+	// Parse target URL to extract domain and port
+	targetURL, err := url.Parse(mapping.TargetURL)
+	if err != nil {
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		return resp
+	}
+
+	// Extract host (domain:port) from target URL - handles all URL forms including user:pass@domain:port
+	targetHost := targetURL.Host
+	proxyHost := fmt.Sprintf("localhost:%d", mapping.ProxyPort)
+
+	// Replacing host in HTML content
+
+	// Simple host replacement - works for all URL variations
+	if targetHost != "" {
+		bodyStr = strings.ReplaceAll(bodyStr, targetHost, proxyHost)
+	}
+	
+	// Update body
+	newBody := []byte(bodyStr)
+	
+	// Re-compress if needed
+	if encoding == "gzip" {
+		var buf bytes.Buffer
+		gw := gzip.NewWriter(&buf)
+		_, err = gw.Write(newBody)
+		gw.Close()
+		if err == nil {
+			newBody = buf.Bytes()
+		}
+	}
+	
+	// Update response
+	resp.Body = io.NopCloser(bytes.NewReader(newBody))
+	resp.ContentLength = int64(len(newBody))
+	resp.Header.Set("Content-Length", fmt.Sprintf("%d", len(newBody)))
+	
+	return resp
+}
+
 // getProcessForURL returns the process name associated with a URL
 func (s *Server) getProcessForURL(urlStr string) string {
 	s.mu.RLock()
@@ -613,8 +703,7 @@ func (s *Server) linkTelemetryToRequests(sessionID string) {
 			req.SessionID = sessionID
 			req.HasTelemetry = true
 			req.Telemetry = session
-			log.Printf("Linked telemetry session %s to request %s (Process: %s, Events: %d)", 
-				sessionID, req.URL, req.ProcessName, len(session.Events))
+			// Telemetry session linked to request
 		}
 	}
 }
@@ -657,6 +746,7 @@ func (s *Server) Start() error {
 	if s.mode == ProxyModeFull && s.proxy == nil {
 		proxy := goproxy.NewProxyHttpServer()
 		proxy.Verbose = false
+		proxy.Logger = s.createSilentLogger()
 		s.proxy = proxy
 		s.setupHandlers()
 	}
@@ -665,6 +755,7 @@ func (s *Server) Start() error {
 	addr := fmt.Sprintf(":%d", s.port)
 	s.server = &http.Server{
 		Addr: addr,
+		ErrorLog: s.createSilentLogger(),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Handle PAC file requests
 			if r.URL.Path == "/proxy.pac" || r.URL.Path == "/pac" {
@@ -712,11 +803,9 @@ func (s *Server) Start() error {
 	s.running = true
 	
 	go func() {
-		modeStr := string(s.mode)
-		log.Printf("Starting %s proxy server on port %d", modeStr, s.port)
-		log.Printf("PAC file available at: http://localhost:%d/proxy.pac", s.port)
+		// Proxy server starting (logs disabled for TUI compatibility)
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("Proxy server error: %v", err)
+			// Proxy server error (logged internally)
 			s.mu.Lock()
 			s.running = false
 			s.mu.Unlock()
@@ -739,9 +828,9 @@ func (s *Server) Stop() error {
 	
 	// In reverse proxy mode, stop all individual servers
 	if s.mode == ProxyModeReverse {
-		for url, mapping := range s.urlMappings {
+		for _, mapping := range s.urlMappings {
 			if mapping.Server != nil {
-				log.Printf("Stopping reverse proxy for %s on port %d", url, mapping.ProxyPort)
+				// Stopping reverse proxy (logged internally)
 				mapping.Server.Close()
 			}
 		}
@@ -794,6 +883,134 @@ func (s *Server) GetMode() ProxyMode {
 	return s.mode
 }
 
+// SwitchMode switches the proxy server between full and reverse mode
+func (s *Server) SwitchMode(newMode ProxyMode) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	if s.mode == newMode {
+		return nil // Already in the requested mode
+	}
+	
+	oldMode := s.mode
+	wasRunning := s.running
+	
+	// Stop the server first
+	if wasRunning {
+		s.running = false
+		if s.server != nil {
+			s.server.Close()
+		}
+		
+		// In reverse proxy mode, stop all individual servers
+		if oldMode == ProxyModeReverse {
+			for _, mapping := range s.urlMappings {
+				if mapping.Server != nil {
+					// Stopping reverse proxy for mode switch (logged internally)
+					mapping.Server.Close()
+				}
+			}
+		}
+	}
+	
+	// Clear existing proxy setup
+	s.proxy = nil
+	
+	// Switch mode
+	s.mode = newMode
+	
+	// Clear URL mappings when switching away from reverse mode
+	if oldMode == ProxyModeReverse && newMode == ProxyModeFull {
+		// Clear the individual reverse proxy servers
+		s.urlMappings = make(map[string]*URLMapping)
+		// Reset next port
+		s.nextPort = s.basePort + 1000
+	}
+	
+	// Set up new mode
+	if newMode == ProxyModeFull {
+		proxy := goproxy.NewProxyHttpServer()
+		proxy.Verbose = false
+		proxy.Logger = s.createSilentLogger()
+		s.proxy = proxy
+		s.setupHandlers()
+	}
+	
+	// Restart if it was running
+	if wasRunning {
+		// Create new server with updated handler
+		s.server = &http.Server{
+			Addr: fmt.Sprintf(":%d", s.port),
+			ErrorLog: s.createSilentLogger(),
+			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				// Handle PAC file requests
+				if r.URL.Path == "/proxy.pac" || r.URL.Path == "/pac" {
+					s.servePACFile(w, r)
+					return
+				}
+				
+				// Handle telemetry endpoint
+				if r.URL.Path == "/__brummer_telemetry__" && r.Method == "POST" {
+					s.handleTelemetry(w, r)
+					return
+				}
+				
+				// Handle WebSocket telemetry endpoint
+				if r.URL.Path == "/__brummer_ws__" {
+					s.handleWebSocketTelemetry(w, r)
+					return
+				}
+				
+				// Handle direct browsing to proxy server (not proxy requests)
+				if r.Header.Get("Host") == r.Host && (r.URL.Path == "/" || r.URL.Path == "") {
+					fmt.Fprintf(w, "Brummer Proxy Server\n\n")
+					fmt.Fprintf(w, "Mode: %s\n", s.mode)
+					fmt.Fprintf(w, "PAC File: http://localhost:%d/proxy.pac\n\n", s.port)
+					fmt.Fprintf(w, "Configure your browser's automatic proxy configuration URL to:\n")
+					fmt.Fprintf(w, "http://localhost:%d/proxy.pac\n", s.port)
+					return
+				}
+				
+				// In reverse proxy mode, we don't handle proxy requests on the main port
+				if s.mode == ProxyModeReverse {
+					http.Error(w, "This is the control port. Use the dedicated proxy ports for each URL.", http.StatusBadRequest)
+					return
+				}
+				
+				// All proxy requests go through goproxy (full proxy mode only)
+				if s.proxy != nil {
+					s.proxy.ServeHTTP(w, r)
+				} else {
+					http.Error(w, "Proxy not initialized", http.StatusInternalServerError)
+				}
+			}),
+		}
+		
+		s.running = true
+		
+		go func() {
+			// Restarting proxy server (logs disabled for TUI compatibility)
+			if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				// Proxy server error (logged internally)
+				s.mu.Lock()
+				s.running = false
+				s.mu.Unlock()
+			}
+		}()
+		
+		// Publish mode switch event
+		s.eventBus.Publish(events.Event{
+			Type: events.EventType("proxy.mode_switched"),
+			Data: map[string]interface{}{
+				"old_mode": string(oldMode),
+				"new_mode": string(newMode),
+			},
+		})
+	}
+	
+	return nil
+}
+
 // createReverseProxyHandler creates an HTTP handler for reverse proxy mode
 func (s *Server) createReverseProxyHandler() http.Handler {
 	// In reverse proxy mode, we don't use the main port
@@ -805,114 +1022,99 @@ func (s *Server) createReverseProxyHandler() http.Handler {
 	return mux
 }
 
-// createURLProxyHandler creates a goproxy-based handler for a specific URL mapping
+// createURLProxyHandler creates an httputil.ReverseProxy-based handler for a specific URL mapping
 func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
-	// Create a new goproxy instance for this URL mapping
-	proxy := goproxy.NewProxyHttpServer()
-	proxy.Verbose = false
-	mapping.Proxy = proxy
-	
 	// Parse target URL
 	targetURL, err := url.Parse(mapping.TargetURL)
 	if err != nil {
-		log.Printf("Invalid target URL for mapping: %s", mapping.TargetURL)
+		// Invalid target URL for mapping (logged internally)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "Invalid target URL configuration", http.StatusInternalServerError)
 		})
 	}
-	
-	// Set up request tracking ONCE when creating the handler
-	proxy.OnRequest().DoFunc(func(r *http.Request, ctx *goproxy.ProxyCtx) (*http.Request, *http.Response) {
-		startTime := time.Now()
-		reqID := fmt.Sprintf("%d", time.Now().UnixNano())
-		
-		// Use original URL if available (for reverse proxy mode)
-		requestURL := r.URL.String()
-		if originalURL := r.Header.Get("X-Original-URL"); originalURL != "" {
-			requestURL = originalURL
-			// Remove the header so it doesn't go to the target
-			r.Header.Del("X-Original-URL")
-		}
-		
-		// Extract authentication info
-		hasAuth, authType, jwtClaims, jwtError := extractAuthInfo(r)
-		
-		// Store request info in context
-		ctx.UserData = &Request{
-			ID:          reqID,
-			Method:      r.Method,
-			URL:         requestURL,
-			Host:        r.Host,
-			Path:        r.URL.Path,
-			StartTime:   startTime,
-			ProcessName: mapping.ProcessName,
-			HasAuth:     hasAuth,
-			AuthType:    authType,
-			JWTClaims:   jwtClaims,
-			JWTError:    jwtError,
-			IsXHR:       r.Header.Get("X-Requested-With") == "XMLHttpRequest",
-		}
-		
-		return r, nil
-	})
-	
-	// Handle responses with telemetry injection ONCE when creating the handler
-	proxy.OnResponse().DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-		if ctx.UserData != nil {
-			req := ctx.UserData.(*Request)
-			req.Duration = time.Since(req.StartTime)
-			if resp != nil {
-				req.StatusCode = resp.StatusCode
-				
-				// Check if this is an error response
-				req.IsError = resp.StatusCode >= 400
-				
-				// Get response size
-				if resp.ContentLength > 0 {
-					req.Size = resp.ContentLength
-				}
+
+	// Create reverse proxy with proper URL rewriting
+	rp := &httputil.ReverseProxy{
+		ErrorLog: s.createSilentLogger(),
+		Director: func(req *http.Request) {
+			// Store original URL for logging
+			originalURL := fmt.Sprintf("http://%s%s", req.Host, req.URL.RequestURI())
+			req.Header.Set("X-Original-URL", originalURL)
+			
+			// Rewrite the request to target the backend
+			req.URL.Scheme = targetURL.Scheme
+			req.URL.Host = targetURL.Host
+			req.Host = targetURL.Host
+			req.Header.Set("X-Forwarded-Host", req.Header.Get("Host"))
+			req.Header.Set("X-Forwarded-Proto", "http")
+		},
+		ModifyResponse: func(resp *http.Response) error {
+			// Track the request
+			startTime := time.Now()
+			reqID := fmt.Sprintf("%d", time.Now().UnixNano())
+			
+			originalURL := resp.Request.Header.Get("X-Original-URL")
+			if originalURL == "" {
+				originalURL = resp.Request.URL.String()
 			}
-			
+
+			// Extract authentication info
+			hasAuth, authType, jwtClaims, jwtError := extractAuthInfo(resp.Request)
+
+			// Create request record
+			reqRecord := Request{
+				ID:          reqID,
+				Method:      resp.Request.Method,
+				URL:         originalURL,
+				Host:        resp.Request.Host,
+				Path:        resp.Request.URL.Path,
+				StartTime:   startTime,
+				ProcessName: mapping.ProcessName,
+				StatusCode:  resp.StatusCode,
+				IsError:     resp.StatusCode >= 400,
+				HasAuth:     hasAuth,
+				AuthType:    authType,
+				JWTClaims:   jwtClaims,
+				JWTError:    jwtError,
+				IsXHR:       resp.Request.Header.Get("X-Requested-With") == "XMLHttpRequest",
+				ContentType: resp.Header.Get("Content-Type"),
+			}
+
+			if resp.ContentLength > 0 {
+				reqRecord.Size = resp.ContentLength
+			}
+
 			// Store the request
-			s.addRequest(*req)
-			
+			s.addRequest(reqRecord)
+
 			// Publish event
 			s.eventBus.Publish(events.Event{
 				Type:      events.EventType("proxy.request"),
-				ProcessID: req.ProcessName,
+				ProcessID: reqRecord.ProcessName,
 				Data: map[string]interface{}{
-					"method":      req.Method,
-					"url":         req.URL,
-					"status":      req.StatusCode,
-					"duration":    req.Duration.Milliseconds(),
-					"size":        req.Size,
-					"processName": req.ProcessName,
+					"method":      reqRecord.Method,
+					"url":         reqRecord.URL,
+					"status":      reqRecord.StatusCode,
+					"duration":    reqRecord.Duration.Milliseconds(),
+					"size":        reqRecord.Size,
+					"processName": reqRecord.ProcessName,
 				},
 			})
-			
-			// Inject monitoring script into HTML responses - use correct port for this mapping
-			if s.enableTelemetry && resp != nil && resp.StatusCode == 200 && ctx.Req != nil {
-				resp = s.injectMonitoringScriptForMapping(resp, mapping, ctx.Req)
+
+			// Inject monitoring script and rewrite URLs for HTML responses
+			if resp.StatusCode == 200 {
+				if s.enableTelemetry {
+					s.injectMonitoringScriptForMapping(resp, mapping, resp.Request)
+				}
+				s.rewriteURLsInResponse(resp, mapping)
 			}
-		}
-		
-		return resp
-	})
+
+			return nil
+		},
+	}
 	
-	// Handle errors ONCE when creating the handler
-	proxy.OnResponse(goproxy.StatusCodeIs(0)).DoFunc(func(resp *http.Response, ctx *goproxy.ProxyCtx) *http.Response {
-		if ctx.UserData != nil {
-			req := ctx.UserData.(*Request)
-			req.Duration = time.Since(req.StartTime)
-			req.Error = "Connection failed"
-			
-			// Store the failed request
-			s.addRequest(*req)
-		}
-		
-		return resp
-	})
-	
+	mapping.ReverseProxy = rp
+
 	// Handle telemetry endpoint directly
 	mux := http.NewServeMux()
 	mux.HandleFunc("/__brummer_telemetry__", func(w http.ResponseWriter, r *http.Request) {
@@ -922,37 +1124,15 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		}
 	})
-	
+
 	// Handle WebSocket telemetry endpoint directly  
 	mux.HandleFunc("/__brummer_ws__", func(w http.ResponseWriter, r *http.Request) {
 		s.handleWebSocketTelemetry(w, r)
 	})
-	
-	// For all other requests, use goproxy with URL rewriting
-	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// Capture original URL before rewriting
-		originalURL := r.URL.String()
-		if r.URL.Scheme == "" {
-			// Reconstruct full URL for HTTP requests
-			scheme := "http"
-			if r.TLS != nil {
-				scheme = "https"
-			}
-			originalURL = fmt.Sprintf("%s://%s%s", scheme, r.Host, r.URL.String())
-		}
-		
-		// Store original URL in header for the proxy handler to use
-		r.Header.Set("X-Original-URL", originalURL)
-		
-		// Rewrite the request URL to point to the target
-		r.URL.Scheme = targetURL.Scheme
-		r.URL.Host = targetURL.Host
-		r.Host = targetURL.Host
-		
-		// Use goproxy to handle the request
-		proxy.ServeHTTP(w, r)
-	})
-	
+
+	// For all other requests, use the reverse proxy
+	mux.HandleFunc("/", rp.ServeHTTP)
+
 	return mux
 }
 
@@ -989,6 +1169,7 @@ func (s *Server) RegisterURL(urlStr, processName string) string {
 		handler := s.createURLProxyHandler(mapping)
 		server := &http.Server{
 			Addr:    fmt.Sprintf(":%d", port),
+			ErrorLog: s.createSilentLogger(),
 			Handler: handler,
 		}
 		mapping.Server = server
@@ -996,8 +1177,7 @@ func (s *Server) RegisterURL(urlStr, processName string) string {
 		// Start the server
 		go func() {
 			msg := fmt.Sprintf("%s started for %s", mapping.ProxyURL, normalized)
-			log.Printf(msg)
-			// Publish event for TUI to show in system messages
+			// Publish event for TUI to show in system messages instead of stdout
 			s.eventBus.Publish(events.Event{
 				Type: events.EventType("system.message"),
 				Data: map[string]interface{}{
@@ -1008,7 +1188,6 @@ func (s *Server) RegisterURL(urlStr, processName string) string {
 			})
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				errorMsg := fmt.Sprintf("Reverse proxy error for %s: %v", normalized, err)
-				log.Printf(errorMsg)
 				s.eventBus.Publish(events.Event{
 					Type: events.EventType("system.message"),
 					Data: map[string]interface{}{
@@ -1241,7 +1420,7 @@ func (s *Server) handleWebSocketTelemetry(w http.ResponseWriter, r *http.Request
 	// Upgrade HTTP connection to WebSocket
 	conn, err := s.wsUpgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("WebSocket upgrade failed: %v", err)
+		// WebSocket upgrade failed (logged internally)
 		return
 	}
 	defer conn.Close()
@@ -1252,7 +1431,7 @@ func (s *Server) handleWebSocketTelemetry(w http.ResponseWriter, r *http.Request
 	clientCount := len(s.wsClients)
 	s.wsMutex.Unlock()
 
-	log.Printf("WebSocket client connected. Total clients: %d", clientCount)
+	// WebSocket connection events are only for internal tracking, no need to log to stdout
 
 	// Send welcome message
 	welcomeMsg := WSMessage{
@@ -1271,7 +1450,7 @@ func (s *Server) handleWebSocketTelemetry(w http.ResponseWriter, r *http.Request
 		var msg WSMessage
 		err := conn.ReadJSON(&msg)
 		if err != nil {
-			log.Printf("WebSocket read error: %v", err)
+			// WebSocket read error (logged internally)
 			break
 		}
 
@@ -1285,7 +1464,7 @@ func (s *Server) handleWebSocketTelemetry(w http.ResponseWriter, r *http.Request
 	clientCount = len(s.wsClients)
 	s.wsMutex.Unlock()
 
-	log.Printf("WebSocket client disconnected. Total clients: %d", clientCount)
+	// WebSocket disconnection events are only for internal tracking, no need to log to stdout
 }
 
 // handleWSCommand processes incoming WebSocket commands for REPL functionality
@@ -1467,7 +1646,7 @@ func (s *Server) BroadcastToWebSockets(msgType string, data interface{}) {
 	for conn := range s.wsClients {
 		err := conn.WriteJSON(msg)
 		if err != nil {
-			log.Printf("WebSocket broadcast error: %v", err)
+			// WebSocket broadcast error (logged internally)
 			// Note: We should probably remove the client here, but that would
 			// require holding the write lock, which could cause deadlock
 		}

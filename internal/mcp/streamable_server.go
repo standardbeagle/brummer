@@ -5,20 +5,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
-	"github.com/google/uuid"
-	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
 )
 
 // JSON-RPC 2.0 Message Types
@@ -39,30 +38,30 @@ type JSONRPCError struct {
 
 // StreamableServer is the new MCP server with streaming support
 type StreamableServer struct {
-	mu          sync.RWMutex
-	router      *mux.Router
-	sessions    map[string]*ClientSession
-	tools       map[string]MCPTool
-	resources   map[string]Resource
-	prompts     map[string]Prompt
-	
+	mu        sync.RWMutex
+	router    *mux.Router
+	sessions  map[string]*ClientSession
+	tools     map[string]MCPTool
+	resources map[string]Resource
+	prompts   map[string]Prompt
+
 	// Brummer components
 	port        int
 	processMgr  *process.Manager
 	logStore    *logs.Store
 	proxyServer *proxy.Server
 	eventBus    *events.EventBus
-	
+
 	// Server info
-	serverInfo  ServerInfo
+	serverInfo   ServerInfo
 	capabilities ServerCapabilities
-	
+
 	// Message ID counter
-	messageID   atomic.Int64
-	
+	messageID atomic.Int64
+
 	// HTTP server
-	server     *http.Server
-	
+	server *http.Server
+
 	// WebSocket upgrader
 	wsUpgrader websocket.Upgrader
 }
@@ -109,7 +108,7 @@ type LoggingCapability struct {
 // MCPTool definition with streaming support
 type MCPTool struct {
 	Name             string
-	Description      string  
+	Description      string
 	InputSchema      json.RawMessage
 	Handler          func(json.RawMessage) (interface{}, error)
 	Streaming        bool
@@ -173,19 +172,19 @@ func NewStreamableServer(port int, processMgr *process.Manager, logStore *logs.S
 			},
 		},
 	}
-	
+
 	s.setupRoutes()
 	s.registerTools()
 	s.registerResources()
 	s.registerPrompts()
-	
+
 	return s
 }
 
 func (s *StreamableServer) setupRoutes() {
 	// Main MCP endpoint
 	s.router.HandleFunc("/mcp", s.handleRequest).Methods("POST", "GET")
-	
+
 	// Legacy endpoints for backward compatibility
 	s.router.HandleFunc("/mcp/connect", s.handleLegacyConnect).Methods("POST")
 	s.router.HandleFunc("/mcp/events", s.handleLegacySSE).Methods("GET")
@@ -194,7 +193,7 @@ func (s *StreamableServer) setupRoutes() {
 	s.router.HandleFunc("/mcp/scripts", s.handleLegacyGetScripts).Methods("GET")
 	s.router.HandleFunc("/mcp/execute", s.handleLegacyExecuteScript).Methods("POST")
 	s.router.HandleFunc("/mcp/stop", s.handleLegacyStopProcess).Methods("POST")
-	
+
 	// Health check
 	s.router.HandleFunc("/health", s.handleHealth).Methods("GET")
 }
@@ -202,13 +201,13 @@ func (s *StreamableServer) setupRoutes() {
 func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Set appropriate headers
 	w.Header().Set("Content-Type", "application/json")
-	
+
 	// Handle GET requests for SSE streaming
 	if r.Method == "GET" {
 		s.handleStreamingConnection(w, r)
 		return
 	}
-	
+
 	// Handle POST requests for standard JSON-RPC
 	var messages []JSONRPCMessage
 	body, err := io.ReadAll(r.Body)
@@ -217,7 +216,7 @@ func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	defer r.Body.Close()
-	
+
 	// Try to decode as array first
 	if err := json.Unmarshal(body, &messages); err != nil {
 		// Try single message
@@ -228,11 +227,11 @@ func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request)
 		}
 		messages = []JSONRPCMessage{msg}
 	}
-	
+
 	// Process each message
 	responses := make([]JSONRPCMessage, 0)
 	streaming := false
-	
+
 	for _, msg := range messages {
 		response, isStreaming := s.processMessage(&msg, w, r)
 		if isStreaming {
@@ -244,7 +243,7 @@ func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request)
 			responses = append(responses, *response)
 		}
 	}
-	
+
 	// Send non-streaming responses
 	if !streaming && len(responses) > 0 {
 		if len(responses) == 1 {
@@ -261,17 +260,17 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	w.Header().Set("X-Accel-Buffering", "no")
-	
+
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	
+
 	// Create session
 	sessionID := uuid.New().String()
 	ctx, cancel := context.WithCancel(r.Context())
-	
+
 	session := &ClientSession{
 		ID:              sessionID,
 		Context:         ctx,
@@ -280,29 +279,29 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 		Flusher:         flusher,
 		StreamingActive: true,
 	}
-	
+
 	s.mu.Lock()
 	s.sessions[sessionID] = session
 	s.mu.Unlock()
-	
+
 	defer func() {
 		s.mu.Lock()
 		delete(s.sessions, sessionID)
 		s.mu.Unlock()
 		cancel()
 	}()
-	
+
 	// Send initial connection event
 	s.sendSSEEvent(session, "message", JSONRPCMessage{
 		Jsonrpc: "2.0",
 		Method:  "connection/established",
 		Params:  json.RawMessage(fmt.Sprintf(`{"sessionId":"%s"}`, sessionID)),
 	})
-	
+
 	// Set up heartbeat
 	heartbeat := time.NewTicker(30 * time.Second)
 	defer heartbeat.Stop()
-	
+
 	// Subscribe to events
 	eventChan := make(chan events.Event, 100)
 	s.eventBus.Subscribe(events.LogLine, func(e events.Event) {
@@ -324,18 +323,18 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 		default:
 		}
 	})
-	
+
 	defer close(eventChan)
-	
+
 	// Main event loop
 	for {
 		select {
 		case <-ctx.Done():
 			return
-			
+
 		case <-heartbeat.C:
 			s.sendSSEEvent(session, "ping", map[string]string{"timestamp": time.Now().Format(time.RFC3339)})
-			
+
 		case event := <-eventChan:
 			// Send event notification
 			notification := JSONRPCMessage{
@@ -353,31 +352,31 @@ func (s *StreamableServer) processMessage(msg *JSONRPCMessage, w http.ResponseWr
 	switch msg.Method {
 	case "initialize":
 		return s.handleInitialize(msg), false
-		
+
 	case "tools/list":
 		return s.handleToolsList(msg), false
-		
+
 	case "tools/call":
 		return s.handleToolCall(msg, w, r)
-		
+
 	case "resources/list":
 		return s.handleResourcesList(msg), false
-		
+
 	case "resources/read":
 		return s.handleResourceRead(msg), false
-		
+
 	case "resources/subscribe":
 		return s.handleResourceSubscribe(msg), false
-		
+
 	case "resources/unsubscribe":
 		return s.handleResourceUnsubscribe(msg), false
-		
+
 	case "prompts/list":
 		return s.handlePromptsList(msg), false
-		
+
 	case "prompts/get":
 		return s.handlePromptGet(msg), false
-		
+
 	default:
 		return s.createErrorResponse(msg.ID, -32601, "Method not found", nil), false
 	}
@@ -389,7 +388,7 @@ func (s *StreamableServer) handleInitialize(msg *JSONRPCMessage) *JSONRPCMessage
 		"capabilities":    s.capabilities,
 		"serverInfo":      s.serverInfo,
 	}
-	
+
 	return &JSONRPCMessage{
 		Jsonrpc: "2.0",
 		ID:      msg.ID,
@@ -400,22 +399,22 @@ func (s *StreamableServer) handleInitialize(msg *JSONRPCMessage) *JSONRPCMessage
 func (s *StreamableServer) sendSSEEvent(session *ClientSession, eventType string, data interface{}) error {
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	
+
 	if !session.StreamingActive {
 		return fmt.Errorf("session not streaming")
 	}
-	
+
 	// Format SSE event
 	fmt.Fprintf(session.ResponseWriter, "event: %s\n", eventType)
-	
+
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
 		return err
 	}
-	
+
 	fmt.Fprintf(session.ResponseWriter, "data: %s\n\n", dataBytes)
 	session.Flusher.Flush()
-	
+
 	return nil
 }
 
@@ -446,13 +445,13 @@ func (s *StreamableServer) BroadcastNotification(method string, params interface
 		}
 	}
 	s.mu.RUnlock()
-	
+
 	notification := JSONRPCMessage{
 		Jsonrpc: "2.0",
 		Method:  method,
 		Params:  mustMarshal(params),
 	}
-	
+
 	for _, session := range sessions {
 		go s.sendSSEEvent(session, "message", notification)
 	}
@@ -474,13 +473,12 @@ func (s *StreamableServer) Start() error {
 		Addr:    addr,
 		Handler: corsMiddleware(s.router),
 	}
-	
-	log.Printf("Starting MCP Streamable HTTP server on %s", addr)
-	log.Printf("Endpoint: http://localhost%s/mcp", addr)
-	
+
+	// MCP Streamable HTTP server starting (logs disabled for TUI compatibility)
+
 	// Set up event broadcasting
 	go s.setupEventBroadcasting()
-	
+
 	return s.server.ListenAndServe()
 }
 
@@ -497,15 +495,15 @@ func (s *StreamableServer) setupEventBroadcasting() {
 	s.eventBus.Subscribe(events.LogLine, func(e events.Event) {
 		s.BroadcastNotification("notifications/logs/new", e.Data)
 	})
-	
+
 	s.eventBus.Subscribe(events.ProcessStarted, func(e events.Event) {
 		s.BroadcastNotification("notifications/process/started", e.Data)
 	})
-	
+
 	s.eventBus.Subscribe(events.ProcessExited, func(e events.Event) {
 		s.BroadcastNotification("notifications/process/exited", e.Data)
 	})
-	
+
 	s.eventBus.Subscribe(events.ErrorDetected, func(e events.Event) {
 		s.BroadcastNotification("notifications/error/detected", e.Data)
 	})
@@ -521,4 +519,3 @@ func mustMarshal(v interface{}) json.RawMessage {
 func (s *StreamableServer) GetPort() int {
 	return s.port
 }
-
