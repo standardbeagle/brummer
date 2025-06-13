@@ -82,7 +82,7 @@ func (c *CommandAutocomplete) updateScriptSelectorSuggestions() {
 func (m Model) renderScriptSelector() string {
 	// Adaptive sizing based on terminal size
 	var containerWidth, containerHeight int
-	var showSkipSection, showScriptCount bool
+	var showSkipSection bool
 	var padding int
 	
 	// Determine container size based on terminal dimensions
@@ -97,18 +97,15 @@ func (m Model) renderScriptSelector() string {
 		padding = 2
 	}
 	
-	if m.height < 15 {
-		containerHeight = m.height - 4
+	if m.height < 12 {
+		containerHeight = m.height - 2
 		showSkipSection = false
-		showScriptCount = false
-	} else if m.height < 25 {
-		containerHeight = min(25, m.height - 4)
+	} else if m.height < 20 {
+		containerHeight = min(15, m.height - 2)
 		showSkipSection = true
-		showScriptCount = false
 	} else {
-		containerHeight = 30
+		containerHeight = 18 // Much more compact max height
 		showSkipSection = true
-		showScriptCount = true
 	}
 	
 	// Create a centered container with adaptive sizing
@@ -126,7 +123,7 @@ func (m Model) renderScriptSelector() string {
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226")).
-		MarginBottom(2).
+		MarginBottom(1). // Reduced from 2
 		Width(contentWidth).
 		Align(lipgloss.Center)
 	
@@ -143,7 +140,7 @@ func (m Model) renderScriptSelector() string {
 		skipStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("86")).
 			Bold(true).
-			MarginBottom(1).
+			MarginBottom(0). // Reduced from 1
 			Width(contentWidth).
 			Align(lipgloss.Center)
 		
@@ -165,7 +162,7 @@ func (m Model) renderScriptSelector() string {
 	// Instructions
 	instructionStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
-		MarginBottom(2).
+		MarginBottom(1). // Reduced from 2
 		Width(contentWidth).
 		Align(lipgloss.Center)
 	
@@ -194,7 +191,7 @@ func (m Model) renderScriptSelector() string {
 	// Dropdown suggestions with proper width (hide in arbitrary mode)
 	var dropdownView string
 	if !m.scriptSelector.arbitraryMode {
-		dropdownView = m.scriptSelector.RenderScriptSelectorDropdownWithWidth(10, contentWidth)
+		dropdownView = m.scriptSelector.RenderScriptSelectorDropdownWithWidth(6, contentWidth) // Reduced from 10 to 6
 	}
 	
 	// Error message if any
@@ -208,18 +205,7 @@ func (m Model) renderScriptSelector() string {
 		errorView = errorStyle.Render("⚠ " + errorMsg)
 	}
 	
-	// Available scripts info (conditional)
-	var scriptCountView string
-	if showScriptCount {
-		scriptCountStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("242")).
-			MarginTop(2).
-			Width(contentWidth).
-			Align(lipgloss.Center)
-		
-		scriptCount := fmt.Sprintf("%d scripts available", len(m.scriptSelector.availableScripts))
-		scriptCountView = scriptCountStyle.Render(scriptCount)
-	}
+	// Available scripts info removed to save space
 	
 	// Combine all elements
 	var contentParts []string
@@ -235,9 +221,7 @@ func (m Model) renderScriptSelector() string {
 	if errorView != "" {
 		contentParts = append(contentParts, errorView)
 	}
-	if showScriptCount && scriptCountView != "" {
-		contentParts = append(contentParts, scriptCountView)
-	}
+	// Script count section removed to save vertical space
 	
 	content := lipgloss.JoinVertical(lipgloss.Left, contentParts...)
 	container := containerStyle.Render(content)

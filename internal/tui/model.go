@@ -3,6 +3,7 @@ package tui
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/url"
 	"os"
 	"os/exec"
@@ -123,7 +124,6 @@ type Model struct {
 	selectedError   *logs.ErrorContext
 	errorDetailView viewport.Model
 	urlsViewport    viewport.Model
-	webViewport     viewport.Model
 	webDetailViewport viewport.Model
 	settingsList    list.Model
 	searchInput     textinput.Model
@@ -148,7 +148,7 @@ type Model struct {
 	webFilter        string            // Current filter: "all", "pages", "api", "images", "other"
 	webAutoScroll    bool              // Whether to auto-scroll to bottom
 	selectedRequest  *proxy.Request    // Selected request for detail view
-	webRequestIndex  int               // Index of selected request
+	webRequestsList  list.Model        // List of proxy requests (replaces webViewport)
 	
 	// Script selector state (for initial view)
 	scriptSelector CommandAutocomplete
@@ -643,6 +643,108 @@ func (i FileItem) Description() string {
 	return fmt.Sprintf("File (%d bytes)", i.Size)
 }
 
+// proxyRequestItem implements list.Item for proxy requests
+type proxyRequestItem struct {
+	Request proxy.Request
+}
+
+func (i proxyRequestItem) FilterValue() string {
+	return i.Request.URL + " " + i.Request.Method
+}
+
+func (i proxyRequestItem) Title() string {
+	// Basic title - actual rendering with truncation is handled in delegate
+	return fmt.Sprintf("%s %d %s %s",
+		i.Request.StartTime.Format("15:04:05"),
+		i.Request.StatusCode,
+		i.Request.Method,
+		i.Request.URL)
+}
+
+func (i proxyRequestItem) Description() string {
+	if i.Request.Error != "" {
+		return "Error: " + i.Request.Error
+	}
+	if i.Request.Size > 0 {
+		return fmt.Sprintf("Size: %s", formatBytes(i.Request.Size))
+	}
+	return fmt.Sprintf("Duration: %dms", i.Request.Duration.Milliseconds())
+}
+
+// proxyRequestDelegate implements list.ItemDelegate for proxy requests
+type proxyRequestDelegate struct{}
+
+func (d proxyRequestDelegate) Height() int { return 1 }
+func (d proxyRequestDelegate) Spacing() int { return 0 }
+func (d proxyRequestDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd { return nil }
+func (d proxyRequestDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	if item, ok := listItem.(proxyRequestItem); ok {
+		// Calculate available width for URL based on list width
+		listWidth := m.Width()
+		
+		// Fixed parts: time(8) + space + status(3) + space + method(7 max) + space + indicators(6 max) + padding(4)
+		// Conservative estimate for fixed content
+		timeWidth := 8      // "15:04:05"
+		statusWidth := 3    // "200" 
+		methodWidth := 7    // "DELETE" (longest common method)
+		indicatorsWidth := 6 // " ❌ 🔐 📊" (worst case)
+		spacesWidth := 4    // spaces between elements
+		paddingWidth := 4   // general padding/margins
+		
+		fixedWidth := timeWidth + statusWidth + methodWidth + indicatorsWidth + spacesWidth + paddingWidth
+		
+		// Available width for URL (ensure minimum of 20 chars)
+		maxURLLength := listWidth - fixedWidth
+		if maxURLLength < 20 {
+			maxURLLength = 20
+		}
+		
+		url := item.Request.URL
+		if len(url) > maxURLLength {
+			url = url[:maxURLLength-3] + "..."
+		}
+		
+		// Build the line
+		line := fmt.Sprintf("%s %d %s %s",
+			item.Request.StartTime.Format("15:04:05"),
+			item.Request.StatusCode,
+			item.Request.Method,
+			url)
+		
+		// Add indicators
+		if item.Request.Error != "" {
+			line += " ❌"
+		}
+		if item.Request.HasAuth {
+			line += " 🔐"
+		}
+		if item.Request.HasTelemetry {
+			line += " 📊"
+		}
+		
+		var str string
+		if index == m.Index() {
+			// Selected item - highlighted
+			str = lipgloss.NewStyle().Background(lipgloss.Color("240")).Render(line)
+		} else {
+			// Normal item
+			str = line
+		}
+		fmt.Fprint(w, str)
+	}
+}
+
+// Helper function for formatting bytes
+func formatBytes(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%d B", bytes)
+	} else if bytes < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(bytes)/1024)
+	} else {
+		return fmt.Sprintf("%.1f MB", float64(bytes)/(1024*1024))
+	}
+}
+
 func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer *mcp.Server, proxyServer *proxy.Server) Model {
 	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, ViewProcesses)
 }
@@ -675,7 +777,13 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		logsViewport:   viewport.New(0, 0),
 		errorsViewport: viewport.New(0, 0),
 		urlsViewport:   viewport.New(0, 0),
-		webViewport:    viewport.New(0, 0),
+		webRequestsList: func() list.Model {
+			l := list.New([]list.Item{}, proxyRequestDelegate{}, 0, 0)
+			l.SetShowTitle(false)
+			l.SetShowStatusBar(false)
+			l.SetShowHelp(false)
+			return l
+		}(),
 		webDetailViewport: viewport.New(0, 0),
 		searchInput:    searchInput,
 		webFilter:      "all", // Default to showing all requests
@@ -910,47 +1018,46 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return m, nil
 			case "up", "k":
-				// Navigate up in request list
-				if m.webRequestIndex > 0 {
-					m.webRequestIndex--
-					m.updateSelectedRequest()
-					m.webAutoScroll = false // Disable auto-scroll when manually navigating
-				}
+				// Navigate up in request list - delegate to list component
+				m.webRequestsList, _ = m.webRequestsList.Update(msg)
+				m.updateSelectedRequestFromList()
+				m.webAutoScroll = false // Disable auto-scroll when manually navigating
 				return m, nil
 			case "down", "j":
-				// Navigate down in request list
-				requests := m.getFilteredRequests()
-				if m.webRequestIndex < len(requests)-1 {
-					m.webRequestIndex++
-					m.updateSelectedRequest()
-					m.webAutoScroll = false // Disable auto-scroll when manually navigating
-				}
+				// Navigate down in request list - delegate to list component  
+				m.webRequestsList, _ = m.webRequestsList.Update(msg)
+				m.updateSelectedRequestFromList()
+				m.webAutoScroll = false // Disable auto-scroll when manually navigating
 				return m, nil
 			case "enter":
-				// Toggle detail view or select request
-				m.updateSelectedRequest()
+				// Select request for detail view
+				m.updateSelectedRequestFromList()
 				return m, nil
 			case "pgup":
-				// Page up in web viewport, disable auto-scroll
+				// Page up in web list, disable auto-scroll
 				m.webAutoScroll = false
-				m.webViewport.ViewUp()
+				m.webRequestsList, _ = m.webRequestsList.Update(msg)
+				m.updateSelectedRequestFromList()
 				return m, nil
 			case "pgdown":
-				// Page down in web viewport
-				m.webViewport.ViewDown()
-				if m.webViewport.AtBottom() {
-					m.webAutoScroll = true
-				}
+				// Page down in web list
+				m.webRequestsList, _ = m.webRequestsList.Update(msg)
+				m.updateSelectedRequestFromList()
 				return m, nil
 			case "end":
 				// End key re-enables auto-scroll and goes to bottom
 				m.webAutoScroll = true
-				m.webViewport.GotoBottom()
+				// Go to last item in list
+				if len(m.webRequestsList.Items()) > 0 {
+					m.webRequestsList.Select(len(m.webRequestsList.Items()) - 1)
+					m.updateSelectedRequestFromList()
+				}
 				return m, nil
 			case "home":
 				// Home key goes to top and disables auto-scroll
 				m.webAutoScroll = false
-				m.webViewport.GotoTop()
+				m.webRequestsList.Select(0)
+				m.updateSelectedRequestFromList()
 				return m, nil
 			}
 		}
@@ -960,12 +1067,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch msg.Type {
 			case tea.MouseWheelUp:
 				m.webAutoScroll = false
-				m.webViewport.LineUp(3)
+				// Move selection up in list
+				if m.webRequestsList.Index() > 0 {
+					m.webRequestsList.CursorUp()
+					m.updateSelectedRequestFromList()
+				}
 				return m, nil
 			case tea.MouseWheelDown:
-				m.webViewport.LineDown(3)
-				if m.webViewport.AtBottom() {
-					m.webAutoScroll = true
+				// Move selection down in list
+				if m.webRequestsList.Index() < len(m.webRequestsList.Items())-1 {
+					m.webRequestsList.CursorDown()
+					m.updateSelectedRequestFromList()
 				}
 				return m, nil
 			}
@@ -1269,8 +1381,7 @@ func (m *Model) updateSizes() {
 	m.errorDetailView.Height = contentHeight
 	m.urlsViewport.Width = m.width
 	m.urlsViewport.Height = contentHeight
-	m.webViewport.Width = m.width
-	m.webViewport.Height = contentHeight
+	// webRequestsList size is set in render functions as needed
 }
 
 func (m *Model) cycleView() {
@@ -1310,10 +1421,7 @@ func (m *Model) switchToView(view View) {
 	case ViewErrors:
 		// Errors view updates automatically via subscription
 	case ViewWeb:
-		// Update web request index if needed
-		if m.webRequestIndex < 0 {
-			m.webRequestIndex = 0
-		}
+		// Web view updates automatically via list component
 	}
 }
 
@@ -1862,26 +1970,21 @@ func (m Model) renderWebView() string {
 	// Split view: requests list on left, detail on right
 	listWidth := m.width * 2 / 3
 	detailWidth := m.width - listWidth - 3
-	contentHeight := m.height - 6
+	// Use standard content height calculation (header + help already handled by renderLayout)
+	// Account for compact 2-line header within the list area
+	contentHeight := m.height - 8
 	
-	// Update viewport sizes
-	m.webViewport.Width = listWidth
-	m.webViewport.Height = contentHeight
+	// Update list and detail viewport sizes
+	m.webRequestsList.SetSize(listWidth, contentHeight)
 	m.webDetailViewport.Width = detailWidth
 	m.webDetailViewport.Height = contentHeight
 	
-	// Get filtered requests
+	// Get filtered requests and update list
 	requests := m.getFilteredRequests()
+	m.updateWebRequestsList(requests)
 	
-	// Update selected request if needed
-	if len(requests) > 0 && (m.selectedRequest == nil || m.webRequestIndex >= len(requests)) {
-		const_m := &m
-		const_m.updateSelectedRequest()
-	}
-	
-	// Render requests list
-	listContent := m.renderRequestsList(requests, listWidth)
-	m.webViewport.SetContent(listContent)
+	// Update selected request from list
+	m.updateSelectedRequestFromList()
 	
 	// Render detail panel
 	detailContent := m.renderRequestDetail()
@@ -1895,7 +1998,7 @@ func (m Model) renderWebView() string {
 	listView := borderStyle.
 		Width(listWidth).
 		Height(contentHeight).
-		Render(m.webViewport.View())
+		Render(m.renderWebRequestsListWithHeader())
 	
 	detailView := borderStyle.
 		Width(detailWidth).
@@ -1906,38 +2009,28 @@ func (m Model) renderWebView() string {
 }
 
 func (m Model) renderWebViewSimple() string {
-	var header strings.Builder
+	var content strings.Builder
 	
-	// Title with auto-scroll indicator
-	title := "Web Proxy Requests"
-	if !m.webAutoScroll {
-		scrollStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("226")).
-			Background(lipgloss.Color("235")).
-			Padding(0, 1).
-			Bold(true)
-		scrollIndicator := scrollStyle.Render("⏸ PAUSED - Press End to resume auto-scroll")
-		title += " " + scrollIndicator
-	}
-	header.WriteString(lipgloss.NewStyle().Bold(true).Render(title) + "\n")
-	
-	// Show proxy status
+	// Compact header: combine status + filter on one line, help + indicators on another
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	if m.proxyServer != nil && m.proxyServer.IsRunning() {
-		modeStr := "Full Proxy"
-		if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
-			modeStr = "Reverse Proxy (Per-URL Ports)"
-		}
-		header.WriteString(statusStyle.Render(fmt.Sprintf("🟢 %s mode active", modeStr)) + "\n")
-	} else {
-		header.WriteString(statusStyle.Render("🔴 Proxy not running") + "\n")
-		return header.String()
-	}
-	
-	// Filter buttons
 	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
 	
+	// Line 1: Status + Filter
+	var statusAndFilter strings.Builder
+	if m.proxyServer != nil && m.proxyServer.IsRunning() {
+		modeStr := "Full Proxy"
+		if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
+			modeStr = "Reverse Proxy"
+		}
+		statusAndFilter.WriteString(statusStyle.Render(fmt.Sprintf("🟢 %s", modeStr)))
+	} else {
+		statusAndFilter.WriteString(statusStyle.Render("🔴 Proxy not running"))
+		content.WriteString(statusAndFilter.String() + "\n")
+		return content.String()
+	}
+	
+	// Add filter to same line
 	filters := []string{"all", "pages", "api", "images", "other"}
 	var filterParts []string
 	for _, filter := range filters {
@@ -1947,66 +2040,36 @@ func (m Model) renderWebViewSimple() string {
 			filterParts = append(filterParts, filterStyle.Render(filter))
 		}
 	}
-	header.WriteString("Filter: " + strings.Join(filterParts, " ") + " (f to cycle)\n")
-	header.WriteString("↑/↓ navigate, Enter select, f filter\n")
-	header.WriteString("Indicators: ❌ error, 🔐 auth, 📊 telemetry\n")
-	header.WriteString(strings.Repeat("─", m.width) + "\n")
-
-	// Calculate viewport height (total height minus header lines minus tabs minus status)
-	headerLines := 6 // title, status, filter, help, indicators, separator
-	contentHeight := m.height - headerLines - 2 // -2 for tab and status bars
-	
-	// Setup viewport
-	m.webViewport.Width = m.width
-	m.webViewport.Height = contentHeight
-	
-	// Get filtered requests and render them into viewport
-	requests := m.getFilteredRequests()
-	var viewportContent strings.Builder
-	
-	if len(requests) == 0 {
-		viewportContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No matching requests"))
-	} else {
-		// Build table header
-		viewportContent.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true).Render(
-			fmt.Sprintf("%-8s %-3s %-6s %-s", "Time", "St", "Method", "URL")) + "\n")
-		viewportContent.WriteString(strings.Repeat("─", m.width) + "\n")
-		
-		// Add all requests to viewport content (no artificial limit)
-		for i, req := range requests {
-			selected := i == m.webRequestIndex
-			
-			line := fmt.Sprintf("%-8s %-3d %-6s %s",
-				req.StartTime.Format("15:04:05"),
-				req.StatusCode,
-				req.Method,
-				req.URL)
-			
-			// Add indicators
-			if req.Error != "" {
-				line += " ❌"
-			}
-			if req.HasAuth {
-				line += " 🔐"
-			}
-			if req.HasTelemetry {
-				line += " 📊"
-			}
-			
-			// Highlight selected row if this is the selected request
-			if selected {
-				line = lipgloss.NewStyle().Background(lipgloss.Color("240")).Render(line)
-			}
-			
-			viewportContent.WriteString(line + "\n")
-		}
+	filterText := " | Filter: " + strings.Join(filterParts, " ") + " (f)"
+	if !m.webAutoScroll {
+		filterText += " ⏸"
 	}
+	statusAndFilter.WriteString(filterText)
+	content.WriteString(statusAndFilter.String() + "\n")
 	
-	// Set viewport content
-	m.webViewport.SetContent(viewportContent.String())
+	// Line 2: Help + Indicators (compact)
+	content.WriteString("↑/↓ navigate, Enter select | Indicators: ❌🔐📊\n")
 	
-	// Combine header with viewport
-	return header.String() + m.webViewport.View()
+	// Line 3: Separator
+	content.WriteString(strings.Repeat("─", m.width) + "\n")
+
+	// Calculate list height correctly
+	// renderLayout gives us m.height - 6 for content (header + help already handled)
+	// Our filter headers are WITHIN this content area, so subtract them
+	totalContentHeight := m.height - 6 // renderLayout standard allocation
+	filterHeaderLines := 3 // status+filter + help+indicators + separator (compact)
+	listHeight := totalContentHeight - filterHeaderLines
+	
+	// Setup list size and update with filtered requests
+	m.webRequestsList.SetSize(m.width, listHeight)
+	requests := m.getFilteredRequests()
+	m.updateWebRequestsList(requests)
+	m.updateSelectedRequestFromList()
+	
+	// Add the list view
+	content.WriteString(m.webRequestsList.View())
+	
+	return content.String()
 }
 
 func (m Model) renderRequestsList(requests []proxy.Request, width int) string {
@@ -2039,7 +2102,11 @@ func (m Model) renderRequestsList(requests []proxy.Request, width int) string {
 			filterParts = append(filterParts, filterStyle.Render(filter))
 		}
 	}
-	content.WriteString("Filter: " + strings.Join(filterParts, " ") + " (f to cycle)\n\n")
+	filterLine := "Filter: " + strings.Join(filterParts, " ") + " (f to cycle)"
+	if !m.webAutoScroll {
+		filterLine += " ⏸"
+	}
+	content.WriteString(filterLine + "\n\n")
 	
 	// Proxy status
 	if m.proxyServer != nil && m.proxyServer.IsRunning() {
@@ -2441,23 +2508,91 @@ func (m Model) isImageRequest(req proxy.Request) bool {
 
 // updateSelectedRequest updates the selected request based on current index
 func (m *Model) updateSelectedRequest() {
-	requests := m.getFilteredRequests()
-	if len(requests) == 0 {
+	// Delegate to the new list-based method
+	m.updateSelectedRequestFromList()
+}
+
+// updateSelectedRequestFromList updates the selected request based on list selection
+func (m *Model) updateSelectedRequestFromList() {
+	if len(m.webRequestsList.Items()) == 0 {
 		m.selectedRequest = nil
 		return
 	}
 	
-	// Ensure index is within bounds
-	if m.webRequestIndex >= len(requests) {
-		m.webRequestIndex = len(requests) - 1
-	}
-	if m.webRequestIndex < 0 {
-		m.webRequestIndex = 0
+	selectedItem := m.webRequestsList.SelectedItem()
+	if selectedItem == nil {
+		m.selectedRequest = nil
+		return
 	}
 	
-	m.selectedRequest = &requests[m.webRequestIndex]
+	if proxyItem, ok := selectedItem.(proxyRequestItem); ok {
+		m.selectedRequest = &proxyItem.Request
+	}
 }
 
+// updateWebRequestsList updates the web requests list with filtered requests
+func (m *Model) updateWebRequestsList(requests []proxy.Request) {
+	// Convert requests to list items
+	items := make([]list.Item, len(requests))
+	for i, req := range requests {
+		items[i] = proxyRequestItem{Request: req}
+	}
+	
+	// Set the items in the list
+	m.webRequestsList.SetItems(items)
+	
+	// Auto-scroll to bottom if enabled and new requests were added
+	if m.webAutoScroll && len(items) > 0 {
+		m.webRequestsList.Select(len(items) - 1)
+	}
+}
+
+// renderWebRequestsListWithHeader renders the filter tabs and requests list for split view
+func (m Model) renderWebRequestsListWithHeader() string {
+	var content strings.Builder
+	
+	// Compact header: combine everything on minimal lines
+	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+	
+	// Line 1: Filter + Status combined
+	filters := []string{"all", "pages", "api", "images", "other"}
+	var filterParts []string
+	for _, filter := range filters {
+		if filter == m.webFilter {
+			filterParts = append(filterParts, activeFilterStyle.Render("["+filter+"]"))
+		} else {
+			filterParts = append(filterParts, filterStyle.Render(filter))
+		}
+	}
+	
+	// Line 1: Filter tabs
+	filterLine := "Filter: " + strings.Join(filterParts, " ") + " (f)"
+	if !m.webAutoScroll {
+		filterLine += " ⏸"
+	}
+	content.WriteString(filterLine + "\n")
+	
+	// Line 2: Proxy status with count
+	if m.proxyServer != nil && m.proxyServer.IsRunning() {
+		modeStr := "Full Proxy"
+		if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
+			modeStr = "Reverse Proxy"
+		}
+		
+		// Get request count for display
+		requests := m.getFilteredRequests()
+		countStr := fmt.Sprintf("%d", len(requests))
+		
+		statusLine := lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("🟢 " + modeStr + " - " + countStr)
+		content.WriteString(statusLine + "\n")
+	}
+	
+	// Add the list view
+	content.WriteString(m.webRequestsList.View())
+	
+	return content.String()
+}
 
 // renderTelemetrySummary renders a one-line summary of telemetry data
 func (m Model) renderTelemetrySummary(session *proxy.PageSession) string {
@@ -3123,13 +3258,14 @@ func (m *Model) updateWebView() {
 	}
 	m.lastWebCount = newCount
 	
-	// Update the web viewport with latest proxy requests  
-	// Note: Don't call renderWebView() here as that's the complete UI layout
-	// The viewport content is updated within renderWebView() itself
+	// Update the web requests list with latest proxy requests
+	requests = m.getFilteredRequests()
+	m.updateWebRequestsList(requests)
 	
-	// Auto-scroll to bottom if enabled
-	if m.webAutoScroll {
-		m.webViewport.GotoBottom()
+	// Auto-scroll to bottom if enabled 
+	if m.webAutoScroll && len(m.webRequestsList.Items()) > 0 {
+		m.webRequestsList.Select(len(m.webRequestsList.Items()) - 1)
+		m.updateSelectedRequestFromList()
 	}
 }
 
