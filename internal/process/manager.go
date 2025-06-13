@@ -11,7 +11,6 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/config"
@@ -130,10 +129,8 @@ func (m *Manager) StartScript(scriptName string) (*Process, error) {
 	cmd.Env = append(cmd.Env, "COLORTERM=truecolor")
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 
-	// Set process group for easier cleanup on Unix systems
-	if runtime.GOOS != "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	}
+	// Set process group for easier cleanup (platform-specific)
+	setupProcessGroup(cmd)
 
 	process := &Process{
 		ID:        processID,
@@ -173,10 +170,8 @@ func (m *Manager) StartCommand(name string, command string, args []string) (*Pro
 	cmd.Env = append(cmd.Env, "COLORTERM=truecolor")
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 
-	// Set process group for easier cleanup on Unix systems
-	if runtime.GOOS != "windows" {
-		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
-	}
+	// Set process group for easier cleanup (platform-specific)
+	setupProcessGroup(cmd)
 
 	process := &Process{
 		ID:        processID,
@@ -487,18 +482,10 @@ func (m *Manager) Cleanup() error {
 
 // killProcessTree kills a process and all its children
 func (m *Manager) killProcessTree(pid int) {
-	if runtime.GOOS == "windows" {
-		// On Windows, try to kill the process directly
-		if proc, err := os.FindProcess(pid); err == nil {
-			_ = proc.Kill() // Ignore errors during forced cleanup
-		}
-	} else {
-		// On Unix systems, kill the entire process group
-		_ = syscall.Kill(-pid, syscall.SIGTERM) // Ignore errors during cleanup
-		time.Sleep(50 * time.Millisecond)
-		_ = syscall.Kill(-pid, syscall.SIGKILL) // Ignore errors during cleanup
+	killProcessByPID(pid)
 
-		// Also try to find and kill child processes
+	// Also try to find and kill child processes on Unix
+	if runtime.GOOS != "windows" {
 		m.killChildProcesses(pid)
 	}
 }
@@ -526,24 +513,14 @@ func (m *Manager) killChildProcesses(parentPID int) {
 			// Recursively kill children
 			m.killChildProcesses(childPID)
 			// Then kill this child
-			if proc, err := os.FindProcess(childPID); err == nil {
-				_ = proc.Signal(syscall.SIGTERM) // Ignore errors during cleanup
-				time.Sleep(50 * time.Millisecond)
-				_ = proc.Kill() // Ignore errors during cleanup
-			}
+			killProcessByPID(childPID)
 		}
 	}
 }
 
 // ensureProcessDead makes sure a process is really dead
 func (m *Manager) ensureProcessDead(pid int) {
-	if proc, err := os.FindProcess(pid); err == nil {
-		// Try to send signal 0 to check if process exists
-		if err := proc.Signal(syscall.Signal(0)); err == nil {
-			// Process still exists, kill it
-			_ = proc.Kill() // Ignore errors during forced cleanup
-		}
-	}
+	ensureProcessDead(pid)
 }
 
 // killProcessesByPort kills processes using development ports
@@ -580,11 +557,7 @@ func (m *Manager) killProcessUsingPort(port int) {
 
 	for _, line := range strings.Split(lines, "\n") {
 		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
-			if proc, err := os.FindProcess(pid); err == nil {
-				_ = proc.Signal(syscall.SIGTERM) // Ignore errors during cleanup
-				time.Sleep(50 * time.Millisecond)
-				_ = proc.Kill() // Ignore errors during cleanup
-			}
+			killProcessByPID(pid)
 		}
 	}
 }
@@ -604,11 +577,7 @@ func (m *Manager) killProcessesByPattern(pattern string) {
 
 	for _, line := range strings.Split(lines, "\n") {
 		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
-			if proc, err := os.FindProcess(pid); err == nil {
-				_ = proc.Signal(syscall.SIGTERM) // Ignore errors during cleanup
-				time.Sleep(50 * time.Millisecond)
-				_ = proc.Kill() // Ignore errors during cleanup
-			}
+			killProcessByPID(pid)
 		}
 	}
 }
