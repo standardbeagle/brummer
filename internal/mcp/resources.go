@@ -14,14 +14,14 @@ func (s *StreamableServer) registerResources() {
 		Description: "Recent log entries from all processes",
 		MimeType:    "application/json",
 	}
-	
+
 	s.resources["logs://errors"] = Resource{
 		URI:         "logs://errors",
 		Name:        "Error Logs",
 		Description: "Recent error log entries",
 		MimeType:    "application/json",
 	}
-	
+
 	// Telemetry resources
 	s.resources["telemetry://sessions"] = Resource{
 		URI:         "telemetry://sessions",
@@ -29,14 +29,14 @@ func (s *StreamableServer) registerResources() {
 		Description: "Active browser telemetry sessions",
 		MimeType:    "application/json",
 	}
-	
+
 	s.resources["telemetry://errors"] = Resource{
 		URI:         "telemetry://errors",
 		Name:        "Browser Errors",
 		Description: "JavaScript errors from browser sessions",
 		MimeType:    "application/json",
 	}
-	
+
 	// Proxy resources
 	s.resources["proxy://requests"] = Resource{
 		URI:         "proxy://requests",
@@ -44,14 +44,14 @@ func (s *StreamableServer) registerResources() {
 		Description: "Recent HTTP requests captured by proxy",
 		MimeType:    "application/json",
 	}
-	
+
 	s.resources["proxy://mappings"] = Resource{
 		URI:         "proxy://mappings",
 		Name:        "URL Mappings",
 		Description: "Active reverse proxy URL mappings",
 		MimeType:    "application/json",
 	}
-	
+
 	// Process resources
 	s.resources["processes://active"] = Resource{
 		URI:         "processes://active",
@@ -59,7 +59,7 @@ func (s *StreamableServer) registerResources() {
 		Description: "Currently running processes",
 		MimeType:    "application/json",
 	}
-	
+
 	s.resources["scripts://available"] = Resource{
 		URI:         "scripts://available",
 		Name:        "Available Scripts",
@@ -71,7 +71,7 @@ func (s *StreamableServer) registerResources() {
 // Resource list handler
 func (s *StreamableServer) handleResourcesList(msg *JSONRPCMessage) *JSONRPCMessage {
 	resources := make([]map[string]interface{}, 0, len(s.resources))
-	
+
 	for uri, resource := range s.resources {
 		resources = append(resources, map[string]interface{}{
 			"uri":         uri,
@@ -80,7 +80,7 @@ func (s *StreamableServer) handleResourcesList(msg *JSONRPCMessage) *JSONRPCMess
 			"mimeType":    resource.MimeType,
 		})
 	}
-	
+
 	return &JSONRPCMessage{
 		Jsonrpc: "2.0",
 		ID:      msg.ID,
@@ -95,56 +95,56 @@ func (s *StreamableServer) handleResourceRead(msg *JSONRPCMessage) *JSONRPCMessa
 	var params struct {
 		URI string `json:"uri"`
 	}
-	
+
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return s.createErrorResponse(msg.ID, -32602, "Invalid params", nil)
 	}
-	
+
 	resource, ok := s.resources[params.URI]
 	if !ok {
 		return s.createErrorResponse(msg.ID, -32602, "Resource not found", nil)
 	}
-	
+
 	// Get resource content based on URI
 	var content interface{}
 	var err error
-	
+
 	switch params.URI {
 	case "logs://recent":
 		content = s.getRecentLogs(100)
-		
+
 	case "logs://errors":
 		content = s.getErrorLogs(50)
-		
+
 	case "telemetry://sessions":
 		content = s.getTelemetrySessions()
-		
+
 	case "telemetry://errors":
 		content = s.getBrowserErrors()
-		
+
 	case "proxy://requests":
 		content = s.getProxyRequests(100)
-		
+
 	case "proxy://mappings":
 		content = s.getProxyMappings()
-		
+
 	case "processes://active":
 		content = s.getActiveProcesses()
-		
+
 	case "scripts://available":
 		content = s.getAvailableScripts()
-		
+
 	default:
 		return s.createErrorResponse(msg.ID, -32603, "Resource handler not implemented", nil)
 	}
-	
+
 	if err != nil {
 		return s.createErrorResponse(msg.ID, -32603, err.Error(), nil)
 	}
-	
+
 	// Convert content to JSON string
 	contentBytes, _ := json.Marshal(content)
-	
+
 	return &JSONRPCMessage{
 		Jsonrpc: "2.0",
 		ID:      msg.ID,
@@ -165,19 +165,19 @@ func (s *StreamableServer) handleResourceSubscribe(msg *JSONRPCMessage) *JSONRPC
 	var params struct {
 		URI string `json:"uri"`
 	}
-	
+
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return s.createErrorResponse(msg.ID, -32602, "Invalid params", nil)
 	}
-	
+
 	_, ok := s.resources[params.URI]
 	if !ok {
 		return s.createErrorResponse(msg.ID, -32602, "Resource not found", nil)
 	}
-	
+
 	// TODO: Implement actual subscription logic
 	// For now, just acknowledge the subscription
-	
+
 	return &JSONRPCMessage{
 		Jsonrpc: "2.0",
 		ID:      msg.ID,
@@ -190,13 +190,13 @@ func (s *StreamableServer) handleResourceUnsubscribe(msg *JSONRPCMessage) *JSONR
 	var params struct {
 		URI string `json:"uri"`
 	}
-	
+
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return s.createErrorResponse(msg.ID, -32602, "Invalid params", nil)
 	}
-	
+
 	// TODO: Implement actual unsubscription logic
-	
+
 	return &JSONRPCMessage{
 		Jsonrpc: "2.0",
 		ID:      msg.ID,
@@ -217,7 +217,7 @@ func (s *StreamableServer) getRecentLogs(limit int) []interface{} {
 func (s *StreamableServer) getErrorLogs(limit int) []interface{} {
 	allLogs := s.logStoreGetAllInterface()
 	errorLogs := make([]interface{}, 0)
-	
+
 	for i := len(allLogs) - 1; i >= 0 && len(errorLogs) < limit; i-- {
 		if logMap, ok := allLogs[i].(map[string]interface{}); ok {
 			if priority, ok := logMap["priority"].(int); ok && priority >= 3 {
@@ -230,7 +230,7 @@ func (s *StreamableServer) getErrorLogs(limit int) []interface{} {
 			}
 		}
 	}
-	
+
 	return errorLogs
 }
 
@@ -238,12 +238,12 @@ func (s *StreamableServer) getTelemetrySessions() []interface{} {
 	if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
 		return []interface{}{}
 	}
-	
+
 	sessions := make([]interface{}, 0)
 	for _, session := range s.proxyServer.GetTelemetryStore().GetAllSessions() {
 		sessions = append(sessions, session.GetMetricsSummary())
 	}
-	
+
 	return sessions
 }
 
@@ -251,7 +251,7 @@ func (s *StreamableServer) getBrowserErrors() []interface{} {
 	if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
 		return []interface{}{}
 	}
-	
+
 	errors := make([]interface{}, 0)
 	for _, session := range s.proxyServer.GetTelemetryStore().GetAllSessions() {
 		for _, event := range session.Events {
@@ -266,7 +266,7 @@ func (s *StreamableServer) getBrowserErrors() []interface{} {
 			}
 		}
 	}
-	
+
 	return errors
 }
 
@@ -274,19 +274,19 @@ func (s *StreamableServer) getProxyRequests(limit int) []interface{} {
 	if s.proxyServer == nil {
 		return []interface{}{}
 	}
-	
+
 	requests := s.proxyServer.GetRequests()
 	result := make([]interface{}, 0, len(requests))
-	
+
 	start := 0
 	if len(requests) > limit {
 		start = len(requests) - limit
 	}
-	
+
 	for i := start; i < len(requests); i++ {
 		result = append(result, requests[i])
 	}
-	
+
 	return result
 }
 
@@ -294,10 +294,10 @@ func (s *StreamableServer) getProxyMappings() []interface{} {
 	if s.proxyServer == nil {
 		return []interface{}{}
 	}
-	
+
 	mappings := s.proxyServer.GetURLMappings()
 	result := make([]interface{}, 0, len(mappings))
-	
+
 	for _, mapping := range mappings {
 		result = append(result, map[string]interface{}{
 			"targetUrl":   mapping.TargetURL,
@@ -307,14 +307,14 @@ func (s *StreamableServer) getProxyMappings() []interface{} {
 			"createdAt":   mapping.CreatedAt,
 		})
 	}
-	
+
 	return result
 }
 
 func (s *StreamableServer) getActiveProcesses() []interface{} {
 	processes := s.processMgr.GetAllProcesses()
 	result := make([]interface{}, 0, len(processes))
-	
+
 	for _, p := range processes {
 		result = append(result, map[string]interface{}{
 			"id":        p.ID,
@@ -325,7 +325,7 @@ func (s *StreamableServer) getActiveProcesses() []interface{} {
 			"exitCode":  p.ExitCode,
 		})
 	}
-	
+
 	return result
 }
 

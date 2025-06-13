@@ -35,45 +35,55 @@ type Process struct {
 type ProcessStatus string
 
 const (
-	StatusPending  ProcessStatus = "pending"
-	StatusRunning  ProcessStatus = "running"
-	StatusStopped  ProcessStatus = "stopped"
-	StatusFailed   ProcessStatus = "failed"
-	StatusSuccess  ProcessStatus = "success"
+	StatusPending ProcessStatus = "pending"
+	StatusRunning ProcessStatus = "running"
+	StatusStopped ProcessStatus = "stopped"
+	StatusFailed  ProcessStatus = "failed"
+	StatusSuccess ProcessStatus = "success"
 )
 
 type Manager struct {
-	processes       map[string]*Process
-	packageJSON     *parser.PackageJSON
-	packageMgr      parser.PackageManager
-	userPackageMgr  *parser.PackageManager
-	workDir         string
-	eventBus        *events.EventBus
-	logCallbacks    []LogCallback
-	installedMgrs   []parser.InstalledPackageManager
-	mu              sync.RWMutex
+	processes      map[string]*Process
+	packageJSON    *parser.PackageJSON
+	packageMgr     parser.PackageManager
+	userPackageMgr *parser.PackageManager
+	workDir        string
+	eventBus       *events.EventBus
+	logCallbacks   []LogCallback
+	installedMgrs  []parser.InstalledPackageManager
+	mu             sync.RWMutex
 }
 
 type LogCallback func(processID string, line string, isError bool)
 
-func NewManager(workDir string, eventBus *events.EventBus) (*Manager, error) {
-	pkgJSON, err := parser.ParsePackageJSON(workDir + "/package.json")
-	if err != nil {
-		return nil, err
+func NewManager(workDir string, eventBus *events.EventBus, hasPackageJSON bool) (*Manager, error) {
+	var pkgJSON *parser.PackageJSON
+	var err error
+
+	if hasPackageJSON {
+		pkgJSON, err = parser.ParsePackageJSON(workDir + "/package.json")
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		// Create empty package.json structure for fallback mode
+		pkgJSON = &parser.PackageJSON{
+			Scripts: make(map[string]string),
+		}
 	}
 
 	// Load config
 	cfg, _ := config.Load()
-	
+
 	// Detect installed package managers
 	installedMgrs := parser.DetectInstalledPackageManagers()
 
 	m := &Manager{
-		processes:     make(map[string]*Process),
-		packageJSON:   pkgJSON,
-		workDir:       workDir,
-		eventBus:      eventBus,
-		installedMgrs: installedMgrs,
+		processes:      make(map[string]*Process),
+		packageJSON:    pkgJSON,
+		workDir:        workDir,
+		eventBus:       eventBus,
+		installedMgrs:  installedMgrs,
 		userPackageMgr: cfg.PreferredPackageManager,
 	}
 
@@ -107,7 +117,7 @@ func (m *Manager) StartScript(scriptName string) (*Process, error) {
 	}
 
 	processID := fmt.Sprintf("%s-%d", scriptName, time.Now().Unix())
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cmdArgs := m.packageMgr.RunScriptCommand(scriptName)
 	cmd := exec.CommandContext(ctx, cmdArgs[0], cmdArgs[1:]...)
@@ -119,7 +129,7 @@ func (m *Manager) StartScript(scriptName string) (*Process, error) {
 	cmd.Env = append(cmd.Env, "FORCE_COLOR=1")
 	cmd.Env = append(cmd.Env, "COLORTERM=truecolor")
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
-	
+
 	// Set process group for easier cleanup on Unix systems
 	if runtime.GOOS != "windows" {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -151,7 +161,7 @@ func (m *Manager) StartCommand(name string, command string, args []string) (*Pro
 	defer m.mu.Unlock()
 
 	processID := fmt.Sprintf("%s-%d", name, time.Now().Unix())
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
 	cmd := exec.CommandContext(ctx, command, args...)
 	cmd.Dir = m.workDir
@@ -162,7 +172,7 @@ func (m *Manager) StartCommand(name string, command string, args []string) (*Pro
 	cmd.Env = append(cmd.Env, "FORCE_COLOR=1")
 	cmd.Env = append(cmd.Env, "COLORTERM=truecolor")
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
-	
+
 	// Set process group for easier cleanup on Unix systems
 	if runtime.GOOS != "windows" {
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
@@ -223,21 +233,21 @@ func (m *Manager) runProcess(p *Process) error {
 
 	go func() {
 		err := p.Cmd.Wait()
-		
+
 		// Ensure clean log separation when process exits
 		// This adds a newline to ensure the next process starts on a new line
 		m.mu.RLock()
 		callbacks := m.logCallbacks
 		m.mu.RUnlock()
-		
+
 		for _, cb := range callbacks {
 			cb(p.ID, "", false) // Empty line to ensure separation
 		}
-		
+
 		p.mu.Lock()
 		now := time.Now()
 		p.EndTime = &now
-		
+
 		if err != nil {
 			if exitErr, ok := err.(*exec.ExitError); ok {
 				code := exitErr.ExitCode()
@@ -270,7 +280,7 @@ func (m *Manager) runProcess(p *Process) error {
 func (m *Manager) streamLogs(processID string, reader io.Reader, isError bool) {
 	// Use a buffered reader to handle partial lines
 	bufReader := bufio.NewReader(reader)
-	
+
 	for {
 		line, err := bufReader.ReadString('\n')
 		if err != nil {
@@ -278,11 +288,11 @@ func (m *Manager) streamLogs(processID string, reader io.Reader, isError bool) {
 			if err == io.EOF && len(line) > 0 {
 				// Remove any trailing newline if present
 				line = strings.TrimSuffix(line, "\n")
-				
+
 				m.mu.RLock()
 				callbacks := m.logCallbacks
 				m.mu.RUnlock()
-				
+
 				for _, cb := range callbacks {
 					cb(processID, line, isError)
 				}
@@ -298,14 +308,14 @@ func (m *Manager) streamLogs(processID string, reader io.Reader, isError bool) {
 			}
 			break
 		}
-		
+
 		// Remove the newline character
 		line = strings.TrimSuffix(line, "\n")
-		
+
 		m.mu.RLock()
 		callbacks := m.logCallbacks
 		m.mu.RUnlock()
-		
+
 		for _, cb := range callbacks {
 			cb(processID, line, isError)
 		}
@@ -335,26 +345,26 @@ func (m *Manager) StopProcess(processID string) error {
 		process.mu.Unlock()
 		return fmt.Errorf("process %s is not running", processID)
 	}
-	
+
 	// Get the PID before we start killing
 	var mainPID int
 	if process.Cmd != nil && process.Cmd.Process != nil {
 		mainPID = process.Cmd.Process.Pid
 	}
-	
+
 	// First try graceful shutdown
 	if process.cancel != nil {
 		process.cancel()
 	}
-	
+
 	// Kill the process tree aggressively
 	if process.Cmd != nil && process.Cmd.Process != nil {
 		m.killProcessTree(process.Cmd.Process.Pid)
 	}
-	
+
 	// Also kill any processes that might be using development ports
 	m.killProcessesByPort()
-	
+
 	process.Status = StatusStopped
 	now := time.Now()
 	process.EndTime = &now
@@ -364,7 +374,7 @@ func (m *Manager) StopProcess(processID string) error {
 
 	// Give processes a moment to die
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Double-check that the main process is dead
 	if mainPID > 0 {
 		m.ensureProcessDead(mainPID)
@@ -386,7 +396,7 @@ func (m *Manager) StopProcess(processID string) error {
 func (m *Manager) GetProcess(processID string) (*Process, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	process, exists := m.processes[processID]
 	return process, exists
 }
@@ -394,7 +404,7 @@ func (m *Manager) GetProcess(processID string) (*Process, bool) {
 func (m *Manager) GetAllProcesses() []*Process {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	processes := make([]*Process, 0, len(m.processes))
 	for _, p := range m.processes {
 		processes = append(processes, p)
@@ -425,7 +435,7 @@ func (m *Manager) SetUserPackageManager(pm parser.PackageManager) error {
 	defer m.mu.Unlock()
 	m.userPackageMgr = &pm
 	m.updatePackageManager()
-	
+
 	// Save to config
 	cfg := &config.Config{
 		PreferredPackageManager: &pm,
@@ -461,17 +471,17 @@ func (m *Manager) StopAllProcesses() error {
 			lastError = err
 		}
 	}
-	
+
 	return lastError
 }
 
 // Cleanup stops all processes and cleans up resources
 func (m *Manager) Cleanup() error {
 	err := m.StopAllProcesses()
-	
+
 	// Also kill any remaining development processes
 	m.killProcessesByPort()
-	
+
 	return err
 }
 
@@ -487,7 +497,7 @@ func (m *Manager) killProcessTree(pid int) {
 		syscall.Kill(-pid, syscall.SIGTERM)
 		time.Sleep(50 * time.Millisecond)
 		syscall.Kill(-pid, syscall.SIGKILL)
-		
+
 		// Also try to find and kill child processes
 		m.killChildProcesses(pid)
 	}
@@ -498,19 +508,19 @@ func (m *Manager) killChildProcesses(parentPID int) {
 	if runtime.GOOS == "windows" {
 		return // Skip for Windows
 	}
-	
+
 	// Use ps to find child processes
 	cmd := exec.Command("pgrep", "-P", strconv.Itoa(parentPID))
 	output, err := cmd.Output()
 	if err != nil {
 		return
 	}
-	
+
 	lines := strings.TrimSpace(string(output))
 	if lines == "" {
 		return
 	}
-	
+
 	for _, line := range strings.Split(lines, "\n") {
 		if childPID, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
 			// Recursively kill children
@@ -541,12 +551,12 @@ func (m *Manager) killProcessesByPort() {
 	if runtime.GOOS == "windows" {
 		return // Skip for Windows for now
 	}
-	
+
 	// Find processes using development ports (3000-3009)
 	for port := 3000; port <= 3009; port++ {
 		m.killProcessUsingPort(port)
 	}
-	
+
 	// Also check for common development server patterns
 	m.killProcessesByPattern("next dev")
 	m.killProcessesByPattern("next-server")
@@ -562,12 +572,12 @@ func (m *Manager) killProcessUsingPort(port int) {
 	if err != nil {
 		return
 	}
-	
+
 	lines := strings.TrimSpace(string(output))
 	if lines == "" {
 		return
 	}
-	
+
 	for _, line := range strings.Split(lines, "\n") {
 		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
 			if proc, err := os.FindProcess(pid); err == nil {
@@ -586,12 +596,12 @@ func (m *Manager) killProcessesByPattern(pattern string) {
 	if err != nil {
 		return
 	}
-	
+
 	lines := strings.TrimSpace(string(output))
 	if lines == "" {
 		return
 	}
-	
+
 	for _, line := range strings.Split(lines, "\n") {
 		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
 			if proc, err := os.FindProcess(pid); err == nil {

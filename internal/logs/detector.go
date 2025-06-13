@@ -106,7 +106,7 @@ func (d *EventDetector) isError(content string, isError bool) bool {
 
 func (d *EventDetector) getErrorSeverity(content string) string {
 	lower := strings.ToLower(content)
-	
+
 	if strings.Contains(lower, "fatal") || strings.Contains(lower, "panic") {
 		return "critical"
 	}
@@ -116,7 +116,7 @@ func (d *EventDetector) getErrorSeverity(content string) string {
 	if strings.Contains(lower, "warning") || strings.Contains(lower, "warn") {
 		return "warning"
 	}
-	
+
 	return "info"
 }
 
@@ -134,7 +134,7 @@ func (d *EventDetector) detectTestResult(content string) map[string]interface{} 
 		if matches := pattern.FindStringSubmatch(content); matches != nil {
 			lower := strings.ToLower(content)
 			failed := strings.Contains(lower, "fail") || strings.Contains(lower, "✗") || strings.Contains(lower, "✘")
-			
+
 			result := map[string]interface{}{
 				"failed": failed,
 				"line":   content,
@@ -153,6 +153,6 @@ func (d *EventDetector) detectTestResult(content string) map[string]interface{} 
 			return result
 		}
 	}
-	
+
 	return nil
 }

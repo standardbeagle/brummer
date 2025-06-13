@@ -46,7 +46,7 @@ type PageSession struct {
 	StartTime    time.Time
 	LastActivity time.Time
 	Events       []TelemetryEvent
-	
+
 	// Aggregated metrics
 	PerformanceMetrics map[string]interface{}
 	MemorySnapshots    []map[string]interface{}
@@ -59,7 +59,7 @@ type PageSession struct {
 type TelemetryStore struct {
 	mu       sync.RWMutex
 	sessions map[string]*PageSession
-	
+
 	// Configuration
 	maxSessionsPerProcess int
 	maxEventsPerSession   int
@@ -80,7 +80,7 @@ func NewTelemetryStore() *TelemetryStore {
 func (ts *TelemetryStore) AddBatch(batch TelemetryBatch, processName string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	
+
 	// Get or create session
 	session, exists := ts.sessions[batch.SessionID]
 	if !exists {
@@ -93,26 +93,26 @@ func (ts *TelemetryStore) AddBatch(batch TelemetryBatch, processName string) {
 		}
 		ts.sessions[batch.SessionID] = session
 	}
-	
+
 	// Update session
 	session.LastActivity = time.Now()
-	
+
 	// Add events
 	for _, event := range batch.Events {
 		// Update URL if provided
 		if event.URL != "" {
 			session.URL = event.URL
 		}
-		
+
 		// Process event based on type
 		ts.processEvent(session, event)
-		
+
 		// Add to event list (with size limit)
 		if len(session.Events) < ts.maxEventsPerSession {
 			session.Events = append(session.Events, event)
 		}
 	}
-	
+
 	// Clean up old sessions
 	ts.cleanupOldSessions()
 }
@@ -124,24 +124,24 @@ func (ts *TelemetryStore) processEvent(session *PageSession, event TelemetryEven
 		if session.PerformanceMetrics == nil {
 			session.PerformanceMetrics = event.Data
 		}
-		
+
 	case TelemetryMemoryUsage:
 		if session.MemorySnapshots == nil {
 			session.MemorySnapshots = make([]map[string]interface{}, 0)
 		}
 		session.MemorySnapshots = append(session.MemorySnapshots, event.Data)
-		
+
 		// Keep only last 20 snapshots
 		if len(session.MemorySnapshots) > 20 {
 			session.MemorySnapshots = session.MemorySnapshots[len(session.MemorySnapshots)-20:]
 		}
-		
+
 	case TelemetryJSError, TelemetryUnhandledReject:
 		session.ErrorCount++
-		
+
 	case TelemetryUserInteraction:
 		session.InteractionCount++
-		
+
 	case TelemetryConsoleOutput:
 		if level, ok := event.Data["level"].(string); ok {
 			session.ConsoleLogCount[level]++
@@ -153,17 +153,17 @@ func (ts *TelemetryStore) processEvent(session *PageSession, event TelemetryEven
 func (ts *TelemetryStore) GetSession(sessionID string) (*PageSession, bool) {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	
+
 	session, exists := ts.sessions[sessionID]
 	if !exists {
 		return nil, false
 	}
-	
+
 	// Return a copy to avoid race conditions
 	sessionCopy := *session
 	sessionCopy.Events = make([]TelemetryEvent, len(session.Events))
 	copy(sessionCopy.Events, session.Events)
-	
+
 	return &sessionCopy, true
 }
 
@@ -171,7 +171,7 @@ func (ts *TelemetryStore) GetSession(sessionID string) (*PageSession, bool) {
 func (ts *TelemetryStore) GetSessionsForProcess(processName string) []*PageSession {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	
+
 	var sessions []*PageSession
 	for _, session := range ts.sessions {
 		if session.ProcessName == processName {
@@ -182,7 +182,7 @@ func (ts *TelemetryStore) GetSessionsForProcess(processName string) []*PageSessi
 			sessions = append(sessions, &sessionCopy)
 		}
 	}
-	
+
 	// Sort by start time (newest first)
 	for i := 0; i < len(sessions)-1; i++ {
 		for j := i + 1; j < len(sessions); j++ {
@@ -191,7 +191,7 @@ func (ts *TelemetryStore) GetSessionsForProcess(processName string) []*PageSessi
 			}
 		}
 	}
-	
+
 	return sessions
 }
 
@@ -199,7 +199,7 @@ func (ts *TelemetryStore) GetSessionsForProcess(processName string) []*PageSessi
 func (ts *TelemetryStore) GetSessionsForURL(url string) []*PageSession {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	
+
 	var sessions []*PageSession
 	for _, session := range ts.sessions {
 		if session.URL == url {
@@ -210,7 +210,7 @@ func (ts *TelemetryStore) GetSessionsForURL(url string) []*PageSession {
 			sessions = append(sessions, &sessionCopy)
 		}
 	}
-	
+
 	// Sort by last activity (most recent first)
 	for i := 0; i < len(sessions)-1; i++ {
 		for j := i + 1; j < len(sessions); j++ {
@@ -219,7 +219,7 @@ func (ts *TelemetryStore) GetSessionsForURL(url string) []*PageSession {
 			}
 		}
 	}
-	
+
 	return sessions
 }
 
@@ -227,7 +227,7 @@ func (ts *TelemetryStore) GetSessionsForURL(url string) []*PageSession {
 func (ts *TelemetryStore) GetAllSessions() []*PageSession {
 	ts.mu.RLock()
 	defer ts.mu.RUnlock()
-	
+
 	sessions := make([]*PageSession, 0, len(ts.sessions))
 	for _, session := range ts.sessions {
 		// Create a copy
@@ -236,7 +236,7 @@ func (ts *TelemetryStore) GetAllSessions() []*PageSession {
 		copy(sessionCopy.Events, session.Events)
 		sessions = append(sessions, &sessionCopy)
 	}
-	
+
 	// Sort by last activity (most recent first)
 	for i := 0; i < len(sessions)-1; i++ {
 		for j := i + 1; j < len(sessions); j++ {
@@ -245,7 +245,7 @@ func (ts *TelemetryStore) GetAllSessions() []*PageSession {
 			}
 		}
 	}
-	
+
 	return sessions
 }
 
@@ -257,13 +257,13 @@ func (ts *TelemetryStore) cleanupOldSessions() {
 			delete(ts.sessions, sessionID)
 		}
 	}
-	
+
 	// Also limit sessions per process
 	processCount := make(map[string]int)
 	for _, session := range ts.sessions {
 		processCount[session.ProcessName]++
 	}
-	
+
 	// If any process has too many sessions, remove oldest
 	for processName, count := range processCount {
 		if count > ts.maxSessionsPerProcess {
@@ -274,7 +274,7 @@ func (ts *TelemetryStore) cleanupOldSessions() {
 					processSessions = append(processSessions, session)
 				}
 			}
-			
+
 			// Sort by last activity (oldest first)
 			for i := 0; i < len(processSessions)-1; i++ {
 				for j := i + 1; j < len(processSessions); j++ {
@@ -283,7 +283,7 @@ func (ts *TelemetryStore) cleanupOldSessions() {
 					}
 				}
 			}
-			
+
 			// Remove oldest sessions
 			toRemove := count - ts.maxSessionsPerProcess
 			for i := 0; i < toRemove && i < len(processSessions); i++ {
@@ -297,7 +297,7 @@ func (ts *TelemetryStore) cleanupOldSessions() {
 func (ts *TelemetryStore) ClearSessionsForProcess(processName string) {
 	ts.mu.Lock()
 	defer ts.mu.Unlock()
-	
+
 	for sessionID, session := range ts.sessions {
 		if session.ProcessName == processName {
 			delete(ts.sessions, sessionID)
@@ -319,16 +319,16 @@ func (session *PageSession) GetMetricsSummary() map[string]interface{} {
 		"interactionCount": session.InteractionCount,
 		"consoleLogCount":  session.ConsoleLogCount,
 	}
-	
+
 	// Add performance metrics if available
 	if session.PerformanceMetrics != nil {
 		summary["performance"] = session.PerformanceMetrics
 	}
-	
+
 	// Add latest memory snapshot if available
 	if len(session.MemorySnapshots) > 0 {
 		summary["latestMemory"] = session.MemorySnapshots[len(session.MemorySnapshots)-1]
 	}
-	
+
 	return summary
 }

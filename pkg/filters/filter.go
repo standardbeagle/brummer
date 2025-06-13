@@ -53,16 +53,16 @@ func (f *Filter) Matches(content string) bool {
 			return strings.Contains(content, f.Pattern)
 		}
 		return strings.Contains(strings.ToLower(content), strings.ToLower(f.Pattern))
-	
+
 	case FilterTypeRegex:
 		return f.regex.MatchString(content)
-	
+
 	case FilterTypeExact:
 		if f.CaseSensitive {
 			return content == f.Pattern
 		}
 		return strings.ToLower(content) == strings.ToLower(f.Pattern)
-	
+
 	default:
 		return false
 	}

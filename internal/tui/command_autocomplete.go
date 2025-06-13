@@ -5,27 +5,27 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/standardbeagle/brummer/internal/process"
 )
 
 // CommandAutocomplete handles multi-level command completion
 type CommandAutocomplete struct {
-	input        textinput.Model
-	segments     []string          // Parsed command segments
-	currentIndex int               // Which segment we're editing
-	suggestions  []string          // Current suggestions
-	selected     int               // Selected suggestion index
-	showDropdown bool
-	width        int
-	errorMessage string            // Error message to display
-	arbitraryMode bool             // True when in arbitrary command mode (Ctrl+N)
-	
+	input         textinput.Model
+	segments      []string // Parsed command segments
+	currentIndex  int      // Which segment we're editing
+	suggestions   []string // Current suggestions
+	selected      int      // Selected suggestion index
+	showDropdown  bool
+	width         int
+	errorMessage  string // Error message to display
+	arbitraryMode bool   // True when in arbitrary command mode (Ctrl+N)
+
 	// Command-specific data
 	availableScripts map[string]string // Script name -> script command
-	processMgr      *process.Manager  // Reference to process manager to check running scripts
+	processMgr       *process.Manager  // Reference to process manager to check running scripts
 }
 
 func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
@@ -40,10 +40,10 @@ func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
 		availableScripts: scripts,
 		showDropdown:     true,
 	}
-	
+
 	// Initialize suggestions
 	c.updateSuggestions()
-	
+
 	return c
 }
 
@@ -87,7 +87,7 @@ func (c CommandAutocomplete) Update(msg tea.Msg) (CommandAutocomplete, tea.Cmd) 
 			// Update input
 			prevValue := c.input.Value()
 			c.input, cmd = c.input.Update(msg)
-			
+
 			// Update suggestions if value changed
 			if c.input.Value() != prevValue {
 				c.updateSuggestions()
@@ -130,7 +130,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 		value = "/" + value
 	}
 	c.segments = strings.Fields(value)
-	
+
 	// Determine which segment we're currently editing
 	if strings.HasSuffix(value, " ") {
 		// We're starting a new segment
@@ -147,14 +147,14 @@ func (c *CommandAutocomplete) updateSuggestions() {
 	c.suggestions = c.getSuggestionsForCurrentPosition()
 	c.selected = 0
 	c.showDropdown = len(c.suggestions) > 0
-	
+
 	// Always show dropdown if we have suggestions or if we're at the beginning
 	if len(c.suggestions) == 0 && c.currentIndex == 0 && (value == "" || value == "/") {
 		// Show initial commands when empty
 		c.suggestions = []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy"}
 		c.showDropdown = true
 	}
-	
+
 	// Ensure selected index is valid
 	if c.selected >= len(c.suggestions) {
 		c.selected = 0
@@ -180,7 +180,7 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 		case "/run":
 			// Get script names, excluding already running ones
 			scripts := make([]string, 0, len(c.availableScripts))
-			
+
 			// Get running scripts if process manager is available
 			runningScripts := make(map[string]bool)
 			if c.processMgr != nil {
@@ -190,7 +190,7 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 					}
 				}
 			}
-			
+
 			// Only add scripts that aren't already running
 			for name := range c.availableScripts {
 				if !runningScripts[name] {
@@ -198,17 +198,17 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 				}
 			}
 			sort.Strings(scripts)
-			
+
 			currentText := ""
 			if c.currentIndex < len(c.segments) {
 				currentText = c.segments[c.currentIndex]
 			}
 			return c.filterSuggestions(scripts, currentText)
-			
+
 		case "/restart", "/stop":
 			// Get running processes with "all" as default option
 			processes := []string{"all"}
-			
+
 			if c.processMgr != nil {
 				for _, proc := range c.processMgr.GetAllProcesses() {
 					if proc.Status == process.StatusRunning {
@@ -216,30 +216,30 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 					}
 				}
 			}
-			
+
 			currentText := ""
 			if c.currentIndex < len(c.segments) {
 				currentText = c.segments[c.currentIndex]
 			}
 			return c.filterSuggestions(processes, currentText)
-			
+
 		case "/clear":
 			// Options: all, logs, errors, web, or script names
 			options := []string{"all", "logs", "errors", "web"}
-			
+
 			// Add all script names (both running and not running)
 			if c.availableScripts != nil {
 				for scriptName := range c.availableScripts {
 					options = append(options, scriptName)
 				}
 			}
-			
+
 			currentText := ""
 			if c.currentIndex < len(c.segments) {
 				currentText = c.segments[c.currentIndex]
 			}
 			return c.filterSuggestions(options, currentText)
-			
+
 		case "/show", "/hide":
 			// Common patterns for log filtering
 			patterns := []string{"error", "warn", "info", "debug", "^\\[", "\\]$", "|"}
@@ -248,7 +248,7 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 				currentText = c.segments[c.currentIndex]
 			}
 			return c.filterSuggestions(patterns, currentText)
-			
+
 		case "/proxy":
 			// URL format suggestions
 			urlExamples := []string{"http://localhost:3000", "http://localhost:8080", "https://example.com"}
@@ -284,7 +284,7 @@ func (c *CommandAutocomplete) applySelectedSuggestion() {
 	}
 
 	selected := c.suggestions[c.selected]
-	
+
 	// Build the new command string
 	parts := strings.Fields(c.input.Value())
 	if strings.HasSuffix(c.input.Value(), " ") {
@@ -315,26 +315,26 @@ func (c CommandAutocomplete) RenderDropdown(maxSuggestions int) string {
 	if !c.showDropdown || len(c.suggestions) == 0 {
 		return ""
 	}
-	
+
 	var s strings.Builder
-	
+
 	selectedStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("226")).
 		Background(lipgloss.Color("237")).
 		Width(c.width - 4)
-	
+
 	normalStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("252")).
 		Width(c.width - 4)
-	
+
 	count := len(c.suggestions)
 	if count > maxSuggestions {
 		count = maxSuggestions
 	}
-	
+
 	for i := 0; i < count; i++ {
 		suggestion := c.suggestions[i]
-		
+
 		// Add visual indicator for selection
 		display := "  " + suggestion
 		if i == c.selected {
@@ -343,12 +343,12 @@ func (c CommandAutocomplete) RenderDropdown(maxSuggestions int) string {
 		} else {
 			s.WriteString(normalStyle.Render(display))
 		}
-		
+
 		if i < count-1 {
 			s.WriteString("\n")
 		}
 	}
-	
+
 	// Show more indicator if there are more suggestions
 	if len(c.suggestions) > maxSuggestions {
 		moreStyle := lipgloss.NewStyle().
@@ -358,7 +358,7 @@ func (c CommandAutocomplete) RenderDropdown(maxSuggestions int) string {
 		moreCount := len(c.suggestions) - maxSuggestions
 		s.WriteString(moreStyle.Render(fmt.Sprintf("  ... and %d more", moreCount)))
 	}
-	
+
 	return s.String()
 }
 
@@ -376,19 +376,19 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 	if value == "" {
 		return false, "Please enter a command"
 	}
-	
+
 	// If it doesn't start with /, treat as arbitrary command (always valid)
 	if !strings.HasPrefix(value, "/") {
 		return true, ""
 	}
-	
+
 	parts := strings.Fields(value)
 	if len(parts) == 0 {
 		return false, "Please enter a command"
 	}
-	
+
 	command := parts[0]
-	
+
 	switch command {
 	case "/run":
 		if len(parts) < 2 {
@@ -408,19 +408,19 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 			}
 		}
 		return true, ""
-		
+
 	case "/restart", "/stop":
 		if len(parts) < 2 {
 			// Default to "all" if no process specified
 			return true, ""
 		}
 		processName := parts[1]
-		
+
 		// Check if it's "all" or a valid running process
 		if processName == "all" {
 			return true, ""
 		}
-		
+
 		// Check if process exists and is running
 		if c.processMgr != nil {
 			for _, proc := range c.processMgr.GetAllProcesses() {
@@ -431,54 +431,54 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 			return false, fmt.Sprintf("Process '%s' is not running", processName)
 		}
 		return true, ""
-		
+
 	case "/clear":
 		if len(parts) < 2 {
 			// Default to "all" if no target specified
 			return true, ""
 		}
 		target := parts[1]
-		
+
 		// Check if it's a valid clear target
 		validTargets := map[string]bool{
-			"all": true,
-			"logs": true,
+			"all":    true,
+			"logs":   true,
 			"errors": true,
-			"web": true,
+			"web":    true,
 		}
-		
+
 		if validTargets[target] {
 			return true, ""
 		}
-		
+
 		// Check if it's a valid script name
 		if _, exists := c.availableScripts[target]; exists {
 			return true, ""
 		}
-		
+
 		return false, fmt.Sprintf("Invalid clear target '%s'. Use: all, logs, errors, or a script name", target)
-		
+
 	case "/show", "/hide":
 		if len(parts) < 2 {
 			return false, fmt.Sprintf("Please specify a pattern for %s", command)
 		}
 		return true, ""
-		
+
 	case "/proxy":
 		if len(parts) < 2 {
 			return false, "Please specify a URL (e.g. /proxy http://localhost:3000)"
 		}
-		
+
 		urlStr := parts[1]
 		if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
 			return false, "URL must start with http:// or https://"
 		}
 		return true, ""
-		
+
 	case "/toggle-proxy":
 		// No additional parameters needed
 		return true, ""
-		
+
 	default:
 		// Check if it's a partial command
 		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy"} {
@@ -500,7 +500,7 @@ func (c *CommandAutocomplete) getAvailableScriptsString() string {
 			}
 		}
 	}
-	
+
 	// Only show scripts that aren't already running
 	scripts := make([]string, 0, len(c.availableScripts))
 	for name := range c.availableScripts {

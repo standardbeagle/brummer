@@ -97,10 +97,10 @@ type InstalledPackageManager struct {
 // DetectInstalledPackageManagers checks which package managers are installed on the system
 func DetectInstalledPackageManagers() []InstalledPackageManager {
 	var installed []InstalledPackageManager
-	
+
 	managers := []struct {
-		name    PackageManager
-		command string
+		name        PackageManager
+		command     string
 		versionArgs []string
 	}{
 		{NPM, "npm", []string{"--version"}},
@@ -108,20 +108,20 @@ func DetectInstalledPackageManagers() []InstalledPackageManager {
 		{PNPM, "pnpm", []string{"--version"}},
 		{Bun, "bun", []string{"--version"}},
 	}
-	
+
 	for _, mgr := range managers {
 		path, err := findExecutable(mgr.command)
 		if err != nil {
 			continue
 		}
-		
+
 		// Get version
 		cmd := exec.Command(mgr.command, mgr.versionArgs...)
 		output, err := cmd.Output()
 		if err != nil {
 			continue
 		}
-		
+
 		version := strings.TrimSpace(string(output))
 		installed = append(installed, InstalledPackageManager{
 			Manager: mgr.name,
@@ -129,7 +129,7 @@ func DetectInstalledPackageManagers() []InstalledPackageManager {
 			Path:    path,
 		})
 	}
-	
+
 	return installed
 }
 
@@ -146,7 +146,7 @@ func findExecutable(name string) (string, error) {
 		}
 		return "", fmt.Errorf("executable not found: %s", name)
 	}
-	
+
 	return exec.LookPath(name)
 }
 
@@ -161,7 +161,12 @@ func GetPreferredPackageManager(pkg *PackageJSON, projectPath string, userPrefer
 	if userPreference != nil {
 		return *userPreference
 	}
-	
+
+	// Handle nil package.json (fallback mode)
+	if pkg == nil {
+		return DetectPackageManager(projectPath)
+	}
+
 	// 2. Check packageManager field (e.g., "yarn@3.2.0")
 	if pkg.PackageManager != "" {
 		parts := strings.Split(pkg.PackageManager, "@")
@@ -178,7 +183,7 @@ func GetPreferredPackageManager(pkg *PackageJSON, projectPath string, userPrefer
 			}
 		}
 	}
-	
+
 	// 3. Check engines field
 	if pkg.Engines != nil {
 		// Check in order of preference
@@ -195,7 +200,7 @@ func GetPreferredPackageManager(pkg *PackageJSON, projectPath string, userPrefer
 			return NPM
 		}
 	}
-	
+
 	// 4. Lock file detection (existing logic)
 	return DetectPackageManager(projectPath)
 }

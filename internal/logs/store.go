@@ -21,15 +21,15 @@ const (
 )
 
 type LogEntry struct {
-	ID         string
-	ProcessID  string
+	ID          string
+	ProcessID   string
 	ProcessName string
-	Timestamp  time.Time
-	Content    string
-	Level      LogLevel
-	IsError    bool
-	Tags       []string
-	Priority   int
+	Timestamp   time.Time
+	Content     string
+	Level       LogLevel
+	IsError     bool
+	Tags        []string
+	Priority    int
 }
 
 type Store struct {
@@ -39,19 +39,19 @@ type Store struct {
 	errorContexts []ErrorContext
 	errorParser   *ErrorParser
 	urls          []URLEntry
-	urlMap        map[string]*URLEntry  // Map URL to its entry for deduplication
+	urlMap        map[string]*URLEntry // Map URL to its entry for deduplication
 	maxEntries    int
 	filters       []filters.Filter
 	mu            sync.RWMutex
 }
 
 type URLEntry struct {
-	URL        string
-	ProxyURL   string    // Proxy URL if using reverse proxy mode
-	ProcessID  string
+	URL         string
+	ProxyURL    string // Proxy URL if using reverse proxy mode
+	ProcessID   string
 	ProcessName string
-	Timestamp  time.Time
-	Context    string
+	Timestamp   time.Time
+	Context     string
 }
 
 func NewStore(maxEntries int) *Store {
@@ -105,7 +105,7 @@ func (s *Store) Add(processID, processName, content string, isError bool) *LogEn
 			s.errors = s.errors[1:]
 		}
 	}
-	
+
 	// Process through error parser for better error context
 	if errorCtx := s.errorParser.ProcessLine(processID, processName, content, entry.Timestamp); errorCtx != nil {
 		s.errorContexts = append(s.errorContexts, *errorCtx)
@@ -144,7 +144,7 @@ func (s *Store) Add(processID, processName, content string, isError bool) *LogEn
 
 func (s *Store) detectLogLevel(content string, isError bool) LogLevel {
 	lower := strings.ToLower(content)
-	
+
 	if isError || strings.Contains(lower, "error") || strings.Contains(lower, "failed") {
 		return LevelError
 	}
@@ -188,13 +188,13 @@ func (s *Store) extractTags(content string) []string {
 
 func (s *Store) calculatePriority(content string, isError bool) int {
 	priority := 0
-	
+
 	if isError {
 		priority += 50
 	}
 
 	lower := strings.ToLower(content)
-	
+
 	if strings.Contains(lower, "failed") {
 		priority += 40
 	}
@@ -301,7 +301,7 @@ func (s *Store) RemoveFilter(name string) {
 func (s *Store) GetFilters() []filters.Filter {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	result := make([]filters.Filter, len(s.filters))
 	copy(result, s.filters)
 	return result
@@ -322,7 +322,7 @@ func (s *Store) detectURLs(content string) []string {
 func (s *Store) GetErrors() []LogEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	result := make([]LogEntry, len(s.errors))
 	copy(result, s.errors)
 	return result
@@ -331,7 +331,7 @@ func (s *Store) GetErrors() []LogEntry {
 func (s *Store) GetURLs() []URLEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	result := make([]URLEntry, len(s.urls))
 	copy(result, s.urls)
 	return result
@@ -340,7 +340,7 @@ func (s *Store) GetURLs() []URLEntry {
 func (s *Store) ClearLogs() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.entries = make([]LogEntry, 0, s.maxEntries)
 	s.byProcess = make(map[string][]int)
 }
@@ -348,7 +348,7 @@ func (s *Store) ClearLogs() {
 func (s *Store) ClearErrors() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	s.errors = make([]LogEntry, 0, 100)
 	s.errorContexts = make([]ErrorContext, 0, 100)
 	s.errorParser.ClearErrors()
@@ -358,7 +358,7 @@ func (s *Store) ClearErrors() {
 func (s *Store) ClearLogsForProcess(processName string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Create new entries slice without logs from the specified process
 	newEntries := make([]LogEntry, 0, s.maxEntries)
 	for _, entry := range s.entries {
@@ -367,13 +367,13 @@ func (s *Store) ClearLogsForProcess(processName string) {
 		}
 	}
 	s.entries = newEntries
-	
+
 	// Rebuild the byProcess index
 	s.byProcess = make(map[string][]int)
 	for i, entry := range s.entries {
 		s.byProcess[entry.ProcessID] = append(s.byProcess[entry.ProcessID], i)
 	}
-	
+
 	// Also clear errors from this process
 	newErrors := make([]LogEntry, 0, 100)
 	for _, err := range s.errors {
@@ -382,7 +382,7 @@ func (s *Store) ClearLogsForProcess(processName string) {
 		}
 	}
 	s.errors = newErrors
-	
+
 	// Clear error contexts from this process
 	newErrorContexts := make([]ErrorContext, 0, 100)
 	for _, ctx := range s.errorContexts {
@@ -397,7 +397,7 @@ func (s *Store) ClearLogsForProcess(processName string) {
 func (s *Store) GetErrorContexts() []ErrorContext {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	result := make([]ErrorContext, len(s.errorContexts))
 	copy(result, s.errorContexts)
 	return result
@@ -409,7 +409,7 @@ func (s *Store) rebuildURLsList() {
 	for _, urlEntry := range s.urlMap {
 		s.urls = append(s.urls, *urlEntry)
 	}
-	
+
 	// Sort by timestamp (most recent first)
 	for i := 0; i < len(s.urls)-1; i++ {
 		for j := i + 1; j < len(s.urls); j++ {
@@ -418,7 +418,7 @@ func (s *Store) rebuildURLsList() {
 			}
 		}
 	}
-	
+
 	// Keep only the most recent 100 URLs
 	if len(s.urls) > 100 {
 		s.urls = s.urls[:100]
@@ -442,14 +442,14 @@ func (s *Store) rebuildURLsList() {
 func (s *Store) RemoveURLsForProcess(processID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Remove URLs from the map that belong to this process
 	for url, entry := range s.urlMap {
 		if entry.ProcessID == processID {
 			delete(s.urlMap, url)
 		}
 	}
-	
+
 	// Rebuild the urls list
 	s.rebuildURLsList()
 }
@@ -458,7 +458,7 @@ func (s *Store) RemoveURLsForProcess(processID string) {
 func (s *Store) UpdateProxyURL(originalURL, proxyURL string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	if entry, exists := s.urlMap[originalURL]; exists {
 		entry.ProxyURL = proxyURL
 		// Update the urls list

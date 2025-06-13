@@ -2,560 +2,541 @@
 sidebar_position: 2
 ---
 
-# MCP API Reference
+# MCP Tools Reference
 
-Complete reference for the Brummer Model Context Protocol (MCP) server API.
+Complete reference for all Brummer Model Context Protocol (MCP) tools, resources, and prompts.
 
 ## Overview
 
-The Brummer MCP server provides a JSON-RPC 2.0 interface for external tools to interact with Brummer's functionality.
+Brummer provides a comprehensive MCP server implementing the official JSON-RPC 2.0 protocol with streaming support. The server exposes multiple tools for script management, log monitoring, proxy analysis, browser automation, and more.
 
 ### Connection Details
 
-- **Protocol**: JSON-RPC 2.0
-- **Transport**: stdio (standard input/output)
-- **Default Port**: 3280
+- **Protocol**: JSON-RPC 2.0 with Server-Sent Events
+- **Primary Endpoint**: `http://localhost:7777/mcp`
+- **Default Port**: 7777 (configurable with `-p` flag)
+- **Server Name**: `brummer-mcp`
+- **Protocol Version**: `2024-11-05`
 
-## Core Methods
+## Available Tools
 
-### brummer.getProcesses
+### Script Management
 
-Get list of all processes and their current status.
+#### `scripts/list`
+
+List all available npm/yarn/pnpm/bun scripts from package.json.
 
 **Parameters**: None
 
-**Returns**:
-```typescript
+**Response**:
+```json
 {
-  processes: Array<{
-    id: string;
-    name: string;
-    status: 'running' | 'stopped' | 'failed' | 'pending';
-    pid?: number;
-    uptime?: number;
-    cpu?: number;
-    memory?: number;
-    restartCount: number;
-  }>
-}
-```
-
-**Example**:
-```javascript
-const result = await mcp.call('brummer.getProcesses');
-console.log(result.processes);
-// [
-//   {
-//     id: "dev-server",
-//     name: "dev",
-//     status: "running",
-//     pid: 12345,
-//     uptime: 3600,
-//     cpu: 2.5,
-//     memory: 156000000
-//   }
-// ]
-```
-
-### brummer.startProcess
-
-Start a specific process by name.
-
-**Parameters**:
-```typescript
-{
-  name: string;  // Process/script name
-  env?: Record<string, string>;  // Optional environment variables
-  args?: string[];  // Optional additional arguments
-}
-```
-
-**Returns**:
-```typescript
-{
-  success: boolean;
-  processId: string;
-  pid?: number;
-  error?: string;
-}
-```
-
-**Example**:
-```javascript
-const result = await mcp.call('brummer.startProcess', {
-  name: 'dev',
-  env: {
-    NODE_ENV: 'development',
-    PORT: '3001'
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "test": "jest",
+    "lint": "eslint ."
   }
-});
-```
-
-### brummer.stopProcess
-
-Stop a running process.
-
-**Parameters**:
-```typescript
-{
-  name: string;  // Process name
-  signal?: 'SIGTERM' | 'SIGKILL';  // Optional signal type
-  timeout?: number;  // Grace period in milliseconds
-}
-```
-
-**Returns**:
-```typescript
-{
-  success: boolean;
-  error?: string;
 }
 ```
 
 **Example**:
 ```javascript
-await mcp.call('brummer.stopProcess', {
-  name: 'dev',
-  signal: 'SIGTERM',
-  timeout: 5000
-});
+const result = await mcp.call('scripts/list');
+console.log(result.scripts);
 ```
 
-### brummer.restartProcess
+---
 
-Restart a process.
+#### `scripts/run`
+
+Execute a package.json script with real-time output streaming.
 
 **Parameters**:
-```typescript
+- `name` (string, required): Script name to execute
+
+**Input Schema**:
+```json
 {
-  name: string;
-  graceful?: boolean;  // Wait for process to stop before starting
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "The name of the script to run"
+    }
+  },
+  "required": ["name"]
 }
 ```
 
-**Returns**:
-```typescript
+**Response** (Non-streaming):
+```json
 {
-  success: boolean;
-  processId: string;
-  pid?: number;
-  error?: string;
+  "processId": "dev-1704804000",
+  "name": "dev",
+  "script": "next dev",
+  "status": "running"
 }
 ```
 
-## Log Methods
+**Streaming Response**:
+```json
+{"type": "started", "processId": "dev-1704804000", "name": "dev", "script": "next dev"}
+{"type": "log", "line": "ready - started server on 0.0.0.0:3000"}
+{"type": "log", "line": "Local: http://localhost:3000"}
+{"processId": "dev-1704804000", "status": "running", "exitCode": null}
+```
 
-### brummer.getLogs
+**Streaming**: ✅ Yes
 
-Retrieve logs for processes.
+---
+
+#### `scripts/stop`
+
+Stop a running script process.
 
 **Parameters**:
-```typescript
+- `processId` (string, required): Process ID to stop
+
+**Input Schema**:
+```json
 {
-  processName?: string;  // Filter by process
-  level?: 'error' | 'warn' | 'info' | 'debug';  // Filter by level
-  limit?: number;  // Maximum entries (default: 100)
-  offset?: number;  // Skip entries
-  since?: string;  // ISO timestamp
-  until?: string;  // ISO timestamp
-  search?: string;  // Search term
+  "type": "object",
+  "properties": {
+    "processId": {
+      "type": "string",
+      "description": "The process ID to stop"
+    }
+  },
+  "required": ["processId"]
 }
 ```
 
-**Returns**:
-```typescript
+**Response**:
+```json
 {
-  logs: Array<{
-    id: string;
-    processName: string;
-    timestamp: string;
-    level: string;
-    message: string;
-    metadata?: Record<string, any>;
-  }>;
-  total: number;
-  hasMore: boolean;
+  "success": true,
+  "processId": "dev-1704804000"
 }
 ```
+
+---
+
+#### `scripts/status`
+
+Check the status of running scripts.
+
+**Parameters**:
+- `name` (string, optional): Specific script name to check
+
+**Response** (Single process):
+```json
+{
+  "processId": "dev-1704804000",
+  "name": "dev",
+  "status": "running",
+  "startTime": "2024-01-09T10:00:00Z",
+  "uptime": "1h23m45s"
+}
+```
+
+**Response** (All processes):
+```json
+[
+  {
+    "processId": "dev-1704804000",
+    "name": "dev",
+    "status": "running",
+    "startTime": "2024-01-09T10:00:00Z",
+    "uptime": "1h23m45s"
+  }
+]
+```
+
+### Log Management
+
+#### `logs/stream`
+
+Stream real-time logs from running processes with filtering support.
+
+**Parameters**:
+- `processId` (string, optional): Filter by process ID
+- `level` (string, optional): Log level filter ("all", "error", "warn", "info")
+- `follow` (boolean, optional, default: true): Stream new logs
+- `limit` (integer, optional, default: 100): Historical log count
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "processId": {"type": "string"},
+    "level": {"type": "string", "enum": ["all", "error", "warn", "info"]},
+    "follow": {"type": "boolean", "default": true},
+    "limit": {"type": "integer", "default": 100}
+  }
+}
+```
+
+**Log Entry Schema**:
+```json
+{
+  "id": "log_12345",
+  "timestamp": "2024-01-09T10:00:00Z",
+  "processId": "dev-1704804000",
+  "processName": "dev",
+  "content": "Server started on port 3000",
+  "level": "info",
+  "isError": false,
+  "tags": ["server", "startup"],
+  "priority": 1
+}
+```
+
+**Streaming Response**:
+```json
+{"type": "log", "data": {...log_entry}}
+{"type": "log", "data": {...log_entry}}
+{"count": 150, "timedOut": false}
+```
+
+**Streaming**: ✅ Yes
+
+---
+
+#### `logs/search`
+
+Search through historical logs using text or regex patterns.
+
+**Parameters**:
+- `query` (string, required): Search query
+- `regex` (boolean, optional, default: false): Use regex matching
+- `level` (string, optional): Filter by log level
+- `processId` (string, optional): Filter by process
+- `since` (string, optional): ISO 8601 timestamp
+- `limit` (integer, optional, default: 100): Max results
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "query": {"type": "string"},
+    "regex": {"type": "boolean", "default": false},
+    "level": {"type": "string", "enum": ["all", "error", "warn", "info"]},
+    "processId": {"type": "string"},
+    "since": {"type": "string", "format": "date-time"},
+    "limit": {"type": "integer", "default": 100}
+  },
+  "required": ["query"]
+}
+```
+
+**Response**: Array of log entries matching the search criteria.
 
 **Example**:
 ```javascript
-const logs = await mcp.call('brummer.getLogs', {
-  processName: 'dev',
-  level: 'error',
-  limit: 50,
-  since: '2024-01-15T10:00:00Z'
+const results = await mcp.call('logs/search', {
+  query: "error",
+  level: "error",
+  limit: 50
 });
 ```
 
-### brummer.streamLogs
+### Proxy & Telemetry
 
-Subscribe to real-time log updates.
+#### `proxy/requests`
+
+Get HTTP requests captured by the proxy server.
 
 **Parameters**:
-```typescript
+- `processName` (string, optional): Filter by process
+- `status` (string, optional): Filter by status ("all", "success", "error")
+- `limit` (integer, optional, default: 100): Max requests
+
+**Request Object Schema**:
+```json
 {
-  processName?: string;
-  level?: string;
-  follow?: boolean;  // Keep connection open
+  "URL": "http://localhost:3000/api/users",
+  "Method": "GET",
+  "StatusCode": 200,
+  "Duration": "123ms",
+  "Timestamp": "2024-01-09T10:00:00Z",
+  "ProcessName": "dev",
+  "Headers": {
+    "Content-Type": "application/json"
+  },
+  "Body": "{\"users\": []}"
 }
 ```
 
-**Returns**: Stream of log entries
+---
+
+#### `telemetry/sessions`
+
+Get browser telemetry sessions with performance metrics.
+
+**Parameters**:
+- `processName` (string, optional): Filter by process
+- `sessionId` (string, optional): Get specific session
+- `limit` (integer, optional, default: 10): Max sessions
+
+**Session Schema**:
+```json
+{
+  "sessionId": "session_abc123",
+  "url": "http://localhost:3000",
+  "startTime": "2024-01-09T10:00:00Z",
+  "duration": "5m30s",
+  "pageViews": 3,
+  "errors": 1,
+  "warnings": 2,
+  "performance": {
+    "loadTime": "1.2s",
+    "memoryUsage": "45MB",
+    "fps": 58
+  }
+}
+```
+
+---
+
+#### `telemetry/events`
+
+Stream real-time telemetry events from the browser.
+
+**Parameters**:
+- `sessionId` (string, optional): Filter by session
+- `eventType` (string, optional): Event type filter ("all", "error", "console", "performance", "interaction")
+- `follow` (boolean, optional, default: true): Stream new events
+- `limit` (integer, optional, default: 50): Historical events
+
+**Telemetry Event Schema**:
+```json
+{
+  "sessionId": "session_abc123",
+  "timestamp": "2024-01-09T10:00:00Z",
+  "type": "javascript_error",
+  "data": {
+    "message": "TypeError: Cannot read property 'name' of undefined",
+    "stack": "...",
+    "filename": "app.js",
+    "line": 42
+  },
+  "url": "http://localhost:3000/dashboard"
+}
+```
+
+**Streaming**: ✅ Yes
+
+### Browser Automation
+
+#### `browser/open`
+
+Open a URL in the default browser with automatic proxy configuration.
+
+**Parameters**:
+- `url` (string, required): URL to open
+- `processName` (string, optional): Associate with process
+
+**Response**:
+```json
+{
+  "originalUrl": "http://localhost:3000",
+  "proxyUrl": "http://localhost:20888",
+  "opened": true
+}
+```
+
+**Cross-platform support**: Windows, Mac, Linux, WSL2
+
+---
+
+#### `browser/refresh`
+
+Send refresh command to connected browser tabs.
+
+**Parameters**:
+- `sessionId` (string, optional): Specific session to refresh
+
+**Response**:
+```json
+{
+  "sent": true
+}
+```
+
+---
+
+#### `browser/navigate`
+
+Navigate browser tabs to a different URL.
+
+**Parameters**:
+- `url` (string, required): URL or path to navigate to
+- `sessionId` (string, optional): Specific session
+
+**Response**:
+```json
+{
+  "sent": true,
+  "url": "/new-page"
+}
+```
+
+### JavaScript REPL
+
+#### `repl/execute`
+
+Execute JavaScript code in the browser context with async/await support.
+
+**Parameters**:
+- `code` (string, required): JavaScript code to execute
+- `sessionId` (string, optional): Target session (defaults to most recent)
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "code": {"type": "string"},
+    "sessionId": {"type": "string"}
+  },
+  "required": ["code"]
+}
+```
+
+**Success Response**:
+```json
+{
+  "result": "42",
+  "type": "number",
+  "error": null
+}
+```
+
+**Error Response**:
+```json
+{
+  "error": "ReferenceError: undefinedVariable is not defined",
+  "stack": "ReferenceError: undefinedVariable is not defined\n    at <anonymous>:1:1"
+}
+```
+
+**Features**:
+- Async/await support
+- Multi-line code execution
+- Variable inspection
+- DOM manipulation
+- Function calls
 
 **Example**:
 ```javascript
-const stream = await mcp.call('brummer.streamLogs', {
-  processName: 'dev',
-  follow: true
-});
-
-stream.on('data', (log) => {
-  console.log(log);
-});
-```
-
-### brummer.clearLogs
-
-Clear logs for a process.
-
-**Parameters**:
-```typescript
-{
-  processName?: string;  // Clear specific process or all
-  before?: string;  // Clear logs before timestamp
-}
-```
-
-**Returns**:
-```typescript
-{
-  success: boolean;
-  cleared: number;  // Number of entries cleared
-}
-```
-
-## Error Detection Methods
-
-### brummer.getErrors
-
-Get detected errors.
-
-**Parameters**:
-```typescript
-{
-  processName?: string;
-  severity?: 'critical' | 'error' | 'warning';
-  limit?: number;
-  resolved?: boolean;
-}
-```
-
-**Returns**:
-```typescript
-{
-  errors: Array<{
-    id: string;
-    processName: string;
-    timestamp: string;
-    severity: string;
-    message: string;
-    stackTrace?: string;
-    occurrences: number;
-    firstSeen: string;
-    lastSeen: string;
-    resolved: boolean;
-  }>;
-  total: number;
-}
-```
-
-### brummer.resolveError
-
-Mark an error as resolved.
-
-**Parameters**:
-```typescript
-{
-  errorId: string;
-  notes?: string;
-}
-```
-
-**Returns**:
-```typescript
-{
-  success: boolean;
-}
-```
-
-## URL Methods
-
-### brummer.getUrls
-
-Get all detected URLs.
-
-**Parameters**: None
-
-**Returns**:
-```typescript
-{
-  urls: Array<{
-    url: string;
-    processName: string;
-    status: 'online' | 'offline' | 'unknown';
-    lastChecked?: string;
-    responseTime?: number;
-    headers?: Record<string, string>;
-  }>
-}
-```
-
-### brummer.checkUrl
-
-Check URL availability.
-
-**Parameters**:
-```typescript
-{
-  url: string;
-  method?: string;  // HTTP method
-  timeout?: number;
-}
-```
-
-**Returns**:
-```typescript
-{
-  url: string;
-  status: number;  // HTTP status code
-  responseTime: number;
-  headers: Record<string, string>;
-  error?: string;
-}
-```
-
-## Script Methods
-
-### brummer.getScripts
-
-Get available npm/yarn/pnpm scripts.
-
-**Parameters**:
-```typescript
-{
-  includeWorkspaces?: boolean;
-  packagePath?: string;
-}
-```
-
-**Returns**:
-```typescript
-{
-  scripts: Array<{
-    name: string;
-    command: string;
-    package: string;
-    path: string;
-    isWorkspace: boolean;
-  }>;
-  packageManager: 'npm' | 'yarn' | 'pnpm' | 'bun';
-}
-```
-
-### brummer.runScript
-
-Execute a script directly.
-
-**Parameters**:
-```typescript
-{
-  name: string;
-  packagePath?: string;
-  args?: string[];
-  env?: Record<string, string>;
-  detached?: boolean;  // Run in background
-}
-```
-
-**Returns**:
-```typescript
-{
-  success: boolean;
-  processId?: string;
-  output?: string;  // If not detached
-  exitCode?: number;
-  error?: string;
-}
-```
-
-## Configuration Methods
-
-### brummer.getConfig
-
-Get current configuration.
-
-**Parameters**:
-```typescript
-{
-  key?: string;  // Specific config key
-}
-```
-
-**Returns**:
-```typescript
-{
-  config: Record<string, any> | any;
-}
-```
-
-### brummer.setConfig
-
-Update configuration.
-
-**Parameters**:
-```typescript
-{
-  key: string;
-  value: any;
-  persist?: boolean;  // Save to file
-}
-```
-
-**Returns**:
-```typescript
-{
-  success: boolean;
-  previous: any;
-}
-```
-
-## Event Subscription
-
-### brummer.subscribe
-
-Subscribe to Brummer events.
-
-**Parameters**:
-```typescript
-{
-  events: Array<
-    | 'process.start'
-    | 'process.stop'
-    | 'process.error'
-    | 'log.error'
-    | 'url.detected'
-    | 'build.complete'
-    | 'test.complete'
-  >;
-}
-```
-
-**Returns**: Event stream
-
-**Example**:
-```javascript
-const events = await mcp.call('brummer.subscribe', {
-  events: ['process.error', 'build.complete']
-});
-
-events.on('event', (data) => {
-  console.log(data.type, data.payload);
+await mcp.call('repl/execute', {
+  code: `
+    const response = await fetch('/api/users');
+    const users = await response.json();
+    console.log('User count:', users.length);
+    return users.length;
+  `
 });
 ```
 
-### brummer.unsubscribe
+## Resources
 
-Unsubscribe from events.
+MCP resources provide read-only access to structured data:
 
-**Parameters**:
-```typescript
-{
-  subscriptionId: string;
-}
-```
+### Available Resources
 
-**Returns**:
-```typescript
-{
-  success: boolean;
-}
-```
+| Resource | Description |
+|----------|-------------|
+| `logs://recent` | Recent log entries from all processes |
+| `logs://errors` | Recent error log entries only |
+| `telemetry://sessions` | Active browser telemetry sessions |
+| `telemetry://errors` | JavaScript errors from browser sessions |
+| `proxy://requests` | Recent HTTP requests captured by proxy |
+| `proxy://mappings` | Active reverse proxy URL mappings |
+| `processes://active` | Currently running processes |
+| `scripts://available` | Scripts defined in package.json |
 
-## Utility Methods
+### Resource Capabilities
 
-### brummer.ping
+- **Subscribe**: ✅ Yes (real-time updates)
+- **ListChanged**: ✅ Yes (notifications when resource list changes)
 
-Check if MCP server is responsive.
+## Prompts
 
-**Parameters**: None
+Pre-configured prompt templates for debugging scenarios:
 
-**Returns**:
-```typescript
-{
-  pong: true;
-  timestamp: string;
-  version: string;
-}
-```
+### `debug_error`
 
-### brummer.getStats
+Analyze error logs and suggest fixes.
 
-Get system statistics.
+**Arguments**:
+- `error_message` (required): The error message to debug
+- `context` (optional): Additional context about when the error occurred
 
-**Parameters**: None
+### `performance_analysis`
 
-**Returns**:
-```typescript
-{
-  uptime: number;
-  totalProcesses: number;
-  runningProcesses: number;
-  totalLogs: number;
-  totalErrors: number;
-  memoryUsage: number;
-  cpuUsage: number;
-}
-```
+Analyze telemetry data for performance issues.
 
-### brummer.exportLogs
+**Arguments**:
+- `session_id` (optional): Telemetry session ID to analyze
+- `metric_type` (optional): Specific metric to focus on
 
-Export logs to file.
+### `api_troubleshooting`
 
-**Parameters**:
-```typescript
-{
-  format: 'json' | 'csv' | 'text';
-  processName?: string;
-  since?: string;
-  until?: string;
-  includeMetadata?: boolean;
-}
-```
+Examine proxy requests to debug API issues.
 
-**Returns**:
-```typescript
-{
-  success: boolean;
-  path: string;
-  size: number;
-  entries: number;
-}
-```
+**Arguments**:
+- `endpoint` (optional): API endpoint pattern to analyze
+- `status_code` (optional): Filter by HTTP status code
+
+### `script_configuration`
+
+Help configure npm scripts for common tasks.
+
+**Arguments**:
+- `task_type` (required): Type of task (dev, build, test, lint, etc.)
+- `framework` (optional): Framework being used
+
+## Streaming Protocol
+
+### Streaming Tools
+
+The following tools support real-time streaming:
+
+- ✅ `scripts/run` - Real-time script execution logs
+- ✅ `logs/stream` - Live log monitoring
+- ✅ `telemetry/events` - Real-time browser events
+
+### Protocol Details
+
+- **Transport**: Server-Sent Events (SSE) over HTTP
+- **Format**: JSON-RPC 2.0 notifications
+- **Heartbeat**: Every 30 seconds
+- **Timeout**: 5 minutes for streaming operations
+- **Endpoint**: `GET /mcp` with appropriate parameters
+
+### Event Types
+
+- `message` - Standard JSON-RPC message
+- `ping` - Heartbeat/keepalive 
+- `done` - Stream completion notification
 
 ## Error Handling
 
-All methods follow standard JSON-RPC 2.0 error format:
+Standard JSON-RPC 2.0 error format:
 
-```typescript
+```json
 {
-  jsonrpc: "2.0",
-  error: {
-    code: number;
-    message: string;
-    data?: any;
+  "jsonrpc": "2.0",
+  "error": {
+    "code": -32602,
+    "message": "Invalid params",
+    "data": "Missing required parameter: name"
   },
-  id: number | string;
+  "id": 1
 }
 ```
 
@@ -568,67 +549,59 @@ All methods follow standard JSON-RPC 2.0 error format:
 | -32601 | Method not found |
 | -32602 | Invalid params |
 | -32603 | Internal error |
-| 1000 | Process not found |
-| 1001 | Process already running |
-| 1002 | Process not running |
-| 1003 | Permission denied |
-| 1004 | Configuration error |
 
-## Rate Limiting
+## Connection Examples
 
-The MCP server implements rate limiting:
-
-- **Default**: 100 requests per minute
-- **Burst**: 20 requests
-- **Log streaming**: Not rate limited
-
-Configure in `.brummer.yaml`:
-
-```yaml
-mcp:
-  rate_limit:
-    requests_per_minute: 200
-    burst: 50
-```
-
-## Authentication
-
-Optional authentication for MCP server:
-
-```yaml
-mcp:
-  auth:
-    enabled: true
-    token: "your-secret-token"
-```
-
-Include token in requests:
+### Direct HTTP
 
 ```javascript
-const mcp = new MCPClient({
-  headers: {
-    'Authorization': 'Bearer your-secret-token'
-  }
+// JSON-RPC 2.0 request
+const response = await fetch('http://localhost:7777/mcp', {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    jsonrpc: "2.0",
+    id: 1,
+    method: "scripts/list"
+  })
 });
+
+const result = await response.json();
 ```
 
-## WebSocket API
-
-For web clients:
+### Streaming Connection
 
 ```javascript
-const ws = new WebSocket('ws://localhost:3280');
+// Server-Sent Events for streaming
+const eventSource = new EventSource('http://localhost:7777/mcp');
 
-ws.onopen = () => {
-  ws.send(JSON.stringify({
-    jsonrpc: '2.0',
-    method: 'brummer.getProcesses',
-    id: 1
-  }));
-};
-
-ws.onmessage = (event) => {
-  const response = JSON.parse(event.data);
-  console.log(response);
+eventSource.onmessage = (event) => {
+  const data = JSON.parse(event.data);
+  console.log('Received:', data);
 };
 ```
+
+### MCP Client Configuration
+
+For standard MCP clients (Claude Desktop, VSCode, etc.):
+
+```json
+{
+  "servers": {
+    "brummer": {
+      "command": "brum",
+      "args": ["--no-tui", "--port", "7777"]
+    }
+  }
+}
+```
+
+## Special Features
+
+- **Cross-Platform**: Full support for Windows, Mac, Linux, and WSL2
+- **Process Management**: Automatic process tracking and cleanup
+- **Proxy Integration**: HTTP request interception and analysis
+- **Real-Time Monitoring**: Live logs, telemetry, and events
+- **Browser Automation**: Remote control of browser tabs
+- **Security**: Token-based authentication for client connections
+- **Memory Management**: Configurable storage limits and automatic cleanup

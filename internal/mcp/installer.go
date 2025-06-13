@@ -31,7 +31,7 @@ type MCPConfig struct {
 // GetSupportedTools returns a list of tools that support MCP
 func GetSupportedTools() []Tool {
 	homeDir, _ := os.UserHomeDir()
-	
+
 	tools := []Tool{
 		{
 			Name:         "Claude Desktop",
@@ -90,7 +90,7 @@ func GetSupportedTools() []Tool {
 			Supported:    false, // Unclear if supported
 		},
 	}
-	
+
 	return tools
 }
 
@@ -142,7 +142,7 @@ func GenerateBrummerConfig(execPath string, port int) MCPConfig {
 			"version":     "1.0.0",
 			"capabilities": []string{
 				"logs",
-				"processes", 
+				"processes",
 				"scripts",
 				"execute",
 				"search",
@@ -160,7 +160,7 @@ func InstallForTool(tool Tool, config MCPConfig) error {
 	if err := os.MkdirAll(configDir, 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-	
+
 	switch tool.ConfigFormat {
 	case "claude_desktop":
 		return installClaudeDesktopConfig(tool.ConfigPath, config)
@@ -185,27 +185,27 @@ func installClaudeDesktopConfig(configPath string, config MCPConfig) error {
 	if data, err := os.ReadFile(configPath); err == nil {
 		json.Unmarshal(data, &existingData)
 	}
-	
+
 	// Ensure mcpServers exists
 	if existingData["mcpServers"] == nil {
 		existingData["mcpServers"] = make(map[string]interface{})
 	}
-	
+
 	servers := existingData["mcpServers"].(map[string]interface{})
-	
+
 	// Add brummer config
 	servers["brummer"] = map[string]interface{}{
 		"command": config.Command,
 		"args":    config.Args,
 		"env":     config.Env,
 	}
-	
+
 	// Write back
 	data, err := json.MarshalIndent(existingData, "", "  ")
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(configPath, data, 0644)
 }
 
@@ -213,9 +213,9 @@ func installClaudeCodeConfig(config MCPConfig) error {
 	// Use the claude mcp add command
 	args := []string{"mcp", "add", config.Name, config.Command}
 	args = append(args, config.Args...)
-	
+
 	cmd := exec.Command("claude", args...)
-	
+
 	// Set environment variables if any
 	if len(config.Env) > 0 {
 		env := os.Environ()
@@ -224,12 +224,12 @@ func installClaudeCodeConfig(config MCPConfig) error {
 		}
 		cmd.Env = env
 	}
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("claude mcp add failed: %w\nOutput: %s", err, string(output))
 	}
-	
+
 	return nil
 }
 
@@ -246,20 +246,20 @@ func installVSCodeConfig(config MCPConfig) error {
 		"args":    config.Args,
 		"env":     config.Env,
 	}
-	
+
 	jsonData, err := json.Marshal(mcpDef)
 	if err != nil {
 		return fmt.Errorf("failed to marshal MCP definition: %w", err)
 	}
-	
+
 	// Use the code --add-mcp command
 	cmd := exec.Command("code", "--add-mcp", string(jsonData))
-	
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("code --add-mcp failed: %w\nOutput: %s", err, string(output))
 	}
-	
+
 	return nil
 }
 
@@ -269,7 +269,7 @@ func installClineConfig(configPath string, config MCPConfig) error {
 	if data, err := os.ReadFile(configPath); err == nil {
 		json.Unmarshal(data, &configs)
 	}
-	
+
 	// Remove existing brummer config
 	filtered := []MCPConfig{}
 	for _, c := range configs {
@@ -277,16 +277,16 @@ func installClineConfig(configPath string, config MCPConfig) error {
 			filtered = append(filtered, c)
 		}
 	}
-	
+
 	// Add new config
 	filtered = append(filtered, config)
-	
+
 	// Write back
 	data, err := json.MarshalIndent(filtered, "", "  ")
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(configPath, data, 0644)
 }
 
@@ -301,7 +301,7 @@ func installStandardConfig(configPath string, config MCPConfig) error {
 	if err != nil {
 		return err
 	}
-	
+
 	return os.WriteFile(configPath, data, 0644)
 }
 
@@ -309,13 +309,13 @@ func installStandardConfig(configPath string, config MCPConfig) error {
 func GetInstalledTools() []string {
 	installed := []string{}
 	tools := GetSupportedTools()
-	
+
 	for _, tool := range tools {
 		if hasBrummerInstalled(tool) {
 			installed = append(installed, tool.Name)
 		}
 	}
-	
+
 	return installed
 }
 
@@ -327,12 +327,12 @@ func hasBrummerInstalled(tool Tool) bool {
 	case "vscode":
 		return hasVSCodeMCPInstalled(tool.ConfigPath)
 	}
-	
+
 	data, err := os.ReadFile(tool.ConfigPath)
 	if err != nil {
 		return false
 	}
-	
+
 	return json.Valid(data) && contains(string(data), "brummer")
 }
 
@@ -342,7 +342,7 @@ func hasClaudeCodeMCPInstalled() bool {
 	if err != nil {
 		return false
 	}
-	
+
 	return contains(string(output), "brummer")
 }
 
@@ -352,18 +352,18 @@ func hasVSCodeMCPInstalled(configPath string) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	var settings map[string]interface{}
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return false
 	}
-	
+
 	// Check both possible locations
 	if mcpServers, ok := settings["mcp.servers"].(map[string]interface{}); ok {
 		_, exists := mcpServers["brummer"]
 		return exists
 	}
-	
+
 	// Also check if it's just a string match for robustness
 	return contains(string(data), "brummer")
 }

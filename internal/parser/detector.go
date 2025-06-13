@@ -12,18 +12,18 @@ import (
 type ProjectType string
 
 const (
-	ProjectTypeNode      ProjectType = "node"
-	ProjectTypeGo        ProjectType = "go"
-	ProjectTypeRust      ProjectType = "rust"
-	ProjectTypeJava      ProjectType = "java"
-	ProjectTypeDotNet    ProjectType = "dotnet"
-	ProjectTypePython    ProjectType = "python"
-	ProjectTypeRuby      ProjectType = "ruby"
-	ProjectTypePhp       ProjectType = "php"
-	ProjectTypeWails     ProjectType = "wails"
-	ProjectTypeElectron  ProjectType = "electron"
-	ProjectTypeFlutter   ProjectType = "flutter"
-	ProjectTypeMonorepo  ProjectType = "monorepo"
+	ProjectTypeNode     ProjectType = "node"
+	ProjectTypeGo       ProjectType = "go"
+	ProjectTypeRust     ProjectType = "rust"
+	ProjectTypeJava     ProjectType = "java"
+	ProjectTypeDotNet   ProjectType = "dotnet"
+	ProjectTypePython   ProjectType = "python"
+	ProjectTypeRuby     ProjectType = "ruby"
+	ProjectTypePhp      ProjectType = "php"
+	ProjectTypeWails    ProjectType = "wails"
+	ProjectTypeElectron ProjectType = "electron"
+	ProjectTypeFlutter  ProjectType = "flutter"
+	ProjectTypeMonorepo ProjectType = "monorepo"
 )
 
 // ExecutableCommand represents a detected runnable command
@@ -39,8 +39,8 @@ type ExecutableCommand struct {
 
 // MonorepoInfo contains information about a monorepo structure
 type MonorepoInfo struct {
-	Type      string   // pnpm, npm-workspaces, yarn-workspaces, lerna, nx, rush
-	Root      string
+	Type       string // pnpm, npm-workspaces, yarn-workspaces, lerna, nx, rush
+	Root       string
 	Workspaces []string
 	Packages   []PackageInfo
 }
@@ -200,7 +200,7 @@ func isElectronProject(pkg *PackageJSON) bool {
 	for dep := range pkg.DevDependencies {
 		deps[dep] = true
 	}
-	
+
 	return deps["electron"] || deps["electron-builder"] || deps["electron-packager"]
 }
 
@@ -245,7 +245,7 @@ func extractWorkspaces(pkg *PackageJSON) []string {
 
 func discoverPackages(root string, workspaces []string) []PackageInfo {
 	var packages []PackageInfo
-	
+
 	for _, ws := range workspaces {
 		// Handle glob patterns
 		if strings.Contains(ws, "*") {
@@ -265,7 +265,7 @@ func discoverPackages(root string, workspaces []string) []PackageInfo {
 			}
 		}
 	}
-	
+
 	return packages
 }
 
@@ -274,7 +274,7 @@ func loadPackageInfo(pkgPath string) *PackageInfo {
 	if err != nil {
 		return nil
 	}
-	
+
 	// Check for lock files
 	hasLock := false
 	lockFiles := []string{"package-lock.json", "yarn.lock", "pnpm-lock.yaml", "bun.lockb"}
@@ -284,7 +284,7 @@ func loadPackageInfo(pkgPath string) *PackageInfo {
 			break
 		}
 	}
-	
+
 	return &PackageInfo{
 		Path:        pkgPath,
 		Name:        pkg.Name,
@@ -668,13 +668,13 @@ func flutterCommands() []ExecutableCommand {
 // VS Code task detection
 func detectVSCodeTasks(projectPath string) []ExecutableCommand {
 	var commands []ExecutableCommand
-	
+
 	tasksFile := filepath.Join(projectPath, ".vscode", "tasks.json")
 	data, err := os.ReadFile(tasksFile)
 	if err != nil {
 		return commands
 	}
-	
+
 	var tasks struct {
 		Version string `json:"version"`
 		Tasks   []struct {
@@ -688,18 +688,18 @@ func detectVSCodeTasks(projectPath string) []ExecutableCommand {
 			} `json:"group"`
 		} `json:"tasks"`
 	}
-	
+
 	if err := json.Unmarshal(data, &tasks); err != nil {
 		return commands
 	}
-	
+
 	for _, task := range tasks.Tasks {
 		if task.Type == "shell" && task.Command != "" {
 			priority := 70
 			if task.Group.IsDefault {
 				priority = 75
 			}
-			
+
 			commands = append(commands, ExecutableCommand{
 				Name:        task.Label,
 				Command:     task.Command,
@@ -711,7 +711,7 @@ func detectVSCodeTasks(projectPath string) []ExecutableCommand {
 			})
 		}
 	}
-	
+
 	return commands
 }
 
@@ -722,12 +722,12 @@ func detectPnpmWorkspace(projectPath string) (*MonorepoInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// Simple YAML parsing for packages array
 	lines := strings.Split(string(data), "\n")
 	var workspaces []string
 	inPackages := false
-	
+
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "packages:" {
@@ -742,7 +742,7 @@ func detectPnpmWorkspace(projectPath string) (*MonorepoInfo, error) {
 			break
 		}
 	}
-	
+
 	return &MonorepoInfo{
 		Type:       "pnpm",
 		Root:       projectPath,
@@ -756,16 +756,16 @@ func detectLernaWorkspace(projectPath string) (*MonorepoInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var lernaConfig struct {
 		Packages []string `json:"packages"`
 		Version  string   `json:"version"`
 	}
-	
+
 	if err := json.Unmarshal(data, &lernaConfig); err != nil {
 		return nil, err
 	}
-	
+
 	return &MonorepoInfo{
 		Type:       "lerna",
 		Root:       projectPath,
@@ -777,7 +777,7 @@ func detectLernaWorkspace(projectPath string) (*MonorepoInfo, error) {
 func detectNxWorkspace(projectPath string) (*MonorepoInfo, error) {
 	// For Nx, we need to check workspace.json or project.json files
 	workspaces := []string{"apps/*", "libs/*", "packages/*"}
-	
+
 	// Check if custom paths exist
 	if data, err := os.ReadFile(filepath.Join(projectPath, "workspace.json")); err == nil {
 		var workspace struct {
@@ -790,7 +790,7 @@ func detectNxWorkspace(projectPath string) (*MonorepoInfo, error) {
 			}
 		}
 	}
-	
+
 	return &MonorepoInfo{
 		Type:       "nx",
 		Root:       projectPath,
@@ -804,23 +804,23 @@ func detectRushWorkspace(projectPath string) (*MonorepoInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var rushConfig struct {
 		Projects []struct {
-			PackageName string `json:"packageName"`
+			PackageName   string `json:"packageName"`
 			ProjectFolder string `json:"projectFolder"`
 		} `json:"projects"`
 	}
-	
+
 	if err := json.Unmarshal(data, &rushConfig); err != nil {
 		return nil, err
 	}
-	
+
 	var workspaces []string
 	for _, proj := range rushConfig.Projects {
 		workspaces = append(workspaces, proj.ProjectFolder)
 	}
-	
+
 	return &MonorepoInfo{
 		Type:       "rush",
 		Root:       projectPath,

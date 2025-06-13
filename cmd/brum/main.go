@@ -10,34 +10,34 @@ import (
 	"syscall"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/cobra"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui"
 	"github.com/standardbeagle/brummer/pkg/events"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/spf13/cobra"
 )
 
 var (
-	workDir      string
-	mcpPort      int
-	proxyPort    int
-	proxyMode    string
-	proxyURL     string
+	workDir       string
+	mcpPort       int
+	proxyPort     int
+	proxyMode     string
+	proxyURL      string
 	standardProxy bool
-	noMCP        bool
-	noTUI        bool
-	noProxy      bool
+	noMCP         bool
+	noTUI         bool
+	noProxy       bool
 )
 
 var rootCmd = &cobra.Command{
 	Use:   "brum [scripts...] or brum '<command>'",
 	Short: "A TUI for managing npm/yarn/pnpm/bun scripts with MCP integration",
-	Long: `Brummer is a terminal user interface for managing package.json scripts.
+	Long: `Brummer is a terminal user interface for managing package.json scripts and running commands.
 It provides real-time log monitoring, error detection, and MCP server integration
-for external tool access.
+for external tool access. Works with or without package.json.
 
 Basic Usage:
   brum                          # Start TUI in scripts view
@@ -74,11 +74,11 @@ Default Ports & Settings:
   Reverse Proxy URLs: 20888+    # Auto-allocated ports for each URL
   Proxy Mode: reverse           # Creates shareable URLs by default`,
 	Args: cobra.ArbitraryArgs,
-	Run: runApp,
+	Run:  runApp,
 }
 
 func init() {
-	rootCmd.Flags().StringVarP(&workDir, "dir", "d", ".", "Working directory containing package.json")
+	rootCmd.Flags().StringVarP(&workDir, "dir", "d", ".", "Working directory (package.json optional)")
 	rootCmd.Flags().IntVarP(&mcpPort, "port", "p", 7777, "MCP server port")
 	rootCmd.Flags().IntVar(&proxyPort, "proxy-port", 19888, "HTTP proxy server port")
 	rootCmd.Flags().StringVar(&proxyMode, "proxy-mode", "reverse", "Proxy mode: 'full' (traditional proxy) or 'reverse' (create shareable URLs)")
@@ -103,22 +103,23 @@ func runApp(cmd *cobra.Command, args []string) {
 		log.Fatal("Failed to resolve working directory:", err)
 	}
 
-	// Check if package.json exists
+	// Check if package.json exists (not required - will use fallback mode if missing)
+	hasPackageJSON := true
 	if _, err := os.Stat(filepath.Join(absWorkDir, "package.json")); os.IsNotExist(err) {
-		log.Fatal("No package.json found in", absWorkDir)
+		hasPackageJSON = false
 	}
 
 	// Initialize components
 	eventBus := events.NewEventBus()
-	
-	processMgr, err := process.NewManager(absWorkDir, eventBus)
+
+	processMgr, err := process.NewManager(absWorkDir, eventBus, hasPackageJSON)
 	if err != nil {
 		log.Fatal("Failed to initialize process manager:", err)
 	}
 
 	logStore := logs.NewStore(10000)
 	detector := logs.NewEventDetector(eventBus)
-	
+
 	// Initialize proxy server if enabled
 	var proxyServer *proxy.Server
 	if !noProxy {
@@ -133,7 +134,7 @@ func runApp(cmd *cobra.Command, args []string) {
 				mode = proxy.ProxyModeFull
 			}
 		}
-		
+
 		proxyServer = proxy.NewServerWithMode(proxyPort, mode, eventBus)
 		if err := proxyServer.Start(); err != nil {
 			if noTUI {
@@ -151,13 +152,17 @@ func runApp(cmd *cobra.Command, args []string) {
 			// Only write to stdout if TUI is disabled
 			if noTUI {
 				fmt.Printf("Started HTTP proxy server on port %d in %s mode\n", proxyPort, modeDesc)
-				fmt.Printf("PAC file available at: %s\n", proxyServer.GetPACURL())
-				fmt.Printf("Configure browser automatic proxy: %s\n", proxyServer.GetPACURL())
+				if mode == proxy.ProxyModeFull {
+					fmt.Printf("PAC file available at: %s\n", proxyServer.GetPACURL())
+					fmt.Printf("Configure browser automatic proxy: %s\n", proxyServer.GetPACURL())
+				}
 			} else {
 				logStore.Add("system", "proxy", fmt.Sprintf("🌐 Started HTTP proxy server on port %d in %s mode", proxyPort, modeDesc), false)
-				logStore.Add("system", "proxy", fmt.Sprintf("📄 PAC file available at: %s", proxyServer.GetPACURL()), false)
+				if mode == proxy.ProxyModeFull {
+					logStore.Add("system", "proxy", fmt.Sprintf("📄 PAC file available at: %s", proxyServer.GetPACURL()), false)
+				}
 			}
-			
+
 			// Register arbitrary URL if provided
 			if proxyURL != "" && mode == proxy.ProxyModeReverse {
 				if proxyResult := proxyServer.RegisterURL(proxyURL, "custom"); proxyResult != proxyURL {
@@ -172,7 +177,7 @@ func runApp(cmd *cobra.Command, args []string) {
 					if noTUI {
 						fmt.Printf("Note: Custom URL %s will be proxied when accessed\n", proxyURL)
 					}
-					// Add the URL to the log store so it appears in the URLs tab  
+					// Add the URL to the log store so it appears in the URLs tab
 					logStore.Add("custom-proxy", "custom", fmt.Sprintf("🌐 Proxy ready: %s", proxyURL), false)
 				}
 			}
@@ -184,7 +189,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		if proc, exists := processMgr.GetProcess(processID); exists {
 			entry := logStore.Add(processID, proc.Name, line, isError)
 			detector.ProcessLogLine(processID, proc.Name, line, isError)
-			
+
 			// Register URLs with proxy server
 			if proxyServer != nil && entry != nil {
 				urls := logStore.GetURLs()
@@ -206,33 +211,56 @@ func runApp(cmd *cobra.Command, args []string) {
 	var startedFromCLI bool
 	if len(args) > 0 {
 		startedFromCLI = true
-		scripts := processMgr.GetScripts()
-		
-		for _, arg := range args {
-			// Check if it's a known script
-			if _, exists := scripts[arg]; exists {
-				// Start the script
-				proc, err := processMgr.StartScript(arg)
-				if err != nil {
-					if noTUI {
-						log.Printf("Failed to start script '%s': %v", arg, err)
+
+		if hasPackageJSON {
+			scripts := processMgr.GetScripts()
+
+			for _, arg := range args {
+				// Check if it's a known script
+				if _, exists := scripts[arg]; exists {
+					// Start the script
+					proc, err := processMgr.StartScript(arg)
+					if err != nil {
+						if noTUI {
+							log.Printf("Failed to start script '%s': %v", arg, err)
+						} else {
+							logStore.Add("system", "startup", fmt.Sprintf("❌ Failed to start script '%s': %v", arg, err), true)
+						}
 					} else {
-						logStore.Add("system", "startup", fmt.Sprintf("❌ Failed to start script '%s': %v", arg, err), true)
+						if noTUI {
+							fmt.Printf("Started script '%s' (PID: %s)\n", arg, proc.ID)
+						} else {
+							logStore.Add("system", "startup", fmt.Sprintf("✅ Started script '%s' (PID: %s)", arg, proc.ID), false)
+						}
+					}
+					continue
+				}
+
+				// Fallback to command execution if not a script
+				if len(args) == 1 && strings.Contains(arg, " ") {
+					// Single argument with spaces - treat as a command
+					parts := strings.Fields(arg)
+					if len(parts) > 0 {
+						proc, err := processMgr.StartCommand("custom", parts[0], parts[1:])
+						if err != nil {
+							log.Fatalf("Failed to start command '%s': %v", arg, err)
+						} else {
+							if noTUI {
+								fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+							} else {
+								logStore.Add("system", "startup", fmt.Sprintf("✅ Started command '%s' (PID: %s)", arg, proc.ID), false)
+							}
+						}
 					}
 				} else {
-					if noTUI {
-						fmt.Printf("Started script '%s' (PID: %s)\n", arg, proc.ID)
-					} else {
-						logStore.Add("system", "startup", fmt.Sprintf("✅ Started script '%s' (PID: %s)", arg, proc.ID), false)
-					}
-				}
-			} else if len(args) == 1 && strings.Contains(arg, " ") {
-				// Single argument with spaces - treat as a command
-				parts := strings.Fields(arg)
-				if len(parts) > 0 {
-					proc, err := processMgr.StartCommand("custom", parts[0], parts[1:])
+					// Try to run it as a command
+					proc, err := processMgr.StartCommand(arg, arg, []string{})
 					if err != nil {
-						log.Fatalf("Failed to start command '%s': %v", arg, err)
+						if noTUI {
+							log.Printf("Failed to start command '%s': %v", arg, err)
+						} else {
+							logStore.Add("system", "startup", fmt.Sprintf("❌ Failed to start command '%s': %v", arg, err), true)
+						}
 					} else {
 						if noTUI {
 							fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
@@ -241,25 +269,45 @@ func runApp(cmd *cobra.Command, args []string) {
 						}
 					}
 				}
-			} else {
-				// Try to run it as a command
-				proc, err := processMgr.StartCommand(arg, arg, []string{})
-				if err != nil {
-					if noTUI {
-						log.Printf("Failed to start command '%s': %v", arg, err)
-					} else {
-						logStore.Add("system", "startup", fmt.Sprintf("❌ Failed to start command '%s': %v", arg, err), true)
+			}
+		} else {
+			// No package.json - treat all args as commands
+			for _, arg := range args {
+				if len(args) == 1 && strings.Contains(arg, " ") {
+					// Single argument with spaces - treat as a command
+					parts := strings.Fields(arg)
+					if len(parts) > 0 {
+						proc, err := processMgr.StartCommand("custom", parts[0], parts[1:])
+						if err != nil {
+							log.Fatalf("Failed to start command '%s': %v", arg, err)
+						} else {
+							if noTUI {
+								fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+							} else {
+								logStore.Add("system", "startup", fmt.Sprintf("✅ Started command '%s' (PID: %s)", arg, proc.ID), false)
+							}
+						}
 					}
 				} else {
-					if noTUI {
-						fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+					// Try to run it as a command
+					proc, err := processMgr.StartCommand(arg, arg, []string{})
+					if err != nil {
+						if noTUI {
+							log.Printf("Failed to start command '%s': %v", arg, err)
+						} else {
+							logStore.Add("system", "startup", fmt.Sprintf("❌ Failed to start command '%s': %v", arg, err), true)
+						}
 					} else {
-						logStore.Add("system", "startup", fmt.Sprintf("✅ Started command '%s' (PID: %s)", arg, proc.ID), false)
+						if noTUI {
+							fmt.Printf("Started command '%s' (PID: %s)\n", arg, proc.ID)
+						} else {
+							logStore.Add("system", "startup", fmt.Sprintf("✅ Started command '%s' (PID: %s)", arg, proc.ID), false)
+						}
 					}
 				}
 			}
 		}
-		
+
 		// Give processes a moment to start before showing TUI
 		if startedFromCLI {
 			time.Sleep(100 * time.Millisecond)
@@ -267,7 +315,10 @@ func runApp(cmd *cobra.Command, args []string) {
 	}
 
 	// Start MCP server if enabled
-	var mcpServerInterface interface{ Start() error; Stop() error }
+	var mcpServerInterface interface {
+		Start() error
+		Stop() error
+	}
 	var mcpServer *mcp.Server // For TUI compatibility
 	if !noMCP || noTUI {
 		// Use new StreamableServer by default
@@ -276,35 +327,35 @@ func runApp(cmd *cobra.Command, args []string) {
 			// In headless mode, run MCP server in foreground
 			fmt.Printf("Starting MCP server on port %d (headless mode)...\n", mcpPort)
 			fmt.Printf("Press Ctrl+C to stop.\n")
-			
+
 			// Set up signal handling
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-			
+
 			go func() {
 				if err := mcpServerInterface.Start(); err != nil {
 					log.Fatal("MCP server error:", err)
 				}
 			}()
-			
+
 			// Wait for signal
 			<-sigChan
 			fmt.Println("\nShutting down gracefully...")
-			
+
 			// Cleanup all processes
 			fmt.Println("Stopping all running processes...")
 			if err := processMgr.Cleanup(); err != nil {
 				// Error during cleanup (logged internally in headless mode)
 			}
-			
+
 			fmt.Println("Stopping MCP server...")
 			mcpServerInterface.Stop()
-			
+
 			if proxyServer != nil {
 				fmt.Println("Stopping proxy server...")
 				proxyServer.Stop()
 			}
-			
+
 			fmt.Println("Cleanup complete.")
 			return
 		} else {
@@ -322,13 +373,16 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Set up signal handling for cleanup
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-		
+
 		// Create and run TUI
 		initialView := tui.ViewScriptSelector
 		if startedFromCLI {
 			initialView = tui.ViewLogs
+		} else if !hasPackageJSON {
+			// Default to processes view when no package.json (no scripts to select)
+			initialView = tui.ViewProcesses
 		}
-		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, initialView)
+		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, initialView)
 		p := tea.NewProgram(model, tea.WithAltScreen())
 
 		// Run TUI in goroutine so we can handle signals
@@ -355,17 +409,17 @@ func runApp(cmd *cobra.Command, args []string) {
 		if err := processMgr.Cleanup(); err != nil {
 			// Error during cleanup (logged internally)
 		}
-		
+
 		if mcpServerInterface != nil {
 			fmt.Println("Stopping MCP server...")
 			mcpServerInterface.Stop()
 		}
-		
+
 		if proxyServer != nil {
 			fmt.Println("Stopping proxy server...")
 			proxyServer.Stop()
 		}
-		
+
 		fmt.Println("Cleanup complete.")
 	}
 }

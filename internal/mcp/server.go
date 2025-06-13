@@ -18,13 +18,13 @@ type Server struct {
 	processMgr *process.Manager
 	logStore   *logs.Store
 	eventBus   *events.EventBus
-	
-	clients         map[string]*Client
-	tokens          map[string]string // token -> clientID mapping
-	browserClients  map[string]time.Time // clientID -> last activity
-	mu              sync.RWMutex
-	
-	server     *http.Server
+
+	clients        map[string]*Client
+	tokens         map[string]string    // token -> clientID mapping
+	browserClients map[string]time.Time // clientID -> last activity
+	mu             sync.RWMutex
+
+	server *http.Server
 }
 
 type Client struct {
@@ -58,24 +58,24 @@ type Error struct {
 
 func NewServer(port int, processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus) *Server {
 	s := &Server{
-		port:           port,
-		processMgr:     processMgr,
-		logStore:       logStore,
-		eventBus:       eventBus,
-		clients:        make(map[string]*Client),
+		port:       port,
+		processMgr: processMgr,
+		logStore:   logStore,
+		eventBus:   eventBus,
+		clients:    make(map[string]*Client),
 	}
-	
+
 	return s
 }
 
 func (s *Server) Start() error {
 	mux := http.NewServeMux()
-	
+
 	// MCP protocol endpoints
 	mux.HandleFunc("/mcp/connect", s.handleConnect)
 	mux.HandleFunc("/mcp/events", s.handleSSE)
 	mux.HandleFunc("/mcp/command", s.handleCommand)
-	
+
 	// MCP convenience endpoints
 	mux.HandleFunc("/mcp/logs", s.handleGetLogs)
 	mux.HandleFunc("/mcp/processes", s.handleGetProcesses)
@@ -84,7 +84,6 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/mcp/stop", s.handleStopProcess)
 	mux.HandleFunc("/mcp/search", s.handleSearchLogs)
 	mux.HandleFunc("/mcp/filters", s.handleFilters)
-	
 
 	s.server = &http.Server{
 		Addr:    fmt.Sprintf(":%d", s.port),
@@ -92,7 +91,7 @@ func (s *Server) Start() error {
 	}
 
 	s.subscribeToEvents()
-	
+
 	return s.server.ListenAndServe()
 }
 
@@ -108,12 +107,12 @@ func corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
-		
+
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
 }
@@ -127,7 +126,7 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ClientName string `json:"clientName"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -158,12 +157,12 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 		},
 		"endpoints": map[string]string{
 			"browserLog": "/api/browser-log",
-			"events": "/mcp/events",
-			"logs": "/mcp/logs",
-			"processes": "/mcp/processes",
-			"scripts": "/mcp/scripts",
-			"execute": "/mcp/execute",
-			"stop": "/mcp/stop",
+			"events":     "/mcp/events",
+			"logs":       "/mcp/logs",
+			"processes":  "/mcp/processes",
+			"scripts":    "/mcp/scripts",
+			"execute":    "/mcp/execute",
+			"stop":       "/mcp/stop",
 		},
 	}
 
@@ -173,11 +172,11 @@ func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 	clientID := r.URL.Query().Get("clientId")
-	
+
 	s.mu.RLock()
 	client, exists := s.clients[clientID]
 	s.mu.RUnlock()
-	
+
 	if !exists {
 		http.Error(w, "Client not found", http.StatusNotFound)
 		return
@@ -199,7 +198,7 @@ func (s *Server) handleSSE(w http.ResponseWriter, r *http.Request) {
 			data, _ := json.Marshal(event)
 			fmt.Fprintf(w, "data: %s\n\n", data)
 			flusher.Flush()
-			
+
 		case <-r.Context().Done():
 			s.mu.Lock()
 			delete(s.clients, clientID)
@@ -222,7 +221,7 @@ func (s *Server) handleCommand(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := s.processCommand(cmd)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
 }
@@ -238,49 +237,49 @@ func (s *Server) processCommand(cmd Command) Response {
 			logs = s.logStore.GetAll()
 		}
 		return Response{ID: cmd.ID, Result: logs}
-		
+
 	case "getProcesses":
 		processes := s.processMgr.GetAllProcesses()
 		return Response{ID: cmd.ID, Result: processes}
-		
+
 	case "getScripts":
 		scripts := s.processMgr.GetScripts()
 		return Response{ID: cmd.ID, Result: scripts}
-		
+
 	case "executeScript":
 		scriptName, _ := cmd.Params["script"].(string)
 		if scriptName == "" {
 			return Response{ID: cmd.ID, Error: &Error{Code: -32602, Message: "Invalid params"}}
 		}
-		
+
 		process, err := s.processMgr.StartScript(scriptName)
 		if err != nil {
 			return Response{ID: cmd.ID, Error: &Error{Code: -32603, Message: err.Error()}}
 		}
-		
+
 		return Response{ID: cmd.ID, Result: process}
-		
+
 	case "stopProcess":
 		processID, _ := cmd.Params["processId"].(string)
 		if processID == "" {
 			return Response{ID: cmd.ID, Error: &Error{Code: -32602, Message: "Invalid params"}}
 		}
-		
+
 		if err := s.processMgr.StopProcess(processID); err != nil {
 			return Response{ID: cmd.ID, Error: &Error{Code: -32603, Message: err.Error()}}
 		}
-		
+
 		return Response{ID: cmd.ID, Result: map[string]bool{"success": true}}
-		
+
 	case "searchLogs":
 		query, _ := cmd.Params["query"].(string)
 		if query == "" {
 			return Response{ID: cmd.ID, Error: &Error{Code: -32602, Message: "Invalid params"}}
 		}
-		
+
 		results := s.logStore.Search(query)
 		return Response{ID: cmd.ID, Result: results}
-		
+
 	default:
 		return Response{ID: cmd.ID, Error: &Error{Code: -32601, Message: "Method not found"}}
 	}
@@ -289,9 +288,9 @@ func (s *Server) processCommand(cmd Command) Response {
 func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
 	processID := r.URL.Query().Get("processId")
 	priority := r.URL.Query().Get("priority")
-	
+
 	var logs []logs.LogEntry
-	
+
 	if priority != "" {
 		logs = s.logStore.GetHighPriority(30)
 	} else if processID != "" {
@@ -299,21 +298,21 @@ func (s *Server) handleGetLogs(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logs = s.logStore.GetAll()
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(logs)
 }
 
 func (s *Server) handleGetProcesses(w http.ResponseWriter, r *http.Request) {
 	processes := s.processMgr.GetAllProcesses()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(processes)
 }
 
 func (s *Server) handleGetScripts(w http.ResponseWriter, r *http.Request) {
 	scripts := s.processMgr.GetScripts()
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(scripts)
 }
@@ -327,7 +326,7 @@ func (s *Server) handleExecuteScript(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Script string `json:"script"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -352,7 +351,7 @@ func (s *Server) handleStopProcess(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ProcessID string `json:"processId"`
 	}
-	
+
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -375,7 +374,7 @@ func (s *Server) handleSearchLogs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	results := s.logStore.Search(query)
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(results)
 }
@@ -386,7 +385,7 @@ func (s *Server) handleFilters(w http.ResponseWriter, r *http.Request) {
 		filters := s.logStore.GetFilters()
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(filters)
-		
+
 	case http.MethodPost:
 		var filter struct {
 			Name          string `json:"name"`
@@ -395,16 +394,16 @@ func (s *Server) handleFilters(w http.ResponseWriter, r *http.Request) {
 			PriorityBoost int    `json:"priorityBoost"`
 			CaseSensitive bool   `json:"caseSensitive"`
 		}
-		
+
 		if err := json.NewDecoder(r.Body).Decode(&filter); err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		
+
 		// Add filter logic here
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]bool{"success": true})
-		
+
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
@@ -414,27 +413,27 @@ func (s *Server) subscribeToEvents() {
 	s.eventBus.Subscribe(events.ProcessStarted, func(e events.Event) {
 		s.broadcast(Event{Type: "process.started", Data: e})
 	})
-	
+
 	s.eventBus.Subscribe(events.ProcessExited, func(e events.Event) {
 		s.broadcast(Event{Type: "process.exited", Data: e})
 	})
-	
+
 	s.eventBus.Subscribe(events.LogLine, func(e events.Event) {
 		s.broadcast(Event{Type: "log.line", Data: e})
 	})
-	
+
 	s.eventBus.Subscribe(events.ErrorDetected, func(e events.Event) {
 		s.broadcast(Event{Type: "error.detected", Data: e})
 	})
-	
+
 	s.eventBus.Subscribe(events.BuildEvent, func(e events.Event) {
 		s.broadcast(Event{Type: "build.event", Data: e})
 	})
-	
+
 	s.eventBus.Subscribe(events.TestFailed, func(e events.Event) {
 		s.broadcast(Event{Type: "test.failed", Data: e})
 	})
-	
+
 	s.eventBus.Subscribe(events.TestPassed, func(e events.Event) {
 		s.broadcast(Event{Type: "test.passed", Data: e})
 	})
@@ -443,7 +442,7 @@ func (s *Server) subscribeToEvents() {
 func (s *Server) broadcast(event Event) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	for _, client := range s.clients {
 		select {
 		case client.SSE <- event:
@@ -453,17 +452,11 @@ func (s *Server) broadcast(event Event) {
 	}
 }
 
-
 func generateID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }
-
 
 // GetPort returns the server port
 func (s *Server) GetPort() int {
 	return s.port
 }
-
-
-
-

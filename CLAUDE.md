@@ -76,11 +76,12 @@ brum -p 8888                # Custom MCP port (default: 7777)
 - Regex-based filtering system
 - Priority-based log categorization
 
-**MCP Server (`internal/mcp/server.go`)**
-- RESTful API for external tool integration
-- Server-Sent Events (SSE) for real-time updates
-- Token-based authentication for clients
-- Endpoints for script execution, log retrieval, process management
+**MCP Server (`internal/mcp/streamable_server.go`)**
+- JSON-RPC 2.0 compliant Model Context Protocol implementation
+- Single endpoint `/mcp` exposing multiple tools, resources, and prompts
+- Supports real-time streaming for logs, telemetry, and tool execution
+- Session-based client management with Server-Sent Events
+- Full MCP protocol support: tools/list, tools/call, resources/list, resources/read, prompts/list, prompts/get
 
 **Event System (`pkg/events/events.go`)**
 - Central EventBus for component communication
@@ -100,12 +101,74 @@ brum -p 8888                # Custom MCP port (default: 7777)
 
 4. **Error Context**: The error parser (`internal/logs/error_parser.go`) maintains state to capture multi-line errors with context
 
+## MCP (Model Context Protocol) Integration
+
+### Server Configuration
+- **Primary Endpoint**: `http://localhost:7777/mcp` (single URL for all MCP functionality)
+- **Protocol**: JSON-RPC 2.0 with Server-Sent Events streaming support
+- **Default Port**: 7777 (configurable with `-p` or `--port`)
+- **Startup**: Automatically enabled unless `--no-mcp` flag is used
+
+### Client Configuration
+For MCP clients (Claude Desktop, VSCode, etc.), configure the server executable:
+```json
+{
+  "servers": {
+    "brummer": {
+      "command": "brum",
+      "args": ["--no-tui", "--port", "7777"]
+    }
+  }
+}
+```
+
+For direct HTTP connections, use: `http://localhost:7777/mcp`
+
+### Available MCP Tools
+- **scripts/list**: List all npm/yarn/pnpm/bun scripts from package.json
+- **scripts/run**: Execute a script with real-time output streaming
+- **scripts/stop**: Stop a running script process
+- **scripts/status**: Check the status of running scripts
+- **logs/stream**: Stream real-time logs from all processes (supports filtering)
+- **logs/search**: Search historical logs with regex patterns and filters
+- **proxy/requests**: Get captured HTTP requests from the proxy server
+- **telemetry/sessions**: Access browser telemetry session data
+- **telemetry/events**: Stream real-time browser telemetry events
+- **browser/open**: Open URLs with automatic proxy configuration
+- **browser/refresh**: Refresh connected browser tabs
+- **browser/navigate**: Navigate browser tabs to new URLs
+- **repl/execute**: Execute JavaScript in browser context
+
+### MCP Resources
+Structured data access via resources:
+- `logs://recent`: Recent log entries from all processes
+- `logs://errors`: Recent error log entries only
+- `telemetry://sessions`: Active browser telemetry sessions
+- `telemetry://errors`: JavaScript errors from browser sessions
+- `proxy://requests`: Recent HTTP requests captured by proxy
+- `proxy://mappings`: Active reverse proxy URL mappings
+- `processes://active`: Currently running processes
+- `scripts://available`: Scripts defined in package.json
+
+### MCP Prompts
+Pre-configured debugging prompts:
+- **debug_error**: Analyze error logs and suggest fixes
+- **performance_analysis**: Analyze telemetry data for performance issues
+- **api_troubleshooting**: Examine proxy requests to debug API issues
+- **script_configuration**: Help configure npm scripts for common tasks
+
+### MCP Capabilities
+- Real-time streaming support for tools marked with `Streaming: true`
+- Resource subscription for live updates
+- Session management with automatic cleanup
+- Cross-platform compatibility (Windows, macOS, Linux, WSL2)
+
 ## Important Notes
 
 - The executable is named `brum` (not `brummer`)
 - Browser extension code has been removed from the codebase
 - The TUI requires a TTY; use `--no-tui` for headless operation
-- MCP server runs on port 7777 by default
+- MCP server runs on port 7777 by default with single endpoint `/mcp`
 - Slash commands use Go regex syntax for pattern matching
 - Process IDs are generated as `<scriptname>-<timestamp>`
 - URLs are automatically extracted from logs and deduplicated per process

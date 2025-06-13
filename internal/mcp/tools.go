@@ -8,25 +8,25 @@ import (
 	"runtime"
 	"strings"
 	"time"
-	
-	"github.com/standardbeagle/brummer/pkg/events"
+
 	"github.com/google/uuid"
+	"github.com/standardbeagle/brummer/pkg/events"
 )
 
 // registerTools registers all available MCP tools
 func (s *StreamableServer) registerTools() {
 	// Script management tools
 	s.registerScriptTools()
-	
+
 	// Log management tools
 	s.registerLogTools()
-	
+
 	// Proxy and telemetry tools
 	s.registerProxyTools()
-	
+
 	// Browser automation tools
 	s.registerBrowserTools()
-	
+
 	// REPL tool
 	s.registerREPLTool()
 }
@@ -51,7 +51,7 @@ Example usage: {}`,
 			}, nil
 		},
 	}
-	
+
 	// scripts/run - Start a script
 	s.tools["scripts/run"] = MCPTool{
 		Name: "scripts/run",
@@ -81,21 +81,21 @@ Example usage:
 			if err := json.Unmarshal(args, &params); err != nil {
 				return nil, err
 			}
-			
+
 			// Start the script
 			process, err := s.processMgr.StartScript(params.Name)
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// Send initial status
 			send(map[string]interface{}{
-				"type": "started",
+				"type":      "started",
 				"processId": process.ID,
-				"name": process.Name,
-				"script": process.Script,
+				"name":      process.Name,
+				"script":    process.Script,
 			})
-			
+
 			// Stream logs
 			logChan := make(chan string, 100)
 			s.processMgr.AddLogCallback(func(processID, line string, isError bool) {
@@ -107,7 +107,7 @@ Example usage:
 					}
 				}
 			})
-			
+
 			// Monitor process
 			go func() {
 				for {
@@ -118,7 +118,7 @@ Example usage:
 					}
 				}
 			}()
-			
+
 			// Stream logs
 			for line := range logChan {
 				send(map[string]interface{}{
@@ -126,11 +126,11 @@ Example usage:
 					"line": line,
 				})
 			}
-			
+
 			return map[string]interface{}{
 				"processId": process.ID,
-				"status": process.Status,
-				"exitCode": process.ExitCode,
+				"status":    process.Status,
+				"exitCode":  process.ExitCode,
 			}, nil
 		},
 		Handler: func(args json.RawMessage) (interface{}, error) {
@@ -140,21 +140,21 @@ Example usage:
 			if err := json.Unmarshal(args, &params); err != nil {
 				return nil, err
 			}
-			
+
 			process, err := s.processMgr.StartScript(params.Name)
 			if err != nil {
 				return nil, err
 			}
-			
+
 			return map[string]interface{}{
 				"processId": process.ID,
-				"name": process.Name,
-				"script": process.Script,
-				"status": string(process.Status),
+				"name":      process.Name,
+				"script":    process.Script,
+				"status":    string(process.Status),
 			}, nil
 		},
 	}
-	
+
 	// scripts/stop - Stop a running script
 	s.tools["scripts/stop"] = MCPTool{
 		Name: "scripts/stop",
@@ -180,18 +180,18 @@ Example usage: {"processId": "dev-1234567890"}`,
 			if err := json.Unmarshal(args, &params); err != nil {
 				return nil, err
 			}
-			
+
 			if err := s.processMgr.StopProcess(params.ProcessID); err != nil {
 				return nil, err
 			}
-			
+
 			return map[string]interface{}{
-				"success": true,
+				"success":   true,
 				"processId": params.ProcessID,
 			}, nil
 		},
 	}
-	
+
 	// scripts/status - Check script status
 	s.tools["scripts/status"] = MCPTool{
 		Name: "scripts/status",
@@ -214,40 +214,40 @@ Example usage: {} or {"name": "dev"}`,
 				Name string `json:"name"`
 			}
 			json.Unmarshal(args, &params)
-			
+
 			processes := s.processMgr.GetAllProcesses()
-			
+
 			if params.Name != "" {
 				// Filter by name
 				for _, p := range processes {
 					if p.Name == params.Name {
 						return map[string]interface{}{
 							"processId": p.ID,
-							"name": p.Name,
-							"status": string(p.Status),
+							"name":      p.Name,
+							"status":    string(p.Status),
 							"startTime": p.StartTime,
-							"uptime": time.Since(p.StartTime).String(),
+							"uptime":    time.Since(p.StartTime).String(),
 						}, nil
 					}
 				}
 				return map[string]interface{}{
-					"name": params.Name,
+					"name":   params.Name,
 					"status": "not running",
 				}, nil
 			}
-			
+
 			// Return all processes
 			result := make([]map[string]interface{}, 0, len(processes))
 			for _, p := range processes {
 				result = append(result, map[string]interface{}{
 					"processId": p.ID,
-					"name": p.Name,
-					"status": string(p.Status),
+					"name":      p.Name,
+					"status":    string(p.Status),
 					"startTime": p.StartTime,
-					"uptime": time.Since(p.StartTime).String(),
+					"uptime":    time.Since(p.StartTime).String(),
 				})
 			}
-			
+
 			return result, nil
 		},
 	}
@@ -301,7 +301,7 @@ Example usage:
 			params.Follow = true
 			params.Limit = 100
 			json.Unmarshal(args, &params)
-			
+
 			// Send historical logs first
 			var logs []interface{}
 			if params.ProcessID != "" {
@@ -309,29 +309,29 @@ Example usage:
 			} else {
 				logs = s.logStoreGetAllInterface()
 			}
-			
+
 			// Apply limit
 			if len(logs) > params.Limit {
 				logs = logs[len(logs)-params.Limit:]
 			}
-			
+
 			for _, log := range logs {
 				send(map[string]interface{}{
 					"type": "log",
 					"data": log,
 				})
 			}
-			
+
 			if !params.Follow {
 				return map[string]interface{}{
 					"count": len(logs),
 				}, nil
 			}
-			
+
 			// Stream new logs
 			logChan := make(chan interface{}, 100)
 			stopChan := make(chan bool)
-			
+
 			// Subscribe to log events
 			s.eventBus.Subscribe(events.LogLine, func(e events.Event) {
 				if params.ProcessID == "" || e.ProcessID == params.ProcessID {
@@ -344,11 +344,11 @@ Example usage:
 					}
 				}
 			})
-			
+
 			// Stream logs for 5 minutes max
 			timeout := time.After(5 * time.Minute)
 			count := len(logs)
-			
+
 			for {
 				select {
 				case log := <-logChan:
@@ -360,7 +360,7 @@ Example usage:
 				case <-timeout:
 					close(stopChan)
 					return map[string]interface{}{
-						"count": count,
+						"count":    count,
 						"timedOut": true,
 					}, nil
 				}
@@ -373,22 +373,22 @@ Example usage:
 			}
 			params.Limit = 100
 			json.Unmarshal(args, &params)
-			
+
 			var logs []interface{}
 			if params.ProcessID != "" {
 				logs = s.logStoreGetByProcessInterface(params.ProcessID)
 			} else {
 				logs = s.logStoreGetAllInterface()
 			}
-			
+
 			if len(logs) > params.Limit {
 				logs = logs[len(logs)-params.Limit:]
 			}
-			
+
 			return logs, nil
 		},
 	}
-	
+
 	// logs/search - Search historical logs
 	s.tools["logs/search"] = MCPTool{
 		Name: "logs/search",
@@ -447,9 +447,9 @@ Example usage:
 			if err := json.Unmarshal(args, &params); err != nil {
 				return nil, err
 			}
-			
+
 			results := s.logStore.Search(params.Query)
-			
+
 			// Apply additional filters
 			filtered := make([]interface{}, 0)
 			for _, result := range results {
@@ -459,7 +459,7 @@ Example usage:
 					break
 				}
 			}
-			
+
 			return filtered, nil
 		},
 	}
@@ -504,11 +504,11 @@ Example usage:
 			}
 			params.Limit = 100
 			json.Unmarshal(args, &params)
-			
+
 			if s.proxyServer == nil {
 				return []interface{}{}, nil
 			}
-			
+
 			var requests []interface{}
 			if params.ProcessName != "" {
 				reqs := s.proxyServer.GetRequestsForProcess(params.ProcessName)
@@ -521,7 +521,7 @@ Example usage:
 					requests = append(requests, req)
 				}
 			}
-			
+
 			// Apply status filter
 			if params.Status != "" && params.Status != "all" {
 				filtered := make([]interface{}, 0)
@@ -538,16 +538,16 @@ Example usage:
 				}
 				requests = filtered
 			}
-			
+
 			// Apply limit
 			if len(requests) > params.Limit {
 				requests = requests[len(requests)-params.Limit:]
 			}
-			
+
 			return requests, nil
 		},
 	}
-	
+
 	// telemetry/sessions - Get browser telemetry sessions
 	s.tools["telemetry/sessions"] = MCPTool{
 		Name: "telemetry/sessions",
@@ -585,13 +585,13 @@ Example usage:
 			}
 			params.Limit = 10
 			json.Unmarshal(args, &params)
-			
+
 			if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
 				return []interface{}{}, nil
 			}
-			
+
 			telemetry := s.proxyServer.GetTelemetryStore()
-			
+
 			if params.SessionID != "" {
 				session, exists := telemetry.GetSession(params.SessionID)
 				if !exists {
@@ -599,7 +599,7 @@ Example usage:
 				}
 				return session.GetMetricsSummary(), nil
 			}
-			
+
 			var sessions []interface{}
 			if params.ProcessName != "" {
 				for _, session := range telemetry.GetSessionsForProcess(params.ProcessName) {
@@ -610,16 +610,16 @@ Example usage:
 					sessions = append(sessions, session.GetMetricsSummary())
 				}
 			}
-			
+
 			// Apply limit
 			if len(sessions) > params.Limit {
 				sessions = sessions[:params.Limit]
 			}
-			
+
 			return sessions, nil
 		},
 	}
-	
+
 	// telemetry/events - Stream telemetry events
 	s.tools["telemetry/events"] = MCPTool{
 		Name: "telemetry/events",
@@ -666,15 +666,15 @@ Example usage:
 			params.Follow = true
 			params.Limit = 50
 			json.Unmarshal(args, &params)
-			
+
 			if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
 				return map[string]interface{}{"error": "telemetry not available"}, nil
 			}
-			
+
 			// Send historical events
 			telemetry := s.proxyServer.GetTelemetryStore()
 			count := 0
-			
+
 			if params.SessionID != "" {
 				session, exists := telemetry.GetSession(params.SessionID)
 				if exists && session != nil {
@@ -692,15 +692,15 @@ Example usage:
 					}
 				}
 			}
-			
+
 			if !params.Follow {
 				return map[string]interface{}{"count": count}, nil
 			}
-			
+
 			// Stream new events
 			eventChan := make(chan interface{}, 100)
 			stopChan := make(chan bool)
-			
+
 			// Subscribe to telemetry events
 			s.eventBus.Subscribe(events.EventType("telemetry.received"), func(e events.Event) {
 				select {
@@ -710,10 +710,10 @@ Example usage:
 				default:
 				}
 			})
-			
+
 			// Stream for 5 minutes max
 			timeout := time.After(5 * time.Minute)
-			
+
 			for {
 				select {
 				case event := <-eventChan:
@@ -725,7 +725,7 @@ Example usage:
 				case <-timeout:
 					close(stopChan)
 					return map[string]interface{}{
-						"count": count,
+						"count":    count,
 						"timedOut": true,
 					}, nil
 				}
@@ -739,14 +739,14 @@ Example usage:
 			}
 			params.Limit = 50
 			json.Unmarshal(args, &params)
-			
+
 			if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
 				return []interface{}{}, nil
 			}
-			
+
 			telemetry := s.proxyServer.GetTelemetryStore()
 			var events []interface{}
-			
+
 			if params.SessionID != "" {
 				session, exists := telemetry.GetSession(params.SessionID)
 				if exists && session != nil {
@@ -755,12 +755,12 @@ Example usage:
 					}
 				}
 			}
-			
+
 			// Apply limit
 			if len(events) > params.Limit {
 				events = events[len(events)-params.Limit:]
 			}
-			
+
 			return events, nil
 		},
 	}
@@ -799,7 +799,7 @@ Example usage:
 			if err := json.Unmarshal(args, &params); err != nil {
 				return nil, err
 			}
-			
+
 			// Register URL with proxy if available
 			proxyURL := params.URL
 			if s.proxyServer != nil && s.proxyServer.IsRunning() {
@@ -808,20 +808,20 @@ Example usage:
 				}
 				proxyURL = s.proxyServer.RegisterURL(params.URL, params.ProcessName)
 			}
-			
+
 			// Open browser
 			if err := openBrowser(proxyURL); err != nil {
 				return nil, fmt.Errorf("failed to open browser: %v", err)
 			}
-			
+
 			return map[string]interface{}{
 				"originalUrl": params.URL,
-				"proxyUrl": proxyURL,
-				"opened": true,
+				"proxyUrl":    proxyURL,
+				"opened":      true,
 			}, nil
 		},
 	}
-	
+
 	// browser/refresh - Refresh browser tab
 	s.tools["browser/refresh"] = MCPTool{
 		Name: "browser/refresh",
@@ -846,21 +846,21 @@ Example usage:
 				SessionID string `json:"sessionId"`
 			}
 			json.Unmarshal(args, &params)
-			
+
 			// Send refresh command via WebSocket to telemetry clients
 			if s.proxyServer != nil {
 				s.proxyServer.BroadcastToWebSockets("command", map[string]interface{}{
-					"action": "refresh",
+					"action":    "refresh",
 					"sessionId": params.SessionID,
 				})
 			}
-			
+
 			return map[string]interface{}{
 				"sent": true,
 			}, nil
 		},
 	}
-	
+
 	// browser/navigate - Navigate to URL
 	s.tools["browser/navigate"] = MCPTool{
 		Name: "browser/navigate",
@@ -893,19 +893,19 @@ Example usage:
 			if err := json.Unmarshal(args, &params); err != nil {
 				return nil, err
 			}
-			
+
 			// Send navigate command via WebSocket
 			if s.proxyServer != nil {
 				s.proxyServer.BroadcastToWebSockets("command", map[string]interface{}{
-					"action": "navigate",
-					"url": params.URL,
+					"action":    "navigate",
+					"url":       params.URL,
 					"sessionId": params.SessionID,
 				})
 			}
-			
+
 			return map[string]interface{}{
 				"sent": true,
-				"url": params.URL,
+				"url":  params.URL,
 			}, nil
 		},
 	}
@@ -946,24 +946,24 @@ Example usage:
 			if err := json.Unmarshal(args, &params); err != nil {
 				return nil, err
 			}
-			
+
 			// Create a response channel
 			responseChan := make(chan map[string]interface{}, 1)
 			responseID := fmt.Sprintf("repl-%d", time.Now().UnixNano())
-			
+
 			// Register response handler (this would need to be implemented)
 			// s.registerREPLResponse(responseID, responseChan)
-			
+
 			// Send REPL command via WebSocket
 			if s.proxyServer != nil {
 				s.proxyServer.BroadcastToWebSockets("command", map[string]interface{}{
-					"action": "repl",
-					"code": params.Code,
-					"sessionId": params.SessionID,
+					"action":     "repl",
+					"code":       params.Code,
+					"sessionId":  params.SessionID,
 					"responseId": responseID,
 				})
 			}
-			
+
 			// Wait for response with timeout
 			select {
 			case response := <-responseChan:
@@ -982,7 +982,7 @@ Example usage:
 func openBrowser(url string) error {
 	var cmd string
 	var args []string
-	
+
 	switch runtime.GOOS {
 	case "windows":
 		cmd = "cmd"
@@ -1002,7 +1002,7 @@ func openBrowser(url string) error {
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
-	
+
 	return exec.Command(cmd, args...).Start()
 }
 
@@ -1018,15 +1018,15 @@ func isWSL() bool {
 // Tool list handler
 func (s *StreamableServer) handleToolsList(msg *JSONRPCMessage) *JSONRPCMessage {
 	tools := make([]map[string]interface{}, 0, len(s.tools))
-	
+
 	for name, tool := range s.tools {
 		tools = append(tools, map[string]interface{}{
-			"name": name,
+			"name":        name,
 			"description": tool.Description,
 			"inputSchema": tool.InputSchema,
 		})
 	}
-	
+
 	return &JSONRPCMessage{
 		Jsonrpc: "2.0",
 		ID:      msg.ID,
@@ -1042,27 +1042,27 @@ func (s *StreamableServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWr
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
 	}
-	
+
 	if err := json.Unmarshal(msg.Params, &params); err != nil {
 		return s.createErrorResponse(msg.ID, -32602, "Invalid params", nil), false
 	}
-	
+
 	tool, ok := s.tools[params.Name]
 	if !ok {
 		return s.createErrorResponse(msg.ID, -32602, "Tool not found", nil), false
 	}
-	
+
 	// Check if this tool supports streaming
 	if tool.Streaming && r.Header.Get("Accept") == "text/event-stream" {
 		// Set up streaming response
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
-		
+
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			return s.createErrorResponse(msg.ID, -32603, "Streaming not supported", nil), false
 		}
-		
+
 		// Create temporary session for streaming
 		session := &ClientSession{
 			ID:              uuid.New().String(),
@@ -1070,7 +1070,7 @@ func (s *StreamableServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWr
 			Flusher:         flusher,
 			StreamingActive: true,
 		}
-		
+
 		// Execute tool with streaming
 		go func() {
 			defer func() {
@@ -1079,24 +1079,24 @@ func (s *StreamableServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWr
 					"id": msg.ID,
 				})
 			}()
-			
+
 			result, err := tool.StreamingHandler(params.Arguments, func(chunk interface{}) {
 				// Send intermediate results
 				s.sendSSEEvent(session, "message", JSONRPCMessage{
 					Jsonrpc: "2.0",
 					Method:  "tools/call/progress",
-					Params:  mustMarshal(map[string]interface{}{
+					Params: mustMarshal(map[string]interface{}{
 						"id":    msg.ID,
 						"chunk": chunk,
 					}),
 				})
 			})
-			
+
 			if err != nil {
 				s.sendSSEEvent(session, "error", s.createErrorResponse(msg.ID, -32603, err.Error(), nil))
 				return
 			}
-			
+
 			// Send final result
 			s.sendSSEEvent(session, "message", JSONRPCMessage{
 				Jsonrpc: "2.0",
@@ -1111,16 +1111,16 @@ func (s *StreamableServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWr
 				},
 			})
 		}()
-		
+
 		return nil, true // Indicates streaming response
 	}
-	
+
 	// Non-streaming execution
 	result, err := tool.Handler(params.Arguments)
 	if err != nil {
 		return s.createErrorResponse(msg.ID, -32603, err.Error(), nil), false
 	}
-	
+
 	// Format result based on type
 	var content []map[string]interface{}
 	switch v := result.(type) {
@@ -1149,7 +1149,7 @@ func (s *StreamableServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWr
 			},
 		}
 	}
-	
+
 	return &JSONRPCMessage{
 		Jsonrpc: "2.0",
 		ID:      msg.ID,
