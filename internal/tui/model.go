@@ -208,12 +208,12 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 					m.processMgr.Cleanup()
 					return tea.Msg(nil)
 				},
-				tea.Printf(renderExitScreen()),
+				tea.Printf("%s", renderExitScreen()),
 				tea.Quit,
 			), true
 		} else {
 			return *m, tea.Sequence(
-				tea.Printf(renderExitScreen()),
+				tea.Printf("%s", renderExitScreen()),
 				tea.Quit,
 			), true
 		}

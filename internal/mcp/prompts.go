@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 )
 
@@ -234,7 +235,7 @@ func (s *StreamableServer) generatePromptMessages(prompt Prompt, args map[string
 						}
 					}
 					if statusCode != "" {
-						if code, ok := reqMap["StatusCode"].(int); ok && string(code) != statusCode {
+						if code, ok := reqMap["StatusCode"].(int); ok && fmt.Sprintf("%d", code) != statusCode {
 							include = false
 						}
 					}
