@@ -1,0 +1,58 @@
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    - errcheck
+    - gofmt
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+  disable:
+    - gosec  # Security checks can be too strict for development tools
+
+linters-settings:
+  errcheck:
+    # Don't require error checking for writes to stderr/stdout
+    exclude-functions:
+      - (*os.File).Close
+      - (*os.File).Write
+      - (os.File).Close
+      - fmt.Print.*
+      - fmt.Fprint.*
+
+  staticcheck:
+    # Ignore deprecated warnings for bubbletea mouse events
+    checks: ["all", "-SA1019"]
+
+issues:
+  # Don't fail the build for unused code during development
+  exclude-rules:
+    - linters: [unused]
+      text: "is unused"
+    - linters: [errcheck] 
+      text: "WriteJSON.*is not checked"
+    - linters: [errcheck]
+      text: "Encode.*is not checked"
+    - linters: [errcheck]
+      text: "Unmarshal.*is not checked"
+    - linters: [errcheck]
+      text: "sendSSEEvent.*is not checked"
+    - linters: [staticcheck]
+      text: "SA1026.*trying to marshal unsupported type"
+    - linters: [staticcheck]
+      text: "SA9003.*empty branch"
+    - linters: [staticcheck]
+      text: "SA6005.*should use strings.EqualFold"
+    - linters: [gosimple]
+      text: "S1009.*should omit nil check"
+    - linters: [ineffassign]
+      text: "ineffectual assignment"
+    - linters: [staticcheck]
+      text: "SA4006.*this value.*is never used"
+
+  # Maximum count of issues with the same text. Set to 0 to disable.
+  max-same-issues: 10

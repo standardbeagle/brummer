@@ -205,7 +205,7 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 			return *m, tea.Sequence(
 				tea.Printf("Stopping %d running processes...\n", runningProcesses),
 				func() tea.Msg {
-					m.processMgr.Cleanup()
+					_ = m.processMgr.Cleanup() // Ignore cleanup errors during shutdown
 					return tea.Msg(nil)
 				},
 				tea.Printf("%s", renderExitScreen()),
