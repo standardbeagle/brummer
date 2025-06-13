@@ -42,7 +42,7 @@ wget -qO- https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-in
 <summary><b>🪟 Windows (PowerShell)</b></summary>
 
 ```powershell
-irm https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.sh | iex
+irm https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.ps1 | iex
 ```
 </details>
 

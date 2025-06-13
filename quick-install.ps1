@@ -40,7 +40,20 @@ try {
     }
     Write-Info "Installing version: $version"
 } catch {
-    Write-Error "Failed to fetch latest release: $_"
+    Write-Error "No releases found for $repo"
+    Write-Info "This project is currently in development."
+    Write-Host "`nAlternative installation options:" -ForegroundColor Yellow
+    Write-Host "1. Build from source:"
+    Write-Host "   git clone https://github.com/$repo"
+    Write-Host "   cd brummer"
+    Write-Host "   go build -o brum.exe ./cmd/brum/main.go"
+    Write-Host ""
+    Write-Host "2. Use Go install (requires Go):"
+    Write-Host "   go install github.com/$repo/cmd/brum@latest"
+    Write-Host ""
+    Write-Host "3. Wait for the first release to be published"
+    Write-Host ""
+    Write-Info "Visit https://github.com/$repo for more information"
     exit 1
 }
 
