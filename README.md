@@ -53,47 +53,19 @@ irm https://raw.githubusercontent.com/standardbeagle/brummer/main/quick-install.
 
 ```bash
 # Run directly with npx (no installation)
-npx brummer
+npx @standardbeagle/brum
 
 # Install globally
-npm install -g brummer
+npm install -g @standardbeagle/brum
 
 # Or with yarn
-yarn global add brummer
+yarn global add @standardbeagle/brum
 
 # Or with pnpm
-pnpm add -g brummer
+pnpm add -g @standardbeagle/brum
 ```
 </details>
 
-<details>
-<summary><b>🍺 Homebrew</b> (macOS/Linux)</summary>
-
-```bash
-# Add tap and install
-brew tap standardbeagle/brummer
-brew install brummer
-
-# Or directly
-brew install standardbeagle/brummer/brummer
-```
-</details>
-
-<details>
-<summary><b>🍫 Chocolatey</b> (Windows)</summary>
-
-```powershell
-choco install brummer
-```
-</details>
-
-<details>
-<summary><b>📦 Winget</b> (Windows)</summary>
-
-```powershell
-winget install beagle.brummer
-```
-</details>
 
 <details>
 <summary><b>🐹 Go Install</b></summary>

@@ -21,6 +21,9 @@ import (
 )
 
 var (
+	// Version is set at build time
+	Version = "dev"
+	
 	workDir       string
 	mcpPort       int
 	proxyPort     int
@@ -30,6 +33,7 @@ var (
 	noMCP         bool
 	noTUI         bool
 	noProxy       bool
+	showVersion   bool
 )
 
 var rootCmd = &cobra.Command{
@@ -78,15 +82,26 @@ Default Ports & Settings:
 }
 
 func init() {
+	// Version flag
+	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information")
+	
+	// Directory and port flags
 	rootCmd.Flags().StringVarP(&workDir, "dir", "d", ".", "Working directory (package.json optional)")
 	rootCmd.Flags().IntVarP(&mcpPort, "port", "p", 7777, "MCP server port")
+	
+	// Proxy configuration
 	rootCmd.Flags().IntVar(&proxyPort, "proxy-port", 19888, "HTTP proxy server port")
 	rootCmd.Flags().StringVar(&proxyMode, "proxy-mode", "reverse", "Proxy mode: 'full' (traditional proxy) or 'reverse' (create shareable URLs)")
 	rootCmd.Flags().StringVar(&proxyURL, "proxy-url", "", "URL to automatically proxy in reverse mode (e.g., http://localhost:3000)")
 	rootCmd.Flags().BoolVar(&standardProxy, "standard-proxy", false, "Start in standard/full proxy mode (equivalent to --proxy-mode=full)")
+	rootCmd.Flags().BoolVar(&noProxy, "no-proxy", false, "Disable HTTP proxy server")
+	
+	// Feature toggles
 	rootCmd.Flags().BoolVar(&noMCP, "no-mcp", false, "Disable MCP server")
 	rootCmd.Flags().BoolVar(&noTUI, "no-tui", false, "Run in headless mode (MCP server only)")
-	rootCmd.Flags().BoolVar(&noProxy, "no-proxy", false, "Disable HTTP proxy server")
+	
+	// Set version for cobra
+	rootCmd.Version = Version
 }
 
 func main() {
@@ -97,6 +112,12 @@ func main() {
 }
 
 func runApp(cmd *cobra.Command, args []string) {
+	// Handle version flag
+	if showVersion {
+		fmt.Printf("brum version %s\n", Version)
+		return
+	}
+	
 	// Resolve working directory
 	absWorkDir, err := filepath.Abs(workDir)
 	if err != nil {

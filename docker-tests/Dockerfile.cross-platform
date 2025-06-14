@@ -1,0 +1,39 @@
+# Test cross-platform binary installation
+FROM node:18-alpine
+
+# Install basic tools
+RUN apk add --no-cache curl bash file
+
+# Create test directory
+WORKDIR /test
+
+# Copy package files for local testing
+COPY package.json install.js index.js ./
+COPY bin/ ./bin/
+COPY dist/ ./dist/
+
+# Run tests during build
+RUN echo "=== Testing Cross-Platform Binary Installation ===" && \
+    echo "Architecture: $(uname -m)" && \
+    echo "Platform: $(uname -s)" && \
+    echo "Node version: $(node --version)" && \
+    echo "" && \
+    echo "1. Testing platform detection in install.js..." && \
+    node -e "console.log('Platform:', process.platform); console.log('Arch:', process.arch);" && \
+    echo "" && \
+    echo "2. Testing binary selection..." && \
+    ls -la dist/ && \
+    echo "" && \
+    echo "3. Testing installation..." && \
+    node install.js && \
+    echo "" && \
+    echo "4. Testing installed binary..." && \
+    ls -la bin/ && \
+    file bin/brum && \
+    echo "" && \
+    echo "5. Testing binary execution..." && \
+    ./bin/brum --help | head -3 && \
+    echo "" && \
+    echo "✅ Cross-platform test completed successfully!"
+
+CMD ["/test/bin/brum", "--help"]

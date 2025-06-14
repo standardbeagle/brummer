@@ -1,0 +1,40 @@
+# Test Go install method
+FROM golang:1.21-alpine
+
+# Install basic tools
+RUN apk add --no-cache git bash curl
+
+# Create test directory
+WORKDIR /test
+
+# Copy source code for local testing
+COPY . ./brummer/
+
+# Run Go tests during build
+RUN echo "=== Testing Go Install Method ===" && \
+    echo "Go version: $(go version)" && \
+    echo "" && \
+    echo "1. Testing local build..." && \
+    cd brummer && \
+    go build -o brum ./cmd/brum && \
+    echo "" && \
+    echo "2. Testing local binary..." && \
+    ./brum --help | head -5 && \
+    echo "" && \
+    echo "3. Testing make build..." && \
+    make build && \
+    echo "" && \
+    echo "4. Testing make install-user..." && \
+    mkdir -p /root/.local/bin && \
+    make install-user && \
+    export PATH="/root/.local/bin:$PATH" && \
+    echo "" && \
+    echo "5. Testing installed binary..." && \
+    (/root/.local/bin/brum --version || echo "Version command not available") && \
+    /root/.local/bin/brum --help | head -5 && \
+    echo "" && \
+    echo "✅ Go install test completed successfully!"
+
+# Set PATH for runtime
+ENV PATH="/root/.local/bin:$PATH"
+CMD ["brum", "--help"]

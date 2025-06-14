@@ -1,0 +1,35 @@
+# Test pnpm package installation on Alpine
+FROM node:18-alpine
+
+# Install pnpm and basic tools
+RUN npm install -g pnpm && apk add --no-cache curl bash
+
+# Create test directory
+WORKDIR /test
+
+# Copy package files for local testing
+COPY package.json install.js index.js ./
+COPY bin/ ./bin/
+COPY dist/ ./dist/
+
+# Run PNPM tests during build
+RUN echo "=== Testing PNPM Package Installation (Alpine) ===" && \
+    echo "Node version: $(node --version)" && \
+    echo "PNPM version: $(pnpm --version)" && \
+    echo "" && \
+    echo "1. Testing local package installation with pnpm..." && \
+    pnpm install . && \
+    echo "" && \
+    echo "2. Testing brum command..." && \
+    ./node_modules/.bin/brum --help | head -5 && \
+    echo "" && \
+    echo "3. Testing global installation with pnpm..." && \
+    pnpm add -g . && \
+    echo "" && \
+    echo "4. Testing global brum command..." && \
+    (brum --version || echo "Version command not available") && \
+    brum --help | head -5 && \
+    echo "" && \
+    echo "✅ PNPM package test completed successfully!"
+
+CMD ["brum", "--help"]

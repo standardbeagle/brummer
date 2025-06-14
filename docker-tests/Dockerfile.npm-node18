@@ -1,0 +1,35 @@
+# Test npm package installation on Node.js 18
+FROM node:18-alpine
+
+# Install basic tools
+RUN apk add --no-cache curl bash
+
+# Create test directory
+WORKDIR /test
+
+# Copy package files for local testing
+COPY package.json install.js index.js ./
+COPY bin/ ./bin/
+COPY dist/ ./dist/
+
+# Run NPM tests during build
+RUN echo "=== Testing NPM Package Installation ===" && \
+    echo "Node version: $(node --version)" && \
+    echo "NPM version: $(npm --version)" && \
+    echo "" && \
+    echo "1. Testing local package installation..." && \
+    npm install . && \
+    echo "" && \
+    echo "2. Testing brum command..." && \
+    (./node_modules/.bin/brum --help 2>/dev/null || ./bin/brum --help) | head -5 && \
+    echo "" && \
+    echo "3. Testing global installation simulation..." && \
+    npm install -g . && \
+    echo "" && \
+    echo "4. Testing global brum command..." && \
+    brum --version && \
+    brum --help | head -5 && \
+    echo "" && \
+    echo "✅ NPM package test completed successfully!"
+
+CMD ["brum", "--help"]

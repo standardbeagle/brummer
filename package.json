@@ -1,1 +1,52 @@
-{"scripts": {"server": "echo \"Server running at http://localhost:3000\" && python3 -m http.server 3000"}}
+{
+  "name": "@standardbeagle/brum",
+  "version": "1.0.0",
+  "description": "Your Terminal UI Development Buddy with intelligent monitoring",
+  "main": "index.js",
+  "bin": {
+    "brum": "./bin/brum"
+  },
+  "scripts": {
+    "postinstall": "node install.js",
+    "server": "echo \"Server running at http://localhost:3000\" && python3 -m http.server 3000",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "terminal",
+    "tui",
+    "development",
+    "monitoring",
+    "cli",
+    "npm-scripts",
+    "package-manager",
+    "developer-tools"
+  ],
+  "author": "Standard Beagle",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/standardbeagle/brummer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/standardbeagle/brummer/issues"
+  },
+  "homepage": "https://standardbeagle.github.io/brummer/",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "files": [
+    "install.js",
+    "bin/",
+    "index.js",
+    "README.md"
+  ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ]
+}

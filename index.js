@@ -17,7 +17,7 @@ const child = spawn(binaryPath, process.argv.slice(2), {
 child.on('error', (err) => {
   if (err.code === 'ENOENT') {
     console.error('Brummer binary not found. Please reinstall the package.');
-    console.error('Run: npm install -g brummer');
+    console.error('Run: npm install -g @standardbeagle/brum');
     process.exit(1);
   }
   throw err;
