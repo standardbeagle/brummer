@@ -1637,36 +1637,53 @@ func (m *Model) updateLogsView() {
 	}
 
 	var content strings.Builder
+
+	// Check if we have any logs to display
+	hasVisibleLogs := false
 	for _, log := range logEntries {
-		// Skip empty log entries (used for separation)
-		if strings.TrimSpace(log.Content) == "" {
-			continue
+		if strings.TrimSpace(log.Content) != "" {
+			hasVisibleLogs = true
+			break
 		}
+	}
 
-		style := m.getLogStyle(log)
+	if !hasVisibleLogs {
+		// Show empty state message
+		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+		emptyMessage := "No logs yet. Start processes with /run <script>. Use /show or /hide <pattern> to filter logs."
+		content.WriteString(emptyStyle.Render(emptyMessage))
+	} else {
+		for _, log := range logEntries {
+			// Skip empty log entries (used for separation)
+			if strings.TrimSpace(log.Content) == "" {
+				continue
+			}
 
-		// Clean up the log content
-		cleanContent := m.cleanLogContent(log.Content)
+			style := m.getLogStyle(log)
 
-		// Always ensure each log entry ends with proper line termination (CR+LF)
-		// This ensures the cursor resets to column 0 for the next line
-		if !strings.HasSuffix(cleanContent, "\n") {
-			cleanContent += "\r\n"
-		} else {
-			// Replace existing \n with \r\n to ensure cursor reset
-			cleanContent = strings.TrimSuffix(cleanContent, "\n") + "\r\n"
+			// Clean up the log content
+			cleanContent := m.cleanLogContent(log.Content)
+
+			// Always ensure each log entry ends with proper line termination (CR+LF)
+			// This ensures the cursor resets to column 0 for the next line
+			if !strings.HasSuffix(cleanContent, "\n") {
+				cleanContent += "\r\n"
+			} else {
+				// Replace existing \n with \r\n to ensure cursor reset
+				cleanContent = strings.TrimSuffix(cleanContent, "\n") + "\r\n"
+			}
+
+			// Format the timestamp and process name with style, but keep the content raw
+			// to preserve ANSI codes in the log output
+			prefix := fmt.Sprintf("[%s] %s: ",
+				log.Timestamp.Format("15:04:05"),
+				log.ProcessName,
+			)
+
+			// Apply style only to the prefix, not the content
+			content.WriteString(style.Render(prefix))
+			content.WriteString(cleanContent)
 		}
-
-		// Format the timestamp and process name with style, but keep the content raw
-		// to preserve ANSI codes in the log output
-		prefix := fmt.Sprintf("[%s] %s: ",
-			log.Timestamp.Format("15:04:05"),
-			log.ProcessName,
-		)
-
-		// Apply style only to the prefix, not the content
-		content.WriteString(style.Render(prefix))
-		content.WriteString(cleanContent)
 	}
 
 	m.logsViewport.SetContent(content.String())
@@ -1809,7 +1826,7 @@ func (m Model) renderProcessesView() string {
 	if len(processes) == 0 {
 		emptyState := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245")).
-			Render("No processes yet. Go to Scripts tab and press Enter on a script to start it.")
+			Render("No processes running. Use / for commands: /run <script> to start scripts, /restart all, /stop <process>")
 
 		return lipgloss.JoinVertical(lipgloss.Left,
 			instructions,
@@ -1872,7 +1889,7 @@ func (m Model) renderLogsView() string {
 func (m Model) renderFiltersView() string {
 	filters := m.logStore.GetFilters()
 	if len(filters) == 0 {
-		return "No filters configured"
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No filters configured. Use / commands: /show <pattern> or /hide <pattern> to filter logs")
 	}
 
 	var content strings.Builder
@@ -1893,7 +1910,7 @@ func (m *Model) renderErrorsView() string {
 		// Fall back to simple errors if no contexts
 		errors := m.logStore.GetErrors()
 		if len(errors) == 0 {
-			content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No errors detected yet"))
+			content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No errors detected yet. Use /clear errors to clear when errors appear"))
 		} else {
 			errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 			timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
@@ -1976,7 +1993,7 @@ func (m *Model) renderURLsView() string {
 
 	if len(urls) == 0 {
 		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true)
-		content.WriteString(emptyStyle.Render("No URLs detected yet. URLs will appear here when processes start servers."))
+		content.WriteString(emptyStyle.Render("No URLs detected yet. Start servers with /run <script>. Use /proxy or /toggle-proxy for URL management."))
 	} else {
 		urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
 		timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
