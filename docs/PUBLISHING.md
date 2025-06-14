@@ -19,6 +19,9 @@ npm login
 
 # Verify your login
 npm whoami
+
+# Verify you have publish permissions for the @standardbeagle scope
+npm access list packages @standardbeagle
 ```
 
 ### Publishing Process
@@ -34,7 +37,19 @@ npm whoami
    ```
 4. **Publish to npm**:
    ```bash
-   npm publish
+   npm publish --access public
+   ```
+   
+   **Note**: The `--access public` flag is required for scoped packages to make them publicly available.
+
+5. **Verify publication**:
+   ```bash
+   # Check the package is publicly available
+   npm view @standardbeagle/brum
+   
+   # Test installation in a clean directory
+   npm install -g @standardbeagle/brum
+   brum --version
    ```
 
 ### NPM Package Features
@@ -60,6 +75,34 @@ brum
 npx @standardbeagle/brum
 ```
 
+### Troubleshooting
+
+**Publishing Issues:**
+```bash
+# If you get "402 Payment Required" error:
+npm publish --access public
+
+# If you get "403 Forbidden" error:
+# Check if you're logged in and have permissions
+npm whoami
+npm access list packages @standardbeagle
+
+# If package name is taken:
+# Scoped packages avoid naming conflicts
+# @standardbeagle/brum should be unique to your organization
+```
+
+**Installation Issues:**
+```bash
+# If users can't install globally:
+sudo npm install -g @standardbeagle/brum  # Linux/macOS
+# Or use npx for one-time usage
+
+# If binary not found after installation:
+# Check if npm global bin directory is in PATH
+npm config get prefix
+```
+
 ## Go Install
 
 Go install is automatically available since the code is public on GitHub:
@@ -75,7 +118,7 @@ No additional setup required.
 - [ ] Update CHANGELOG.md
 - [ ] Build all platform binaries: `make build-all`
 - [ ] Create GitHub release with binaries
-- [ ] Publish to NPM: `npm publish`
+- [ ] Publish to NPM: `npm publish --access public`
 - [ ] Test installations:
   - [ ] `npm install -g @standardbeagle/brum`
   - [ ] `npx @standardbeagle/brum`

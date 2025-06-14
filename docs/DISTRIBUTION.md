@@ -76,7 +76,7 @@ The following distribution methods have been removed to simplify maintenance:
 1. **Build binaries**: `make build-all`
 2. **Test NPM package**: `node install.js && ./bin/brum --version`
 3. **Create GitHub release** with binaries
-4. **Publish NPM package**: `npm publish`
+4. **Publish NPM package**: `npm publish --access public`
 5. **Verify installations**:
    - `npm install -g @standardbeagle/brum && brum --version`
    - `go install github.com/standardbeagle/brummer/cmd/brum@latest && brum --version`

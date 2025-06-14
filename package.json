@@ -4,7 +4,7 @@
   "description": "Your Terminal UI Development Buddy with intelligent monitoring",
   "main": "index.js",
   "bin": {
-    "brum": "./bin/brum"
+    "brum": "bin/brum"
   },
   "scripts": {
     "postinstall": "node install.js",
