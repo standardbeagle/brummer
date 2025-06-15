@@ -18,6 +18,7 @@ import (
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/pkg/ports"
 )
 
 // JSON-RPC 2.0 Message Types
@@ -468,6 +469,17 @@ func (s *StreamableServer) handleHealth(w http.ResponseWriter, r *http.Request) 
 
 // Start starts the MCP server
 func (s *StreamableServer) Start() error {
+	// Try to find an available port, starting from the requested port
+	availablePort, err := ports.FindAvailablePort(s.port)
+	if err != nil {
+		return fmt.Errorf("failed to find available port: %w", err)
+	}
+	
+	// Update the port if it changed
+	if availablePort != s.port {
+		s.port = availablePort
+	}
+	
 	addr := fmt.Sprintf(":%d", s.port)
 	s.server = &http.Server{
 		Addr:    addr,
@@ -488,6 +500,11 @@ func (s *StreamableServer) Stop() error {
 		return s.server.Shutdown(context.Background())
 	}
 	return nil
+}
+
+// GetPort returns the current port the server is running on
+func (s *StreamableServer) GetPort() int {
+	return s.port
 }
 
 func (s *StreamableServer) setupEventBroadcasting() {
@@ -515,10 +532,6 @@ func mustMarshal(v interface{}) json.RawMessage {
 	return json.RawMessage(data)
 }
 
-// GetPort returns the server port
-func (s *StreamableServer) GetPort() int {
-	return s.port
-}
 
 // IsRunning returns true if the MCP server is currently running
 func (s *StreamableServer) IsRunning() bool {

@@ -49,6 +49,10 @@ brum -d ../app dev          # Run in different directory
 brum --no-mcp               # Disable MCP server
 brum --no-tui               # Run headless (MCP only)
 brum -p 8888                # Custom MCP port (default: 7777)
+brum --settings             # Show current configuration with sources
+
+# Configuration
+brum --settings > .brum.example.toml  # Create example config file
 ```
 
 ## Architecture
@@ -87,6 +91,13 @@ brum -p 8888                # Custom MCP port (default: 7777)
 - Central EventBus for component communication
 - Event types: ProcessStarted, ProcessExited, LogLine, ErrorDetected, BuildEvent, TestResult
 - Asynchronous event propagation between components
+
+**Configuration System (`internal/config/config.go`)**
+- TOML-based configuration with hierarchical override chain
+- Loads from: current directory → parent directories → root → `~/.brum.toml`
+- Source tracking for debugging configuration values
+- Supports MCP port, proxy settings, and package manager preferences
+- `--settings` flag displays current config with source file comments
 
 ### Key Design Patterns
 

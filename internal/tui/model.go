@@ -2094,8 +2094,20 @@ func (m *Model) renderURLsView() string {
 		urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
 		timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 		processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
+		labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("120")).Bold(true)
 		metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
 		originalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
+
+		// Get proxy mappings to show labels
+		var proxyMappings map[string]string // URL -> Label
+		if m.proxyServer != nil {
+			proxyMappings = make(map[string]string)
+			for _, mapping := range m.proxyServer.GetURLMappings() {
+				if mapping.Label != "" && mapping.Label != mapping.ProcessName {
+					proxyMappings[mapping.TargetURL] = mapping.Label
+				}
+			}
+		}
 
 		// URLs are already deduplicated and sorted by the store
 		for i, urlEntry := range urls {
@@ -2106,10 +2118,17 @@ func (m *Model) renderURLsView() string {
 				displayURL = urlEntry.ProxyURL
 			}
 
-			// Clean, single-line format: [process] URL (time)
-			content.WriteString(fmt.Sprintf("%s %s %s\n",
+			// Get label if available
+			var labelText string
+			if label, hasLabel := proxyMappings[urlEntry.URL]; hasLabel {
+				labelText = fmt.Sprintf(" %s", labelStyle.Render(fmt.Sprintf("(%s)", label)))
+			}
+
+			// Clean, single-line format: [process] URL (label) (time)
+			content.WriteString(fmt.Sprintf("%s %s%s %s\n",
 				processStyle.Render(fmt.Sprintf("[%s]", urlEntry.ProcessName)),
 				urlStyle.Render(displayURL),
+				labelText,
 				timeStyle.Render(fmt.Sprintf("(%s)", urlEntry.Timestamp.Format("15:04:05"))),
 			))
 

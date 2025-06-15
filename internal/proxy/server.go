@@ -19,6 +19,7 @@ import (
 	"github.com/elazarl/goproxy"
 	"github.com/gorilla/websocket"
 	"github.com/standardbeagle/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/pkg/ports"
 )
 
 // Request represents a proxied HTTP request with its metadata
@@ -68,6 +69,7 @@ type URLMapping struct {
 	ProxyPort    int    // e.g., 8889
 	ProxyURL     string // e.g., "http://localhost:8889"
 	ProcessName  string
+	Label        string // e.g., "Frontend", "API", extracted from log context
 	CreatedAt    time.Time
 	Server       *http.Server           // The HTTP server for this mapping
 	ReverseProxy *httputil.ReverseProxy // The reverse proxy instance for this mapping
@@ -742,6 +744,17 @@ func (s *Server) Start() error {
 		return fmt.Errorf("proxy server already running")
 	}
 
+	// Try to find an available port, starting from the requested port
+	availablePort, err := ports.FindAvailablePort(s.port)
+	if err != nil {
+		return fmt.Errorf("failed to find available port: %w", err)
+	}
+	
+	// Update the port if it changed
+	if availablePort != s.port {
+		s.port = availablePort
+	}
+
 	// In full proxy mode, ensure goproxy is initialized
 	if s.mode == ProxyModeFull && s.proxy == nil {
 		proxy := goproxy.NewProxyHttpServer()
@@ -1138,6 +1151,11 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 
 // RegisterURL associates a URL with a process name and returns the proxy URL
 func (s *Server) RegisterURL(urlStr, processName string) string {
+	return s.RegisterURLWithLabel(urlStr, processName, processName)
+}
+
+// RegisterURLWithLabel associates a URL with a process name and label, and returns the proxy URL
+func (s *Server) RegisterURLWithLabel(urlStr, processName, label string) string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -1149,12 +1167,19 @@ func (s *Server) RegisterURL(urlStr, processName string) string {
 	if s.mode == ProxyModeReverse {
 		// Check if we already have a mapping for this URL
 		if existing, exists := s.urlMappings[normalized]; exists {
+			// Update label if it's different and more descriptive than current
+			if label != processName && (existing.Label == existing.ProcessName || existing.Label == "") {
+				existing.Label = label
+			}
 			return existing.ProxyURL
 		}
 
-		// Allocate a new port
-		port := s.nextPort
-		s.nextPort++
+		// Allocate a new port starting from nextPort
+		port, err := ports.FindAvailablePort(s.nextPort)
+		if err != nil {
+			return normalized // Return original URL if we can't allocate a port
+		}
+		s.nextPort = port + 1 // Update nextPort for next allocation
 
 		// Create mapping
 		mapping := &URLMapping{
@@ -1162,6 +1187,7 @@ func (s *Server) RegisterURL(urlStr, processName string) string {
 			ProxyPort:   port,
 			ProxyURL:    fmt.Sprintf("http://localhost:%d", port),
 			ProcessName: processName,
+			Label:       label,
 			CreatedAt:   time.Now(),
 		}
 
@@ -1176,7 +1202,12 @@ func (s *Server) RegisterURL(urlStr, processName string) string {
 
 		// Start the server
 		go func() {
-			msg := fmt.Sprintf("%s started for %s", mapping.ProxyURL, normalized)
+			var msg string
+			if mapping.Label != "" && mapping.Label != mapping.ProcessName {
+				msg = fmt.Sprintf("%s started for %s (%s)", mapping.ProxyURL, normalized, mapping.Label)
+			} else {
+				msg = fmt.Sprintf("%s started for %s", mapping.ProxyURL, normalized)
+			}
 			// Publish event for TUI to show in system messages instead of stdout
 			s.eventBus.Publish(events.Event{
 				Type: events.EventType("system.message"),

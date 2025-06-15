@@ -19,7 +19,7 @@ const config = {
   baseUrl: '/brummer/',
 
   // GitHub pages deployment config.
-  organizationName: 'beagle',
+  organizationName: 'standardbeagle',
   projectName: 'brummer',
 
   onBrokenLinks: 'throw',

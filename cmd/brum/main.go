@@ -6,12 +6,14 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
+	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/process"
@@ -34,6 +36,7 @@ var (
 	noTUI         bool
 	noProxy       bool
 	showVersion   bool
+	showSettings  bool
 )
 
 var rootCmd = &cobra.Command{
@@ -84,6 +87,7 @@ Default Ports & Settings:
 func init() {
 	// Version flag
 	rootCmd.Flags().BoolVarP(&showVersion, "version", "v", false, "Show version information")
+	rootCmd.Flags().BoolVar(&showSettings, "settings", false, "Show current configuration settings with sources")
 
 	// Directory and port flags
 	rootCmd.Flags().StringVarP(&workDir, "dir", "d", ".", "Working directory (package.json optional)")
@@ -115,6 +119,12 @@ func runApp(cmd *cobra.Command, args []string) {
 	// Handle version flag
 	if showVersion {
 		fmt.Printf("brum version %s\n", Version)
+		return
+	}
+	
+	// Handle settings flag
+	if showSettings {
+		showCurrentSettings()
 		return
 	}
 
@@ -156,52 +166,65 @@ func runApp(cmd *cobra.Command, args []string) {
 			}
 		}
 
-		proxyServer = proxy.NewServerWithMode(proxyPort, mode, eventBus)
-		if err := proxyServer.Start(); err != nil {
-			if noTUI {
-				log.Printf("Failed to start proxy server: %v", err)
-			} else {
-				logStore.Add("system", "proxy", fmt.Sprintf("❌ Failed to start proxy server: %v", err), true)
-			}
-			// Continue without proxy
-			proxyServer = nil
-		} else {
-			modeDesc := "reverse proxy (shareable URLs)"
-			if mode == proxy.ProxyModeFull {
-				modeDesc = "full proxy"
-			}
-			// Only write to stdout if TUI is disabled
-			if noTUI {
-				fmt.Printf("Started HTTP proxy server on port %d in %s mode\n", proxyPort, modeDesc)
-				if mode == proxy.ProxyModeFull {
-					fmt.Printf("PAC file available at: %s\n", proxyServer.GetPACURL())
-					fmt.Printf("Configure browser automatic proxy: %s\n", proxyServer.GetPACURL())
-				}
-			} else {
-				logStore.Add("system", "proxy", fmt.Sprintf("🌐 Started HTTP proxy server on port %d in %s mode", proxyPort, modeDesc), false)
-				if mode == proxy.ProxyModeFull {
-					logStore.Add("system", "proxy", fmt.Sprintf("📄 PAC file available at: %s", proxyServer.GetPACURL()), false)
-				}
-			}
-
-			// Register arbitrary URL if provided
-			if proxyURL != "" && mode == proxy.ProxyModeReverse {
-				if proxyResult := proxyServer.RegisterURL(proxyURL, "custom"); proxyResult != proxyURL {
-					if noTUI {
-						fmt.Printf("Registered custom URL: %s -> %s\n", proxyURL, proxyResult)
-					}
-					// Add the URL to the log store so it appears in the URLs tab
-					logStore.Add("custom-proxy", "custom", fmt.Sprintf("🌐 Proxy registered: %s", proxyURL), false)
-					// Update the proxy URL mapping
-					logStore.UpdateProxyURL(proxyURL, proxyResult)
+		// Only start proxy server if we have explicit proxy parameters or full proxy mode
+		shouldStartProxy := mode == proxy.ProxyModeFull || proxyURL != "" || standardProxy
+		
+		if shouldStartProxy {
+			proxyServer = proxy.NewServerWithMode(proxyPort, mode, eventBus)
+			if err := proxyServer.Start(); err != nil {
+				if noTUI {
+					log.Printf("Failed to start proxy server: %v", err)
 				} else {
-					if noTUI {
-						fmt.Printf("Note: Custom URL %s will be proxied when accessed\n", proxyURL)
+					logStore.Add("system", "proxy", fmt.Sprintf("❌ Failed to start proxy server: %v", err), true)
+				}
+				// Continue without proxy
+				proxyServer = nil
+			} else {
+				// Get the actual port being used (may be different if there was a conflict)
+				actualPort := proxyServer.GetPort()
+				
+				// Only write to stdout if TUI is disabled
+				if noTUI {
+					if mode == proxy.ProxyModeFull {
+						fmt.Printf("Started HTTP proxy server on port %d (full proxy mode)\n", actualPort)
+						fmt.Printf("PAC file available at: %s\n", proxyServer.GetPACURL())
+						fmt.Printf("Configure browser automatic proxy: %s\n", proxyServer.GetPACURL())
+					} else {
+						fmt.Printf("Started HTTP proxy server on port %d (will create proxies for detected URLs)\n", actualPort)
 					}
-					// Add the URL to the log store so it appears in the URLs tab
-					logStore.Add("custom-proxy", "custom", fmt.Sprintf("🌐 Proxy ready: %s", proxyURL), false)
+				} else {
+					modeDesc := "reverse proxy (shareable URLs)"
+					if mode == proxy.ProxyModeFull {
+						modeDesc = "full proxy"
+					}
+					logStore.Add("system", "proxy", fmt.Sprintf("🌐 Started HTTP proxy server on port %d in %s mode", actualPort, modeDesc), false)
+					if mode == proxy.ProxyModeFull {
+						logStore.Add("system", "proxy", fmt.Sprintf("📄 PAC file available at: %s", proxyServer.GetPACURL()), false)
+					}
+				}
+
+				// Register arbitrary URL if provided
+				if proxyURL != "" && mode == proxy.ProxyModeReverse {
+					if proxyResult := proxyServer.RegisterURL(proxyURL, "custom"); proxyResult != proxyURL {
+						if noTUI {
+							fmt.Printf("Registered custom URL: %s -> %s\n", proxyURL, proxyResult)
+						}
+						// Add the URL to the log store so it appears in the URLs tab
+						logStore.Add("custom-proxy", "custom", fmt.Sprintf("🌐 Proxy registered: %s", proxyURL), false)
+						// Update the proxy URL mapping
+						logStore.UpdateProxyURL(proxyURL, proxyResult)
+					} else {
+						if noTUI {
+							fmt.Printf("Note: Custom URL %s will be proxied when accessed\n", proxyURL)
+						}
+						// Add the URL to the log store so it appears in the URLs tab
+						logStore.Add("custom-proxy", "custom", fmt.Sprintf("🌐 Proxy ready: %s", proxyURL), false)
+					}
 				}
 			}
+		} else {
+			// Create proxy server but don't start it yet - it will be started when URLs are detected
+			proxyServer = proxy.NewServerWithMode(proxyPort, mode, eventBus)
 		}
 	}
 
@@ -215,15 +238,38 @@ func runApp(cmd *cobra.Command, args []string) {
 			if proxyServer != nil && entry != nil {
 				// Only check URLs that were detected in this specific log entry
 				detectedURLs := logStore.DetectURLsInContent(line)
-				for _, url := range detectedURLs {
-					// Check if this URL is already proxied
-					existingProxyURL := proxyServer.GetProxyURL(url)
-					if existingProxyURL == url {
-						// URL not yet proxied, register it
-						proxyURL := proxyServer.RegisterURL(url, proc.Name)
-						// Store the proxy URL if different
-						if proxyURL != url {
-							logStore.UpdateProxyURL(url, proxyURL)
+				if len(detectedURLs) > 0 {
+					// Start proxy server if it's not running and URLs are detected
+					if !proxyServer.IsRunning() {
+						if err := proxyServer.Start(); err != nil {
+							if noTUI {
+								log.Printf("Failed to start proxy server: %v", err)
+							} else {
+								logStore.Add("system", "proxy", fmt.Sprintf("❌ Failed to start proxy server: %v", err), true)
+							}
+						} else {
+							// Proxy server started successfully due to URL detection
+							actualPort := proxyServer.GetPort()
+							if noTUI {
+								fmt.Printf("Started HTTP proxy server on port %d (detected URLs in logs)\n", actualPort)
+							} else {
+								logStore.Add("system", "proxy", fmt.Sprintf("🌐 Started HTTP proxy server on port %d for detected URLs", actualPort), false)
+							}
+						}
+					}
+					
+					// Process detected URLs
+					for _, url := range detectedURLs {
+						// Check if this URL is already proxied
+						existingProxyURL := proxyServer.GetProxyURL(url)
+						if existingProxyURL == url {
+							// URL not yet proxied, register it with context from the log line
+							label := extractURLLabel(line, proc.Name)
+							proxyURL := proxyServer.RegisterURLWithLabel(url, proc.Name, label)
+							// Store the proxy URL if different
+							if proxyURL != url {
+								logStore.UpdateProxyURL(url, proxyURL)
+							}
 						}
 					}
 				}
@@ -354,18 +400,26 @@ func runApp(cmd *cobra.Command, args []string) {
 		mcpServerInterface = mcpServer
 		if noTUI {
 			// In headless mode, run MCP server in foreground
-			fmt.Printf("Starting MCP server on port %d (headless mode)...\n", mcpPort)
-			fmt.Printf("Press Ctrl+C to stop.\n")
-
-			// Set up signal handling
-			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
 			go func() {
 				if err := mcpServerInterface.Start(); err != nil {
 					log.Fatal("MCP server error:", err)
 				}
 			}()
+			
+			// Give the server a moment to start and potentially change ports
+			time.Sleep(100 * time.Millisecond)
+			
+			// Display the actual port being used (may be different if there was a conflict)
+			if mcpStreamable, ok := mcpServer.(*mcp.StreamableServer); ok {
+				fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", mcpStreamable.GetPort())
+			} else {
+				fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", mcpPort)
+			}
+			fmt.Printf("Press Ctrl+C to stop.\n")
+
+			// Set up signal handling
+			sigChan := make(chan os.Signal, 1)
+			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
 			// Wait for signal
 			<-sigChan
@@ -451,4 +505,56 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		fmt.Println("Cleanup complete.")
 	}
+}
+
+// extractURLLabel extracts a meaningful label from a log line containing a URL
+func extractURLLabel(logLine, processName string) string {
+	// Clean the log line first
+	line := strings.TrimSpace(logLine)
+	
+	// Common patterns for server startup messages with labels
+	patterns := []struct {
+		regex   *regexp.Regexp
+		extract func([]string) string
+	}{
+		// "[Frontend] Server listening on http://..."
+		{regexp.MustCompile(`(?i)\[([^\]]+)\].*https?://`), func(m []string) string { return m[1] }},
+		// "Frontend: Server listening on http://..."
+		{regexp.MustCompile(`(?i)^([^:\s]+):\s+.*(?:server|listening|started|running).*https?://`), func(m []string) string { return m[1] }},
+		// "Frontend server listening on http://..."
+		{regexp.MustCompile(`(?i)^(\w+)\s+server\s+(?:listening|started|running)\s+(?:on|at).*https?://`), func(m []string) string { return m[1] + " Server" }},
+		// "API started on http://..." or "Backend running at http://..."
+		{regexp.MustCompile(`(?i)^(\w+)\s+(?:started|running|listening)\s+(?:on|at).*https?://`), func(m []string) string { return m[1] }},
+		// "Local: http://..." (common in Vite/dev servers)
+		{regexp.MustCompile(`(?i)(\w+):\s+https?://`), func(m []string) string { return m[1] }},
+		// "Server ready at http://..." - extract what comes before
+		{regexp.MustCompile(`(?i)(\w+)\s+(?:ready|available)\s+at\s+https?://`), func(m []string) string { return m[1] }},
+		// Look for words that might indicate the service type near the URL
+		{regexp.MustCompile(`(?i)(frontend|backend|api|admin|dashboard|web|client|server)\s+.*https?://`), func(m []string) string { return strings.Title(strings.ToLower(m[1])) }},
+		{regexp.MustCompile(`(?i)https?://.*\s+(frontend|backend|api|admin|dashboard|web|client|server)`), func(m []string) string { return strings.Title(strings.ToLower(m[1])) }},
+	}
+	
+	for _, p := range patterns {
+		if matches := p.regex.FindStringSubmatch(line); len(matches) > 1 {
+			label := p.extract(matches)
+			// Clean up the label
+			label = strings.TrimSpace(label)
+			if label != "" && label != processName {
+				return label
+			}
+		}
+	}
+	
+	// Default to process name if no meaningful label found
+	return processName
+}
+
+func showCurrentSettings() {
+	cfg, err := config.LoadWithSources()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
+		os.Exit(1)
+	}
+	
+	fmt.Print(cfg.DisplaySettingsWithSources())
 }

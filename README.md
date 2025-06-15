@@ -4,6 +4,15 @@
 
 A TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts with integrated MCP server for external tool access. Brummer provides intelligent log management, real-time monitoring, and seamless integration with development tools.
 
+## 📖 Documentation
+
+📚 **Full documentation available at: [https://standardbeagle.github.io/brummer/](https://standardbeagle.github.io/brummer/)**
+
+Quick links:
+- [Getting Started Guide](https://standardbeagle.github.io/brummer/docs/getting-started)
+- [Installation Options](https://standardbeagle.github.io/brummer/docs/installation)
+- [MCP Integration](https://standardbeagle.github.io/brummer/docs/mcp-integration/overview)
+
 ## Features
 
 - **Multi-Package Manager Support**: Automatically detects and uses npm, yarn, pnpm, or bun
@@ -118,6 +127,7 @@ Flags:
   -d, --dir string   Working directory containing package.json (default ".")
   -p, --port int     MCP server port (default 7777)
       --no-mcp       Disable MCP server
+      --settings     Show current configuration settings with sources
   -h, --help         help for brum
 ```
 
@@ -160,6 +170,44 @@ Flags:
 
 - **?**: Show help
 - **Ctrl+C**: Quit
+
+## Configuration
+
+Brummer supports hierarchical configuration through `.brum.toml` files. Configuration is loaded in the following order (later values override earlier ones):
+
+1. `~/.brum.toml` (global user settings)
+2. Project root and parent directories (walking up to root)
+3. Current working directory `.brum.toml`
+
+### Viewing Current Configuration
+
+```bash
+# Show current settings with source files
+brum --settings
+
+# Create a configuration file from current settings
+brum --settings > .brum.example.toml
+```
+
+### Configuration Options
+
+Create a `.brum.toml` file in your project or home directory:
+
+```toml
+# Package manager preference
+preferred_package_manager = "pnpm"  # npm, yarn, pnpm, bun
+
+# MCP Server settings
+mcp_port = 7777
+no_mcp = false
+
+# Proxy settings
+proxy_port = 19888
+proxy_mode = "reverse"  # "reverse" or "full"
+proxy_url = "http://localhost:3000"  # Optional: auto-proxy this URL
+standard_proxy = false
+no_proxy = false
+```
 
 ### Settings Tab
 
@@ -282,13 +330,6 @@ go test ./...
 
 These tools help manage orphaned development processes that can occur during testing or if processes aren't properly terminated.
 
-## Documentation
-
-Comprehensive documentation is available at [https://standardbeagle.github.io/brummer/](https://standardbeagle.github.io/brummer/)
-
-- [Getting Started Guide](https://standardbeagle.github.io/brummer/docs/getting-started)
-- [Installation Options](https://standardbeagle.github.io/brummer/docs/installation)
-- [MCP Integration](https://standardbeagle.github.io/brummer/docs/mcp-integration/overview)
 
 ## License
 
