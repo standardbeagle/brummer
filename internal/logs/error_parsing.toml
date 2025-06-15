@@ -1,0 +1,511 @@
+# Error Parsing Configuration
+# This file controls how Brummer detects and parses errors from different languages and frameworks.
+# Regular expressions are used to match error patterns.
+
+# Global settings for error parsing
+[settings]
+# Maximum number of lines to look ahead for error context
+max_context_lines = 50
+
+# Maximum time to wait for error context completion (in seconds)  
+max_context_wait_seconds = 2
+
+# Whether to auto-detect language from file paths and stack traces
+auto_detect_language = true
+
+# Severity levels that should be treated as critical
+critical_keywords = ["fatal", "panic", "critical", "segfault"]
+
+# Keywords that indicate error continuation
+continuation_keywords = ["at ", "in ", "from ", "caused by"]
+
+# Language Detection Configuration
+# Patterns used to auto-detect the programming language from error content
+[language_detection]
+
+[language_detection.javascript]
+# Patterns that indicate JavaScript/TypeScript/Node.js errors
+file_extensions = [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"]
+stack_patterns = ["at Module\\.", "webpack:///", "node_modules"]
+framework_patterns = ["react", "vue", "next", "eslint", "typescript"]
+error_patterns = ["JSX", "TS\\d+:", "failed to compile"]
+
+[language_detection.go]
+file_extensions = [".go"]
+stack_patterns = ["goroutine", "\\.go:\\d+"]
+error_patterns = ["panic:"]
+
+[language_detection.python]
+file_extensions = [".py", ".pyx"]
+stack_patterns = ["Traceback", "File \".*\\.py\""]
+error_patterns = ["\\w+Error:", "\\w+Exception:"]
+
+[language_detection.java]
+file_extensions = [".java", ".class"]
+stack_patterns = ["at com\\.", "at java\\.", "at org\\."]
+error_patterns = ["Exception in thread", "\\w+Exception:", "\\w+Error:"]
+
+[language_detection.rust]
+file_extensions = [".rs"]
+stack_patterns = ["\\.rs:\\d+"]
+error_patterns = ["error\\[E\\d+\\]"]
+
+[language_detection.c_cpp]
+file_extensions = [".c", ".cpp", ".cc", ".cxx", ".h", ".hpp"]
+stack_patterns = ["#\\d+", "at 0x[0-9a-fA-F]+"]
+error_patterns = ["segmentation fault", "segfault", "core dumped"]
+
+# Error Start Patterns
+# These patterns detect the beginning of different types of errors
+[error_patterns]
+
+# JavaScript/TypeScript/Node.js Error Patterns
+[error_patterns.javascript]
+
+[error_patterns.javascript.unhandled_rejection]
+pattern = "^\\s*⨯\\s*unhandled(?:Rejection)?:?\\s*\\[?(\\w+(?:Error|Exception))\\]?:?\\s*(.+)"
+type = "UnhandledRejection"
+severity = "error"
+single_line = false
+description = "Unhandled Promise rejection in JavaScript"
+
+[error_patterns.javascript.error_bracket]
+pattern = "^\\[?(\\w+(?:Error|Exception))\\]?:\\s*(.+)"
+type = "JavaScriptError"
+severity = "error"
+single_line = true
+description = "Standard JavaScript error with brackets"
+
+[error_patterns.javascript.error_simple]
+pattern = "(?i)^(?:error:|fatal:|uncaught exception:)\\s*(.+)"
+type = "JavaScriptError"
+severity = "error"
+single_line = true
+description = "Simple JavaScript error format"
+
+[error_patterns.javascript.stack_error]
+pattern = "^\\s*(\\w+Error):\\s*(.+)"
+type = "JavaScriptError"
+severity = "error"
+single_line = true
+description = "JavaScript error with stack trace"
+
+[error_patterns.javascript.promise_rejection]
+pattern = "^\\s*(?:UnhandledPromiseRejectionWarning:|PromiseRejectionHandledWarning:)\\s*(.+)"
+type = "PromiseRejection"
+severity = "warning"
+single_line = false
+description = "Promise rejection warning"
+
+# TypeScript Error Patterns
+[error_patterns.typescript]
+
+[error_patterns.typescript.compilation_error]
+pattern = "^(?:ERROR|Error)\\s+in\\s+(.+)"
+type = "TypeScriptError"
+severity = "error"
+single_line = false
+description = "TypeScript compilation error"
+
+[error_patterns.typescript.ts_error]
+pattern = "(TS\\d+):\\s*(.+)"
+type = "TypeScriptError"
+severity = "error"
+single_line = true
+description = "TypeScript error with error code"
+
+[error_patterns.typescript.file_error]
+pattern = "^(.+\\.tsx?)\\((\\d+,\\d+)\\):\\s+error\\s+(TS\\d+):\\s*(.+)"
+type = "TypeScriptError"
+severity = "error"
+single_line = true
+description = "TypeScript file-specific error with line/column"
+
+[error_patterns.typescript.build_error]
+pattern = "^(?:Build Error|Compilation Error|ERROR):\\s*(.+)"
+type = "BuildError"
+severity = "error"
+single_line = true
+description = "Build/compilation error"
+
+[error_patterns.typescript.failed_compile]
+pattern = "(?i)failed\\s+to\\s+compile"
+type = "CompilationError"
+severity = "error"
+single_line = true
+description = "Failed to compile message"
+
+# React Error Patterns
+[error_patterns.react]
+
+[error_patterns.react.jsx_key]
+pattern = "(?i)each\\s+child\\s+in\\s+a\\s+list\\s+should\\s+have\\s+a\\s+unique\\s+\"key\"\\s+prop|missing\\s+\"key\"\\s+prop\\s+for\\s+element"
+type = "ReactError"
+severity = "warning"
+single_line = true
+description = "Missing key prop in React elements"
+
+[error_patterns.react.jsx_adjacent]
+pattern = "(?i)adjacent\\s+jsx\\s+elements\\s+must\\s+be\\s+wrapped"
+type = "ReactError"
+severity = "error"
+single_line = true
+description = "Adjacent JSX elements need wrapper"
+
+[error_patterns.react.hook_conditional]
+pattern = "(?i)react\\s+hook\\s+.+\\s+is\\s+called\\s+conditionally"
+type = "ReactHookError"
+severity = "error"
+single_line = true
+description = "React hook called conditionally"
+
+[error_patterns.react.hook_dependency]
+pattern = "(?i)react\\s+hook\\s+has\\s+a\\s+missing\\s+dependency"
+type = "ReactHookError"
+severity = "warning"
+single_line = true
+description = "React hook missing dependency"
+
+[error_patterns.react.invalid_child]
+pattern = "(?i)(?:objects|functions)\\s+are\\s+not\\s+valid\\s+as\\s+react\\s+child"
+type = "ReactError"
+severity = "error"
+single_line = true
+description = "Invalid React child element"
+
+# Go Error Patterns
+[error_patterns.go]
+
+[error_patterns.go.panic]
+pattern = "^panic:\\s*(.+)"
+type = "GoPanic"
+severity = "critical"
+single_line = false
+description = "Go panic error"
+
+[error_patterns.go.error]
+pattern = "^(?:error:|Error:)\\s*(.+)"
+type = "GoError"
+severity = "error"
+single_line = true
+description = "Standard Go error"
+
+# Python Error Patterns
+[error_patterns.python]
+
+[error_patterns.python.exception]
+pattern = "^(\\w+(?:Error|Exception)):\\s*(.+)"
+type = "PythonError"
+severity = "error"
+single_line = false
+description = "Python exception"
+
+[error_patterns.python.traceback]
+pattern = "^Traceback\\s*\\(most recent call last\\):"
+type = "PythonError"
+severity = "error"
+single_line = false
+description = "Python traceback start"
+
+# Java Error Patterns
+[error_patterns.java]
+
+[error_patterns.java.exception]
+pattern = "^(?:Exception in thread|Caused by:)\\s*(.+)"
+type = "JavaException"
+severity = "error"
+single_line = false
+description = "Java exception"
+
+[error_patterns.java.error]
+pattern = "^(\\w+(?:Exception|Error)):\\s*(.+)"
+type = "JavaError"
+severity = "error"
+single_line = false
+description = "Java error"
+
+# Rust Error Patterns
+[error_patterns.rust]
+
+[error_patterns.rust.error]
+pattern = "^error(?:\\[E\\d+\\])?:\\s*(.+)"
+type = "RustError"
+severity = "error"
+single_line = false
+description = "Rust compiler error"
+
+# Vue.js Error Patterns
+[error_patterns.vue]
+
+[error_patterns.vue.template_error]
+pattern = "(?i)template\\s+compilation\\s+error"
+type = "VueError"
+severity = "error"
+single_line = true
+description = "Vue template compilation error"
+
+[error_patterns.vue.component_error]
+pattern = "(?i)vue\\s+component\\s+error"
+type = "VueError"
+severity = "error"
+single_line = true
+description = "Vue component error"
+
+[error_patterns.vue.composition_error]
+pattern = "(?i)composition\\s+api\\s+error"
+type = "VueError"
+severity = "error"
+single_line = true
+description = "Vue Composition API error"
+
+# Next.js Error Patterns
+[error_patterns.nextjs]
+
+[error_patterns.nextjs.build_error]
+pattern = "(?i)next\\.js.*build.*error"
+type = "NextJSError"
+severity = "error"
+single_line = true
+description = "Next.js build error"
+
+[error_patterns.nextjs.lint_error]
+pattern = "^\\s*\\d+:\\d+\\s+Error:\\s*(.+)"
+type = "NextJSLintError"
+severity = "error"
+single_line = true
+description = "Next.js linting error"
+
+# ESLint Error Patterns
+[error_patterns.eslint]
+
+[error_patterns.eslint.error]
+pattern = "^\\s*\\d+:\\d+\\s+error\\s+(.+)"
+type = "ESLintError"
+severity = "error"
+single_line = true
+description = "ESLint error"
+
+[error_patterns.eslint.warning]
+pattern = "^\\s*\\d+:\\d+\\s+warning\\s+(.+)"
+type = "ESLintWarning"
+severity = "warning"
+single_line = true
+description = "ESLint warning"
+
+# Generic Error Patterns
+[error_patterns.generic]
+
+[error_patterns.generic.failed]
+pattern = "(?i)^.*(failed to|unable to|could not)\\s+(.+)"
+type = "GenericError"
+severity = "error"
+single_line = true
+description = "Generic failure message"
+
+[error_patterns.generic.error_symbols]
+pattern = "(?i)^\\s*(?:⚠|❌|✖|ERROR|FAIL)\\s+(.+)"
+type = "GenericError"
+severity = "error"
+single_line = true
+description = "Error with symbols/prefixes"
+
+# Stack Trace Patterns
+# These patterns identify stack trace lines that should be grouped with errors
+[stack_patterns]
+
+[stack_patterns.javascript]
+# JavaScript stack trace patterns
+patterns = [
+    "^\\s*at\\s+.+\\s*\\(?.*:\\d+:\\d+\\)?",
+    "^\\s*\\[.+\\]\\s+.+:\\d+:\\d+",
+    "^\\s*at\\s+.+\\(.+:\\d+:\\d+\\)",
+    "^\\s*at\\s+.+\\s+\\(.+\\.js:\\d+:\\d+\\)",
+    "^\\s*at\\s+webpack:///",
+]
+
+[stack_patterns.go]
+patterns = [
+    "^\\s*.*\\.go:\\d+\\s+.+",
+    "^goroutine\\s+\\d+",
+]
+
+[stack_patterns.python]
+patterns = [
+    "^\\s*File\\s+\"[^\"]+\",\\s+line\\s+\\d+",
+]
+
+[stack_patterns.java]
+patterns = [
+    "^\\s*at\\s+[\\w\\.$]+\\(.+\\)",
+]
+
+[stack_patterns.generic]
+patterns = [
+    "^\\s*#\\d+\\s+.+",
+]
+
+# Error Continuation Patterns
+# These patterns identify lines that should be grouped as part of an ongoing error
+[continuation_patterns]
+
+# General continuation patterns that apply to all languages
+[continuation_patterns.general]
+patterns = [
+    "^\\s{2,}.+",                    # Indented lines (2+ spaces)
+    "^\\s*[│├└─|]\\s*.+",           # Box drawing characters
+    "^\\s*\\{",                      # Opening brace
+    "^\\s*\\}",                      # Closing brace
+    "^\\s*\\[",                      # Opening bracket
+    "^\\s*\\]",                      # Closing bracket
+    "^\\s*\\w+:\\s*.+",              # Property notation (key: value)
+    "^\\s*\\d+\\.\\s*.+",            # Numbered lists
+    "^\\s*-\\s*.+",                  # Bullet points
+    "^\\s*at\\s+",                   # Stack trace continuation
+    "^\\s*in\\s+",                   # Location continuation
+    "^\\s*from\\s+",                 # Source continuation
+    "^\\s*caused by\\s+",            # Causation continuation
+]
+
+# Language-specific continuation patterns
+[continuation_patterns.javascript]
+patterns = [
+    "^\\s*\\{.*\\}\\s*$",            # Single-line objects
+    "^\\s*\"\\w+\":\\s*.+,?$",       # JSON property lines
+    "^\\s*\\w+:\\s*.+,?$",           # Object property lines
+]
+
+[continuation_patterns.python]
+patterns = [
+    "^\\s{4,}.+",                    # Python indentation (4+ spaces)
+    "^\\t+.+",                       # Tab indentation
+]
+
+# Error End Patterns
+# These patterns indicate the end of an error context
+[end_patterns]
+patterns = [
+    "^\\s*\\}\\s*$",                 # Single closing brace
+    "^\\s*\\}\\}\\s*$",              # Double closing brace
+    "^\\s*\\}\\}\\}\\s*$",           # Triple closing brace
+    "^\\d{1,2}:\\d{2}:\\d{2}",       # New timestamp
+    "(?i)(success|completed|done|finished)", # Success indicators
+    "^\\s*$",                        # Empty line (context dependent)
+]
+
+# Log Prefix Patterns
+# These patterns are stripped from log lines before error parsing
+[log_prefixes]
+
+[log_prefixes.timestamp]
+patterns = [
+    "^\\[\\d{1,2}:\\d{2}:\\d{2}\\]\\s*",          # [12:34:56]
+    "^\\(\\d{1,2}:\\d{2}:\\d{2}\\)\\s*",          # (12:34:56)
+    "^\\d{1,2}:\\d{2}:\\d{2}\\s+",                # 12:34:56
+    "^\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2}\\s*", # 2024-01-01 12:34:56
+]
+
+[log_prefixes.process]
+patterns = [
+    "^\\[[\\w-]+\\]:\\s*",                        # [process-name]:
+    "^\\([\\w-]+\\):\\s*",                        # (process-name):
+]
+
+# Conditional process name patterns (don't apply to certain error types)
+[log_prefixes.conditional_process]
+patterns = [
+    "^[\\w-]+:\\s+",                              # process-name:
+]
+exclude_if_matches = [
+    "^TS\\d+:",                                   # Don't strip TypeScript error codes
+]
+
+# Custom Error Types
+# Define custom error types with specific handling
+[custom_error_types]
+
+[custom_error_types.mongodb]
+type = "MongoError"
+patterns = [
+    "MongoError",
+    "MongoNetworkError", 
+    "MongoTimeoutError",
+]
+# Custom parsing logic for MongoDB errors
+extract_hostname = true
+hostname_pattern = "hostname:\\s*'([^']+)'"
+dns_error_replacement = { "getaddrinfo" = "DNS lookup failed -" }
+
+[custom_error_types.database]
+type = "DatabaseError"
+patterns = [
+    "connection refused",
+    "database.*error",
+    "sql.*error",
+]
+
+[custom_error_types.network]
+type = "NetworkError" 
+patterns = [
+    "ECONNREFUSED",
+    "ENOTFOUND",
+    "ETIMEDOUT",
+    "network.*error",
+]
+
+# Framework-specific configurations
+[frameworks]
+
+[frameworks.react]
+# React-specific error handling
+hook_errors = [
+    "hook_conditional",
+    "hook_dependency", 
+    "hook_order",
+]
+jsx_errors = [
+    "jsx_key",
+    "jsx_adjacent",
+    "invalid_child",
+]
+
+[frameworks.nextjs]
+# Next.js specific configurations
+build_error_context = 10  # Lines of context for build errors
+lint_integration = true
+
+[frameworks.vue]
+# Vue.js specific configurations
+template_error_context = 5
+composition_api_errors = true
+
+# Testing frameworks
+[frameworks.jest]
+patterns = [
+    "(?i)jest.*error",
+    "test.*failed",
+    "expect.*received",
+]
+
+[frameworks.cypress]
+patterns = [
+    "(?i)cypress.*error",
+    "cy\\..+failed",
+    "assertion.*failed",
+]
+
+# Performance and Limits
+[limits]
+# Maximum number of errors to keep in memory
+max_errors_in_memory = 1000
+
+# Maximum size of individual error context in bytes
+max_error_size_bytes = 10240
+
+# Maximum time to wait for multi-line error completion
+error_completion_timeout_ms = 2000
+
+# Maximum number of stack trace lines to capture
+max_stack_trace_lines = 50
+
+# Enable debug logging for error parser
+debug_logging = false
