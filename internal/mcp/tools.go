@@ -32,9 +32,9 @@ func (s *StreamableServer) registerTools() {
 }
 
 func (s *StreamableServer) registerScriptTools() {
-	// scripts/list - List all available scripts
-	s.tools["scripts/list"] = MCPTool{
-		Name: "scripts/list",
+	// scripts_list - List all available scripts
+	s.tools["scripts_list"] = MCPTool{
+		Name: "scripts_list",
 		Description: `List all available npm scripts from package.json.
 
 Chain of thought: When you need to see what scripts are available to run, or when the user asks about available commands.
@@ -52,9 +52,9 @@ Example usage: {}`,
 		},
 	}
 
-	// scripts/run - Start a script
-	s.tools["scripts/run"] = MCPTool{
-		Name: "scripts/run",
+	// scripts_run - Start a script
+	s.tools["scripts_run"] = MCPTool{
+		Name: "scripts_run",
 		Description: `Start a package.json script through Brummer.
 
 Chain of thought: Whenever you want to run "npm run dev" or any other script, use this tool instead of running it directly. This ensures proper process management and log capturing.
@@ -155,9 +155,9 @@ Example usage:
 		},
 	}
 
-	// scripts/stop - Stop a running script
-	s.tools["scripts/stop"] = MCPTool{
-		Name: "scripts/stop",
+	// scripts_stop - Stop a running script
+	s.tools["scripts_stop"] = MCPTool{
+		Name: "scripts_stop",
 		Description: `Stop a running script process.
 
 Chain of thought: When you need to stop a running process like a dev server, test runner, or build process.
@@ -192,9 +192,9 @@ Example usage: {"processId": "dev-1234567890"}`,
 		},
 	}
 
-	// scripts/status - Check script status
-	s.tools["scripts/status"] = MCPTool{
-		Name: "scripts/status",
+	// scripts_status - Check script status
+	s.tools["scripts_status"] = MCPTool{
+		Name: "scripts_status",
 		Description: `Check the status of running scripts.
 
 Chain of thought: Before starting a script, check if it's already running. Also useful to see what processes are currently active.
@@ -254,9 +254,9 @@ Example usage: {} or {"name": "dev"}`,
 }
 
 func (s *StreamableServer) registerLogTools() {
-	// logs/stream - Stream real-time logs
-	s.tools["logs/stream"] = MCPTool{
-		Name: "logs/stream",
+	// logs_stream - Stream real-time logs
+	s.tools["logs_stream"] = MCPTool{
+		Name: "logs_stream",
 		Description: `Stream real-time logs from running processes.
 
 Chain of thought: When you want to monitor live output from a running process, or debug issues as they happen.
@@ -389,9 +389,9 @@ Example usage:
 		},
 	}
 
-	// logs/search - Search historical logs
-	s.tools["logs/search"] = MCPTool{
-		Name: "logs/search",
+	// logs_search - Search historical logs
+	s.tools["logs_search"] = MCPTool{
+		Name: "logs_search",
 		Description: `Search through historical logs using patterns or keywords.
 
 Chain of thought: When debugging, search for specific errors, patterns, or messages in the logs. Useful for finding when an error first occurred or tracking down specific issues.
@@ -466,9 +466,9 @@ Example usage:
 }
 
 func (s *StreamableServer) registerProxyTools() {
-	// proxy/requests - Get HTTP requests
-	s.tools["proxy/requests"] = MCPTool{
-		Name: "proxy/requests",
+	// proxy_requests - Get HTTP requests
+	s.tools["proxy_requests"] = MCPTool{
+		Name: "proxy_requests",
 		Description: `Get HTTP requests captured by the proxy.
 
 Chain of thought: To see what API calls your app is making, check response times, status codes, or debug authentication issues.
@@ -548,9 +548,9 @@ Example usage:
 		},
 	}
 
-	// telemetry/sessions - Get browser telemetry sessions
-	s.tools["telemetry/sessions"] = MCPTool{
-		Name: "telemetry/sessions",
+	// telemetry_sessions - Get browser telemetry sessions
+	s.tools["telemetry_sessions"] = MCPTool{
+		Name: "telemetry_sessions",
 		Description: `Get browser telemetry sessions with performance metrics and errors.
 
 Chain of thought: To monitor browser performance, JavaScript errors, memory usage, and user interactions. Useful for debugging client-side issues.
@@ -620,9 +620,9 @@ Example usage:
 		},
 	}
 
-	// telemetry/events - Stream telemetry events
-	s.tools["telemetry/events"] = MCPTool{
-		Name: "telemetry/events",
+	// telemetry_events - Stream telemetry events
+	s.tools["telemetry_events"] = MCPTool{
+		Name: "telemetry_events",
 		Description: `Stream real-time telemetry events from the browser.
 
 Chain of thought: To monitor browser activity in real-time, including console logs, errors, performance metrics, and user interactions.
@@ -767,9 +767,9 @@ Example usage:
 }
 
 func (s *StreamableServer) registerBrowserTools() {
-	// browser/open - Open URL in browser with proxy
-	s.tools["browser/open"] = MCPTool{
-		Name: "browser/open",
+	// browser_open - Open URL in browser with proxy
+	s.tools["browser_open"] = MCPTool{
+		Name: "browser_open",
 		Description: `Open a URL in the default browser with automatic proxy configuration.
 
 Chain of thought: To test your web app with automatic proxy configuration for monitoring HTTP requests and telemetry. Works on Windows, Mac, Linux, and WSL2.
@@ -822,9 +822,9 @@ Example usage:
 		},
 	}
 
-	// browser/refresh - Refresh browser tab
-	s.tools["browser/refresh"] = MCPTool{
-		Name: "browser/refresh",
+	// browser_refresh - Refresh browser tab
+	s.tools["browser_refresh"] = MCPTool{
+		Name: "browser_refresh",
 		Description: `Send a refresh command to connected browser tabs.
 
 Chain of thought: After making changes to your code, refresh the browser to see the updates without manually switching to the browser.
@@ -861,9 +861,9 @@ Example usage:
 		},
 	}
 
-	// browser/navigate - Navigate to URL
-	s.tools["browser/navigate"] = MCPTool{
-		Name: "browser/navigate",
+	// browser_navigate - Navigate to URL
+	s.tools["browser_navigate"] = MCPTool{
+		Name: "browser_navigate",
 		Description: `Navigate browser tabs to a different URL.
 
 Chain of thought: To test different pages or routes in your app while maintaining the proxy connection for monitoring.
@@ -912,9 +912,9 @@ Example usage:
 }
 
 func (s *StreamableServer) registerREPLTool() {
-	// repl/execute - Execute JavaScript in browser context
-	s.tools["repl/execute"] = MCPTool{
-		Name: "repl/execute",
+	// repl_execute - Execute JavaScript in browser context
+	s.tools["repl_execute"] = MCPTool{
+		Name: "repl_execute",
 		Description: `Execute JavaScript code in the browser context.
 
 Chain of thought: To debug or interact with your running web app, inspect variables, call functions, or modify the DOM. Supports async/await.

@@ -53,6 +53,20 @@ func NewErrorParser() *ErrorParser {
 			"js_stack_error":   regexp.MustCompile(`^\s*(\w+Error):\s*(.+)`),
 			"js_rejection":     regexp.MustCompile(`^\s*(?:UnhandledPromiseRejectionWarning:|PromiseRejectionHandledWarning:)\s*(.+)`),
 
+			// TypeScript/Build errors (higher priority)
+			"ts_error":       regexp.MustCompile(`^(?:ERROR|Error)\s+in\s+(.+)`),
+			"ts_specific":    regexp.MustCompile(`(TS\d+):\s*(.+)`),
+			"ts_file_error":  regexp.MustCompile(`^(.+\.tsx?)\(\d+,\d+\):\s+error\s+(TS\d+):\s*(.+)`),
+			"build_error":    regexp.MustCompile(`^(?:Build Error|Compilation Error|ERROR):\s*(.+)`),
+			"failed_compile": regexp.MustCompile(`(?i)failed\s+to\s+compile`),
+
+			// React/JSX specific errors
+			"react_jsx_key":          regexp.MustCompile(`(?i)missing\s+"key"\s+prop\s+for\s+element`),
+			"react_jsx_adjacent":     regexp.MustCompile(`(?i)adjacent\s+jsx\s+elements\s+must\s+be\s+wrapped`),
+			"react_hook_conditional": regexp.MustCompile(`(?i)react\s+hook\s+.+\s+is\s+called\s+conditionally`),
+			"react_hook_dependency":  regexp.MustCompile(`(?i)react\s+hook\s+has\s+a\s+missing\s+dependency`),
+			"react_invalid_child":    regexp.MustCompile(`(?i)(?:objects|functions)\s+are\s+not\s+valid\s+as\s+react\s+child`),
+
 			// Go errors
 			"go_panic": regexp.MustCompile(`^panic:\s*(.+)`),
 			"go_error": regexp.MustCompile(`^(?:error:|Error:)\s*(.+)`),
@@ -68,9 +82,19 @@ func NewErrorParser() *ErrorParser {
 			// Rust errors
 			"rust_error": regexp.MustCompile(`^error(?:\[E\d+\])?:\s*(.+)`),
 
-			// TypeScript/Build errors
-			"ts_error":    regexp.MustCompile(`^(?:ERROR|Error)\s+in\s+(.+)`),
-			"build_error": regexp.MustCompile(`^(?:Build Error|Compilation Error|ERROR):\s*(.+)`),
+			// Vue specific errors
+			"vue_template_error":    regexp.MustCompile(`(?i)template\s+compilation\s+error`),
+			"vue_component_error":   regexp.MustCompile(`(?i)vue\s+component\s+error`),
+			"vue_composition_error": regexp.MustCompile(`(?i)composition\s+api\s+error`),
+
+			// Next.js specific errors
+			"nextjs_build_error": regexp.MustCompile(`(?i)next\.js.*build.*error`),
+			"nextjs_lint_error":  regexp.MustCompile(`^\s*\d+:\d+\s+Error:\s*(.+)`),
+
+			// ESLint/Linting errors
+			"eslint_error":    regexp.MustCompile(`^\s*\d+:\d+\s+error\s+(.+)`),
+			"eslint_warning":  regexp.MustCompile(`^\s*\d+:\d+\s+warning\s+(.+)`),
+			"lint_line_error": regexp.MustCompile(`^\s*\d+:\d+\s+Error:\s*(.+)`),
 
 			// Generic errors
 			"generic_failed": regexp.MustCompile(`(?i)^.*(failed to|cannot|unable to|could not)\s+(.+)`),
@@ -81,6 +105,9 @@ func NewErrorParser() *ErrorParser {
 			// JavaScript stack traces
 			"js_stack":          regexp.MustCompile(`^\s*at\s+.+\s*\(?.*:\d+:\d+\)?`),
 			"js_stack_brackets": regexp.MustCompile(`^\s*\[.+\]\s+.+:\d+:\d+`),
+			"js_stack_simple":   regexp.MustCompile(`^\s*at\s+.+\(.+:\d+:\d+\)`),
+			"js_stack_file":     regexp.MustCompile(`^\s*at\s+.+\s+\(.+\.js:\d+:\d+\)`),
+			"js_stack_webpack":  regexp.MustCompile(`^\s*at\s+webpack:///`),
 
 			// Go stack traces
 			"go_stack":     regexp.MustCompile(`^\s*.*\.go:\d+\s+.+`),
@@ -138,7 +165,13 @@ func (p *ErrorParser) ProcessLine(processID, processName, content string, timest
 			Raw:         []string{content},
 		}
 
-		// Store as active error
+		// For certain error types, return immediately as they are single-line
+		if p.isSingleLineError(errorType) {
+			p.finalizeError(errorCtx)
+			return errorCtx
+		}
+
+		// Store as active error for multi-line processing
 		p.activeErrors[processID] = errorCtx
 
 		return nil // Don't return yet, we're building the context
@@ -207,11 +240,15 @@ func (p *ErrorParser) stripLogPrefixes(content string) string {
 		cleaned = re.ReplaceAllString(cleaned, "")
 	}
 
-	// Remove process name patterns like [dev], (dev), dev:
+	// Remove process name patterns like [dev], (dev), dev: but preserve TypeScript errors
 	processPatterns := []string{
 		`^\[[\w-]+\]:\s*`,
 		`^\([\w-]+\):\s*`,
-		`^[\w-]+:\s+`,
+	}
+
+	// Only apply word: pattern if it's not a TypeScript error
+	if !regexp.MustCompile(`^TS\d+:`).MatchString(cleaned) {
+		processPatterns = append(processPatterns, `^[\w-]+:\s+`)
 	}
 
 	for _, pattern := range processPatterns {
@@ -238,6 +275,57 @@ func (p *ErrorParser) detectErrorStart(content string) (string, map[string]strin
 					info["message"] = strings.TrimSpace(matches[2])
 				} else if len(matches) > 1 {
 					info["message"] = strings.TrimSpace(matches[1])
+				}
+			case strings.HasPrefix(patternName, "react_"):
+				info["type"] = "ReactError"
+				if len(matches) > 1 {
+					info["message"] = strings.TrimSpace(matches[1])
+				} else {
+					info["message"] = content
+				}
+			case strings.HasPrefix(patternName, "ts_"):
+				if patternName == "ts_file_error" && len(matches) >= 4 {
+					info["type"] = matches[2] // TS error code
+					info["message"] = fmt.Sprintf("%s: %s", matches[1], matches[3])
+				} else if patternName == "ts_specific" && len(matches) >= 3 {
+					info["type"] = matches[1] // TS error code
+					info["message"] = matches[2]
+				} else {
+					info["type"] = "TypeScriptError"
+					if len(matches) > 1 {
+						info["message"] = matches[1]
+					}
+				}
+			case patternName == "failed_compile":
+				info["type"] = "CompilationError"
+				info["message"] = content
+			case patternName == "lint_line_error":
+				info["type"] = "LintError"
+				if len(matches) > 1 {
+					info["message"] = matches[1]
+				} else {
+					info["message"] = content
+				}
+			case strings.HasPrefix(patternName, "vue_"):
+				info["type"] = "VueError"
+				if len(matches) > 1 {
+					info["message"] = matches[1]
+				} else {
+					info["message"] = content
+				}
+			case strings.HasPrefix(patternName, "nextjs_"):
+				info["type"] = "NextJSError"
+				if len(matches) > 1 {
+					info["message"] = matches[1]
+				} else {
+					info["message"] = content
+				}
+			case strings.HasPrefix(patternName, "eslint_"):
+				info["type"] = "ESLintError"
+				if len(matches) > 1 {
+					info["message"] = matches[1]
+				} else {
+					info["message"] = content
 				}
 			case strings.HasPrefix(patternName, "go_"):
 				info["type"] = "GoError"
@@ -398,11 +486,23 @@ func (p *ErrorParser) determineSeverity(content string) string {
 }
 
 func (p *ErrorParser) detectLanguage(content string) string {
-	// JavaScript/Node.js indicators
+	// JavaScript/Node.js indicators (enhanced)
 	if strings.Contains(content, "node_modules") ||
 		strings.Contains(content, ".js:") ||
+		strings.Contains(content, ".jsx:") ||
+		strings.Contains(content, ".ts:") ||
+		strings.Contains(content, ".tsx:") ||
 		strings.Contains(content, "at Module.") ||
-		regexp.MustCompile(`\w+Error:`).MatchString(content) {
+		strings.Contains(content, "webpack:///") ||
+		strings.Contains(strings.ToLower(content), "react") ||
+		strings.Contains(strings.ToLower(content), "vue") ||
+		strings.Contains(strings.ToLower(content), "next") ||
+		strings.Contains(content, "JSX") ||
+		strings.Contains(content, "TypeScript") ||
+		strings.Contains(content, "ESLint") ||
+		strings.Contains(strings.ToLower(content), "failed to compile") ||
+		regexp.MustCompile(`\w+Error:`).MatchString(content) ||
+		regexp.MustCompile(`TS\d+:`).MatchString(content) {
 		return "javascript"
 	}
 
@@ -434,6 +534,25 @@ func (p *ErrorParser) detectLanguage(content string) string {
 	}
 
 	return "unknown"
+}
+
+// isSingleLineError determines if an error type is typically single-line
+func (p *ErrorParser) isSingleLineError(errorType string) bool {
+	singleLineTypes := []string{
+		"ts_specific", "failed_compile", "react_jsx_key", "react_jsx_adjacent",
+		"react_hook_conditional", "react_hook_dependency", "react_invalid_child",
+		"react_compilation_failed", "vue_template_error", "vue_component_error",
+		"vue_composition_error", "nextjs_build_error", "nextjs_lint_error",
+		"eslint_error", "eslint_warning", "lint_line_error", "ts_error",
+		"build_error", "generic_error",
+	}
+
+	for _, singleType := range singleLineTypes {
+		if errorType == singleType {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *ErrorParser) finalizeError(errorCtx *ErrorContext) {

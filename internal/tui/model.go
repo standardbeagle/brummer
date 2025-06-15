@@ -58,29 +58,29 @@ var viewConfigs = map[View]ViewConfig{
 		KeyBinding:  "1",
 		Icon:        "🏃",
 	},
-	ViewLogs: {
-		Title:       "Logs",
-		Description: "Process logs",
-		KeyBinding:  "2",
-		Icon:        "📄",
-	},
-	ViewErrors: {
-		Title:       "Errors",
-		Description: "Error tracking",
-		KeyBinding:  "3",
-		Icon:        "❌",
-	},
 	ViewURLs: {
 		Title:       "URLs",
 		Description: "Detected URLs",
-		KeyBinding:  "4",
+		KeyBinding:  "2",
 		Icon:        "🔗",
+	},
+	ViewLogs: {
+		Title:       "Logs",
+		Description: "Process logs",
+		KeyBinding:  "3",
+		Icon:        "📄",
 	},
 	ViewWeb: {
 		Title:       "Web",
 		Description: "Proxy requests",
-		KeyBinding:  "5",
+		KeyBinding:  "4",
 		Icon:        "🌐",
+	},
+	ViewErrors: {
+		Title:       "Errors",
+		Description: "Error tracking",
+		KeyBinding:  "5",
+		Icon:        "❌",
 	},
 	ViewSettings: {
 		Title:       "Settings",
@@ -226,6 +226,18 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		m.cyclePrevView()
 		return *m, nil, true
 
+	case msg.String() == "left":
+		m.cyclePrevView()
+		return *m, nil, true
+
+	case msg.String() == "right":
+		m.cycleView()
+		return *m, nil, true
+
+	case key.Matches(msg, m.keys.ClearScreen):
+		m.handleClearScreen()
+		return *m, nil, true
+
 	case key.Matches(msg, m.keys.Back):
 		if m.currentView == ViewFilters {
 			m.currentView = ViewLogs
@@ -307,6 +319,7 @@ type keyMap struct {
 	Priority      key.Binding
 	ClearLogs     key.Binding
 	ClearErrors   key.Binding
+	ClearScreen   key.Binding
 	Help          key.Binding
 	RunDialog     key.Binding
 	AutoScroll    key.Binding
@@ -374,6 +387,10 @@ var keys = keyMap{
 	ClearErrors: key.NewBinding(
 		key.WithKeys("z"),
 		key.WithHelp("z", "clear errors"),
+	),
+	ClearScreen: key.NewBinding(
+		key.WithKeys("c"),
+		key.WithHelp("c", "clear screen"),
 	),
 	Help: key.NewBinding(
 		key.WithKeys("?"),
@@ -1455,7 +1472,7 @@ func (m *Model) updateSizes() {
 }
 
 func (m *Model) cycleView() {
-	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
+	views := []View{ViewProcesses, ViewURLs, ViewLogs, ViewWeb, ViewErrors, ViewSettings}
 	for i, v := range views {
 		if v == m.currentView {
 			m.currentView = views[(i+1)%len(views)]
@@ -1465,7 +1482,7 @@ func (m *Model) cycleView() {
 }
 
 func (m *Model) cyclePrevView() {
-	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
+	views := []View{ViewProcesses, ViewURLs, ViewLogs, ViewWeb, ViewErrors, ViewSettings}
 	for i, v := range views {
 		if v == m.currentView {
 			// Go to previous view (with wrap-around)
@@ -3213,6 +3230,25 @@ func (m *Model) handleClearErrors() {
 	m.logStore.ClearErrors()
 	m.logStore.Add("system", "System", "🗑️ Error history cleared", false)
 	m.updateLogsView()
+}
+
+func (m *Model) handleClearScreen() {
+	switch m.currentView {
+	case ViewLogs:
+		m.logStore.ClearLogs()
+		m.logStore.Add("system", "System", "📝 Logs cleared", false)
+		m.updateLogsView()
+	case ViewErrors:
+		m.logStore.ClearErrors()
+		m.logStore.Add("system", "System", "🗑️ Error history cleared", false)
+		m.updateLogsView()
+	case ViewWeb:
+		if m.proxyServer != nil {
+			m.proxyServer.ClearRequests()
+			m.logStore.Add("system", "System", "🌐 Web requests cleared", false)
+			m.updateLogsView()
+		}
+	}
 }
 
 func (m *Model) showRunDialog() {
