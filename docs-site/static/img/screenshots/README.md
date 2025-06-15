@@ -2,23 +2,26 @@
 
 This directory contains screenshots for the Brummer documentation. Follow these guidelines when creating screenshots.
 
-## Required Screenshots
+## Current Status
 
-### Priority 1 - Core UI Views
-- [ ] `brummer-tui.png` - Main TUI interface showing scripts list
-- [ ] `tutorial-first-launch.png` - First time running Brummer
+### ✅ Placeholder Images Created (Build-Ready)
+- [x] `brummer-tui.png` - Main TUI interface placeholder
+- [x] `tutorial-first-launch.png` - First launch placeholder
+- [x] `react-scripts.png` - React development placeholder  
+- [x] `monorepo-overview.png` - Monorepo scripts placeholder
+- [x] `microservices-scripts.png` - Microservices placeholder
+- [x] `nextjs-scripts.png` - Next.js development placeholder
+- [x] `brummer-overview.gif` - Overview animation placeholder
+
+### 🔄 Ready for Replacement
+These minimal placeholder images allow documentation builds to succeed. Replace with actual screenshots when available.
+
+### 📋 Future Screenshots Needed
 - [ ] `tutorial-processes-view.png` - Processes tab with running processes
 - [ ] `tutorial-logs-view.png` - Logs view with colored output
 - [ ] `tutorial-errors-view.png` - Errors tab showing error detection
-
-### Priority 2 - Feature Demonstrations  
-- [ ] `react-dev-server.png` - React dev server running
 - [ ] `react-typescript-error.png` - TypeScript error highlighting
-- [ ] `monorepo-overview.png` - Monorepo scripts organization
 - [ ] `microservices-health.png` - Multiple services health status
-
-### Priority 3 - Workflow Examples
-- [ ] `nextjs-services.png` - Multiple Next.js services
 - [ ] `monorepo-turbo.png` - Turborepo execution
 - [ ] `microservices-errors.png` - Distributed error tracking
 
@@ -95,9 +98,13 @@ Examples:
 
 ## Placeholder Note
 
-Current placeholders were generated with:
-- Dark terminal theme
-- Standard terminal chrome (red/yellow/green buttons)
-- Descriptive text indicating what should be shown
+**Current placeholders are minimal 1x1 pixel images** created to resolve documentation build errors. They allow the site to build successfully but show as tiny blank images.
 
-Replace these with actual screenshots before documentation release.
+**Priority**: Replace these with actual screenshots showing:
+- Dark terminal theme
+- Standard terminal chrome (red/yellow/green buttons)  
+- Real Brummer TUI interface
+- Actual project examples
+
+**Build Status**: ✅ Documentation builds successfully with current placeholders
+**Visual Status**: ⚠️  Placeholders appear as minimal images (need replacement)
