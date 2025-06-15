@@ -470,3 +470,8 @@ func (s *Store) UpdateProxyURL(originalURL, proxyURL string) {
 		}
 	}
 }
+
+// DetectURLsInContent detects URLs in the given content without storing them
+func (s *Store) DetectURLsInContent(content string) []string {
+	return s.detectURLs(content)
+}

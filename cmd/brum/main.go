@@ -213,14 +213,17 @@ func runApp(cmd *cobra.Command, args []string) {
 
 			// Register URLs with proxy server
 			if proxyServer != nil && entry != nil {
-				urls := logStore.GetURLs()
-				for _, urlEntry := range urls {
-					if urlEntry.ProcessID == processID {
-						// Register URL and get proxy URL if in reverse mode
-						proxyURL := proxyServer.RegisterURL(urlEntry.URL, proc.Name)
+				// Only check URLs that were detected in this specific log entry
+				detectedURLs := logStore.DetectURLsInContent(line)
+				for _, url := range detectedURLs {
+					// Check if this URL is already proxied
+					existingProxyURL := proxyServer.GetProxyURL(url)
+					if existingProxyURL == url {
+						// URL not yet proxied, register it
+						proxyURL := proxyServer.RegisterURL(url, proc.Name)
 						// Store the proxy URL if different
-						if proxyURL != urlEntry.URL {
-							logStore.UpdateProxyURL(urlEntry.URL, proxyURL)
+						if proxyURL != url {
+							logStore.UpdateProxyURL(url, proxyURL)
 						}
 					}
 				}
