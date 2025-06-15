@@ -8,6 +8,39 @@ GO_FILES=$(shell find . -name '*.go' -not -path './vendor/*')
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 LDFLAGS=-ldflags "-X main.Version=$(VERSION)"
 
+# Load .env file if it exists
+ifneq ($(wildcard .env),)
+    include .env
+    export
+endif
+
+# Detect if running in WSL
+ifneq ($(wildcard /proc/sys/fs/binfmt_misc/WSLInterop),)
+    IS_WSL := true
+    # Use WINDOWS_USER from .env if set, otherwise try to detect
+    ifdef WINDOWS_USER
+        WIN_USER := $(WINDOWS_USER)
+    else
+        WIN_USER := $(shell wslpath -w ~ 2>/dev/null | sed 's/.*\\\([^\\]*\)$$/\1/' || echo "")
+    endif
+    ifneq ($(WIN_USER),)
+        WIN_INSTALL_DIR := /mnt/c/Users/$(WIN_USER)/.local/bin
+    endif
+endif
+
+# Detect OS
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Linux)
+    DETECTED_OS := linux
+endif
+ifeq ($(UNAME_S),Darwin)
+    DETECTED_OS := darwin
+endif
+ifeq ($(OS),Windows_NT)
+    DETECTED_OS := windows
+    BINARY_NAME := $(BINARY_NAME).exe
+endif
+
 # Default target
 .DEFAULT_GOAL := build
 
@@ -38,9 +71,28 @@ install-user: build
 	@echo "📦 Installing to $(USER_INSTALL_DIR)..."
 	@mkdir -p $(USER_INSTALL_DIR)
 	@cp $(BINARY_NAME) $(USER_INSTALL_DIR)/
+ifeq ($(DETECTED_OS),windows)
+	@echo "✅ Installed to $(USER_INSTALL_DIR)/$(BINARY_NAME)"
+else
 	@chmod 755 $(USER_INSTALL_DIR)/$(BINARY_NAME)
 	@echo "✅ Installed to $(USER_INSTALL_DIR)/$(BINARY_NAME)"
+endif
+ifeq ($(IS_WSL),true)
+    ifdef WIN_INSTALL_DIR
+	@echo "📦 Installing to Windows: $(WIN_INSTALL_DIR)..."
+	@mkdir -p $(WIN_INSTALL_DIR)
+	@cp $(BINARY_NAME) $(WIN_INSTALL_DIR)/$(BINARY_NAME).exe
+	@echo "✅ Installed to $(WIN_INSTALL_DIR)/$(BINARY_NAME).exe"
+	@echo "💡 Make sure both $(USER_INSTALL_DIR) and $(WIN_INSTALL_DIR) are in your PATH"
+    else
 	@echo "💡 Make sure $(USER_INSTALL_DIR) is in your PATH"
+	@echo "⚠️  Could not detect Windows user directory for dual installation"
+	@echo "💡 Set WIN_INSTALL_DIR=/mnt/c/Users/YOUR_USERNAME/.local/bin to install to Windows too"
+    endif
+else
+	@echo "💡 Make sure $(USER_INSTALL_DIR) is in your PATH"
+endif
+
 
 # Uninstall
 .PHONY: uninstall
