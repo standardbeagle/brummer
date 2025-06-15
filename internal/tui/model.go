@@ -1593,21 +1593,25 @@ func (m *Model) updateProcessList() {
 }
 
 func (m *Model) updateLogsView() {
-	var logEntries []logs.LogEntry
+	var collapsedEntries []logs.CollapsedLogEntry
 
 	if len(m.searchResults) > 0 {
-		logEntries = m.searchResults
+		// For search results, we still use regular log entries and convert them
+		logEntries := m.searchResults
+		collapsedEntries = m.convertToCollapsedEntries(logEntries)
 	} else if m.showHighPriority {
-		logEntries = m.logStore.GetHighPriority(30)
+		// For high priority, we still use regular log entries and convert them
+		logEntries := m.logStore.GetHighPriority(30)
+		collapsedEntries = m.convertToCollapsedEntries(logEntries)
 	} else if m.selectedProcess != "" {
-		logEntries = m.logStore.GetByProcess(m.selectedProcess)
+		collapsedEntries = m.logStore.GetByProcessCollapsed(m.selectedProcess)
 	} else {
-		logEntries = m.logStore.GetAll()
+		collapsedEntries = m.logStore.GetAllCollapsed()
 	}
 
 	// Apply regex filters if set
 	if m.showPattern != "" || m.hidePattern != "" {
-		var filtered []logs.LogEntry
+		var filtered []logs.CollapsedLogEntry
 
 		// Compile regex patterns
 		var showRegex, hideRegex *regexp.Regexp
@@ -1632,7 +1636,7 @@ func (m *Model) updateLogsView() {
 		}
 
 		// Apply filters
-		for _, log := range logEntries {
+		for _, log := range collapsedEntries {
 			// For /show: only include if pattern matches
 			if showRegex != nil {
 				if !showRegex.MatchString(log.Content) {
@@ -1650,14 +1654,14 @@ func (m *Model) updateLogsView() {
 			filtered = append(filtered, log)
 		}
 
-		logEntries = filtered
+		collapsedEntries = filtered
 	}
 
 	var content strings.Builder
 
 	// Check if we have any logs to display
 	hasVisibleLogs := false
-	for _, log := range logEntries {
+	for _, log := range collapsedEntries {
 		if strings.TrimSpace(log.Content) != "" {
 			hasVisibleLogs = true
 			break
@@ -1670,13 +1674,13 @@ func (m *Model) updateLogsView() {
 		emptyMessage := "No logs yet. Start processes with /run <script>. Use /show or /hide <pattern> to filter logs."
 		content.WriteString(emptyStyle.Render(emptyMessage))
 	} else {
-		for _, log := range logEntries {
+		for _, log := range collapsedEntries {
 			// Skip empty log entries (used for separation)
 			if strings.TrimSpace(log.Content) == "" {
 				continue
 			}
 
-			style := m.getLogStyle(log)
+			style := m.getLogStyle(log.LogEntry)
 
 			// Clean up the log content
 			cleanContent := m.cleanLogContent(log.Content)
@@ -1692,14 +1696,32 @@ func (m *Model) updateLogsView() {
 
 			// Format the timestamp and process name with style, but keep the content raw
 			// to preserve ANSI codes in the log output
-			prefix := fmt.Sprintf("[%s] %s: ",
-				log.Timestamp.Format("15:04:05"),
-				log.ProcessName,
-			)
+			var prefix string
+			if log.IsCollapsed {
+				// Show collapsed log with count and time range
+				prefix = fmt.Sprintf("[%s-%s] %s: ",
+					log.FirstSeen.Format("15:04:05"),
+					log.LastSeen.Format("15:04:05"),
+					log.ProcessName,
+				)
+			} else {
+				// Show regular log entry
+				prefix = fmt.Sprintf("[%s] %s: ",
+					log.Timestamp.Format("15:04:05"),
+					log.ProcessName,
+				)
+			}
 
 			// Apply style only to the prefix, not the content
 			content.WriteString(style.Render(prefix))
 			content.WriteString(cleanContent)
+			
+			// If collapsed, add the count information
+			if log.IsCollapsed {
+				countStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Faint(true)
+				countText := fmt.Sprintf("  (repeated %d times)\r\n", log.Count)
+				content.WriteString(countStyle.Render(countText))
+			}
 		}
 	}
 
@@ -1709,6 +1731,63 @@ func (m *Model) updateLogsView() {
 	if m.logsAutoScroll {
 		m.logsViewport.GotoBottom()
 	}
+}
+
+// convertToCollapsedEntries converts regular log entries to collapsed entries
+// This is used for search results and high priority logs that aren't natively collapsed
+func (m *Model) convertToCollapsedEntries(logEntries []logs.LogEntry) []logs.CollapsedLogEntry {
+	if len(logEntries) == 0 {
+		return []logs.CollapsedLogEntry{}
+	}
+	
+	result := make([]logs.CollapsedLogEntry, 0, len(logEntries))
+	
+	// Start with the first entry
+	current := logs.CollapsedLogEntry{
+		LogEntry:    logEntries[0],
+		Count:       1,
+		FirstSeen:   logEntries[0].Timestamp,
+		LastSeen:    logEntries[0].Timestamp,
+		IsCollapsed: false,
+	}
+	
+	for i := 1; i < len(logEntries); i++ {
+		entry := logEntries[i]
+		
+		// Check if this entry is identical to the current one (same process and content)
+		if m.areLogsIdentical(current.LogEntry, entry) {
+			// Increment count and update last seen timestamp
+			current.Count++
+			current.LastSeen = entry.Timestamp
+			current.IsCollapsed = current.Count > 1
+		} else {
+			// Different log entry, save the current one and start a new one
+			result = append(result, current)
+			current = logs.CollapsedLogEntry{
+				LogEntry:    entry,
+				Count:       1,
+				FirstSeen:   entry.Timestamp,
+				LastSeen:    entry.Timestamp,
+				IsCollapsed: false,
+			}
+		}
+	}
+	
+	// Add the last entry
+	result = append(result, current)
+	
+	return result
+}
+
+// areLogsIdentical checks if two log entries are identical for collapsing purposes
+func (m *Model) areLogsIdentical(a, b logs.LogEntry) bool {
+	// Consider logs identical if they have the same process and content
+	// We ignore timestamp and ID since those will naturally be different
+	return a.ProcessID == b.ProcessID &&
+		a.ProcessName == b.ProcessName &&
+		a.Content == b.Content &&
+		a.Level == b.Level &&
+		a.IsError == b.IsError
 }
 
 func (m Model) cleanLogContent(content string) string {

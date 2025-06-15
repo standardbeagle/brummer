@@ -32,6 +32,15 @@ type LogEntry struct {
 	Priority    int
 }
 
+// CollapsedLogEntry represents a log entry that may contain multiple identical consecutive logs
+type CollapsedLogEntry struct {
+	LogEntry
+	Count         int       // Number of times this exact log appeared consecutively
+	FirstSeen     time.Time // Timestamp of the first occurrence
+	LastSeen      time.Time // Timestamp of the last occurrence
+	IsCollapsed   bool      // Whether this entry represents collapsed logs
+}
+
 type Store struct {
 	entries       []LogEntry
 	byProcess     map[string][]int
@@ -474,4 +483,89 @@ func (s *Store) UpdateProxyURL(originalURL, proxyURL string) {
 // DetectURLsInContent detects URLs in the given content without storing them
 func (s *Store) DetectURLsInContent(content string) []string {
 	return s.detectURLs(content)
+}
+
+// GetAllCollapsed returns all log entries with consecutive duplicates collapsed
+func (s *Store) GetAllCollapsed() []CollapsedLogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	return s.collapseConsecutiveDuplicates(s.entries)
+}
+
+// GetByProcessCollapsed returns collapsed log entries for a specific process
+func (s *Store) GetByProcessCollapsed(processID string) []CollapsedLogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	
+	indices, exists := s.byProcess[processID]
+	if !exists {
+		return []CollapsedLogEntry{}
+	}
+	
+	// Build the log entries for this process
+	entries := make([]LogEntry, 0, len(indices))
+	for _, idx := range indices {
+		if idx >= 0 && idx < len(s.entries) {
+			entries = append(entries, s.entries[idx])
+		}
+	}
+	
+	return s.collapseConsecutiveDuplicates(entries)
+}
+
+// collapseConsecutiveDuplicates takes a slice of LogEntry and returns collapsed entries
+func (s *Store) collapseConsecutiveDuplicates(entries []LogEntry) []CollapsedLogEntry {
+	if len(entries) == 0 {
+		return []CollapsedLogEntry{}
+	}
+	
+	result := make([]CollapsedLogEntry, 0, len(entries))
+	
+	// Start with the first entry
+	current := CollapsedLogEntry{
+		LogEntry:    entries[0],
+		Count:       1,
+		FirstSeen:   entries[0].Timestamp,
+		LastSeen:    entries[0].Timestamp,
+		IsCollapsed: false,
+	}
+	
+	for i := 1; i < len(entries); i++ {
+		entry := entries[i]
+		
+		// Check if this entry is identical to the current one (same process and content)
+		if s.areLogsIdentical(current.LogEntry, entry) {
+			// Increment count and update last seen timestamp
+			current.Count++
+			current.LastSeen = entry.Timestamp
+			current.IsCollapsed = current.Count > 1
+		} else {
+			// Different log entry, save the current one and start a new one
+			result = append(result, current)
+			current = CollapsedLogEntry{
+				LogEntry:    entry,
+				Count:       1,
+				FirstSeen:   entry.Timestamp,
+				LastSeen:    entry.Timestamp,
+				IsCollapsed: false,
+			}
+		}
+	}
+	
+	// Add the last entry
+	result = append(result, current)
+	
+	return result
+}
+
+// areLogsIdentical checks if two log entries are identical for collapsing purposes
+func (s *Store) areLogsIdentical(a, b LogEntry) bool {
+	// Consider logs identical if they have the same process and content
+	// We ignore timestamp and ID since those will naturally be different
+	return a.ProcessID == b.ProcessID &&
+		a.ProcessName == b.ProcessName &&
+		a.Content == b.Content &&
+		a.Level == b.Level &&
+		a.IsError == b.IsError
 }
