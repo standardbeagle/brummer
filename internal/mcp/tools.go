@@ -100,12 +100,12 @@ Example usage:
 							"restart": "First stop the process, then run again",
 						},
 					})
-					
+
 					return map[string]interface{}{
-						"duplicate":  true,
-						"processId":  proc.ID,
-						"status":     string(proc.Status),
-						"message":    fmt.Sprintf("Script '%s' is already running", proc.Name),
+						"duplicate": true,
+						"processId": proc.ID,
+						"status":    string(proc.Status),
+						"message":   fmt.Sprintf("Script '%s' is already running", proc.Name),
 					}, nil
 				}
 			}
@@ -1279,7 +1279,7 @@ Example usage:
 					if errMsg, ok := respMap["error"].(string); ok {
 						// Provide helpful guidance
 						return map[string]interface{}{
-							"error": errMsg,
+							"error":      errMsg,
 							"suggestion": "Screenshot capture is limited in browser context. Consider using: 1) Browser DevTools (F12 > Elements > right-click > 'Capture node screenshot'), 2) OS screenshot tools (Windows: Win+Shift+S, Mac: Cmd+Shift+4, Linux: varies), or 3) Browser extensions for full-page capture.",
 						}, nil
 					}

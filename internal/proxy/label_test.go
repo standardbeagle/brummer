@@ -9,7 +9,7 @@ import (
 // Copy of the extractURLLabel function for testing
 func extractURLLabel(logLine, processName string) string {
 	line := strings.TrimSpace(logLine)
-	
+
 	patterns := []struct {
 		regex   *regexp.Regexp
 		extract func([]string) string
@@ -23,7 +23,7 @@ func extractURLLabel(logLine, processName string) string {
 		{regexp.MustCompile(`(?i)(frontend|backend|api|admin|dashboard|web|client|server)\s+.*https?://`), func(m []string) string { return strings.Title(strings.ToLower(m[1])) }},
 		{regexp.MustCompile(`(?i)https?://.*\s+(frontend|backend|api|admin|dashboard|web|client|server)`), func(m []string) string { return strings.Title(strings.ToLower(m[1])) }},
 	}
-	
+
 	for _, p := range patterns {
 		if matches := p.regex.FindStringSubmatch(line); len(matches) > 1 {
 			label := p.extract(matches)
@@ -33,7 +33,7 @@ func extractURLLabel(logLine, processName string) string {
 			}
 		}
 	}
-	
+
 	return processName
 }
 
@@ -122,7 +122,7 @@ func TestExtractURLLabel(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractURLLabel(tt.logLine, tt.processName)
 			if result != tt.expected {
-				t.Errorf("extractURLLabel(%q, %q) = %q, want %q", 
+				t.Errorf("extractURLLabel(%q, %q) = %q, want %q",
 					tt.logLine, tt.processName, result, tt.expected)
 			}
 		})
@@ -166,7 +166,7 @@ func TestExtractURLLabelEdgeCases(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := extractURLLabel(tt.logLine, tt.processName)
 			if result != tt.expected {
-				t.Errorf("extractURLLabel(%q, %q) = %q, want %q", 
+				t.Errorf("extractURLLabel(%q, %q) = %q, want %q",
 					tt.logLine, tt.processName, result, tt.expected)
 			}
 		})

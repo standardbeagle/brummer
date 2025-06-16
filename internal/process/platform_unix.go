@@ -41,3 +41,14 @@ func ensureProcessDead(pid int) {
 		}
 	}
 }
+
+// findProcessUsingPort finds the process ID using a specific port on Unix (stub)
+func findProcessUsingPort(port int) (int, error) {
+	// This is handled differently in the manager for Unix
+	return 0, nil
+}
+
+// killProcessesByName kills all processes matching a name pattern on Unix (stub)
+func killProcessesByName(pattern string) {
+	// This is handled differently in the manager for Unix
+}

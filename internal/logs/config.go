@@ -15,96 +15,96 @@ var defaultConfigFS embed.FS
 
 // ErrorParsingConfig represents the complete TOML configuration structure
 type ErrorParsingConfig struct {
-	Settings            Settings                       `toml:"settings"`
-	LanguageDetection   map[string]LanguageConfig      `toml:"language_detection"`
-	ErrorPatterns       map[string]map[string]Pattern  `toml:"error_patterns"`
-	StackPatterns       map[string]StackConfig         `toml:"stack_patterns"`
+	Settings             Settings                      `toml:"settings"`
+	LanguageDetection    map[string]LanguageConfig     `toml:"language_detection"`
+	ErrorPatterns        map[string]map[string]Pattern `toml:"error_patterns"`
+	StackPatterns        map[string]StackConfig        `toml:"stack_patterns"`
 	ContinuationPatterns ContinuationConfig            `toml:"continuation_patterns"`
-	EndPatterns         EndConfig                      `toml:"end_patterns"`
-	LogPrefixes         LogPrefixConfig                `toml:"log_prefixes"`
-	CustomErrorTypes    map[string]CustomErrorType     `toml:"custom_error_types"`
-	Frameworks          map[string]FrameworkConfig     `toml:"frameworks"`
-	Limits              Limits                         `toml:"limits"`
+	EndPatterns          EndConfig                     `toml:"end_patterns"`
+	LogPrefixes          LogPrefixConfig               `toml:"log_prefixes"`
+	CustomErrorTypes     map[string]CustomErrorType    `toml:"custom_error_types"`
+	Frameworks           map[string]FrameworkConfig    `toml:"frameworks"`
+	Limits               Limits                        `toml:"limits"`
 }
 
 type Settings struct {
-	MaxContextLines          int      `toml:"max_context_lines"`
-	MaxContextWaitSeconds    int      `toml:"max_context_wait_seconds"`
-	AutoDetectLanguage       bool     `toml:"auto_detect_language"`
-	CriticalKeywords         []string `toml:"critical_keywords"`
-	ContinuationKeywords     []string `toml:"continuation_keywords"`
+	MaxContextLines       int      `toml:"max_context_lines"`
+	MaxContextWaitSeconds int      `toml:"max_context_wait_seconds"`
+	AutoDetectLanguage    bool     `toml:"auto_detect_language"`
+	CriticalKeywords      []string `toml:"critical_keywords"`
+	ContinuationKeywords  []string `toml:"continuation_keywords"`
 }
 
 type LanguageConfig struct {
-	FileExtensions     []string `toml:"file_extensions"`
-	StackPatterns      []string `toml:"stack_patterns"`
-	FrameworkPatterns  []string `toml:"framework_patterns"`
-	ErrorPatterns      []string `toml:"error_patterns"`
+	FileExtensions    []string `toml:"file_extensions"`
+	StackPatterns     []string `toml:"stack_patterns"`
+	FrameworkPatterns []string `toml:"framework_patterns"`
+	ErrorPatterns     []string `toml:"error_patterns"`
 }
 
 type Pattern struct {
-	Pattern      string `toml:"pattern"`
-	Type         string `toml:"type"`
-	Severity     string `toml:"severity"`
-	SingleLine   bool   `toml:"single_line"`
-	Description  string `toml:"description"`
-	
+	Pattern     string `toml:"pattern"`
+	Type        string `toml:"type"`
+	Severity    string `toml:"severity"`
+	SingleLine  bool   `toml:"single_line"`
+	Description string `toml:"description"`
+
 	// Compiled regex (not in TOML)
 	regex *regexp.Regexp
 }
 
 type StackConfig struct {
 	Patterns []string `toml:"patterns"`
-	
+
 	// Compiled regexes (not in TOML)
 	regexes []*regexp.Regexp
 }
 
 type ContinuationConfig struct {
-	General    PatternList            `toml:"general"`
-	JavaScript PatternList            `toml:"javascript"`
-	Python     PatternList            `toml:"python"`
+	General    PatternList `toml:"general"`
+	JavaScript PatternList `toml:"javascript"`
+	Python     PatternList `toml:"python"`
 }
 
 type PatternList struct {
 	Patterns []string `toml:"patterns"`
-	
+
 	// Compiled regexes (not in TOML)
 	regexes []*regexp.Regexp
 }
 
 type EndConfig struct {
 	Patterns []string `toml:"patterns"`
-	
+
 	// Compiled regexes (not in TOML)
 	regexes []*regexp.Regexp
 }
 
 type LogPrefixConfig struct {
-	Timestamp          PatternList                    `toml:"timestamp"`
-	Process            PatternList                    `toml:"process"`
-	ConditionalProcess ConditionalProcessConfig       `toml:"conditional_process"`
+	Timestamp          PatternList              `toml:"timestamp"`
+	Process            PatternList              `toml:"process"`
+	ConditionalProcess ConditionalProcessConfig `toml:"conditional_process"`
 }
 
 type ConditionalProcessConfig struct {
 	Patterns         []string `toml:"patterns"`
 	ExcludeIfMatches []string `toml:"exclude_if_matches"`
-	
+
 	// Compiled regexes (not in TOML)
-	regexes         []*regexp.Regexp
-	excludeRegexes  []*regexp.Regexp
+	regexes        []*regexp.Regexp
+	excludeRegexes []*regexp.Regexp
 }
 
 type CustomErrorType struct {
-	Type                  string            `toml:"type"`
-	Patterns              []string          `toml:"patterns"`
-	ExtractHostname       bool              `toml:"extract_hostname"`
-	HostnamePattern       string            `toml:"hostname_pattern"`
-	DNSErrorReplacement   map[string]string `toml:"dns_error_replacement"`
-	
+	Type                string            `toml:"type"`
+	Patterns            []string          `toml:"patterns"`
+	ExtractHostname     bool              `toml:"extract_hostname"`
+	HostnamePattern     string            `toml:"hostname_pattern"`
+	DNSErrorReplacement map[string]string `toml:"dns_error_replacement"`
+
 	// Compiled regexes (not in TOML)
-	regexes         []*regexp.Regexp
-	hostnameRegex   *regexp.Regexp
+	regexes       []*regexp.Regexp
+	hostnameRegex *regexp.Regexp
 }
 
 type FrameworkConfig struct {
@@ -118,21 +118,21 @@ type FrameworkConfig struct {
 }
 
 type Limits struct {
-	MaxErrorsInMemory      int  `toml:"max_errors_in_memory"`
-	MaxErrorSizeBytes      int  `toml:"max_error_size_bytes"`
-	ErrorCompletionTimeoutMs int `toml:"error_completion_timeout_ms"`
-	MaxStackTraceLines     int  `toml:"max_stack_trace_lines"`
-	DebugLogging           bool `toml:"debug_logging"`
+	MaxErrorsInMemory        int  `toml:"max_errors_in_memory"`
+	MaxErrorSizeBytes        int  `toml:"max_error_size_bytes"`
+	ErrorCompletionTimeoutMs int  `toml:"error_completion_timeout_ms"`
+	MaxStackTraceLines       int  `toml:"max_stack_trace_lines"`
+	DebugLogging             bool `toml:"debug_logging"`
 }
 
 // LoadConfig loads the error parsing configuration from TOML file
 func LoadConfig(configPath string) (*ErrorParsingConfig, error) {
 	var config ErrorParsingConfig
-	
+
 	// Use default config if no path provided or file doesn't exist
 	var configData []byte
 	var err error
-	
+
 	if configPath == "" || !fileExists(configPath) {
 		// Load embedded default configuration
 		configData, err = defaultConfigFS.ReadFile("error_parsing.toml")
@@ -146,20 +146,20 @@ func LoadConfig(configPath string) (*ErrorParsingConfig, error) {
 			return nil, fmt.Errorf("failed to read config file %s: %w", configPath, err)
 		}
 	}
-	
+
 	// Parse TOML
 	if err := toml.Unmarshal(configData, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse TOML config: %w", err)
 	}
-	
+
 	// Compile all regex patterns
 	if err := compileRegexes(&config); err != nil {
 		return nil, fmt.Errorf("failed to compile regex patterns: %w", err)
 	}
-	
+
 	// Set defaults if not specified
 	setDefaults(&config)
-	
+
 	return &config, nil
 }
 
@@ -177,23 +177,23 @@ func GetUserConfigPath() string {
 // CreateUserConfig creates a user configuration file with the default settings
 func CreateUserConfig() error {
 	configPath := GetUserConfigPath()
-	
+
 	// Create directory if it doesn't exist
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
-	
+
 	// Read default config
 	configData, err := defaultConfigFS.ReadFile("error_parsing.toml")
 	if err != nil {
 		return fmt.Errorf("failed to read default config: %w", err)
 	}
-	
+
 	// Write to user config path
 	if err := os.WriteFile(configPath, configData, 0644); err != nil {
 		return fmt.Errorf("failed to write user config: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -209,7 +209,7 @@ func compileRegexes(config *ErrorParsingConfig) error {
 			config.ErrorPatterns[language][name] = pattern
 		}
 	}
-	
+
 	// Compile stack patterns
 	for language, stackConfig := range config.StackPatterns {
 		regexes := make([]*regexp.Regexp, len(stackConfig.Patterns))
@@ -223,7 +223,7 @@ func compileRegexes(config *ErrorParsingConfig) error {
 		stackConfig.regexes = regexes
 		config.StackPatterns[language] = stackConfig
 	}
-	
+
 	// Compile continuation patterns
 	if err := compilePatternList(&config.ContinuationPatterns.General); err != nil {
 		return fmt.Errorf("failed to compile general continuation patterns: %w", err)
@@ -234,7 +234,7 @@ func compileRegexes(config *ErrorParsingConfig) error {
 	if err := compilePatternList(&config.ContinuationPatterns.Python); err != nil {
 		return fmt.Errorf("failed to compile python continuation patterns: %w", err)
 	}
-	
+
 	// Compile end patterns
 	regexes := make([]*regexp.Regexp, len(config.EndPatterns.Patterns))
 	for i, pattern := range config.EndPatterns.Patterns {
@@ -245,7 +245,7 @@ func compileRegexes(config *ErrorParsingConfig) error {
 		regexes[i] = regex
 	}
 	config.EndPatterns.regexes = regexes
-	
+
 	// Compile log prefix patterns
 	if err := compilePatternList(&config.LogPrefixes.Timestamp); err != nil {
 		return fmt.Errorf("failed to compile timestamp patterns: %w", err)
@@ -253,7 +253,7 @@ func compileRegexes(config *ErrorParsingConfig) error {
 	if err := compilePatternList(&config.LogPrefixes.Process); err != nil {
 		return fmt.Errorf("failed to compile process patterns: %w", err)
 	}
-	
+
 	// Compile conditional process patterns
 	regexes = make([]*regexp.Regexp, len(config.LogPrefixes.ConditionalProcess.Patterns))
 	for i, pattern := range config.LogPrefixes.ConditionalProcess.Patterns {
@@ -264,7 +264,7 @@ func compileRegexes(config *ErrorParsingConfig) error {
 		regexes[i] = regex
 	}
 	config.LogPrefixes.ConditionalProcess.regexes = regexes
-	
+
 	excludeRegexes := make([]*regexp.Regexp, len(config.LogPrefixes.ConditionalProcess.ExcludeIfMatches))
 	for i, pattern := range config.LogPrefixes.ConditionalProcess.ExcludeIfMatches {
 		regex, err := regexp.Compile(pattern)
@@ -274,7 +274,7 @@ func compileRegexes(config *ErrorParsingConfig) error {
 		excludeRegexes[i] = regex
 	}
 	config.LogPrefixes.ConditionalProcess.excludeRegexes = excludeRegexes
-	
+
 	// Compile custom error type patterns
 	for name, customType := range config.CustomErrorTypes {
 		regexes := make([]*regexp.Regexp, len(customType.Patterns))
@@ -286,7 +286,7 @@ func compileRegexes(config *ErrorParsingConfig) error {
 			regexes[i] = regex
 		}
 		customType.regexes = regexes
-		
+
 		if customType.HostnamePattern != "" {
 			hostnameRegex, err := regexp.Compile(customType.HostnamePattern)
 			if err != nil {
@@ -294,10 +294,10 @@ func compileRegexes(config *ErrorParsingConfig) error {
 			}
 			customType.hostnameRegex = hostnameRegex
 		}
-		
+
 		config.CustomErrorTypes[name] = customType
 	}
-	
+
 	return nil
 }
 

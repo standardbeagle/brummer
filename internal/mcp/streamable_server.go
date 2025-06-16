@@ -144,16 +144,16 @@ type PromptArgument struct {
 // NewStreamableServer creates a new MCP server with streaming support
 func NewStreamableServer(port int, processMgr *process.Manager, logStore *logs.Store, proxyServer *proxy.Server, eventBus *events.EventBus) *StreamableServer {
 	s := &StreamableServer{
-		router:           mux.NewRouter(),
-		sessions:         make(map[string]*ClientSession),
-		tools:            make(map[string]MCPTool),
-		resources:        make(map[string]Resource),
-		prompts:          make(map[string]Prompt),
-		port:             port,
-		processMgr:       processMgr,
-		logStore:         logStore,
-		proxyServer:      proxyServer,
-		eventBus:         eventBus,
+		router:            mux.NewRouter(),
+		sessions:          make(map[string]*ClientSession),
+		tools:             make(map[string]MCPTool),
+		resources:         make(map[string]Resource),
+		prompts:           make(map[string]Prompt),
+		port:              port,
+		processMgr:        processMgr,
+		logStore:          logStore,
+		proxyServer:       proxyServer,
+		eventBus:          eventBus,
 		replResponseChans: make(map[string]chan interface{}),
 		serverInfo: ServerInfo{
 			Name:    "brummer-mcp",
@@ -479,12 +479,12 @@ func (s *StreamableServer) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to find available port: %w", err)
 	}
-	
+
 	// Update the port if it changed
 	if availablePort != s.port {
 		s.port = availablePort
 	}
-	
+
 	addr := fmt.Sprintf(":%d", s.port)
 	s.server = &http.Server{
 		Addr:    addr,
@@ -543,7 +543,6 @@ func mustMarshal(v interface{}) json.RawMessage {
 	data, _ := json.Marshal(v)
 	return json.RawMessage(data)
 }
-
 
 // IsRunning returns true if the MCP server is currently running
 func (s *StreamableServer) IsRunning() bool {

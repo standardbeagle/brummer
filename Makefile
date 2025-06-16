@@ -62,7 +62,7 @@ DETECTED_ARCH ?= amd64
 .PHONY: build
 build:
 	@echo "🔨 Building Brummer..."
-	@go build $(LDFLAGS) -o $(BINARY_NAME) cmd/brum/main.go
+	@go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/brum
 	@echo "✅ Build complete: ./$(BINARY_NAME)"
 
 # Run tests
@@ -162,12 +162,12 @@ lint:
 build-all:
 	@echo "🏗️  Building for multiple platforms..."
 	@mkdir -p dist
-	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-linux-amd64 cmd/brum/main.go
-	@GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-linux-arm64 cmd/brum/main.go
-	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-amd64 cmd/brum/main.go
-	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-arm64 cmd/brum/main.go
-	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-windows-amd64.exe cmd/brum/main.go
-	@GOOS=windows GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-windows-arm64.exe cmd/brum/main.go
+	@GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-linux-amd64 ./cmd/brum
+	@GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-linux-arm64 ./cmd/brum
+	@GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-amd64 ./cmd/brum
+	@GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-darwin-arm64 ./cmd/brum
+	@GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-windows-amd64.exe ./cmd/brum
+	@GOOS=windows GOARCH=arm64 go build $(LDFLAGS) -o dist/$(BINARY_NAME)-windows-arm64.exe ./cmd/brum
 	@echo "✅ Multi-platform build complete. Binaries in ./dist/"
 
 # Package browser extension

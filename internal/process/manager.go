@@ -525,39 +525,47 @@ func (m *Manager) ensureProcessDead(pid int) {
 
 // killProcessesByPort kills processes using development ports
 func (m *Manager) killProcessesByPort() {
-	if runtime.GOOS == "windows" {
-		return // Skip for Windows for now
-	}
-
 	// Find processes using development ports (3000-3009)
 	for port := 3000; port <= 3009; port++ {
 		m.killProcessUsingPort(port)
 	}
 
-	// Also check for common development server patterns
-	m.killProcessesByPattern("next dev")
-	m.killProcessesByPattern("next-server")
-	m.killProcessesByPattern("webpack")
-	m.killProcessesByPattern("vite")
+	if runtime.GOOS == "windows" {
+		// On Windows, kill common development processes by name
+		m.killWindowsDevProcesses()
+	} else {
+		// Also check for common development server patterns
+		m.killProcessesByPattern("next dev")
+		m.killProcessesByPattern("next-server")
+		m.killProcessesByPattern("webpack")
+		m.killProcessesByPattern("vite")
+	}
 }
 
 // killProcessUsingPort finds and kills the process using a specific port
 func (m *Manager) killProcessUsingPort(port int) {
-	// Use lsof to find process using the port
-	cmd := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
-	output, err := cmd.Output()
-	if err != nil {
-		return
-	}
-
-	lines := strings.TrimSpace(string(output))
-	if lines == "" {
-		return
-	}
-
-	for _, line := range strings.Split(lines, "\n") {
-		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
+	if runtime.GOOS == "windows" {
+		// Windows implementation
+		if pid, err := findProcessUsingPort(port); err == nil && pid > 0 {
 			killProcessByPID(pid)
+		}
+	} else {
+		// Unix implementation using lsof
+		cmd := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
+		output, err := cmd.Output()
+		if err != nil {
+			return
+		}
+
+		lines := strings.TrimSpace(string(output))
+		if lines == "" {
+			return
+		}
+
+		for _, line := range strings.Split(lines, "\n") {
+			if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
+				killProcessByPID(pid)
+			}
 		}
 	}
 }
@@ -580,4 +588,9 @@ func (m *Manager) killProcessesByPattern(pattern string) {
 			killProcessByPID(pid)
 		}
 	}
+}
+
+// killWindowsDevProcesses kills common development processes on Windows
+func (m *Manager) killWindowsDevProcesses() {
+	m.killWindowsDevProcessesImpl()
 }

@@ -1715,7 +1715,7 @@ func (m *Model) updateLogsView() {
 			// Apply style only to the prefix, not the content
 			content.WriteString(style.Render(prefix))
 			content.WriteString(cleanContent)
-			
+
 			// If collapsed, add the count information
 			if log.IsCollapsed {
 				countStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Faint(true)
@@ -1739,9 +1739,9 @@ func (m *Model) convertToCollapsedEntries(logEntries []logs.LogEntry) []logs.Col
 	if len(logEntries) == 0 {
 		return []logs.CollapsedLogEntry{}
 	}
-	
+
 	result := make([]logs.CollapsedLogEntry, 0, len(logEntries))
-	
+
 	// Start with the first entry
 	current := logs.CollapsedLogEntry{
 		LogEntry:    logEntries[0],
@@ -1750,10 +1750,10 @@ func (m *Model) convertToCollapsedEntries(logEntries []logs.LogEntry) []logs.Col
 		LastSeen:    logEntries[0].Timestamp,
 		IsCollapsed: false,
 	}
-	
+
 	for i := 1; i < len(logEntries); i++ {
 		entry := logEntries[i]
-		
+
 		// Check if this entry is identical to the current one (same process and content)
 		if m.areLogsIdentical(current.LogEntry, entry) {
 			// Increment count and update last seen timestamp
@@ -1772,10 +1772,10 @@ func (m *Model) convertToCollapsedEntries(logEntries []logs.LogEntry) []logs.Col
 			}
 		}
 	}
-	
+
 	// Add the last entry
 	result = append(result, current)
-	
+
 	return result
 }
 

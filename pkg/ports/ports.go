@@ -14,27 +14,27 @@ func FindAvailablePort(startPort int) (int, error) {
 	if isPortAvailable(startPort) {
 		return startPort, nil
 	}
-	
+
 	// If the requested port is not available, try random ports in a reasonable range
 	rand.Seed(time.Now().UnixNano())
 	maxAttempts := 50
 	minPort := startPort
 	maxPort := startPort + 1000
-	
+
 	// Ensure we stay within valid port range
 	if maxPort > 65535 {
 		maxPort = 65535
 	}
-	
+
 	for attempts := 0; attempts < maxAttempts; attempts++ {
 		// Generate a random port in the range
 		randomPort := minPort + rand.Intn(maxPort-minPort+1)
-		
+
 		if isPortAvailable(randomPort) {
 			return randomPort, nil
 		}
 	}
-	
+
 	return 0, fmt.Errorf("unable to find available port after %d attempts in range %d-%d", maxAttempts, minPort, maxPort)
 }
 
@@ -54,18 +54,18 @@ func FindAvailablePortInRange(minPort, maxPort int) (int, error) {
 	if minPort > maxPort {
 		return 0, fmt.Errorf("minPort (%d) must be <= maxPort (%d)", minPort, maxPort)
 	}
-	
+
 	rand.Seed(time.Now().UnixNano())
 	maxAttempts := 50
-	
+
 	for attempts := 0; attempts < maxAttempts; attempts++ {
 		// Generate a random port in the range
 		randomPort := minPort + rand.Intn(maxPort-minPort+1)
-		
+
 		if isPortAvailable(randomPort) {
 			return randomPort, nil
 		}
 	}
-	
+
 	return 0, fmt.Errorf("unable to find available port after %d attempts in range %d-%d", maxAttempts, minPort, maxPort)
 }

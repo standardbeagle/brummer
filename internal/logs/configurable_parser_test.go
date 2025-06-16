@@ -132,7 +132,7 @@ func TestConfigurableErrorParser(t *testing.T) {
 		for _, test := range tests {
 			result := parser.ProcessLine("test-lang", "dev", test.content, time.Now())
 			if result != nil && result.Language != test.expected {
-				t.Errorf("Content '%s': expected language %s, got %s", 
+				t.Errorf("Content '%s': expected language %s, got %s",
 					test.content, test.expected, result.Language)
 			}
 		}
@@ -180,22 +180,22 @@ func TestCustomErrorProcessing(t *testing.T) {
 	t.Run("MongoDB Error", func(t *testing.T) {
 		content := "MongoError: getaddrinfo ENOTFOUND test-host"
 		line2 := "  hostname: 'test-host'"
-		
+
 		result1 := parser.ProcessLine("test-mongo", "dev", content, time.Now())
 		if result1 != nil {
 			t.Error("Expected MongoDB error to be multi-line")
 		}
-		
+
 		parser.ProcessLine("test-mongo", "dev", line2, time.Now())
-		
+
 		// End with non-error line
 		line3 := "Attempting reconnection..."
 		result3 := parser.ProcessLine("test-mongo", "dev", line3, time.Now())
-		
+
 		if result3 == nil {
 			t.Fatal("Expected MongoDB error to be completed")
 		}
-		
+
 		if result3.Type != "MongoError" {
 			t.Errorf("Expected type MongoError, got %s", result3.Type)
 		}
@@ -224,7 +224,7 @@ func TestErrorLimits(t *testing.T) {
 
 	// Generate many errors to test memory limits
 	maxErrors := parser.config.Limits.MaxErrorsInMemory
-	
+
 	// Create more errors than the limit
 	for i := 0; i < maxErrors+10; i++ {
 		content := "Error: Test error " + string(rune(i))
@@ -232,7 +232,7 @@ func TestErrorLimits(t *testing.T) {
 	}
 
 	errors := parser.GetErrors()
-	
+
 	if len(errors) > maxErrors {
 		t.Errorf("Expected at most %d errors in memory, got %d", maxErrors, len(errors))
 	}
@@ -245,7 +245,7 @@ func BenchmarkConfigurableErrorParser(b *testing.B) {
 	}
 
 	testContent := "TypeError: Cannot read property 'length' of undefined"
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		parser.ProcessLine("bench", "dev", testContent, time.Now())

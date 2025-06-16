@@ -749,7 +749,7 @@ func (s *Server) Start() error {
 	if err != nil {
 		return fmt.Errorf("failed to find available port: %w", err)
 	}
-	
+
 	// Update the port if it changed
 	if availablePort != s.port {
 		s.port = availablePort
@@ -1667,9 +1667,9 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 						"error":      data["error"],
 					},
 				})
-				
+
 				response.Data = map[string]interface{}{
-					"status": "forwarded",
+					"status":     "forwarded",
 					"responseId": responseID,
 				}
 			}

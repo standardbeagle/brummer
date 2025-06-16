@@ -9,10 +9,10 @@ import (
 // ConfigurableErrorParser is a new error parser that uses TOML configuration
 type ConfigurableErrorParser struct {
 	config *ErrorParsingConfig
-	
+
 	// Active error contexts being built
 	activeErrors map[string]*ErrorContext
-	
+
 	// Completed errors
 	errors []ErrorContext
 }
@@ -23,7 +23,7 @@ func NewConfigurableErrorParser(configPath string) (*ConfigurableErrorParser, er
 	if err != nil {
 		return nil, fmt.Errorf("failed to load error parsing config: %w", err)
 	}
-	
+
 	return &ConfigurableErrorParser{
 		config:       config,
 		activeErrors: make(map[string]*ErrorContext),
@@ -40,7 +40,7 @@ func NewDefaultConfigurableErrorParser() (*ConfigurableErrorParser, error) {
 func (p *ConfigurableErrorParser) ProcessLine(processID, processName, content string, timestamp time.Time) *ErrorContext {
 	// Strip log prefixes based on configuration
 	cleanContent := p.stripLogPrefixes(content)
-	
+
 	// Check if this line starts a new error
 	if errorType, errorInfo := p.detectErrorStart(cleanContent); errorType != "" {
 		// Create new error context
@@ -55,30 +55,30 @@ func (p *ConfigurableErrorParser) ProcessLine(processID, processName, content st
 			Language:    p.detectLanguage(content),
 			Raw:         []string{content},
 		}
-		
+
 		// Check if this is a single-line error based on config
 		if p.isSingleLineError(errorType) {
 			p.finalizeError(errorCtx)
 			return errorCtx
 		}
-		
+
 		// Store as active error for multi-line processing
 		p.activeErrors[processID] = errorCtx
 		return nil // Don't return yet, we're building the context
 	}
-	
+
 	// Check if this line continues an active error
 	if activeError, exists := p.activeErrors[processID]; exists {
 		if p.isErrorContinuation(content, activeError) {
 			activeError.Raw = append(activeError.Raw, content)
-			
+
 			// Check if it's a stack trace line
 			if p.isStackTraceLine(content, activeError.Language) {
 				activeError.Stack = append(activeError.Stack, content)
 			} else {
 				activeError.Context = append(activeError.Context, content)
 			}
-			
+
 			// Check if we've collected enough context or reached error end
 			maxLines := p.config.Settings.MaxContextLines
 			if len(activeError.Raw) >= maxLines || p.isErrorEnd(content) {
@@ -87,7 +87,7 @@ func (p *ConfigurableErrorParser) ProcessLine(processID, processName, content st
 				delete(p.activeErrors, processID)
 				return activeError
 			}
-			
+
 			return nil // Still building
 		} else {
 			// This line doesn't continue the error, finalize it
@@ -96,26 +96,26 @@ func (p *ConfigurableErrorParser) ProcessLine(processID, processName, content st
 			return activeError
 		}
 	}
-	
+
 	// Don't process standalone errors here - they should be caught by pattern detection above
-	
+
 	return nil
 }
 
 // stripLogPrefixes removes log prefixes based on configuration
 func (p *ConfigurableErrorParser) stripLogPrefixes(content string) string {
 	cleaned := content
-	
+
 	// Remove timestamp patterns
 	for _, regex := range p.config.LogPrefixes.Timestamp.Regexes() {
 		cleaned = regex.ReplaceAllString(cleaned, "")
 	}
-	
+
 	// Remove process patterns
 	for _, regex := range p.config.LogPrefixes.Process.Regexes() {
 		cleaned = regex.ReplaceAllString(cleaned, "")
 	}
-	
+
 	// Remove conditional process patterns (with exclusions)
 	for _, regex := range p.config.LogPrefixes.ConditionalProcess.Regexes() {
 		// Check if any exclude patterns match
@@ -126,12 +126,12 @@ func (p *ConfigurableErrorParser) stripLogPrefixes(content string) string {
 				break
 			}
 		}
-		
+
 		if !shouldExclude {
 			cleaned = regex.ReplaceAllString(cleaned, "")
 		}
 	}
-	
+
 	return cleaned
 }
 
@@ -139,17 +139,17 @@ func (p *ConfigurableErrorParser) stripLogPrefixes(content string) string {
 func (p *ConfigurableErrorParser) detectErrorStart(content string) (string, map[string]string) {
 	// Check specific language patterns first (prioritize over generic)
 	languageOrder := []string{"javascript", "typescript", "react", "vue", "nextjs", "eslint", "go", "python", "java", "rust"}
-	
+
 	for _, language := range languageOrder {
 		if patterns, exists := p.config.ErrorPatterns[language]; exists {
 			for patternName, pattern := range patterns {
 				if matches := pattern.Regex().FindStringSubmatch(content); matches != nil {
 					info := make(map[string]string)
-					
+
 					// Use configured type and severity
 					info["type"] = pattern.Type
 					info["severity"] = pattern.Severity
-					
+
 					// Extract message from regex groups
 					if len(matches) > 1 {
 						// Use the first capturing group as the message
@@ -157,7 +157,7 @@ func (p *ConfigurableErrorParser) detectErrorStart(content string) (string, map[
 					} else {
 						info["message"] = content
 					}
-					
+
 					// For complex patterns with multiple groups, combine them
 					if len(matches) > 2 {
 						parts := make([]string, 0, len(matches)-1)
@@ -168,24 +168,24 @@ func (p *ConfigurableErrorParser) detectErrorStart(content string) (string, map[
 						}
 						info["message"] = strings.Join(parts, ": ")
 					}
-					
+
 					fullPatternName := fmt.Sprintf("%s.%s", language, patternName)
 					return fullPatternName, info
 				}
 			}
 		}
 	}
-	
+
 	// Check generic patterns last
 	if patterns, exists := p.config.ErrorPatterns["generic"]; exists {
 		for patternName, pattern := range patterns {
 			if matches := pattern.Regex().FindStringSubmatch(content); matches != nil {
 				info := make(map[string]string)
-				
+
 				// Use configured type and severity
 				info["type"] = pattern.Type
 				info["severity"] = pattern.Severity
-				
+
 				// Extract message from regex groups
 				if len(matches) > 1 {
 					// Use the first capturing group as the message
@@ -193,7 +193,7 @@ func (p *ConfigurableErrorParser) detectErrorStart(content string) (string, map[
 				} else {
 					info["message"] = content
 				}
-				
+
 				// For complex patterns with multiple groups, combine them
 				if len(matches) > 2 {
 					parts := make([]string, 0, len(matches)-1)
@@ -204,13 +204,13 @@ func (p *ConfigurableErrorParser) detectErrorStart(content string) (string, map[
 					}
 					info["message"] = strings.Join(parts, ": ")
 				}
-				
+
 				fullPatternName := fmt.Sprintf("generic.%s", patternName)
 				return fullPatternName, info
 			}
 		}
 	}
-	
+
 	return "", nil
 }
 
@@ -220,14 +220,14 @@ func (p *ConfigurableErrorParser) isErrorContinuation(content string, activeErro
 	if strings.TrimSpace(content) == "" && len(activeError.Raw) < 10 {
 		return true
 	}
-	
+
 	// Check general continuation patterns
 	for _, regex := range p.config.ContinuationPatterns.General.Regexes() {
 		if regex.MatchString(content) {
 			return true
 		}
 	}
-	
+
 	// Check language-specific continuation patterns
 	switch activeError.Language {
 	case "javascript":
@@ -243,12 +243,12 @@ func (p *ConfigurableErrorParser) isErrorContinuation(content string, activeErro
 			}
 		}
 	}
-	
+
 	// Check if it's a stack trace line
 	if p.isStackTraceLine(content, activeError.Language) {
 		return true
 	}
-	
+
 	return false
 }
 
@@ -262,7 +262,7 @@ func (p *ConfigurableErrorParser) isStackTraceLine(content, language string) boo
 			}
 		}
 	}
-	
+
 	// Check generic stack patterns
 	if stackConfig, exists := p.config.StackPatterns["generic"]; exists {
 		for _, regex := range stackConfig.Regexes() {
@@ -271,7 +271,7 @@ func (p *ConfigurableErrorParser) isStackTraceLine(content, language string) boo
 			}
 		}
 	}
-	
+
 	return false
 }
 
@@ -293,28 +293,28 @@ func (p *ConfigurableErrorParser) determineSeverity(content, configSeverity stri
 	if configSeverity != "" {
 		return configSeverity
 	}
-	
+
 	lower := strings.ToLower(content)
-	
+
 	// Check critical keywords from config
 	for _, keyword := range p.config.Settings.CriticalKeywords {
 		if strings.Contains(lower, strings.ToLower(keyword)) {
 			return "critical"
 		}
 	}
-	
+
 	// Standard severity detection
 	if strings.Contains(lower, "error") ||
 		strings.Contains(lower, "failed") ||
 		strings.Contains(lower, "exception") {
 		return "error"
 	}
-	
+
 	if strings.Contains(lower, "warn") ||
 		strings.Contains(lower, "warning") {
 		return "warning"
 	}
-	
+
 	return "info"
 }
 
@@ -323,7 +323,7 @@ func (p *ConfigurableErrorParser) detectLanguage(content string) string {
 	if !p.config.Settings.AutoDetectLanguage {
 		return "unknown"
 	}
-	
+
 	// Check each configured language
 	for language, langConfig := range p.config.LanguageDetection {
 		// Check file extensions
@@ -332,14 +332,14 @@ func (p *ConfigurableErrorParser) detectLanguage(content string) string {
 				return language
 			}
 		}
-		
+
 		// Check stack patterns
 		for _, pattern := range langConfig.StackPatterns {
 			if strings.Contains(content, pattern) {
 				return language
 			}
 		}
-		
+
 		// Check framework patterns
 		lower := strings.ToLower(content)
 		for _, pattern := range langConfig.FrameworkPatterns {
@@ -347,7 +347,7 @@ func (p *ConfigurableErrorParser) detectLanguage(content string) string {
 				return language
 			}
 		}
-		
+
 		// Check error patterns
 		for _, pattern := range langConfig.ErrorPatterns {
 			if strings.Contains(content, pattern) {
@@ -355,7 +355,7 @@ func (p *ConfigurableErrorParser) detectLanguage(content string) string {
 			}
 		}
 	}
-	
+
 	return "unknown"
 }
 
@@ -366,15 +366,15 @@ func (p *ConfigurableErrorParser) isSingleLineError(errorType string) bool {
 	if len(parts) != 2 {
 		return false
 	}
-	
+
 	language, patternName := parts[0], parts[1]
-	
+
 	if patterns, exists := p.config.ErrorPatterns[language]; exists {
 		if pattern, exists := patterns[patternName]; exists {
 			return pattern.SingleLine
 		}
 	}
-	
+
 	return false
 }
 
@@ -384,13 +384,13 @@ func (p *ConfigurableErrorParser) finalizeError(errorCtx *ErrorContext) {
 	if errorCtx.Message == "" && len(errorCtx.Raw) > 0 {
 		errorCtx.Message = errorCtx.Raw[0]
 	}
-	
+
 	// Apply custom error type processing
 	p.applyCustomErrorProcessing(errorCtx)
-	
+
 	// Store the completed error
 	p.errors = append(p.errors, *errorCtx)
-	
+
 	// Enforce memory limits
 	if len(p.errors) > p.config.Limits.MaxErrorsInMemory {
 		// Remove oldest errors
@@ -405,22 +405,22 @@ func (p *ConfigurableErrorParser) applyCustomErrorProcessing(errorCtx *ErrorCont
 		// Check if this error matches any custom type patterns
 		matched := false
 		for _, regex := range customType.Regexes() {
-			if regex.MatchString(errorCtx.Message) || 
-			   (len(errorCtx.Raw) > 0 && regex.MatchString(errorCtx.Raw[0])) {
+			if regex.MatchString(errorCtx.Message) ||
+				(len(errorCtx.Raw) > 0 && regex.MatchString(errorCtx.Raw[0])) {
 				matched = true
 				break
 			}
 		}
-		
+
 		if matched {
 			// Update error type
 			errorCtx.Type = customType.Type
-			
+
 			// Apply custom processing
 			if customType.ExtractHostname && customType.HostnameRegex() != nil {
 				p.extractHostname(errorCtx, customType)
 			}
-			
+
 			// Apply DNS error replacements
 			for old, new := range customType.DNSErrorReplacement {
 				errorCtx.Message = strings.ReplaceAll(errorCtx.Message, old, new)
@@ -447,7 +447,7 @@ func (p *ConfigurableErrorParser) GetErrors() []ErrorContext {
 		p.errors = append(p.errors, *activeError)
 	}
 	p.activeErrors = make(map[string]*ErrorContext)
-	
+
 	return p.errors
 }
 
@@ -468,7 +468,7 @@ func (p *ConfigurableErrorParser) ReloadConfig(configPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to reload config: %w", err)
 	}
-	
+
 	p.config = config
 	return nil
 }

@@ -35,10 +35,10 @@ type LogEntry struct {
 // CollapsedLogEntry represents a log entry that may contain multiple identical consecutive logs
 type CollapsedLogEntry struct {
 	LogEntry
-	Count         int       // Number of times this exact log appeared consecutively
-	FirstSeen     time.Time // Timestamp of the first occurrence
-	LastSeen      time.Time // Timestamp of the last occurrence
-	IsCollapsed   bool      // Whether this entry represents collapsed logs
+	Count       int       // Number of times this exact log appeared consecutively
+	FirstSeen   time.Time // Timestamp of the first occurrence
+	LastSeen    time.Time // Timestamp of the last occurrence
+	IsCollapsed bool      // Whether this entry represents collapsed logs
 }
 
 type Store struct {
@@ -317,19 +317,77 @@ func (s *Store) GetFilters() []filters.Filter {
 }
 
 var urlRegex = regexp.MustCompile(`https?://[^\s<>"{}|\\^\[\]` + "`" + `]+`)
+var ansiRegex = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+// isValidURL checks if a URL is valid and complete
+func (s *Store) isValidURL(urlStr string) bool {
+	// Must have protocol
+	if !strings.Contains(urlStr, "://") {
+		return false
+	}
+	
+	// Split by protocol
+	parts := strings.SplitN(urlStr, "://", 2)
+	if len(parts) != 2 {
+		return false
+	}
+	
+	// Host part must not be empty
+	hostPart := parts[1]
+	if hostPart == "" {
+		return false
+	}
+	
+	// If there's a colon, it should be followed by a port number or path
+	if idx := strings.Index(hostPart, ":"); idx != -1 {
+		afterColon := hostPart[idx+1:]
+		// Should have something after the colon (port or path)
+		if afterColon == "" || afterColon == "/" {
+			return false
+		}
+	}
+	
+	return true
+}
 
 func (s *Store) detectURLs(content string) []string {
-	matches := urlRegex.FindAllString(content, -1)
-	// Remove trailing punctuation
-	for i, url := range matches {
+	// Strip ANSI escape codes before detecting URLs
+	cleanContent := ansiRegex.ReplaceAllString(content, "")
+	
+	matches := urlRegex.FindAllString(cleanContent, -1)
+	validURLs := []string{}
+
+	for _, url := range matches {
+		// Remove trailing punctuation
 		url = strings.TrimRight(url, ".,;!?)")
-		// Don't trim colons that are followed by a slash (port:/)
-		if strings.HasSuffix(url, ":") && !strings.HasSuffix(url, ":/") && !strings.HasSuffix(url, "://") {
-			url = strings.TrimRight(url, ":")
+
+		// Handle trailing colons
+		if strings.HasSuffix(url, ":") {
+			// Find the last colon
+			lastColon := strings.LastIndex(url, ":")
+			// Check if this is not part of the protocol (://)
+			if lastColon > 0 {
+				// Check bounds before accessing
+				if lastColon >= 2 && url[lastColon-1:lastColon] == "/" {
+					// This is part of :// or :/
+					// Keep the URL as is
+				} else {
+					// This is a trailing colon, remove it
+					url = url[:lastColon]
+				}
+			}
 		}
-		matches[i] = url
+
+		// Validate the URL has protocol and host
+		if strings.Contains(url, "://") {
+			parts := strings.SplitN(url, "://", 2)
+			if len(parts) == 2 && len(parts[1]) > 0 {
+				validURLs = append(validURLs, url)
+			}
+		}
 	}
-	return matches
+
+	return validURLs
 }
 
 func (s *Store) GetErrors() []LogEntry {
@@ -419,8 +477,14 @@ func (s *Store) GetErrorContexts() []ErrorContext {
 // rebuildURLsList rebuilds the urls slice from the urlMap
 func (s *Store) rebuildURLsList() {
 	s.urls = make([]URLEntry, 0, len(s.urlMap))
-	for _, urlEntry := range s.urlMap {
-		s.urls = append(s.urls, *urlEntry)
+	for url, urlEntry := range s.urlMap {
+		// Validate URL before including it
+		if s.isValidURL(url) {
+			s.urls = append(s.urls, *urlEntry)
+		} else {
+			// Remove invalid URLs from the map
+			delete(s.urlMap, url)
+		}
 	}
 
 	// Sort by timestamp (most recent first)
@@ -493,7 +557,7 @@ func (s *Store) DetectURLsInContent(content string) []string {
 func (s *Store) GetAllCollapsed() []CollapsedLogEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	return s.collapseConsecutiveDuplicates(s.entries)
 }
 
@@ -501,12 +565,12 @@ func (s *Store) GetAllCollapsed() []CollapsedLogEntry {
 func (s *Store) GetByProcessCollapsed(processID string) []CollapsedLogEntry {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	
+
 	indices, exists := s.byProcess[processID]
 	if !exists {
 		return []CollapsedLogEntry{}
 	}
-	
+
 	// Build the log entries for this process
 	entries := make([]LogEntry, 0, len(indices))
 	for _, idx := range indices {
@@ -514,7 +578,7 @@ func (s *Store) GetByProcessCollapsed(processID string) []CollapsedLogEntry {
 			entries = append(entries, s.entries[idx])
 		}
 	}
-	
+
 	return s.collapseConsecutiveDuplicates(entries)
 }
 
@@ -523,9 +587,9 @@ func (s *Store) collapseConsecutiveDuplicates(entries []LogEntry) []CollapsedLog
 	if len(entries) == 0 {
 		return []CollapsedLogEntry{}
 	}
-	
+
 	result := make([]CollapsedLogEntry, 0, len(entries))
-	
+
 	// Start with the first entry
 	current := CollapsedLogEntry{
 		LogEntry:    entries[0],
@@ -534,10 +598,10 @@ func (s *Store) collapseConsecutiveDuplicates(entries []LogEntry) []CollapsedLog
 		LastSeen:    entries[0].Timestamp,
 		IsCollapsed: false,
 	}
-	
+
 	for i := 1; i < len(entries); i++ {
 		entry := entries[i]
-		
+
 		// Check if this entry is identical to the current one (same process and content)
 		if s.areLogsIdentical(current.LogEntry, entry) {
 			// Increment count and update last seen timestamp
@@ -556,10 +620,10 @@ func (s *Store) collapseConsecutiveDuplicates(entries []LogEntry) []CollapsedLog
 			}
 		}
 	}
-	
+
 	// Add the last entry
 	result = append(result, current)
-	
+
 	return result
 }
 

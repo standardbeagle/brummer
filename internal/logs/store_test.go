@@ -42,12 +42,27 @@ func TestDetectURLsInContent(t *testing.T) {
 			content:  "Starting http://localhost:3000, server at http://localhost:3000",
 			expected: []string{"http://localhost:3000", "http://localhost:3000"},
 		},
+		{
+			name:     "Incomplete URL with trailing colon",
+			content:  "Starting https://localhost:",
+			expected: []string{}, // Should not detect incomplete URLs
+		},
+		{
+			name:     "URL with port followed by colon",
+			content:  "Server at http://localhost:3000: ready",
+			expected: []string{"http://localhost:3000"},
+		},
+		{
+			name:     "HTTPS URL with no port",
+			content:  "Secure server at https://example.com ready",
+			expected: []string{"https://example.com"},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			urls := store.DetectURLsInContent(tt.content)
-			
+
 			if len(urls) != len(tt.expected) {
 				t.Errorf("DetectURLsInContent() returned %d URLs, want %d", len(urls), len(tt.expected))
 				t.Errorf("Got: %v", urls)

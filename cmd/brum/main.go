@@ -4,11 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
-	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -121,7 +119,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		fmt.Printf("brum version %s\n", Version)
 		return
 	}
-	
+
 	// Handle settings flag
 	if showSettings {
 		showCurrentSettings()
@@ -168,7 +166,7 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		// Only start proxy server if we have explicit proxy parameters or full proxy mode
 		shouldStartProxy := mode == proxy.ProxyModeFull || proxyURL != "" || standardProxy
-		
+
 		if shouldStartProxy {
 			proxyServer = proxy.NewServerWithMode(proxyPort, mode, eventBus)
 			if err := proxyServer.Start(); err != nil {
@@ -182,7 +180,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			} else {
 				// Get the actual port being used (may be different if there was a conflict)
 				actualPort := proxyServer.GetPort()
-				
+
 				// Only write to stdout if TUI is disabled
 				if noTUI {
 					if mode == proxy.ProxyModeFull {
@@ -257,7 +255,7 @@ func runApp(cmd *cobra.Command, args []string) {
 							}
 						}
 					}
-					
+
 					// Process detected URLs
 					for _, url := range detectedURLs {
 						// Check if this URL is already proxied
@@ -405,10 +403,10 @@ func runApp(cmd *cobra.Command, args []string) {
 					log.Fatal("MCP server error:", err)
 				}
 			}()
-			
+
 			// Give the server a moment to start and potentially change ports
 			time.Sleep(100 * time.Millisecond)
-			
+
 			// Display the actual port being used (may be different if there was a conflict)
 			if mcpStreamable, ok := mcpServer.(*mcp.StreamableServer); ok {
 				fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", mcpStreamable.GetPort())
@@ -419,7 +417,7 @@ func runApp(cmd *cobra.Command, args []string) {
 
 			// Set up signal handling
 			sigChan := make(chan os.Signal, 1)
-			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+			setupSignalHandling(sigChan)
 
 			// Wait for signal
 			<-sigChan
@@ -455,7 +453,7 @@ func runApp(cmd *cobra.Command, args []string) {
 	if !noTUI {
 		// Set up signal handling for cleanup
 		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+		setupSignalHandling(sigChan)
 
 		// Create and run TUI
 		initialView := tui.ViewScriptSelector
@@ -511,7 +509,7 @@ func runApp(cmd *cobra.Command, args []string) {
 func extractURLLabel(logLine, processName string) string {
 	// Clean the log line first
 	line := strings.TrimSpace(logLine)
-	
+
 	// Common patterns for server startup messages with labels
 	patterns := []struct {
 		regex   *regexp.Regexp
@@ -533,7 +531,7 @@ func extractURLLabel(logLine, processName string) string {
 		{regexp.MustCompile(`(?i)(frontend|backend|api|admin|dashboard|web|client|server)\s+.*https?://`), func(m []string) string { return strings.Title(strings.ToLower(m[1])) }},
 		{regexp.MustCompile(`(?i)https?://.*\s+(frontend|backend|api|admin|dashboard|web|client|server)`), func(m []string) string { return strings.Title(strings.ToLower(m[1])) }},
 	}
-	
+
 	for _, p := range patterns {
 		if matches := p.regex.FindStringSubmatch(line); len(matches) > 1 {
 			label := p.extract(matches)
@@ -544,7 +542,7 @@ func extractURLLabel(logLine, processName string) string {
 			}
 		}
 	}
-	
+
 	// Default to process name if no meaningful label found
 	return processName
 }
@@ -555,6 +553,6 @@ func showCurrentSettings() {
 		fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		os.Exit(1)
 	}
-	
+
 	fmt.Print(cfg.DisplaySettingsWithSources())
 }
