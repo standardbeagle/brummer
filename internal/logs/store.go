@@ -322,7 +322,11 @@ func (s *Store) detectURLs(content string) []string {
 	matches := urlRegex.FindAllString(content, -1)
 	// Remove trailing punctuation
 	for i, url := range matches {
-		url = strings.TrimRight(url, ".,;:!?)")
+		url = strings.TrimRight(url, ".,;!?)")
+		// Don't trim colons that are followed by a slash (port:/)
+		if strings.HasSuffix(url, ":") && !strings.HasSuffix(url, ":/") && !strings.HasSuffix(url, "://") {
+			url = strings.TrimRight(url, ":")
+		}
 		matches[i] = url
 	}
 	return matches
