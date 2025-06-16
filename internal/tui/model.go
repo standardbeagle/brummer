@@ -169,6 +169,10 @@ type Model struct {
 	detectedCommands []parser.ExecutableCommand
 	monorepoInfo     *parser.MonorepoInfo
 
+	// Custom command dialog state
+	showingCustomCommand bool
+	customCommandInput   textinput.Model
+
 	// UI state
 	copyNotification string
 	notificationTime time.Time
@@ -1057,6 +1061,47 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(cmds...)
 	}
 
+	// Handle custom command dialog
+	if m.showingCustomCommand {
+		// Handle escape key to close dialog
+		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, m.keys.Back) {
+			m.showingCustomCommand = false
+			return m, nil
+		}
+
+		// Handle enter key to run command
+		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, m.keys.Enter) {
+			command := strings.TrimSpace(m.customCommandInput.Value())
+			if command != "" {
+				m.showingCustomCommand = false
+				// Parse the command and arguments
+				parts := strings.Fields(command)
+				if len(parts) > 0 {
+					cmdName := parts[0]
+					args := parts[1:]
+					go func() {
+						_, err := m.processMgr.StartCommand(command, cmdName, args)
+						if err != nil {
+							m.logStore.Add("system", "System", fmt.Sprintf("Error starting command: %v", err), true)
+							m.updateChan <- logUpdateMsg{}
+						}
+					}()
+					m.currentView = ViewProcesses
+					m.updateProcessList()
+					return m, m.waitForUpdates()
+				}
+			}
+			return m, nil
+		}
+
+		// Update the text input
+		newInput, cmd := m.customCommandInput.Update(msg)
+		m.customCommandInput = newInput
+		cmds = append(cmds, cmd)
+
+		return m, tea.Batch(cmds...)
+	}
+
 	switch m.currentView {
 	case ViewWeb:
 		// Handle web view specific keys
@@ -1389,6 +1434,10 @@ func (m Model) renderLayout(content string) string {
 func (m Model) renderContent() string {
 	if m.showingRunDialog {
 		return m.renderRunDialog()
+	}
+
+	if m.showingCustomCommand {
+		return m.renderCustomCommandDialog()
 	}
 
 	switch m.currentView {
@@ -2955,7 +3004,7 @@ func (m *Model) updateSettingsList() {
 		item := packageManagerSettingsItem{packageManagerItem{
 			manager:  mgr,
 			current:  mgr.Manager == currentMgr,
-			fromJSON: false, // TODO: Add method to check if from package.json
+			fromJSON: m.processMgr.IsPackageManagerFromJSON(mgr.Manager),
 		}}
 		items = append(items, item)
 	}
@@ -3417,8 +3466,13 @@ func (m *Model) handleRunCommand() tea.Cmd {
 		return m.waitForUpdates()
 
 	case runCustomItem:
-		// TODO: Show custom command input dialog
-		m.logStore.Add("system", "System", "Custom command dialog not yet implemented", true)
+		// Show custom command input dialog
+		m.showingCustomCommand = true
+		m.customCommandInput = textinput.New()
+		m.customCommandInput.Placeholder = "Enter command to run (e.g., npm test, python script.py)"
+		m.customCommandInput.Focus()
+		m.customCommandInput.CharLimit = 200
+		m.customCommandInput.Width = 60
 		return nil
 	}
 
@@ -3447,6 +3501,59 @@ func (m Model) renderRunDialog() string {
 	}
 
 	content.WriteString(m.commandsList.View())
+
+	return content.String()
+}
+
+func (m Model) renderCustomCommandDialog() string {
+	var content strings.Builder
+
+	// Create a dialog box style
+	dialogStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		Padding(1, 2).
+		Width(70)
+
+	// Title
+	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
+	title := titleStyle.Render("🚀 Run Custom Command")
+
+	// Instructions
+	instructions := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Render("Enter command to run | Run: Enter | Cancel: Esc")
+
+	// Build dialog content
+	dialogContent := lipgloss.JoinVertical(lipgloss.Left,
+		title,
+		"",
+		instructions,
+		"",
+		m.customCommandInput.View(),
+	)
+
+	// Apply dialog styling
+	dialog := dialogStyle.Render(dialogContent)
+
+	// Center the dialog
+	width, height := m.width, m.height
+	dialogWidth := lipgloss.Width(dialog)
+	dialogHeight := lipgloss.Height(dialog)
+
+	// Calculate padding for centering
+	horizontalPadding := (width - dialogWidth) / 2
+	verticalPadding := (height - dialogHeight) / 2
+
+	// Add padding
+	if horizontalPadding > 0 {
+		dialog = lipgloss.NewStyle().MarginLeft(horizontalPadding).Render(dialog)
+	}
+	if verticalPadding > 0 {
+		dialog = lipgloss.NewStyle().MarginTop(verticalPadding).Render(dialog)
+	}
+
+	content.WriteString(dialog)
 
 	return content.String()
 }

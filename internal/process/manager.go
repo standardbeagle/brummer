@@ -425,6 +425,32 @@ func (m *Manager) GetCurrentPackageManager() parser.PackageManager {
 	return m.packageMgr
 }
 
+// IsPackageManagerFromJSON checks if the given package manager was specified in package.json
+func (m *Manager) IsPackageManagerFromJSON(pm parser.PackageManager) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	if m.packageJSON == nil {
+		return false
+	}
+	
+	// Check packageManager field
+	if m.packageJSON.PackageManager != "" {
+		parts := strings.Split(m.packageJSON.PackageManager, "@")
+		if len(parts) > 0 && strings.EqualFold(parts[0], string(pm)) {
+			return true
+		}
+	}
+	
+	// Check engines field
+	if m.packageJSON.Engines != nil {
+		_, hasEngine := m.packageJSON.Engines[string(pm)]
+		return hasEngine
+	}
+	
+	return false
+}
+
 func (m *Manager) SetUserPackageManager(pm parser.PackageManager) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()

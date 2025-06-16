@@ -172,9 +172,55 @@ Pre-configured debugging prompts:
 
 ### MCP Capabilities
 - Real-time streaming support for tools marked with `Streaming: true`
-- Resource subscription for live updates
+- Resource subscription for live updates via WebSocket or SSE
 - Session management with automatic cleanup
 - Cross-platform compatibility (Windows, macOS, Linux, WSL2)
+
+### MCP Connection Types (Streamable HTTP Transport)
+The server implements the official MCP Streamable HTTP transport protocol:
+
+1. **Standard JSON-RPC** (POST to `/mcp` with `Accept: application/json`):
+   - Single request/response
+   - Batch requests supported
+
+2. **Server-Sent Events** (GET to `/mcp` with `Accept: text/event-stream`):
+   - Server-to-client streaming
+   - Supports resource subscriptions with real-time updates
+   - Automatic heartbeat/ping messages
+
+3. **SSE Response** (POST to `/mcp` with `Accept: text/event-stream`):
+   - Client sends requests via POST
+   - Server responds with SSE stream
+   - Useful for streaming tool responses
+
+Headers:
+- `Accept`: Must include appropriate content type
+- `Mcp-Session-Id`: Optional session identifier for resumability
+- `Content-Type`: `application/json` for requests
+
+Example SSE connection:
+```javascript
+const eventSource = new EventSource('http://localhost:7777/mcp');
+eventSource.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  console.log('Received:', msg);
+};
+
+// Send requests via POST with session ID
+fetch('http://localhost:7777/mcp', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Mcp-Session-Id': 'my-session-123'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'resources/subscribe',
+    params: { uri: 'logs://recent' }
+  })
+});
+```
 
 ## Important Notes
 

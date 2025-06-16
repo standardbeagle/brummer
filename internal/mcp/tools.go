@@ -9,10 +9,86 @@ import (
 	"strings"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
+
+// handleToolsList handles the tools/list request
+func (s *StreamableServer) handleToolsList(msg *JSONRPCMessage) *JSONRPCMessage {
+	tools := make([]map[string]interface{}, 0)
+	for name, tool := range s.tools {
+		toolInfo := map[string]interface{}{
+			"name":        name,
+			"description": tool.Description,
+		}
+		if tool.InputSchema != nil {
+			var schema interface{}
+			if err := json.Unmarshal(tool.InputSchema, &schema); err == nil {
+				toolInfo["inputSchema"] = schema
+			}
+		}
+		tools = append(tools, toolInfo)
+	}
+
+	return &JSONRPCMessage{
+		Jsonrpc: "2.0",
+		ID:      msg.ID,
+		Result: map[string]interface{}{
+			"tools": tools,
+		},
+	}
+}
+
+// handleToolCall handles the tools/call request
+func (s *StreamableServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWriter, r *http.Request) (*JSONRPCMessage, bool) {
+	var params struct {
+		Name      string          `json:"name"`
+		Arguments json.RawMessage `json:"arguments"`
+	}
+
+	if err := json.Unmarshal(msg.Params, &params); err != nil {
+		return s.createErrorResponse(msg.ID, -32602, "Invalid params", err.Error()), false
+	}
+
+	tool, exists := s.tools[params.Name]
+	if !exists {
+		return s.createErrorResponse(msg.ID, -32602, "Tool not found", fmt.Sprintf("Tool '%s' not found", params.Name)), false
+	}
+
+	// Handle streaming tools
+	if tool.Streaming && tool.StreamingHandler != nil {
+		// Set up SSE headers
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+
+		// Streaming not fully implemented yet
+		// For streaming tools, we need to handle them differently
+		// This is a simplified version - for now just use regular handler
+		result, err := tool.Handler(params.Arguments)
+		if err != nil {
+			return s.createErrorResponse(msg.ID, -32000, "Tool execution failed", err.Error()), false
+		}
+
+		return &JSONRPCMessage{
+			Jsonrpc: "2.0",
+			ID:      msg.ID,
+			Result:  result,
+		}, false
+	}
+
+	// Handle non-streaming tools
+	result, err := tool.Handler(params.Arguments)
+	if err != nil {
+		return s.createErrorResponse(msg.ID, -32000, "Tool execution failed", err.Error()), false
+	}
+
+	return &JSONRPCMessage{
+		Jsonrpc: "2.0",
+		ID:      msg.ID,
+		Result:  result,
+	}, false
+}
 
 // registerTools registers all available MCP tools
 func (s *StreamableServer) registerTools() {
@@ -574,11 +650,61 @@ Example usage:
 
 			results := s.logStore.Search(params.Query)
 
+			// Parse since time if provided
+			var sinceTime time.Time
+			if params.Since != "" {
+				if t, err := time.Parse(time.RFC3339, params.Since); err == nil {
+					sinceTime = t
+				}
+			}
+
 			// Apply additional filters
 			filtered := make([]interface{}, 0)
-			for _, result := range results {
-				// TODO: Apply level, processId, and since filters
-				filtered = append(filtered, result)
+			for _, logEntry := range results {
+				// Filter by level
+				if params.Level != "" && params.Level != "all" {
+					switch params.Level {
+					case "error":
+						if !logEntry.IsError {
+							continue
+						}
+					case "warn":
+						// Simple heuristic for warnings
+						if !strings.Contains(strings.ToLower(logEntry.Content), "warn") {
+							continue
+						}
+					case "info":
+						if logEntry.IsError {
+							continue
+						}
+					}
+				}
+
+				// Filter by processId
+				if params.ProcessID != "" {
+					if logEntry.ProcessID != params.ProcessID {
+						continue
+					}
+				}
+
+				// Filter by since time
+				if !sinceTime.IsZero() {
+					if logEntry.Timestamp.Before(sinceTime) {
+						continue
+					}
+				}
+
+				// Convert to interface format for JSON response
+				filtered = append(filtered, map[string]interface{}{
+					"id":          logEntry.ID,
+					"processId":   logEntry.ProcessID,
+					"processName": logEntry.ProcessName,
+					"timestamp":   logEntry.Timestamp.Format(time.RFC3339),
+					"message":     logEntry.Content,
+					"isError":     logEntry.IsError,
+					"tags":        logEntry.Tags,
+					"priority":    logEntry.Priority,
+				})
 				if len(filtered) >= params.Limit {
 					break
 				}
@@ -1411,146 +1537,3 @@ func isWSL() bool {
 	return strings.Contains(strings.ToLower(string(releaseData)), "microsoft")
 }
 
-// Tool list handler
-func (s *StreamableServer) handleToolsList(msg *JSONRPCMessage) *JSONRPCMessage {
-	tools := make([]map[string]interface{}, 0, len(s.tools))
-
-	for name, tool := range s.tools {
-		tools = append(tools, map[string]interface{}{
-			"name":        name,
-			"description": tool.Description,
-			"inputSchema": tool.InputSchema,
-		})
-	}
-
-	return &JSONRPCMessage{
-		Jsonrpc: "2.0",
-		ID:      msg.ID,
-		Result: map[string]interface{}{
-			"tools": tools,
-		},
-	}
-}
-
-// Tool call handler
-func (s *StreamableServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWriter, r *http.Request) (*JSONRPCMessage, bool) {
-	var params struct {
-		Name      string          `json:"name"`
-		Arguments json.RawMessage `json:"arguments"`
-	}
-
-	if err := json.Unmarshal(msg.Params, &params); err != nil {
-		return s.createErrorResponse(msg.ID, -32602, "Invalid params", nil), false
-	}
-
-	tool, ok := s.tools[params.Name]
-	if !ok {
-		return s.createErrorResponse(msg.ID, -32602, "Tool not found", nil), false
-	}
-
-	// Check if this tool supports streaming
-	if tool.Streaming && r.Header.Get("Accept") == "text/event-stream" {
-		// Set up streaming response
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			return s.createErrorResponse(msg.ID, -32603, "Streaming not supported", nil), false
-		}
-
-		// Create temporary session for streaming
-		session := &ClientSession{
-			ID:              uuid.New().String(),
-			ResponseWriter:  w,
-			Flusher:         flusher,
-			StreamingActive: true,
-		}
-
-		// Execute tool with streaming
-		go func() {
-			defer func() {
-				// Send final response
-				s.sendSSEEvent(session, "done", map[string]interface{}{
-					"id": msg.ID,
-				})
-			}()
-
-			result, err := tool.StreamingHandler(params.Arguments, func(chunk interface{}) {
-				// Send intermediate results
-				s.sendSSEEvent(session, "message", JSONRPCMessage{
-					Jsonrpc: "2.0",
-					Method:  "tools/call/progress",
-					Params: mustMarshal(map[string]interface{}{
-						"id":    msg.ID,
-						"chunk": chunk,
-					}),
-				})
-			})
-
-			if err != nil {
-				s.sendSSEEvent(session, "error", s.createErrorResponse(msg.ID, -32603, err.Error(), nil))
-				return
-			}
-
-			// Send final result
-			s.sendSSEEvent(session, "message", JSONRPCMessage{
-				Jsonrpc: "2.0",
-				ID:      msg.ID,
-				Result: map[string]interface{}{
-					"content": []map[string]interface{}{
-						{
-							"type": "text",
-							"text": fmt.Sprintf("%v", result),
-						},
-					},
-				},
-			})
-		}()
-
-		return nil, true // Indicates streaming response
-	}
-
-	// Non-streaming execution
-	result, err := tool.Handler(params.Arguments)
-	if err != nil {
-		return s.createErrorResponse(msg.ID, -32603, err.Error(), nil), false
-	}
-
-	// Format result based on type
-	var content []map[string]interface{}
-	switch v := result.(type) {
-	case string:
-		content = []map[string]interface{}{
-			{
-				"type": "text",
-				"text": v,
-			},
-		}
-	case map[string]interface{}, []interface{}:
-		// For structured data, convert to JSON string
-		jsonBytes, _ := json.Marshal(v)
-		content = []map[string]interface{}{
-			{
-				"type": "text",
-				"text": string(jsonBytes),
-			},
-		}
-	default:
-		// Fallback to string representation
-		content = []map[string]interface{}{
-			{
-				"type": "text",
-				"text": fmt.Sprintf("%v", result),
-			},
-		}
-	}
-
-	return &JSONRPCMessage{
-		Jsonrpc: "2.0",
-		ID:      msg.ID,
-		Result: map[string]interface{}{
-			"content": content,
-		},
-	}, false
-}

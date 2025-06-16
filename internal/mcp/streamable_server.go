@@ -69,6 +69,14 @@ type StreamableServer struct {
 	// REPL response handlers
 	replMu            sync.RWMutex
 	replResponseChans map[string]chan interface{}
+
+	// Resource subscriptions
+	subscriptionsMu sync.RWMutex
+	subscriptions   map[string]map[string]bool // sessionID -> resource URI -> subscribed
+
+	// Resource update handlers
+	updateHandlersMu sync.RWMutex
+	updateHandlers   map[string]chan ResourceUpdate // sessionID -> update channel
 }
 
 type ClientSession struct {
@@ -79,6 +87,7 @@ type ClientSession struct {
 	Flusher         http.Flusher
 	StreamingActive bool
 	mu              sync.Mutex
+	subscriptions   map[string]bool // resource URI -> subscribed
 }
 
 type ServerInfo struct {
@@ -141,6 +150,12 @@ type PromptArgument struct {
 	Required    bool   `json:"required"`
 }
 
+// ResourceUpdate represents a resource change notification
+type ResourceUpdate struct {
+	URI      string      `json:"uri"`
+	Contents interface{} `json:"contents"`
+}
+
 // NewStreamableServer creates a new MCP server with streaming support
 func NewStreamableServer(port int, processMgr *process.Manager, logStore *logs.Store, proxyServer *proxy.Server, eventBus *events.EventBus) *StreamableServer {
 	s := &StreamableServer{
@@ -155,6 +170,8 @@ func NewStreamableServer(port int, processMgr *process.Manager, logStore *logs.S
 		proxyServer:       proxyServer,
 		eventBus:          eventBus,
 		replResponseChans: make(map[string]chan interface{}),
+		subscriptions:     make(map[string]map[string]bool),
+		updateHandlers:    make(map[string]chan ResourceUpdate),
 		serverInfo: ServerInfo{
 			Name:    "brummer-mcp",
 			Version: "2.0.0",
@@ -183,12 +200,16 @@ func NewStreamableServer(port int, processMgr *process.Manager, logStore *logs.S
 	s.registerTools()
 	s.registerResources()
 	s.registerPrompts()
+	s.setupResourceUpdateHandlers()
 
 	return s
 }
 
 func (s *StreamableServer) setupRoutes() {
-	// Main MCP endpoint
+	// Main MCP endpoint implementing Streamable HTTP Transport
+	// - POST with Accept: application/json → Standard JSON-RPC response
+	// - POST with Accept: text/event-stream → SSE stream response
+	// - GET with Accept: text/event-stream → SSE streaming connection
 	s.router.HandleFunc("/mcp", s.handleRequest).Methods("POST", "GET")
 
 	// Legacy endpoints for backward compatibility
@@ -205,13 +226,37 @@ func (s *StreamableServer) setupRoutes() {
 }
 
 func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request) {
-	// Set appropriate headers
-	w.Header().Set("Content-Type", "application/json")
+	// Check Accept header for proper content negotiation
+	acceptHeader := r.Header.Get("Accept")
+	// acceptsJSON := strings.Contains(acceptHeader, "application/json") || acceptHeader == "" || acceptHeader == "*/*"
+	acceptsSSE := strings.Contains(acceptHeader, "text/event-stream")
 
 	// Handle GET requests for SSE streaming
 	if r.Method == "GET" {
+		if !acceptsSSE {
+			http.Error(w, "GET requests must accept text/event-stream", http.StatusNotAcceptable)
+			return
+		}
 		s.handleStreamingConnection(w, r)
 		return
+	}
+
+	// Handle POST requests
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Check if client wants SSE response
+	wantsSSE := acceptsSSE && strings.Contains(acceptHeader, "text/event-stream")
+
+	// Set appropriate headers
+	if wantsSSE {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+	} else {
+		w.Header().Set("Content-Type", "application/json")
 	}
 
 	// Handle POST requests for standard JSON-RPC
@@ -234,24 +279,51 @@ func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request)
 		messages = []JSONRPCMessage{msg}
 	}
 
-	// Process each message
-	responses := make([]JSONRPCMessage, 0)
-	streaming := false
+	// Extract session ID if provided
+	sessionID := r.Header.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		sessionID = uuid.New().String()
+	}
 
-	for _, msg := range messages {
-		response, isStreaming := s.processMessage(&msg, w, r)
-		if isStreaming {
-			streaming = true
-			// For streaming responses, we'll handle them separately
-			continue
+	// Process messages
+	if wantsSSE {
+		// Handle SSE response for POST request
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+			return
 		}
+
+		// Send initial SSE comment
+		fmt.Fprintf(w, ": MCP Streamable HTTP Transport\n\n")
+		flusher.Flush()
+
+		// Process each message and send responses via SSE
+		for _, msg := range messages {
+			response, _ := s.processMessage(&msg, w, r, sessionID)
+			if response != nil {
+				data, _ := json.Marshal(response)
+				fmt.Fprintf(w, "data: %s\n\n", data)
+				flusher.Flush()
+			}
+		}
+
+		// Keep connection open for potential server-initiated messages
+		// (In a real implementation, you might want to handle this differently)
+		return
+	}
+
+	// Standard JSON response
+	responses := make([]JSONRPCMessage, 0)
+	for _, msg := range messages {
+		response, _ := s.processMessage(&msg, w, r, sessionID)
 		if response != nil {
 			responses = append(responses, *response)
 		}
 	}
 
-	// Send non-streaming responses
-	if !streaming && len(responses) > 0 {
+	// Send JSON responses
+	if len(responses) > 0 {
 		if len(responses) == 1 {
 			json.NewEncoder(w).Encode(responses[0])
 		} else {
@@ -261,7 +333,7 @@ func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *http.Request) {
-	// Set up SSE headers
+	// Set SSE headers as per MCP spec
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -273,8 +345,12 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 		return
 	}
 
-	// Create session
-	sessionID := uuid.New().String()
+	// Extract or create session ID from header
+	sessionID := r.Header.Get("Mcp-Session-Id")
+	if sessionID == "" {
+		sessionID = uuid.New().String()
+	}
+
 	ctx, cancel := context.WithCancel(r.Context())
 
 	session := &ClientSession{
@@ -284,6 +360,7 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 		ResponseWriter:  w,
 		Flusher:         flusher,
 		StreamingActive: true,
+		subscriptions:   make(map[string]bool),
 	}
 
 	s.mu.Lock()
@@ -297,12 +374,10 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 		cancel()
 	}()
 
-	// Send initial connection event
-	s.sendSSEEvent(session, "message", JSONRPCMessage{
-		Jsonrpc: "2.0",
-		Method:  "connection/established",
-		Params:  json.RawMessage(fmt.Sprintf(`{"sessionId":"%s"}`, sessionID)),
-	})
+	// Send initial SSE comment with session info as per spec
+	fmt.Fprintf(w, ": MCP Streamable HTTP Transport\n")
+	fmt.Fprintf(w, ": Session-Id: %s\n\n", sessionID)
+	flusher.Flush()
 
 	// Set up heartbeat
 	heartbeat := time.NewTicker(30 * time.Second)
@@ -310,6 +385,12 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 
 	// Subscribe to events
 	eventChan := make(chan events.Event, 100)
+	resourceUpdateChan := make(chan ResourceUpdate, 100)
+
+	// Register this session for resource updates
+	s.registerResourceUpdateHandler(sessionID, resourceUpdateChan)
+	defer s.unregisterResourceUpdateHandler(sessionID)
+
 	s.eventBus.Subscribe(events.LogLine, func(e events.Event) {
 		select {
 		case eventChan <- e:
@@ -331,6 +412,7 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 	})
 
 	defer close(eventChan)
+	defer close(resourceUpdateChan)
 
 	// Main event loop
 	for {
@@ -349,11 +431,20 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 				Params:  mustMarshal(event.Data),
 			}
 			s.sendSSEEvent(session, "message", notification)
+
+		case update := <-resourceUpdateChan:
+			// Send resource update notification
+			notification := JSONRPCMessage{
+				Jsonrpc: "2.0",
+				Method:  "notifications/resources/updated",
+				Params:  mustMarshal(update),
+			}
+			s.sendSSEEvent(session, "message", notification)
 		}
 	}
 }
 
-func (s *StreamableServer) processMessage(msg *JSONRPCMessage, w http.ResponseWriter, r *http.Request) (*JSONRPCMessage, bool) {
+func (s *StreamableServer) processMessage(msg *JSONRPCMessage, w http.ResponseWriter, r *http.Request, sessionID string) (*JSONRPCMessage, bool) {
 	// Handle different methods
 	switch msg.Method {
 	case "initialize":
@@ -372,10 +463,10 @@ func (s *StreamableServer) processMessage(msg *JSONRPCMessage, w http.ResponseWr
 		return s.handleResourceRead(msg), false
 
 	case "resources/subscribe":
-		return s.handleResourceSubscribe(msg), false
+		return s.handleResourceSubscribe(msg, sessionID), false
 
 	case "resources/unsubscribe":
-		return s.handleResourceUnsubscribe(msg), false
+		return s.handleResourceUnsubscribe(msg, sessionID), false
 
 	case "prompts/list":
 		return s.handlePromptsList(msg), false
@@ -584,4 +675,74 @@ func (s *StreamableServer) handleREPLResponse(responseID string, response interf
 			// Channel is full or closed, ignore
 		}
 	}
+}
+
+
+// registerResourceUpdateHandler registers a channel to receive resource updates for a session
+func (s *StreamableServer) registerResourceUpdateHandler(sessionID string, ch chan ResourceUpdate) {
+	s.updateHandlersMu.Lock()
+	s.updateHandlers[sessionID] = ch
+	s.updateHandlersMu.Unlock()
+}
+
+// unregisterResourceUpdateHandler removes the update handler for a session
+func (s *StreamableServer) unregisterResourceUpdateHandler(sessionID string) {
+	s.updateHandlersMu.Lock()
+	delete(s.updateHandlers, sessionID)
+	s.updateHandlersMu.Unlock()
+}
+
+// notifyResourceUpdate notifies all subscribed sessions about a resource update
+func (s *StreamableServer) notifyResourceUpdate(uri string, contents interface{}) {
+	update := ResourceUpdate{
+		URI:      uri,
+		Contents: contents,
+	}
+
+	s.subscriptionsMu.RLock()
+	defer s.subscriptionsMu.RUnlock()
+
+	s.updateHandlersMu.RLock()
+	defer s.updateHandlersMu.RUnlock()
+
+	// Check each session's subscriptions
+	for sessionID, subs := range s.subscriptions {
+		if subs[uri] {
+			// Session is subscribed to this resource
+			if handler, exists := s.updateHandlers[sessionID]; exists {
+				select {
+				case handler <- update:
+					// Update sent
+				default:
+					// Channel full, skip
+				}
+			}
+		}
+	}
+}
+
+// setupResourceUpdateHandlers sets up event listeners to trigger resource updates
+func (s *StreamableServer) setupResourceUpdateHandlers() {
+	// Listen for log events
+	s.eventBus.Subscribe(events.LogLine, func(e events.Event) {
+		// Update logs resources
+		s.notifyResourceUpdate("logs://recent", s.getRecentLogs(100))
+		
+		// Check if it's an error log
+		if isError, ok := e.Data["isError"].(bool); ok && isError {
+			s.notifyResourceUpdate("logs://errors", s.getErrorLogs(100))
+		}
+	})
+
+	// Listen for process events
+	s.eventBus.Subscribe(events.ProcessStarted, func(e events.Event) {
+		s.notifyResourceUpdate("processes://active", s.getActiveProcesses())
+	})
+
+	s.eventBus.Subscribe(events.ProcessExited, func(e events.Event) {
+		s.notifyResourceUpdate("processes://active", s.getActiveProcesses())
+	})
+
+	// For now, we'll update proxy resources periodically or on demand
+	// since there's no ProxyRequest event type yet
 }

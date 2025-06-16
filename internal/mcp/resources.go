@@ -171,7 +171,7 @@ func (s *StreamableServer) handleResourceRead(msg *JSONRPCMessage) *JSONRPCMessa
 }
 
 // Resource subscribe handler
-func (s *StreamableServer) handleResourceSubscribe(msg *JSONRPCMessage) *JSONRPCMessage {
+func (s *StreamableServer) handleResourceSubscribe(msg *JSONRPCMessage, sessionID string) *JSONRPCMessage {
 	var params struct {
 		URI string `json:"uri"`
 	}
@@ -185,8 +185,24 @@ func (s *StreamableServer) handleResourceSubscribe(msg *JSONRPCMessage) *JSONRPC
 		return s.createErrorResponse(msg.ID, -32602, "Resource not found", nil)
 	}
 
-	// TODO: Implement actual subscription logic
-	// For now, just acknowledge the subscription
+	// Use the session ID passed as parameter
+
+	s.subscriptionsMu.Lock()
+	if _, exists := s.subscriptions[sessionID]; !exists {
+		s.subscriptions[sessionID] = make(map[string]bool)
+	}
+	s.subscriptions[sessionID][params.URI] = true
+	s.subscriptionsMu.Unlock()
+
+	// Update session's own subscriptions
+	s.mu.RLock()
+	session, ok := s.sessions[sessionID]
+	s.mu.RUnlock()
+	if ok {
+		session.mu.Lock()
+		session.subscriptions[params.URI] = true
+		session.mu.Unlock()
+	}
 
 	return &JSONRPCMessage{
 		Jsonrpc: "2.0",
@@ -196,7 +212,7 @@ func (s *StreamableServer) handleResourceSubscribe(msg *JSONRPCMessage) *JSONRPC
 }
 
 // Resource unsubscribe handler
-func (s *StreamableServer) handleResourceUnsubscribe(msg *JSONRPCMessage) *JSONRPCMessage {
+func (s *StreamableServer) handleResourceUnsubscribe(msg *JSONRPCMessage, sessionID string) *JSONRPCMessage {
 	var params struct {
 		URI string `json:"uri"`
 	}
@@ -205,7 +221,26 @@ func (s *StreamableServer) handleResourceUnsubscribe(msg *JSONRPCMessage) *JSONR
 		return s.createErrorResponse(msg.ID, -32602, "Invalid params", nil)
 	}
 
-	// TODO: Implement actual unsubscription logic
+	// Use the session ID passed as parameter
+
+	s.subscriptionsMu.Lock()
+	if subs, exists := s.subscriptions[sessionID]; exists {
+		delete(subs, params.URI)
+		if len(subs) == 0 {
+			delete(s.subscriptions, sessionID)
+		}
+	}
+	s.subscriptionsMu.Unlock()
+
+	// Update session's own subscriptions
+	s.mu.RLock()
+	session, ok := s.sessions[sessionID]
+	s.mu.RUnlock()
+	if ok {
+		session.mu.Lock()
+		delete(session.subscriptions, params.URI)
+		session.mu.Unlock()
+	}
 
 	return &JSONRPCMessage{
 		Jsonrpc: "2.0",
