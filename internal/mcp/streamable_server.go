@@ -65,6 +65,10 @@ type StreamableServer struct {
 
 	// WebSocket upgrader
 	wsUpgrader websocket.Upgrader
+
+	// REPL response handlers
+	replMu            sync.RWMutex
+	replResponseChans map[string]chan interface{}
 }
 
 type ClientSession struct {
@@ -140,16 +144,17 @@ type PromptArgument struct {
 // NewStreamableServer creates a new MCP server with streaming support
 func NewStreamableServer(port int, processMgr *process.Manager, logStore *logs.Store, proxyServer *proxy.Server, eventBus *events.EventBus) *StreamableServer {
 	s := &StreamableServer{
-		router:      mux.NewRouter(),
-		sessions:    make(map[string]*ClientSession),
-		tools:       make(map[string]MCPTool),
-		resources:   make(map[string]Resource),
-		prompts:     make(map[string]Prompt),
-		port:        port,
-		processMgr:  processMgr,
-		logStore:    logStore,
-		proxyServer: proxyServer,
-		eventBus:    eventBus,
+		router:           mux.NewRouter(),
+		sessions:         make(map[string]*ClientSession),
+		tools:            make(map[string]MCPTool),
+		resources:        make(map[string]Resource),
+		prompts:          make(map[string]Prompt),
+		port:             port,
+		processMgr:       processMgr,
+		logStore:         logStore,
+		proxyServer:      proxyServer,
+		eventBus:         eventBus,
+		replResponseChans: make(map[string]chan interface{}),
 		serverInfo: ServerInfo{
 			Name:    "brummer-mcp",
 			Version: "2.0.0",
@@ -524,6 +529,13 @@ func (s *StreamableServer) setupEventBroadcasting() {
 	s.eventBus.Subscribe(events.ErrorDetected, func(e events.Event) {
 		s.BroadcastNotification("notifications/error/detected", e.Data)
 	})
+
+	// Subscribe to REPL responses
+	s.eventBus.Subscribe(events.EventType("repl.response"), func(e events.Event) {
+		if responseID, ok := e.Data["responseId"].(string); ok {
+			s.handleREPLResponse(responseID, e.Data)
+		}
+	})
 }
 
 // Helper functions
@@ -536,4 +548,41 @@ func mustMarshal(v interface{}) json.RawMessage {
 // IsRunning returns true if the MCP server is currently running
 func (s *StreamableServer) IsRunning() bool {
 	return s.server != nil
+}
+
+// registerREPLResponse registers a channel to receive REPL response for the given ID
+func (s *StreamableServer) registerREPLResponse(responseID string) chan interface{} {
+	s.replMu.Lock()
+	defer s.replMu.Unlock()
+
+	responseChan := make(chan interface{}, 1)
+	s.replResponseChans[responseID] = responseChan
+	return responseChan
+}
+
+// unregisterREPLResponse removes the response channel for the given ID
+func (s *StreamableServer) unregisterREPLResponse(responseID string) {
+	s.replMu.Lock()
+	defer s.replMu.Unlock()
+
+	if ch, exists := s.replResponseChans[responseID]; exists {
+		close(ch)
+		delete(s.replResponseChans, responseID)
+	}
+}
+
+// handleREPLResponse processes an incoming REPL response from the browser
+func (s *StreamableServer) handleREPLResponse(responseID string, response interface{}) {
+	s.replMu.RLock()
+	responseChan, exists := s.replResponseChans[responseID]
+	s.replMu.RUnlock()
+
+	if exists && responseChan != nil {
+		select {
+		case responseChan <- response:
+			// Response sent successfully
+		default:
+			// Channel is full or closed, ignore
+		}
+	}
 }

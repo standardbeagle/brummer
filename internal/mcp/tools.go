@@ -1071,12 +1071,10 @@ Example usage:
 				return nil, err
 			}
 
-			// Create a response channel
-			responseChan := make(chan map[string]interface{}, 1)
+			// Create response ID and register channel
 			responseID := fmt.Sprintf("repl-%d", time.Now().UnixNano())
-
-			// Register response handler (this would need to be implemented)
-			// s.registerREPLResponse(responseID, responseChan)
+			responseChan := s.registerREPLResponse(responseID)
+			defer s.unregisterREPLResponse(responseID)
 
 			// Send REPL command via WebSocket
 			if s.proxyServer != nil {
@@ -1086,6 +1084,10 @@ Example usage:
 					"sessionId":  params.SessionID,
 					"responseId": responseID,
 				})
+			} else {
+				return map[string]interface{}{
+					"error": "proxy server not available",
+				}, nil
 			}
 
 			// Wait for response with timeout

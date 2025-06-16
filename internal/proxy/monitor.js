@@ -440,9 +440,114 @@
                 DEBUG.log('info', 'network', 'Telemetry broadcast received from another client');
                 break;
                 
+            case 'command':
+                // Handle REPL commands
+                if (message.data && message.data.action === 'repl') {
+                    handleREPLCommand(message.data);
+                }
+                break;
+                
             default:
                 DEBUG.log('info', 'network', `Unknown message type: ${message.type}`);
         }
+    }
+    
+    // Handle REPL command from server
+    function handleREPLCommand(data) {
+        const { code, responseId, sessionId } = data;
+        
+        DEBUG.log('info', 'repl', `📝 Executing REPL command: ${code.substring(0, 100)}...`, {
+            responseId,
+            sessionId,
+            codeLength: code.length
+        });
+        
+        // Execute the code and capture result
+        let result;
+        let error = null;
+        
+        try {
+            // Create a function that returns the result of the code
+            // This allows us to handle both expressions and statements
+            const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+            const fn = new AsyncFunction('return (' + code + ')');
+            
+            // Execute the function and get the result
+            Promise.resolve(fn()).then(res => {
+                result = res;
+                sendREPLResponse(responseId, result, null);
+            }).catch(err => {
+                // If it fails as an expression, try as statements
+                try {
+                    const fn2 = new AsyncFunction(code);
+                    Promise.resolve(fn2()).then(res => {
+                        result = res;
+                        sendREPLResponse(responseId, result, null);
+                    }).catch(err2 => {
+                        error = err2.toString();
+                        sendREPLResponse(responseId, null, error);
+                    });
+                } catch (err2) {
+                    error = err2.toString();
+                    sendREPLResponse(responseId, null, error);
+                }
+            });
+        } catch (err) {
+            // Try executing as statements if expression fails
+            try {
+                const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
+                const fn = new AsyncFunction(code);
+                
+                Promise.resolve(fn()).then(res => {
+                    result = res;
+                    sendREPLResponse(responseId, result, null);
+                }).catch(err2 => {
+                    error = err2.toString();
+                    sendREPLResponse(responseId, null, error);
+                });
+            } catch (err2) {
+                error = err2.toString();
+                sendREPLResponse(responseId, null, error);
+            }
+        }
+    }
+    
+    // Send REPL response back to server
+    function sendREPLResponse(responseId, result, error) {
+        const responseData = {
+            responseId: responseId,
+            result: result !== undefined ? result : null,
+            error: error
+        };
+        
+        // Try to stringify the result safely
+        try {
+            // Handle circular references and functions
+            const seen = new WeakSet();
+            responseData.result = JSON.parse(JSON.stringify(result, (key, value) => {
+                if (typeof value === 'object' && value !== null) {
+                    if (seen.has(value)) {
+                        return '[Circular]';
+                    }
+                    seen.add(value);
+                }
+                if (typeof value === 'function') {
+                    return value.toString();
+                }
+                return value;
+            }));
+        } catch (e) {
+            // If serialization fails, convert to string
+            responseData.result = String(result);
+        }
+        
+        DEBUG.log('info', 'repl', `📤 Sending REPL response`, {
+            responseId,
+            hasResult: result !== null && result !== undefined,
+            hasError: error !== null
+        });
+        
+        sendWebSocketCommand('repl_response', responseData);
     }
     
     // Send command via WebSocket

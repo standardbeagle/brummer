@@ -21,7 +21,8 @@
     "telemetry-demo": "node telemetry-demo.js",
     "simple-test": "node simple-test.js",
     "mongo-error": "node mongo-error-test.js",
-    "multi-error": "node multi-error-test.js"
+    "multi-error": "node multi-error-test.js",
+    "repl-test": "node repl-test.js"
   },
   "dependencies": {
     "express": "^4.21.2"

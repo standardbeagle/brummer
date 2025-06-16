@@ -1649,6 +1649,36 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 		conn.WriteJSON(response)
 		return // Don't send another response below
 
+	case "repl_response":
+		// Handle REPL response from browser
+		if data, ok := msg.Data.(map[string]interface{}); ok {
+			responseID, hasID := data["responseId"].(string)
+			if !hasID {
+				response.Data = map[string]interface{}{
+					"error": "Missing responseId in REPL response",
+				}
+			} else {
+				// Forward the response to MCP server via event bus
+				s.eventBus.Publish(events.Event{
+					Type: events.EventType("repl.response"),
+					Data: map[string]interface{}{
+						"responseId": responseID,
+						"result":     data["result"],
+						"error":      data["error"],
+					},
+				})
+				
+				response.Data = map[string]interface{}{
+					"status": "forwarded",
+					"responseId": responseID,
+				}
+			}
+		} else {
+			response.Data = map[string]interface{}{
+				"error": "Invalid REPL response format",
+			}
+		}
+
 	default:
 		response.Data = map[string]interface{}{
 			"error": "Unknown command type: " + msg.Type,
