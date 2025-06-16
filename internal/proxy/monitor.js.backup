@@ -236,113 +236,6 @@
         }
     };
     
-    // Custom Metrics API (similar to mcpTelemetry)
-    window.brummerTelemetry = {
-        // Track custom events
-        track: function(eventName, data) {
-            sendTelemetry({
-                type: 'custom_event',
-                data: {
-                    eventName: eventName,
-                    data: data,
-                    timestamp: Date.now()
-                }
-            });
-            
-            DEBUG.log('info', 'custom', `Custom event tracked: ${eventName}`, data);
-        },
-        
-        // Mark performance points
-        mark: function(name) {
-            if (window.performance && window.performance.mark) {
-                performance.mark(name);
-                
-                sendTelemetry({
-                    type: 'performance_mark',
-                    data: {
-                        name: name,
-                        timestamp: performance.now()
-                    }
-                });
-                
-                DEBUG.log('info', 'performance', `Performance mark: ${name}`);
-            }
-        },
-        
-        // Measure between marks
-        measure: function(name, startMark, endMark) {
-            if (window.performance && window.performance.measure) {
-                try {
-                    performance.measure(name, startMark, endMark);
-                    const entries = performance.getEntriesByName(name, 'measure');
-                    const measure = entries[entries.length - 1];
-                    
-                    if (measure) {
-                        sendTelemetry({
-                            type: 'performance_measure',
-                            data: {
-                                name: name,
-                                duration: measure.duration,
-                                startTime: measure.startTime
-                            }
-                        });
-                        
-                        DEBUG.log('info', 'performance', `Performance measure: ${name} = ${measure.duration.toFixed(2)}ms`);
-                    }
-                } catch (e) {
-                    DEBUG.log('error', 'performance', `Failed to measure ${name}: ${e.message}`);
-                }
-            }
-        },
-        
-        // Log custom error
-        error: function(message, details) {
-            sendTelemetry({
-                type: 'custom_error',
-                data: {
-                    message: message,
-                    details: details,
-                    stack: (new Error()).stack,
-                    timestamp: Date.now()
-                }
-            });
-            
-            DEBUG.log('error', 'custom', `Custom error: ${message}`, details);
-        },
-        
-        // Track user actions
-        action: function(action, target, metadata) {
-            sendTelemetry({
-                type: 'user_action',
-                data: {
-                    action: action,
-                    target: target,
-                    metadata: metadata,
-                    timestamp: Date.now()
-                }
-            });
-            
-            DEBUG.log('info', 'user', `User action: ${action} on ${target}`, metadata);
-        },
-        
-        // Track feature usage
-        feature: function(featureName, metadata) {
-            sendTelemetry({
-                type: 'feature_usage',
-                data: {
-                    feature: featureName,
-                    metadata: metadata,
-                    timestamp: Date.now()
-                }
-            });
-            
-            DEBUG.log('info', 'custom', `Feature used: ${featureName}`, metadata);
-        }
-    };
-    
-    // Alias for compatibility
-    window.mcpTelemetry = window.brummerTelemetry;
-    
     // Generate a unique session ID
     function generateSessionId() {
         return 'brummer_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
@@ -813,67 +706,6 @@
                 }
             });
         });
-        
-        // Monitor scroll events with debouncing
-        let scrollTimer = null;
-        let lastScrollPosition = { x: 0, y: 0 };
-        let scrollStartTime = null;
-        let totalScrollDistance = { x: 0, y: 0 };
-        
-        function handleScroll() {
-            const currentPosition = {
-                x: window.scrollX || window.pageXOffset,
-                y: window.scrollY || window.pageYOffset
-            };
-            
-            // Track scroll distance
-            if (scrollStartTime) {
-                totalScrollDistance.x += Math.abs(currentPosition.x - lastScrollPosition.x);
-                totalScrollDistance.y += Math.abs(currentPosition.y - lastScrollPosition.y);
-            } else {
-                scrollStartTime = Date.now();
-            }
-            
-            lastScrollPosition = currentPosition;
-            
-            // Clear existing timer
-            clearTimeout(scrollTimer);
-            
-            // Set new timer for debounced telemetry
-            scrollTimer = setTimeout(() => {
-                const scrollData = {
-                    type: 'user_interaction',
-                    data: {
-                        action: 'scroll',
-                        scrollPosition: currentPosition,
-                        scrollDistance: totalScrollDistance,
-                        scrollDuration: Date.now() - scrollStartTime,
-                        viewport: {
-                            width: window.innerWidth,
-                            height: window.innerHeight
-                        },
-                        document: {
-                            width: document.documentElement.scrollWidth,
-                            height: document.documentElement.scrollHeight
-                        },
-                        scrollPercentage: {
-                            x: (currentPosition.x / (document.documentElement.scrollWidth - window.innerWidth)) * 100 || 0,
-                            y: (currentPosition.y / (document.documentElement.scrollHeight - window.innerHeight)) * 100 || 0
-                        },
-                        timestamp: Date.now()
-                    }
-                };
-                
-                sendTelemetry(scrollData);
-                
-                // Reset tracking variables
-                scrollStartTime = null;
-                totalScrollDistance = { x: 0, y: 0 };
-            }, 150); // Send after 150ms of no scrolling
-        }
-        
-        // Add scroll listener with passive flag for performance
-        window.addEventListener('scroll', handleScroll, { passive: true });
     }
     
     // Monitor Performance Metrics
@@ -887,163 +719,24 @@
             window.addEventListener('load', collectPerformanceMetrics);
         }
         
-        // Enhanced Performance Observer
+        // Monitor Long Tasks (if supported)
         if ('PerformanceObserver' in window) {
-            // Create observers for different entry types
-            const observerConfigs = [
-                {
-                    entryTypes: ['longtask'],
-                    handler: (entries) => {
-                        entries.forEach(entry => {
-                            sendTelemetry({
-                                type: 'long_task',
-                                data: {
-                                    duration: entry.duration,
-                                    startTime: entry.startTime,
-                                    name: entry.name,
-                                    attribution: entry.attribution
-                                }
-                            });
-                        });
-                    }
-                },
-                {
-                    entryTypes: ['paint'],
-                    handler: (entries) => {
-                        entries.forEach(entry => {
-                            sendTelemetry({
-                                type: 'paint_timing',
-                                data: {
-                                    name: entry.name,
-                                    startTime: entry.startTime,
-                                    duration: entry.duration
-                                }
-                            });
-                        });
-                    }
-                },
-                {
-                    entryTypes: ['largest-contentful-paint'],
-                    handler: (entries) => {
-                        entries.forEach(entry => {
-                            sendTelemetry({
-                                type: 'largest_contentful_paint',
-                                data: {
-                                    startTime: entry.startTime,
-                                    size: entry.size,
-                                    element: entry.element?.tagName,
-                                    elementId: entry.element?.id,
-                                    elementClass: entry.element?.className,
-                                    url: entry.url
-                                }
-                            });
-                        });
-                    }
-                },
-                {
-                    entryTypes: ['layout-shift'],
-                    handler: (entries) => {
-                        entries.forEach(entry => {
-                            if (!entry.hadRecentInput) { // Only track shifts not caused by user input
-                                sendTelemetry({
-                                    type: 'layout_shift',
-                                    data: {
-                                        value: entry.value,
-                                        startTime: entry.startTime,
-                                        sources: entry.sources?.map(source => ({
-                                            node: source.node?.tagName,
-                                            previousRect: source.previousRect,
-                                            currentRect: source.currentRect
-                                        }))
-                                    }
-                                });
+            try {
+                const longTaskObserver = new PerformanceObserver(function(list) {
+                    for (const entry of list.getEntries()) {
+                        sendTelemetry({
+                            type: 'long_task',
+                            data: {
+                                duration: entry.duration,
+                                startTime: entry.startTime,
+                                name: entry.name
                             }
                         });
                     }
-                },
-                {
-                    entryTypes: ['first-input'],
-                    handler: (entries) => {
-                        entries.forEach(entry => {
-                            sendTelemetry({
-                                type: 'first_input_delay',
-                                data: {
-                                    delay: entry.processingStart - entry.startTime,
-                                    duration: entry.duration,
-                                    startTime: entry.startTime,
-                                    name: entry.name,
-                                    target: entry.target?.tagName
-                                }
-                            });
-                        });
-                    }
-                },
-                {
-                    entryTypes: ['navigation'],
-                    handler: (entries) => {
-                        entries.forEach(entry => {
-                            sendTelemetry({
-                                type: 'navigation_timing',
-                                data: {
-                                    domContentLoaded: entry.domContentLoadedEventEnd - entry.domContentLoadedEventStart,
-                                    domComplete: entry.domComplete,
-                                    domInteractive: entry.domInteractive,
-                                    loadComplete: entry.loadEventEnd - entry.loadEventStart,
-                                    type: entry.type,
-                                    redirectCount: entry.redirectCount,
-                                    transferSize: entry.transferSize,
-                                    encodedBodySize: entry.encodedBodySize,
-                                    decodedBodySize: entry.decodedBodySize,
-                                    serverTiming: entry.serverTiming
-                                }
-                            });
-                        });
-                    }
-                }
-            ];
-            
-            // Try to observe each entry type
-            observerConfigs.forEach(config => {
-                try {
-                    const observer = new PerformanceObserver(list => {
-                        config.handler(list.getEntries());
-                    });
-                    observer.observe({ entryTypes: config.entryTypes });
-                } catch (e) {
-                    // Entry type not supported in this browser
-                    DEBUG.log('warning', 'performance', `Performance entry type not supported: ${config.entryTypes.join(', ')}`);
-                }
-            });
-            
-            // Monitor all supported entry types
-            try {
-                const allTypesObserver = new PerformanceObserver(list => {
-                    const entries = list.getEntries();
-                    
-                    // Track Web Vitals
-                    entries.forEach(entry => {
-                        if (entry.entryType === 'measure' && entry.name.startsWith('CLS')) {
-                            sendTelemetry({
-                                type: 'web_vital',
-                                data: {
-                                    metric: 'CLS',
-                                    value: entry.duration,
-                                    timestamp: Date.now()
-                                }
-                            });
-                        }
-                    });
                 });
-                
-                if (PerformanceObserver.supportedEntryTypes) {
-                    allTypesObserver.observe({ 
-                        entryTypes: PerformanceObserver.supportedEntryTypes.filter(type => 
-                            !['longtask', 'paint', 'largest-contentful-paint', 'layout-shift', 'first-input', 'navigation'].includes(type)
-                        )
-                    });
-                }
+                longTaskObserver.observe({ entryTypes: ['longtask'] });
             } catch (e) {
-                // Fallback for older browsers
+                // Long task observer not supported
             }
         }
     }
@@ -1212,293 +905,68 @@
     function monitorInteractions() {
         if (!BRUMMER_CONFIG.collectInteractionMetrics) return;
         
-        // Throttling settings
-        const interactionThrottle = 100; // ms
-        const lastInteractionTime = {};
-        
-        // Helper to build selector path
-        function buildSelectorPath(element) {
-            const path = [];
-            while (element && element !== document.body) {
-                let selector = element.tagName.toLowerCase();
-                if (element.id) {
-                    selector += '#' + element.id;
-                    path.unshift(selector);
-                    break; // ID is unique, stop here
-                } else {
-                    if (element.className && typeof element.className === 'string') {
-                        selector += '.' + element.className.trim().split(/\s+/).join('.');
-                    }
-                    // Add index if there are siblings with same tag
-                    const siblings = element.parentNode ? Array.from(element.parentNode.children) : [];
-                    const sameTagSiblings = siblings.filter(sibling => sibling.tagName === element.tagName);
-                    if (sameTagSiblings.length > 1) {
-                        const index = sameTagSiblings.indexOf(element);
-                        selector += `:nth-of-type(${index + 1})`;
-                    }
-                    path.unshift(selector);
-                }
-                element = element.parentElement;
-            }
-            return path.join(' > ');
-        }
-        
-        // Enhanced click tracking with throttling
+        // Track clicks
         document.addEventListener('click', function(event) {
-            const now = Date.now();
-            const eventKey = 'click';
-            
-            if (lastInteractionTime[eventKey] && now - lastInteractionTime[eventKey] < interactionThrottle) {
-                return; // Throttle rapid clicks
-            }
-            lastInteractionTime[eventKey] = now;
-            
             const target = event.target;
-            const rect = target.getBoundingClientRect();
+            const tagName = target.tagName.toLowerCase();
+            
+            // Build a selector path
+            let selector = tagName;
+            if (target.id) {
+                selector += '#' + target.id;
+            }
+            if (target.className) {
+                selector += '.' + target.className.split(' ').join('.');
+            }
             
             sendTelemetry({
                 type: 'user_interaction',
                 data: {
                     action: 'click',
-                    targetSelector: buildSelectorPath(target),
-                    targetTag: target.tagName.toLowerCase(),
-                    targetId: target.id || null,
-                    targetClass: target.className || null,
-                    targetText: target.textContent ? target.textContent.substring(0, 100).trim() : '',
-                    targetHref: target.href || null,
-                    coordinates: {
-                        client: { x: event.clientX, y: event.clientY },
-                        page: { x: event.pageX, y: event.pageY },
-                        screen: { x: event.screenX, y: event.screenY },
-                        element: { 
-                            x: event.clientX - rect.left, 
-                            y: event.clientY - rect.top,
-                            width: rect.width,
-                            height: rect.height
-                        }
-                    },
-                    viewport: {
-                        width: window.innerWidth,
-                        height: window.innerHeight,
-                        scrollX: window.scrollX,
-                        scrollY: window.scrollY
-                    },
-                    modifiers: {
-                        alt: event.altKey,
-                        ctrl: event.ctrlKey,
-                        meta: event.metaKey,
-                        shift: event.shiftKey
-                    },
-                    button: event.button,
+                    targetSelector: selector,
+                    targetText: target.textContent ? target.textContent.substring(0, 100) : '',
+                    x: event.clientX,
+                    y: event.clientY,
                     timestamp: event.timeStamp
                 }
             });
         }, true);
         
-        // Double click tracking
-        document.addEventListener('dblclick', function(event) {
-            const target = event.target;
-            
-            sendTelemetry({
-                type: 'user_interaction',
-                data: {
-                    action: 'double_click',
-                    targetSelector: buildSelectorPath(target),
-                    targetTag: target.tagName.toLowerCase(),
-                    coordinates: {
-                        client: { x: event.clientX, y: event.clientY },
-                        page: { x: event.pageX, y: event.pageY }
-                    },
-                    timestamp: event.timeStamp
-                }
-            });
-        }, true);
-        
-        // Context menu (right-click) tracking
-        document.addEventListener('contextmenu', function(event) {
-            const target = event.target;
-            
-            sendTelemetry({
-                type: 'user_interaction',
-                data: {
-                    action: 'context_menu',
-                    targetSelector: buildSelectorPath(target),
-                    targetTag: target.tagName.toLowerCase(),
-                    coordinates: {
-                        client: { x: event.clientX, y: event.clientY },
-                        page: { x: event.pageX, y: event.pageY }
-                    },
-                    timestamp: event.timeStamp
-                }
-            });
-        }, true);
-        
-        // Enhanced form tracking
+        // Track form submissions
         document.addEventListener('submit', function(event) {
             const form = event.target;
-            const formData = new FormData(form);
-            const fields = [];
-            
-            // Collect form field metadata (not values for privacy)
-            for (const element of form.elements) {
-                if (element.name) {
-                    fields.push({
-                        name: element.name,
-                        type: element.type,
-                        tag: element.tagName.toLowerCase(),
-                        required: element.required || false,
-                        hasValue: !!element.value
-                    });
-                }
-            }
-            
             sendTelemetry({
                 type: 'user_interaction',
                 data: {
                     action: 'form_submit',
-                    formId: form.id || null,
-                    formName: form.name || null,
+                    formId: form.id,
                     formAction: form.action,
-                    formMethod: form.method,
-                    formTarget: form.target || null,
-                    fieldCount: fields.length,
-                    fields: fields,
-                    timestamp: Date.now()
+                    formMethod: form.method
                 }
             });
         }, true);
         
-        // Enhanced input tracking with debouncing
-        let inputTimer = null;
-        const inputBuffer = new Map();
-        
-        document.addEventListener('input', function(event) {
-            const target = event.target;
-            if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') return;
-            
-            const key = buildSelectorPath(target);
-            
-            if (!inputBuffer.has(key)) {
-                inputBuffer.set(key, {
-                    startTime: Date.now(),
-                    changeCount: 0,
-                    fieldType: target.type || 'text',
-                    fieldName: target.name || null,
-                    hasValue: false
-                });
-            }
-            
-            const bufferEntry = inputBuffer.get(key);
-            bufferEntry.changeCount++;
-            bufferEntry.hasValue = !!target.value;
-            
-            // Debounce input events
-            clearTimeout(inputTimer);
-            inputTimer = setTimeout(() => {
-                // Send all buffered input events
-                inputBuffer.forEach((data, selector) => {
-                    sendTelemetry({
-                        type: 'user_interaction',
-                        data: {
-                            action: 'input_change',
-                            targetSelector: selector,
-                            fieldType: data.fieldType,
-                            fieldName: data.fieldName,
-                            changeCount: data.changeCount,
-                            duration: Date.now() - data.startTime,
-                            hasValue: data.hasValue,
-                            timestamp: Date.now()
-                        }
-                    });
-                });
-                inputBuffer.clear();
-            }, 1000); // Send after 1 second of inactivity
-        }, true);
-        
-        // Focus/blur tracking
-        let focusData = null;
-        
+        // Track focus events on input fields
+        let focusStartTime = null;
         document.addEventListener('focus', function(event) {
-            const target = event.target;
-            if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') {
-                focusData = {
-                    startTime: Date.now(),
-                    selector: buildSelectorPath(target),
-                    fieldType: target.type || target.tagName.toLowerCase(),
-                    fieldName: target.name || null
-                };
+            if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') {
+                focusStartTime = Date.now();
             }
         }, true);
         
         document.addEventListener('blur', function(event) {
-            if (focusData && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA' || event.target.tagName === 'SELECT')) {
-                const focusDuration = Date.now() - focusData.startTime;
-                
+            if ((event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') && focusStartTime) {
+                const focusDuration = Date.now() - focusStartTime;
                 sendTelemetry({
                     type: 'user_interaction',
                     data: {
-                        action: 'field_interaction',
-                        targetSelector: focusData.selector,
-                        fieldType: focusData.fieldType,
-                        fieldName: focusData.fieldName,
-                        focusDuration: focusDuration,
-                        hasValue: !!event.target.value,
-                        timestamp: Date.now()
+                        action: 'input_focus',
+                        fieldType: event.target.type || 'text',
+                        fieldName: event.target.name,
+                        focusDuration: focusDuration
                     }
                 });
-                
-                focusData = null;
-            }
-        }, true);
-        
-        // Mouse movement tracking (heavily throttled)
-        let lastMouseMove = 0;
-        const mouseMoveThrottle = 5000; // Only track every 5 seconds
-        
-        document.addEventListener('mousemove', function(event) {
-            const now = Date.now();
-            if (now - lastMouseMove < mouseMoveThrottle) return;
-            lastMouseMove = now;
-            
-            sendTelemetry({
-                type: 'user_interaction',
-                data: {
-                    action: 'mouse_movement',
-                    coordinates: {
-                        client: { x: event.clientX, y: event.clientY },
-                        page: { x: event.pageX, y: event.pageY }
-                    },
-                    viewport: {
-                        width: window.innerWidth,
-                        height: window.innerHeight
-                    },
-                    timestamp: event.timeStamp
-                }
-            });
-        }, true);
-        
-        // Keyboard shortcut tracking (only special combinations)
-        document.addEventListener('keydown', function(event) {
-            // Only track if modifier keys are pressed
-            if (event.ctrlKey || event.metaKey || event.altKey) {
-                // Don't track sensitive keys like passwords
-                if (event.key.length === 1 || ['Enter', 'Escape', 'Tab', 'Delete', 'Backspace'].includes(event.key)) {
-                    sendTelemetry({
-                        type: 'user_interaction',
-                        data: {
-                            action: 'keyboard_shortcut',
-                            key: event.key,
-                            code: event.code,
-                            modifiers: {
-                                alt: event.altKey,
-                                ctrl: event.ctrlKey,
-                                meta: event.metaKey,
-                                shift: event.shiftKey
-                            },
-                            timestamp: event.timeStamp
-                        }
-                    });
-                }
+                focusStartTime = null;
             }
         }, true);
     }
@@ -1533,380 +1001,6 @@
         
         // Check resources periodically
         setInterval(checkResources, 5000);
-    }
-    
-    // Advanced Network Interception (Fetch and XHR)
-    function interceptNetworkRequests() {
-        // Intercept Fetch API
-        const originalFetch = window.fetch;
-        window.fetch = async function(...args) {
-            const [resource, init] = args;
-            const method = init?.method || 'GET';
-            const startTime = performance.now();
-            const requestId = Math.random().toString(36).substr(2, 9);
-            
-            // Capture request details
-            const requestData = {
-                type: 'network_request',
-                data: {
-                    requestId: requestId,
-                    method: method,
-                    url: resource.toString(),
-                    headers: init?.headers || {},
-                    body: init?.body ? String(init.body).substring(0, 1000) : null,
-                    timestamp: Date.now(),
-                    initiator: 'fetch'
-                }
-            };
-            
-            sendTelemetry(requestData);
-            
-            try {
-                const response = await originalFetch.apply(this, args);
-                const duration = performance.now() - startTime;
-                
-                // Clone response to read it
-                const clone = response.clone();
-                
-                // Capture response details
-                const responseData = {
-                    type: 'network_response',
-                    data: {
-                        requestId: requestId,
-                        status: response.status,
-                        statusText: response.statusText,
-                        headers: Object.fromEntries(response.headers.entries()),
-                        duration: duration,
-                        size: response.headers.get('content-length') || 'unknown',
-                        timestamp: Date.now()
-                    }
-                };
-                
-                sendTelemetry(responseData);
-                
-                // Optionally capture response body for JSON responses
-                if (response.headers.get('content-type')?.includes('application/json')) {
-                    clone.json().then(body => {
-                        sendTelemetry({
-                            type: 'network_response_body',
-                            data: {
-                                requestId: requestId,
-                                body: JSON.stringify(body).substring(0, 5000),
-                                bodySize: JSON.stringify(body).length
-                            }
-                        });
-                    }).catch(() => {
-                        // Ignore parsing errors
-                    });
-                }
-                
-                return response;
-            } catch (error) {
-                const duration = performance.now() - startTime;
-                
-                sendTelemetry({
-                    type: 'network_error',
-                    data: {
-                        requestId: requestId,
-                        error: error.message,
-                        errorType: error.name,
-                        duration: duration,
-                        timestamp: Date.now()
-                    }
-                });
-                
-                throw error;
-            }
-        };
-        
-        // Intercept XMLHttpRequest
-        const XHR = XMLHttpRequest.prototype;
-        const originalOpen = XHR.open;
-        const originalSend = XHR.send;
-        const originalSetRequestHeader = XHR.setRequestHeader;
-        
-        XHR.open = function(method, url) {
-            this._brummer = {
-                method: method,
-                url: url,
-                headers: {},
-                startTime: null,
-                requestId: Math.random().toString(36).substr(2, 9)
-            };
-            return originalOpen.apply(this, arguments);
-        };
-        
-        XHR.setRequestHeader = function(header, value) {
-            if (this._brummer) {
-                this._brummer.headers[header] = value;
-            }
-            return originalSetRequestHeader.apply(this, arguments);
-        };
-        
-        XHR.send = function(body) {
-            if (this._brummer) {
-                this._brummer.startTime = performance.now();
-                this._brummer.body = body ? String(body).substring(0, 1000) : null;
-                
-                sendTelemetry({
-                    type: 'network_request',
-                    data: {
-                        requestId: this._brummer.requestId,
-                        method: this._brummer.method,
-                        url: this._brummer.url,
-                        headers: this._brummer.headers,
-                        body: this._brummer.body,
-                        timestamp: Date.now(),
-                        initiator: 'xhr'
-                    }
-                });
-                
-                // Monitor state changes
-                this.addEventListener('readystatechange', function() {
-                    if (this.readyState === 4) { // Request complete
-                        const duration = performance.now() - this._brummer.startTime;
-                        
-                        sendTelemetry({
-                            type: 'network_response',
-                            data: {
-                                requestId: this._brummer.requestId,
-                                status: this.status,
-                                statusText: this.statusText,
-                                duration: duration,
-                                responseSize: this.responseText?.length || 0,
-                                responseHeaders: this.getAllResponseHeaders(),
-                                timestamp: Date.now()
-                            }
-                        });
-                        
-                        // Capture response body for JSON responses
-                        const contentType = this.getResponseHeader('content-type');
-                        if (contentType?.includes('application/json') && this.responseText) {
-                            try {
-                                const responseBody = JSON.parse(this.responseText);
-                                sendTelemetry({
-                                    type: 'network_response_body',
-                                    data: {
-                                        requestId: this._brummer.requestId,
-                                        body: JSON.stringify(responseBody).substring(0, 5000),
-                                        bodySize: this.responseText.length
-                                    }
-                                });
-                            } catch (e) {
-                                // Ignore JSON parsing errors
-                            }
-                        }
-                    }
-                });
-                
-                this.addEventListener('error', function() {
-                    const duration = performance.now() - this._brummer.startTime;
-                    sendTelemetry({
-                        type: 'network_error',
-                        data: {
-                            requestId: this._brummer.requestId,
-                            error: 'Network request failed',
-                            errorType: 'NetworkError',
-                            duration: duration,
-                            timestamp: Date.now()
-                        }
-                    });
-                });
-                
-                this.addEventListener('abort', function() {
-                    const duration = performance.now() - this._brummer.startTime;
-                    sendTelemetry({
-                        type: 'network_error',
-                        data: {
-                            requestId: this._brummer.requestId,
-                            error: 'Request aborted',
-                            errorType: 'AbortError',
-                            duration: duration,
-                            timestamp: Date.now()
-                        }
-                    });
-                });
-            }
-            
-            return originalSend.apply(this, arguments);
-        };
-    }
-    
-    // Monitor Storage Events
-    function monitorStorageEvents() {
-        ['localStorage', 'sessionStorage'].forEach(storageType => {
-            const storage = window[storageType];
-            if (!storage) return;
-            
-            const originalSetItem = storage.setItem;
-            const originalRemoveItem = storage.removeItem;
-            const originalClear = storage.clear;
-            
-            storage.setItem = function(key, value) {
-                sendTelemetry({
-                    type: 'storage_event',
-                    data: {
-                        storageType: storageType,
-                        action: 'setItem',
-                        key: key,
-                        valueSize: value?.length || 0,
-                        timestamp: Date.now()
-                    }
-                });
-                
-                return originalSetItem.apply(storage, arguments);
-            };
-            
-            storage.removeItem = function(key) {
-                sendTelemetry({
-                    type: 'storage_event',
-                    data: {
-                        storageType: storageType,
-                        action: 'removeItem',
-                        key: key,
-                        timestamp: Date.now()
-                    }
-                });
-                
-                return originalRemoveItem.apply(storage, arguments);
-            };
-            
-            storage.clear = function() {
-                sendTelemetry({
-                    type: 'storage_event',
-                    data: {
-                        storageType: storageType,
-                        action: 'clear',
-                        timestamp: Date.now()
-                    }
-                });
-                
-                return originalClear.apply(storage, arguments);
-            };
-        });
-        
-        // Monitor storage events from other windows/tabs
-        window.addEventListener('storage', (event) => {
-            sendTelemetry({
-                type: 'storage_event',
-                data: {
-                    storageType: event.storageArea === localStorage ? 'localStorage' : 'sessionStorage',
-                    action: 'external_change',
-                    key: event.key,
-                    oldValue: event.oldValue?.substring(0, 100),
-                    newValue: event.newValue?.substring(0, 100),
-                    url: event.url,
-                    timestamp: Date.now()
-                }
-            });
-        });
-        
-        DEBUG.log('info', 'storage', 'Storage monitoring initialized');
-    }
-    
-    // Monitor DOM Mutations
-    function monitorDOMMutations() {
-        if (!window.MutationObserver) return;
-        
-        const mutationSummary = {
-            added: 0,
-            removed: 0,
-            attributeChanged: 0,
-            textChanged: 0
-        };
-        
-        let mutationTimer = null;
-        const MUTATION_BATCH_DELAY = 1000; // Batch mutations for 1 second
-        
-        const sendMutationSummary = () => {
-            if (Object.values(mutationSummary).some(v => v > 0)) {
-                sendTelemetry({
-                    type: 'dom_mutation',
-                    data: {
-                        summary: {...mutationSummary},
-                        timestamp: Date.now()
-                    }
-                });
-                
-                // Reset counters
-                mutationSummary.added = 0;
-                mutationSummary.removed = 0;
-                mutationSummary.attributeChanged = 0;
-                mutationSummary.textChanged = 0;
-            }
-        };
-        
-        const mutationObserver = new MutationObserver((mutations) => {
-            mutations.forEach(mutation => {
-                switch (mutation.type) {
-                    case 'childList':
-                        mutationSummary.added += mutation.addedNodes.length;
-                        mutationSummary.removed += mutation.removedNodes.length;
-                        
-                        // Track significant additions (e.g., new sections, scripts)
-                        mutation.addedNodes.forEach(node => {
-                            if (node.nodeType === Node.ELEMENT_NODE) {
-                                const element = node;
-                                if (element.tagName === 'SCRIPT' || element.tagName === 'LINK' || element.tagName === 'STYLE') {
-                                    sendTelemetry({
-                                        type: 'dom_resource_added',
-                                        data: {
-                                            tagName: element.tagName,
-                                            src: element.src || element.href || 'inline',
-                                            timestamp: Date.now()
-                                        }
-                                    });
-                                }
-                            }
-                        });
-                        break;
-                        
-                    case 'attributes':
-                        mutationSummary.attributeChanged++;
-                        
-                        // Track specific attribute changes
-                        if (mutation.target.nodeType === Node.ELEMENT_NODE) {
-                            const element = mutation.target;
-                            if (mutation.attributeName === 'class' || mutation.attributeName === 'style') {
-                                // Track style/class changes on body or major containers
-                                if (element === document.body || element.tagName === 'HTML') {
-                                    sendTelemetry({
-                                        type: 'dom_style_change',
-                                        data: {
-                                            element: element.tagName,
-                                            attribute: mutation.attributeName,
-                                            oldValue: mutation.oldValue,
-                                            newValue: element.getAttribute(mutation.attributeName),
-                                            timestamp: Date.now()
-                                        }
-                                    });
-                                }
-                            }
-                        }
-                        break;
-                        
-                    case 'characterData':
-                        mutationSummary.textChanged++;
-                        break;
-                }
-            });
-            
-            // Batch mutations
-            clearTimeout(mutationTimer);
-            mutationTimer = setTimeout(sendMutationSummary, MUTATION_BATCH_DELAY);
-        });
-        
-        // Start observing
-        mutationObserver.observe(document.body, {
-            childList: true,
-            attributes: true,
-            characterData: true,
-            subtree: true,
-            attributeOldValue: true,
-            characterDataOldValue: false // Don't track old text values to save memory
-        });
-        
-        DEBUG.log('info', 'dom', 'DOM mutation observer started');
     }
     
     // Initialize monitoring
@@ -1985,9 +1079,6 @@
         monitorConsole();
         monitorInteractions();
         monitorNetworkActivity();
-        interceptNetworkRequests();
-        monitorStorageEvents();
-        monitorDOMMutations();
         
         // Send a test event to verify the system is working
         sendTelemetry({

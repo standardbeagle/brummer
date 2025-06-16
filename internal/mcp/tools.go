@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -82,6 +83,33 @@ Example usage:
 				return nil, err
 			}
 
+			// Check if script is already running
+			for _, proc := range s.processMgr.GetAllProcesses() {
+				if proc.Name == params.Name && proc.Status == "running" {
+					// Script is already running, send status and return
+					send(map[string]interface{}{
+						"type":      "duplicate",
+						"processId": proc.ID,
+						"name":      proc.Name,
+						"status":    string(proc.Status),
+						"message":   fmt.Sprintf("Script '%s' is already running with process ID: %s", proc.Name, proc.ID),
+						"startTime": proc.StartTime.Format(time.RFC3339),
+						"runtime":   time.Since(proc.StartTime).String(),
+						"commands": map[string]string{
+							"stop":    fmt.Sprintf("scripts/stop {\"processId\": \"%s\"}", proc.ID),
+							"restart": "First stop the process, then run again",
+						},
+					})
+					
+					return map[string]interface{}{
+						"duplicate":  true,
+						"processId":  proc.ID,
+						"status":     string(proc.Status),
+						"message":    fmt.Sprintf("Script '%s' is already running", proc.Name),
+					}, nil
+				}
+			}
+
 			// Start the script
 			process, err := s.processMgr.StartScript(params.Name)
 			if err != nil {
@@ -141,6 +169,49 @@ Example usage:
 				return nil, err
 			}
 
+			// Check if script is already running
+			for _, proc := range s.processMgr.GetAllProcesses() {
+				if proc.Name == params.Name && proc.Status == "running" {
+					// Script is already running, return its current state
+					result := map[string]interface{}{
+						"processId": proc.ID,
+						"name":      proc.Name,
+						"script":    proc.Script,
+						"status":    string(proc.Status),
+						"duplicate": true,
+						"message":   fmt.Sprintf("Script '%s' is already running with process ID: %s", proc.Name, proc.ID),
+						"startTime": proc.StartTime.Format(time.RFC3339),
+						"runtime":   time.Since(proc.StartTime).String(),
+						"commands": map[string]string{
+							"stop":    fmt.Sprintf("scripts/stop {\"processId\": \"%s\"}", proc.ID),
+							"restart": "First stop the process, then run again",
+							"status":  "Check status with: scripts/status",
+						},
+					}
+
+					// Get proxy URLs if available
+					if s.proxyServer != nil {
+						mappings := s.proxyServer.GetURLMappings()
+						processUrls := make([]map[string]interface{}, 0)
+						for _, m := range mappings {
+							if m.ProcessName == proc.Name {
+								processUrls = append(processUrls, map[string]interface{}{
+									"targetUrl": m.TargetURL,
+									"proxyUrl":  m.ProxyURL,
+									"label":     m.Label,
+								})
+							}
+						}
+						if len(processUrls) > 0 {
+							result["proxyUrls"] = processUrls
+						}
+					}
+
+					return result, nil
+				}
+			}
+
+			// Script not running, start it
 			process, err := s.processMgr.StartScript(params.Name)
 			if err != nil {
 				return nil, err
@@ -151,6 +222,7 @@ Example usage:
 				"name":      process.Name,
 				"script":    process.Script,
 				"status":    string(process.Status),
+				"duplicate": false,
 			}, nil
 		},
 	}
@@ -217,17 +289,50 @@ Example usage: {} or {"name": "dev"}`,
 
 			processes := s.processMgr.GetAllProcesses()
 
+			// Get proxy mappings if available
+			var proxyMappings []proxy.URLMapping
+			if s.proxyServer != nil {
+				proxyMappings = s.proxyServer.GetURLMappings()
+			}
+
 			if params.Name != "" {
 				// Filter by name
 				for _, p := range processes {
 					if p.Name == params.Name {
-						return map[string]interface{}{
+						result := map[string]interface{}{
 							"processId": p.ID,
 							"name":      p.Name,
 							"status":    string(p.Status),
 							"startTime": p.StartTime,
 							"uptime":    time.Since(p.StartTime).String(),
-						}, nil
+						}
+
+						// Add proxy URLs for this process
+						if len(proxyMappings) > 0 {
+							processUrls := make([]map[string]interface{}, 0)
+							for _, m := range proxyMappings {
+								if m.ProcessName == p.Name {
+									processUrls = append(processUrls, map[string]interface{}{
+										"targetUrl": m.TargetURL,
+										"proxyUrl":  m.ProxyURL,
+										"label":     m.Label,
+									})
+								}
+							}
+							if len(processUrls) > 0 {
+								result["proxyUrls"] = processUrls
+							}
+						}
+
+						// Add commands for managing the process
+						if p.Status == "running" {
+							result["commands"] = map[string]string{
+								"stop":    fmt.Sprintf("scripts/stop {\"processId\": \"%s\"}", p.ID),
+								"restart": "First stop the process, then run again",
+							}
+						}
+
+						return result, nil
 					}
 				}
 				return map[string]interface{}{
@@ -239,13 +344,32 @@ Example usage: {} or {"name": "dev"}`,
 			// Return all processes
 			result := make([]map[string]interface{}, 0, len(processes))
 			for _, p := range processes {
-				result = append(result, map[string]interface{}{
+				procInfo := map[string]interface{}{
 					"processId": p.ID,
 					"name":      p.Name,
 					"status":    string(p.Status),
 					"startTime": p.StartTime,
 					"uptime":    time.Since(p.StartTime).String(),
-				})
+				}
+
+				// Add proxy URLs for each process
+				if len(proxyMappings) > 0 {
+					processUrls := make([]map[string]interface{}, 0)
+					for _, m := range proxyMappings {
+						if m.ProcessName == p.Name {
+							processUrls = append(processUrls, map[string]interface{}{
+								"targetUrl": m.TargetURL,
+								"proxyUrl":  m.ProxyURL,
+								"label":     m.Label,
+							})
+						}
+					}
+					if len(processUrls) > 0 {
+						procInfo["proxyUrls"] = processUrls
+					}
+				}
+
+				result = append(result, procInfo)
 			}
 
 			return result, nil
