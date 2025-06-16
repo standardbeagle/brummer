@@ -41,6 +41,20 @@ ifeq ($(OS),Windows_NT)
     BINARY_NAME := $(BINARY_NAME).exe
 endif
 
+# Detect architecture
+UNAME_M := $(shell uname -m)
+ifeq ($(UNAME_M),x86_64)
+    DETECTED_ARCH := amd64
+endif
+ifeq ($(UNAME_M),aarch64)
+    DETECTED_ARCH := arm64
+endif
+ifeq ($(UNAME_M),arm64)
+    DETECTED_ARCH := arm64
+endif
+# Default to amd64 if unable to detect
+DETECTED_ARCH ?= amd64
+
 # Default target
 .DEFAULT_GOAL := build
 
@@ -67,10 +81,10 @@ install: build
 
 # Install for current user
 .PHONY: install-user
-install-user: build
+install-user: build-all
 	@echo "📦 Installing to $(USER_INSTALL_DIR)..."
 	@mkdir -p $(USER_INSTALL_DIR)
-	@cp $(BINARY_NAME) $(USER_INSTALL_DIR)/
+	@cp dist/$(BINARY_NAME)-$(DETECTED_OS)-$(DETECTED_ARCH) $(USER_INSTALL_DIR)/$(BINARY_NAME)
 ifeq ($(DETECTED_OS),windows)
 	@echo "✅ Installed to $(USER_INSTALL_DIR)/$(BINARY_NAME)"
 else
@@ -79,15 +93,20 @@ else
 endif
 ifeq ($(IS_WSL),true)
     ifdef WIN_INSTALL_DIR
-	@echo "📦 Installing to Windows: $(WIN_INSTALL_DIR)..."
+	@echo "📦 Installing Windows binary to: $(WIN_INSTALL_DIR)..."
 	@mkdir -p $(WIN_INSTALL_DIR)
-	@cp $(BINARY_NAME) $(WIN_INSTALL_DIR)/$(BINARY_NAME).exe
-	@echo "✅ Installed to $(WIN_INSTALL_DIR)/$(BINARY_NAME).exe"
+	@if [ -f "dist/$(BINARY_NAME)-windows-$(DETECTED_ARCH).exe" ]; then \
+		cp dist/$(BINARY_NAME)-windows-$(DETECTED_ARCH).exe $(WIN_INSTALL_DIR)/$(BINARY_NAME).exe; \
+		echo "✅ Installed to $(WIN_INSTALL_DIR)/$(BINARY_NAME).exe"; \
+	else \
+		echo "⚠️  Windows binary not found: dist/$(BINARY_NAME)-windows-$(DETECTED_ARCH).exe"; \
+		echo "💡 Run 'make build-all' first to create Windows binaries"; \
+	fi
 	@echo "💡 Make sure both $(USER_INSTALL_DIR) and $(WIN_INSTALL_DIR) are in your PATH"
     else
 	@echo "💡 Make sure $(USER_INSTALL_DIR) is in your PATH"
 	@echo "⚠️  Could not detect Windows user directory for dual installation"
-	@echo "💡 Set WIN_INSTALL_DIR=/mnt/c/Users/YOUR_USERNAME/.local/bin to install to Windows too"
+	@echo "💡 Set WINDOWS_USER=YOUR_USERNAME in .env file to enable Windows installation"
     endif
 else
 	@echo "💡 Make sure $(USER_INSTALL_DIR) is in your PATH"
