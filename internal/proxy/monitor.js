@@ -32,8 +32,8 @@
         collectMemoryMetrics: true,
         collectConsoleMetrics: false,
         processName: window.__brummerProcessName || 'unknown',
-        debugMode: true, // Enable visual debugging temporarily
-        debugLevel: 'verbose', // verbose, normal, minimal
+        debugMode: false, // Disable debug output to keep console clean
+        debugLevel: 'minimal', // verbose, normal, minimal
         useWebSocket: true // Use WebSocket instead of HTTP
     };
     
@@ -94,22 +94,7 @@
         },
         
         log: function(level, category, message, data = null) {
-            if (!BRUMMER_CONFIG.debugMode) return;
-            
-            const timestamp = new Date().toLocaleTimeString();
-            const icon = this.icons[level] || this.icons.debug;
-            const categoryIcon = this.icons[category] || '📋';
-            
-            const style = `color: ${this.colors[level]}; font-weight: bold;`;
-            
-            console.groupCollapsed(`${icon} ${categoryIcon} BRUMMER: ${message} [${timestamp}]`);
-            console.log(`%c${message}`, style);
-            
-            if (data) {
-                console.log('📊 Data:', data);
-            }
-            
-            // Add to debug timeline
+            // Silently add to debug timeline without console output
             if (window.__brummer && window.__brummer.debug && window.__brummer.debug.eventTimeline) {
                 window.__brummer.debug.eventTimeline.push({
                     timestamp: Date.now(),
@@ -124,8 +109,6 @@
                     window.__brummer.debug.eventTimeline.shift();
                 }
             }
-            
-            console.groupEnd();
         },
         
         status: function() {
@@ -135,7 +118,7 @@
             const buffer = telemetryBuffer;
             const now = Date.now();
             
-            console.clear();
+            // Only show status if explicitly called by user
             console.log('%c🔍 BRUMMER TELEMETRY DEBUG DASHBOARD', 'font-size: 18px; font-weight: bold; color: #3b82f6;');
             console.log('═══════════════════════════════════════');
             console.log(`${this.icons.buffer} Buffer: ${this.progressBar(buffer.length, BRUMMER_CONFIG.maxBatchSize)}`);
@@ -1230,8 +1213,7 @@
             };
         }
         
-        // Single startup message
-        console.log('%c🐝 Brummer: Console monitoring active', 'color: #4b5563; font-style: italic;');
+        // No startup message to keep console clean
         
         const originalMethods = {};
         const methodsToIntercept = ['log', 'info', 'warn', 'error', 'debug'];
@@ -2014,30 +1996,189 @@
         DEBUG.log('info', 'dom', 'DOM mutation observer started');
     }
     
+    // Create floating badge UI
+    function createFloatingBadge() {
+        if (!document.body) return;
+        
+        // Create badge container
+        const badge = document.createElement('div');
+        badge.id = '__brummer_badge';
+        badge.style.cssText = `
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1e293b;
+            color: #e2e8f0;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 12px;
+            font-weight: 500;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 999999;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            user-select: none;
+        `;
+        
+        // Create icon
+        const icon = document.createElement('span');
+        icon.innerHTML = '🐝';
+        icon.style.fontSize = '14px';
+        
+        // Create text
+        const text = document.createElement('span');
+        text.textContent = 'Brummer';
+        
+        // Create status indicator
+        const status = document.createElement('span');
+        status.id = '__brummer_status';
+        status.style.cssText = `
+            width: 8px;
+            height: 8px;
+            background: #22c55e;
+            border-radius: 50%;
+            display: inline-block;
+        `;
+        
+        badge.appendChild(icon);
+        badge.appendChild(text);
+        badge.appendChild(status);
+        
+        // Add hover effect
+        badge.addEventListener('mouseenter', () => {
+            badge.style.transform = 'translateY(-2px)';
+            badge.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.15)';
+        });
+        
+        badge.addEventListener('mouseleave', () => {
+            badge.style.transform = 'translateY(0)';
+            badge.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+        });
+        
+        // Toggle debug panel on click
+        let debugPanelVisible = false;
+        badge.addEventListener('click', () => {
+            if (debugPanelVisible) {
+                const panel = document.getElementById('__brummer_debug_panel');
+                if (panel) panel.remove();
+                debugPanelVisible = false;
+            } else {
+                createDebugPanel();
+                debugPanelVisible = true;
+            }
+        });
+        
+        document.body.appendChild(badge);
+        
+        // Update status indicator based on connection
+        setInterval(() => {
+            const statusEl = document.getElementById('__brummer_status');
+            if (statusEl) {
+                if (wsConnected || stats.lastPingSuccess) {
+                    statusEl.style.background = '#22c55e'; // Green for connected
+                } else {
+                    statusEl.style.background = '#ef4444'; // Red for disconnected
+                }
+            }
+        }, 1000);
+    }
+    
+    // Create debug panel (hidden by default)
+    function createDebugPanel() {
+        const panel = document.createElement('div');
+        panel.id = '__brummer_debug_panel';
+        panel.style.cssText = `
+            position: fixed;
+            bottom: 60px;
+            right: 20px;
+            width: 300px;
+            max-height: 400px;
+            background: #1e293b;
+            color: #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            z-index: 999998;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 12px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        `;
+        
+        // Header
+        const header = document.createElement('div');
+        header.style.cssText = `
+            padding: 12px 16px;
+            background: #0f172a;
+            border-bottom: 1px solid #334155;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        `;
+        header.innerHTML = `
+            <span>Brummer Debug Panel</span>
+            <span style="cursor: pointer; font-size: 16px;" onclick="document.getElementById('__brummer_debug_panel').remove()">×</span>
+        `;
+        
+        // Content
+        const content = document.createElement('div');
+        content.style.cssText = `
+            padding: 16px;
+            overflow-y: auto;
+            flex: 1;
+        `;
+        
+        // Add stats
+        const updateContent = () => {
+            content.innerHTML = `
+                <div style="margin-bottom: 12px;">
+                    <strong>Connection:</strong> ${wsConnected ? '🟢 WebSocket' : (stats.lastPingSuccess ? '🟡 HTTP' : '🔴 Offline')}
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <strong>Events Sent:</strong> ${stats.totalEvents}
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <strong>Buffer:</strong> ${telemetryBuffer.length}/${BRUMMER_CONFIG.maxBatchSize}
+                </div>
+                <div style="margin-bottom: 12px;">
+                    <strong>Errors:</strong> ${stats.errorCount}
+                </div>
+                <hr style="border: none; border-top: 1px solid #334155; margin: 12px 0;">
+                <div style="margin-bottom: 8px;">
+                    <strong>Debug Commands:</strong>
+                </div>
+                <code style="display: block; background: #0f172a; padding: 8px; border-radius: 4px; font-size: 11px;">
+                    __brummer.debug.status()<br>
+                    __brummer.debug.timeline()<br>
+                    __brummer.debug.flush()<br>
+                    __brummer.debug.clear()
+                </code>
+            `;
+        };
+        
+        updateContent();
+        panel.appendChild(header);
+        panel.appendChild(content);
+        document.body.appendChild(panel);
+        
+        // Update stats every second
+        const updateInterval = setInterval(() => {
+            if (document.getElementById('__brummer_debug_panel')) {
+                updateContent();
+            } else {
+                clearInterval(updateInterval);
+            }
+        }, 1000);
+    }
+    
     // Initialize monitoring
     function initialize() {
-        // Display startup banner
-        if (BRUMMER_CONFIG.debugMode) {
-            console.log('%c🚀 BRUMMER TELEMETRY INITIALIZED', 'font-size: 20px; font-weight: bold; color: #22c55e; background: #f0fdf4; padding: 10px;');
-            console.log('%c═══════════════════════════════════════', 'color: #22c55e;');
-            console.log(`${DEBUG.icons.performance} Process: ${BRUMMER_CONFIG.processName}`);
-            console.log(`${DEBUG.icons.network} HTTP Endpoint: ${BRUMMER_CONFIG.telemetryEndpoint}`);
-            console.log(`${DEBUG.icons.network} WebSocket Endpoint: ${BRUMMER_CONFIG.websocketEndpoint}`);
-            console.log(`${DEBUG.icons.timer} Batch Interval: ${BRUMMER_CONFIG.batchInterval}ms`);
-            console.log(`${DEBUG.icons.buffer} Max Batch Size: ${BRUMMER_CONFIG.maxBatchSize} events`);
-            console.log(`🔌 Use WebSocket: ${BRUMMER_CONFIG.useWebSocket ? 'YES' : 'NO'}`);
-            console.log('%c═══════════════════════════════════════', 'color: #22c55e;');
-            console.log('%cDebug Commands:', 'font-weight: bold; color: #3b82f6;');
-            console.log('  __brummer.debug.status() - Show telemetry dashboard');
-            console.log('  __brummer.debug.timeline() - Show event timeline');
-            console.log('  __brummer.debug.headers() - Show request context');
-            console.log('  __brummer.debug.ping() - Test endpoint connectivity');
-            console.log('  __brummer.debug.flush() - Force send buffered events');
-            console.log('  __brummer.debug.clear() - Clear event buffer');
-            console.log('  __brummer.debug.ws() - Get WebSocket connection');
-            console.log('  __brummer.debug.reconnect() - Reconnect WebSocket');
-            console.log('%c═══════════════════════════════════════', 'color: #22c55e;');
-        }
+        // No startup banner to keep console clean
         
         // Connect WebSocket if enabled
         if (BRUMMER_CONFIG.useWebSocket) {
@@ -2083,6 +2224,11 @@
             }
         });
         
+        // Create floating badge UI
+        setTimeout(() => {
+            createFloatingBadge();
+        }, 100);
+        
         // Start monitors
         monitorDOMTiming();
         monitorPerformance();
@@ -2106,7 +2252,6 @@
         
         // Force immediate flush for testing
         setTimeout(() => {
-            console.log('🔧 BRUMMER: Forcing telemetry flush for testing...');
             flushTelemetry();
         }, 1000);
         
@@ -2118,14 +2263,7 @@
             flushTelemetry();
         });
         
-        // Status display timer
-        if (BRUMMER_CONFIG.debugMode && BRUMMER_CONFIG.debugLevel === 'verbose') {
-            setInterval(() => {
-                if (telemetryBuffer.length > 0 || stats.totalEvents > 0) {
-                    DEBUG.status();
-                }
-            }, 10000); // Show status every 10 seconds if there's activity
-        }
+        // No automatic status display to keep console clean
     }
     
     // Start monitoring when DOM is ready
