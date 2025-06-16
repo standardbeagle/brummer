@@ -1223,11 +1223,66 @@ Example usage:
 					canvas.style.height = fullHeight + 'px';
 					ctx.scale(scale, scale);
 					
-					// Note: Full page capture would require browser extension or headless browser
-					// This is a placeholder that returns current viewport only
-					window.scrollTo(originalScrollX, originalScrollY);
-					return Promise.reject('Full page capture requires browser extension or headless browser');
-				`)
+					// Use html2canvas for full page capture
+					return new Promise((resolve, reject) => {
+						// Dynamically load html2canvas if not already loaded
+						if (typeof html2canvas === 'undefined') {
+							const script = document.createElement('script');
+							script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+							script.onload = () => {
+								// Capture full page
+								html2canvas(document.body, {
+									width: fullWidth,
+									height: fullHeight,
+									windowWidth: fullWidth,
+									windowHeight: fullHeight,
+									x: 0,
+									y: 0,
+									useCORS: true,
+									allowTaint: true,
+									scale: window.devicePixelRatio || 1,
+									logging: false,
+									scrollX: 0,
+									scrollY: 0
+								}).then(canvas => {
+									// Restore scroll position
+									window.scrollTo(originalScrollX, originalScrollY);
+									resolve(canvas.toDataURL('image/%s', %f));
+								}).catch(err => {
+									window.scrollTo(originalScrollX, originalScrollY);
+									reject(err);
+								});
+							};
+							script.onerror = () => {
+								window.scrollTo(originalScrollX, originalScrollY);
+								reject('Failed to load html2canvas library');
+							};
+							document.head.appendChild(script);
+						} else {
+							// html2canvas already loaded
+							html2canvas(document.body, {
+								width: fullWidth,
+								height: fullHeight,
+								windowWidth: fullWidth,
+								windowHeight: fullHeight,
+								x: 0,
+								y: 0,
+								useCORS: true,
+								allowTaint: true,
+								scale: window.devicePixelRatio || 1,
+								logging: false,
+								scrollX: 0,
+								scrollY: 0
+							}).then(canvas => {
+								window.scrollTo(originalScrollX, originalScrollY);
+								resolve(canvas.toDataURL('image/%s', %f));
+							}).catch(err => {
+								window.scrollTo(originalScrollX, originalScrollY);
+								reject(err);
+							});
+						}
+					});
+				`, params.Format, float64(params.Quality)/100, params.Format, float64(params.Quality)/100)
 			} else {
 				// Capture visible viewport using browser API if available
 				jsCode = fmt.Sprintf(`
@@ -1239,22 +1294,46 @@ Example usage:
 						});
 					}
 					
-					// Fallback: Create canvas of viewport
-					const canvas = document.createElement('canvas');
-					const ctx = canvas.getContext('2d');
-					const scale = window.devicePixelRatio || 1;
-					
-					canvas.width = window.innerWidth * scale;
-					canvas.height = window.innerHeight * scale;
-					canvas.style.width = window.innerWidth + 'px';
-					canvas.style.height = window.innerHeight + 'px';
-					
-					ctx.scale(scale, scale);
-					
-					// Note: Canvas cannot capture cross-origin content
-					// This would need a browser extension or headless browser for full functionality
-					return Promise.reject('Viewport capture requires browser extension or headless browser. Consider using external screenshot tools.');
-				`, params.Format, params.Quality)
+					// Use html2canvas to capture the viewport
+					return new Promise((resolve, reject) => {
+						// Dynamically load html2canvas if not already loaded
+						if (typeof html2canvas === 'undefined') {
+							const script = document.createElement('script');
+							script.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+							script.onload = () => {
+								// Now html2canvas is available
+								html2canvas(document.body, {
+									width: window.innerWidth,
+									height: window.innerHeight,
+									x: window.scrollX,
+									y: window.scrollY,
+									useCORS: true,
+									allowTaint: true,
+									scale: window.devicePixelRatio || 1,
+									logging: false
+								}).then(canvas => {
+									resolve(canvas.toDataURL('image/%s', %f));
+								}).catch(reject);
+							};
+							script.onerror = () => reject('Failed to load html2canvas library');
+							document.head.appendChild(script);
+						} else {
+							// html2canvas already loaded
+							html2canvas(document.body, {
+								width: window.innerWidth,
+								height: window.innerHeight,
+								x: window.scrollX,
+								y: window.scrollY,
+								useCORS: true,
+								allowTaint: true,
+								scale: window.devicePixelRatio || 1,
+								logging: false
+							}).then(canvas => {
+								resolve(canvas.toDataURL('image/%s', %f));
+							}).catch(reject);
+						}
+					});
+				`, params.Format, params.Quality, params.Format, float64(params.Quality)/100, params.Format, float64(params.Quality)/100)
 			}
 
 			// Send screenshot command via WebSocket

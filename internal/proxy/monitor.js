@@ -320,6 +320,38 @@
             });
             
             DEBUG.log('info', 'custom', `Feature used: ${featureName}`, metadata);
+        },
+        
+        // Capture screenshot programmatically
+        screenshot: function(options = {}) {
+            const requestId = 'api_screenshot_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            
+            const screenshotData = {
+                requestId: requestId,
+                url: window.location.href,
+                viewport: {
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    devicePixelRatio: window.devicePixelRatio
+                },
+                fullPage: options.fullPage !== false, // Default to true
+                selector: options.selector || null,
+                timestamp: Date.now()
+            };
+            
+            if (wsConnected && websocket && websocket.readyState === WebSocket.OPEN) {
+                sendWebSocketCommand('screenshot_request', screenshotData);
+            } else {
+                sendTelemetry({
+                    type: 'screenshot_request',
+                    data: screenshotData
+                });
+                flushTelemetry();
+            }
+            
+            DEBUG.log('info', 'screenshot', `Screenshot requested via API with ID: ${requestId}`, options);
+            
+            return requestId;
         }
     };
     
@@ -430,6 +462,11 @@
                 }
                 break;
                 
+            case 'screenshot_response':
+                // Handle screenshot response
+                handleScreenshotResponse(message.data);
+                break;
+                
             default:
                 DEBUG.log('info', 'network', `Unknown message type: ${message.type}`);
         }
@@ -492,6 +529,56 @@
                 error = err2.toString();
                 sendREPLResponse(responseId, null, error);
             }
+        }
+    }
+    
+    // Handle screenshot response from server
+    function handleScreenshotResponse(data) {
+        const { requestId, success, error, filename, dataUrl } = data;
+        
+        DEBUG.log('info', 'screenshot', `Screenshot response received`, {
+            requestId,
+            success,
+            error,
+            filename
+        });
+        
+        // Clear timeout if exists
+        if (window.__brummerScreenshotTimeout) {
+            clearTimeout(window.__brummerScreenshotTimeout);
+            window.__brummerScreenshotTimeout = null;
+        }
+        
+        // Update UI
+        const statusEl = document.getElementById('__brummer_screenshot_status');
+        const btnEl = document.getElementById('__brummer_screenshot_btn');
+        
+        if (statusEl && btnEl) {
+            btnEl.disabled = false;
+            btnEl.textContent = '📸 Capture Screenshot';
+            
+            if (success) {
+                statusEl.textContent = `✅ Screenshot saved: ${filename || 'screenshot.png'}`;
+                statusEl.style.color = '#22c55e';
+                
+                // If we have a data URL, offer to download it
+                if (dataUrl) {
+                    const link = document.createElement('a');
+                    link.href = dataUrl;
+                    link.download = filename || 'screenshot.png';
+                    link.click();
+                }
+            } else {
+                statusEl.textContent = `❌ Screenshot failed: ${error || 'Unknown error'}`;
+                statusEl.style.color = '#ef4444';
+            }
+            
+            // Clear status after 5 seconds
+            setTimeout(() => {
+                if (statusEl) {
+                    statusEl.textContent = '';
+                }
+            }, 5000);
         }
     }
     
@@ -1996,6 +2083,79 @@
         DEBUG.log('info', 'dom', 'DOM mutation observer started');
     }
     
+    // Capture screenshot function
+    function captureScreenshot() {
+        const statusEl = document.getElementById('__brummer_screenshot_status');
+        const btnEl = document.getElementById('__brummer_screenshot_btn');
+        
+        if (!statusEl || !btnEl) return;
+        
+        // Update UI to show capturing
+        btnEl.disabled = true;
+        btnEl.textContent = '⏳ Capturing...';
+        statusEl.textContent = 'Requesting screenshot...';
+        statusEl.style.color = '#3b82f6';
+        
+        // Generate unique request ID
+        const requestId = 'screenshot_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+        
+        // Send screenshot request via WebSocket
+        if (wsConnected && websocket && websocket.readyState === WebSocket.OPEN) {
+            // Use WebSocket for screenshot request
+            sendWebSocketCommand('screenshot_request', {
+                requestId: requestId,
+                url: window.location.href,
+                viewport: {
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    devicePixelRatio: window.devicePixelRatio
+                },
+                fullPage: true
+            });
+            
+            // Wait for response with timeout
+            const timeout = setTimeout(() => {
+                btnEl.disabled = false;
+                btnEl.textContent = '📸 Capture Screenshot';
+                statusEl.textContent = 'Screenshot timeout. Try using browser DevTools (F12).';
+                statusEl.style.color = '#ef4444';
+            }, 10000);
+            
+            // Store timeout to clear later
+            window.__brummerScreenshotTimeout = timeout;
+            
+        } else {
+            // Fallback to telemetry-based screenshot request
+            sendTelemetry({
+                type: 'screenshot_request',
+                data: {
+                    requestId: requestId,
+                    url: window.location.href,
+                    viewport: {
+                        width: window.innerWidth,
+                        height: window.innerHeight,
+                        devicePixelRatio: window.devicePixelRatio
+                    },
+                    fullPage: true,
+                    timestamp: Date.now()
+                }
+            });
+            
+            // Flush immediately to send the request
+            flushTelemetry();
+            
+            // Update status
+            setTimeout(() => {
+                btnEl.disabled = false;
+                btnEl.textContent = '📸 Capture Screenshot';
+                statusEl.textContent = 'Screenshot requested. Check Brummer logs.';
+                statusEl.style.color = '#22c55e';
+            }, 2000);
+        }
+        
+        DEBUG.log('info', 'screenshot', `Screenshot requested with ID: ${requestId}`);
+    }
+    
     // Create floating badge UI
     function createFloatingBadge() {
         if (!document.body) return;
@@ -2149,6 +2309,24 @@
                     <strong>Errors:</strong> ${stats.errorCount}
                 </div>
                 <hr style="border: none; border-top: 1px solid #334155; margin: 12px 0;">
+                <div style="margin-bottom: 12px;">
+                    <button id="__brummer_screenshot_btn" style="
+                        width: 100%;
+                        padding: 8px 12px;
+                        background: #3b82f6;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 500;
+                        cursor: pointer;
+                        transition: background 0.2s;
+                    " onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                        📸 Capture Screenshot
+                    </button>
+                </div>
+                <div id="__brummer_screenshot_status" style="margin-bottom: 12px; text-align: center; font-size: 11px; color: #94a3b8;"></div>
+                <hr style="border: none; border-top: 1px solid #334155; margin: 12px 0;">
                 <div style="margin-bottom: 8px;">
                     <strong>Debug Commands:</strong>
                 </div>
@@ -2159,6 +2337,12 @@
                     __brummer.debug.clear()
                 </code>
             `;
+            
+            // Add click handler for screenshot button
+            const screenshotBtn = document.getElementById('__brummer_screenshot_btn');
+            if (screenshotBtn) {
+                screenshotBtn.onclick = captureScreenshot;
+            }
         };
         
         updateContent();
