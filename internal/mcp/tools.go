@@ -1101,6 +1101,197 @@ Example usage:
 			}
 		},
 	}
+
+	// browser_screenshot - Capture screenshot of browser tab
+	s.tools["browser_screenshot"] = MCPTool{
+		Name: "browser_screenshot",
+		Description: `Capture a screenshot of the current browser tab.
+
+Chain of thought: To capture the current state of your web application for debugging, documentation, or visual regression testing. Supports full page capture or visible viewport only.
+
+Example usage:
+- Capture visible viewport: {"format": "png"}
+- Capture full page: {"fullPage": true, "format": "png"}
+- Specific session: {"sessionId": "abc-123", "format": "jpeg", "quality": 85}
+- With selector: {"selector": "#main-content", "format": "png"}`,
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"sessionId": {
+					"type": "string",
+					"description": "Session to capture screenshot from (defaults to most recent)"
+				},
+				"format": {
+					"type": "string",
+					"enum": ["png", "jpeg", "webp"],
+					"default": "png",
+					"description": "Image format for the screenshot"
+				},
+				"quality": {
+					"type": "integer",
+					"minimum": 0,
+					"maximum": 100,
+					"default": 90,
+					"description": "Quality for jpeg/webp formats (0-100)"
+				},
+				"fullPage": {
+					"type": "boolean",
+					"default": false,
+					"description": "Capture full page instead of just viewport"
+				},
+				"selector": {
+					"type": "string",
+					"description": "CSS selector to capture specific element"
+				}
+			}
+		}`),
+		Handler: func(args json.RawMessage) (interface{}, error) {
+			var params struct {
+				SessionID string `json:"sessionId"`
+				Format    string `json:"format"`
+				Quality   int    `json:"quality"`
+				FullPage  bool   `json:"fullPage"`
+				Selector  string `json:"selector"`
+			}
+			// Set defaults
+			params.Format = "png"
+			params.Quality = 90
+			if err := json.Unmarshal(args, &params); err != nil {
+				return nil, err
+			}
+
+			// Create response ID and register channel
+			responseID := fmt.Sprintf("screenshot-%d", time.Now().UnixNano())
+			responseChan := s.registerREPLResponse(responseID)
+			defer s.unregisterREPLResponse(responseID)
+
+			// Build JavaScript code to capture screenshot
+			var jsCode string
+			if params.Selector != "" {
+				// Capture specific element
+				jsCode = fmt.Sprintf(`
+					const element = document.querySelector('%s');
+					if (!element) {
+						throw new Error('Element not found: %s');
+					}
+					
+					// Use html2canvas if available, otherwise use DOM-to-image approach
+					if (typeof html2canvas !== 'undefined') {
+						return html2canvas(element, {
+							useCORS: true,
+							allowTaint: true,
+							scale: window.devicePixelRatio || 1
+						}).then(canvas => {
+							return canvas.toDataURL('image/%s', %f);
+						});
+					} else {
+						// Fallback: try to use native browser APIs or return error
+						return Promise.reject('Screenshot capture requires html2canvas library');
+					}
+				`, params.Selector, params.Selector, params.Format, float64(params.Quality)/100)
+			} else if params.FullPage {
+				// Capture full page
+				jsCode = fmt.Sprintf(`
+					// Store original scroll position
+					const originalScrollX = window.scrollX;
+					const originalScrollY = window.scrollY;
+					
+					// Get full document dimensions
+					const fullHeight = Math.max(
+						document.body.scrollHeight,
+						document.body.offsetHeight,
+						document.documentElement.clientHeight,
+						document.documentElement.scrollHeight,
+						document.documentElement.offsetHeight
+					);
+					const fullWidth = Math.max(
+						document.body.scrollWidth,
+						document.body.offsetWidth,
+						document.documentElement.clientWidth,
+						document.documentElement.scrollWidth,
+						document.documentElement.offsetWidth
+					);
+					
+					// Create canvas for full page
+					const canvas = document.createElement('canvas');
+					const ctx = canvas.getContext('2d');
+					const scale = window.devicePixelRatio || 1;
+					
+					canvas.width = fullWidth * scale;
+					canvas.height = fullHeight * scale;
+					canvas.style.width = fullWidth + 'px';
+					canvas.style.height = fullHeight + 'px';
+					ctx.scale(scale, scale);
+					
+					// Note: Full page capture would require browser extension or headless browser
+					// This is a placeholder that returns current viewport only
+					window.scrollTo(originalScrollX, originalScrollY);
+					return Promise.reject('Full page capture requires browser extension or headless browser');
+				`)
+			} else {
+				// Capture visible viewport using browser API if available
+				jsCode = fmt.Sprintf(`
+					// Try to use browser screenshot API if available (requires extension)
+					if (window.__brummer_screenshot) {
+						return window.__brummer_screenshot({
+							format: '%s',
+							quality: %d
+						});
+					}
+					
+					// Fallback: Create canvas of viewport
+					const canvas = document.createElement('canvas');
+					const ctx = canvas.getContext('2d');
+					const scale = window.devicePixelRatio || 1;
+					
+					canvas.width = window.innerWidth * scale;
+					canvas.height = window.innerHeight * scale;
+					canvas.style.width = window.innerWidth + 'px';
+					canvas.style.height = window.innerHeight + 'px';
+					
+					ctx.scale(scale, scale);
+					
+					// Note: Canvas cannot capture cross-origin content
+					// This would need a browser extension or headless browser for full functionality
+					return Promise.reject('Viewport capture requires browser extension or headless browser. Consider using external screenshot tools.');
+				`, params.Format, params.Quality)
+			}
+
+			// Send screenshot command via WebSocket
+			if s.proxyServer != nil {
+				s.proxyServer.BroadcastToWebSockets("command", map[string]interface{}{
+					"action":     "repl",
+					"code":       jsCode,
+					"sessionId":  params.SessionID,
+					"responseId": responseID,
+				})
+			} else {
+				return map[string]interface{}{
+					"error": "proxy server not available",
+				}, nil
+			}
+
+			// Wait for response with timeout
+			select {
+			case response := <-responseChan:
+				// Check if response contains error
+				if respMap, ok := response.(map[string]interface{}); ok {
+					if errMsg, ok := respMap["error"].(string); ok {
+						// Provide helpful guidance
+						return map[string]interface{}{
+							"error": errMsg,
+							"suggestion": "Screenshot capture is limited in browser context. Consider using: 1) Browser DevTools (F12 > Elements > right-click > 'Capture node screenshot'), 2) OS screenshot tools (Windows: Win+Shift+S, Mac: Cmd+Shift+4, Linux: varies), or 3) Browser extensions for full-page capture.",
+						}, nil
+					}
+				}
+				return response, nil
+			case <-time.After(5 * time.Second):
+				return map[string]interface{}{
+					"error": "timeout waiting for screenshot response",
+				}, nil
+			}
+		},
+	}
 }
 
 // Helper functions

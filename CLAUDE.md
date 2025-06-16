@@ -148,6 +148,7 @@ For direct HTTP connections, use: `http://localhost:7777/mcp`
 - **browser/open**: Open URLs with automatic proxy configuration
 - **browser/refresh**: Refresh connected browser tabs
 - **browser/navigate**: Navigate browser tabs to new URLs
+- **browser/screenshot**: Capture screenshots of browser tabs (limited without extension)
 - **repl/execute**: Execute JavaScript in browser context
 
 ### MCP Resources
@@ -156,6 +157,7 @@ Structured data access via resources:
 - `logs://errors`: Recent error log entries only
 - `telemetry://sessions`: Active browser telemetry sessions
 - `telemetry://errors`: JavaScript errors from browser sessions
+- `telemetry://console-errors`: Console error output (console.error calls)
 - `proxy://requests`: Recent HTTP requests captured by proxy
 - `proxy://mappings`: Active reverse proxy URL mappings
 - `processes://active`: Currently running processes

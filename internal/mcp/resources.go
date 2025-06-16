@@ -37,6 +37,13 @@ func (s *StreamableServer) registerResources() {
 		MimeType:    "application/json",
 	}
 
+	s.resources["telemetry://console-errors"] = Resource{
+		URI:         "telemetry://console-errors",
+		Name:        "Console Errors",
+		Description: "Console error output (console.error calls) from browser sessions",
+		MimeType:    "application/json",
+	}
+
 	// Proxy resources
 	s.resources["proxy://requests"] = Resource{
 		URI:         "proxy://requests",
@@ -121,6 +128,9 @@ func (s *StreamableServer) handleResourceRead(msg *JSONRPCMessage) *JSONRPCMessa
 
 	case "telemetry://errors":
 		content = s.getBrowserErrors()
+
+	case "telemetry://console-errors":
+		content = s.getConsoleErrors()
 
 	case "proxy://requests":
 		content = s.getProxyRequests(100)
@@ -263,6 +273,36 @@ func (s *StreamableServer) getBrowserErrors() []interface{} {
 					"type":      event.Type,
 					"data":      event.Data,
 				})
+			}
+		}
+	}
+
+	return errors
+}
+
+func (s *StreamableServer) getConsoleErrors() []interface{} {
+	if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
+		return []interface{}{}
+	}
+
+	telemetry := s.proxyServer.GetTelemetryStore()
+	errors := make([]interface{}, 0)
+
+	// Get all sessions and extract console.error calls
+	for _, session := range telemetry.GetAllSessions() {
+		for _, event := range session.Events {
+			// Check if this is a console output event with error level
+			if event.Type == "console_output" {
+				if level, ok := event.Data["level"].(string); ok && level == "error" {
+					errors = append(errors, map[string]interface{}{
+						"sessionId": session.SessionID,
+						"url":       session.URL,
+						"timestamp": event.Timestamp,
+						"type":      "console.error",
+						"message":   event.Data["message"],
+						"stack":     event.Data["stack"],
+					})
+				}
 			}
 		}
 	}
