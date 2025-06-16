@@ -37,6 +37,7 @@ const (
 	ViewURLs           View = "urls"
 	ViewWeb            View = "web"
 	ViewSettings       View = "settings"
+	ViewMCPConnections View = "mcp-connections"
 	ViewSearch         View = "search"
 	ViewFilters        View = "filters"
 	ViewScriptSelector View = "script-selector"
@@ -58,35 +59,41 @@ var viewConfigs = map[View]ViewConfig{
 		KeyBinding:  "1",
 		Icon:        "🏃",
 	},
-	ViewURLs: {
-		Title:       "URLs",
-		Description: "Detected URLs",
-		KeyBinding:  "2",
-		Icon:        "🔗",
-	},
 	ViewLogs: {
 		Title:       "Logs",
 		Description: "Process logs",
-		KeyBinding:  "3",
+		KeyBinding:  "2",
 		Icon:        "📄",
-	},
-	ViewWeb: {
-		Title:       "Web",
-		Description: "Proxy requests",
-		KeyBinding:  "4",
-		Icon:        "🌐",
 	},
 	ViewErrors: {
 		Title:       "Errors",
 		Description: "Error tracking",
-		KeyBinding:  "5",
+		KeyBinding:  "3",
 		Icon:        "❌",
+	},
+	ViewURLs: {
+		Title:       "URLs",
+		Description: "Detected URLs",
+		KeyBinding:  "4",
+		Icon:        "🔗",
+	},
+	ViewWeb: {
+		Title:       "Web",
+		Description: "Proxy requests",
+		KeyBinding:  "5",
+		Icon:        "🌐",
 	},
 	ViewSettings: {
 		Title:       "Settings",
 		Description: "Configuration",
 		KeyBinding:  "6",
 		Icon:        "⚙️",
+	},
+	ViewMCPConnections: {
+		Title:       "MCP",
+		Description: "MCP Connections",
+		KeyBinding:  "7",
+		Icon:        "🔌",
 	},
 }
 
@@ -117,6 +124,7 @@ type Model struct {
 	mcpServer   MCPServerInterface
 	mcpPort     int
 	proxyServer *proxy.Server
+	debugMode   bool
 
 	currentView View
 	width       int
@@ -191,6 +199,11 @@ type Model struct {
 	keys keyMap
 
 	updateChan chan tea.Msg
+
+	// MCP connections view state
+	mcpConnectionsList  list.Model     // List of MCP connections
+	mcpActivityViewport viewport.Model // Activity log for selected connection
+	selectedMCPClient   string         // Selected MCP client ID
 }
 
 // handleGlobalKeys handles keys that should work in all views
@@ -299,6 +312,10 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	// Handle number keys for view switching
 	for viewType, cfg := range viewConfigs {
 		if msg.String() == cfg.KeyBinding {
+			// Skip MCP connections view if not in debug mode
+			if viewType == ViewMCPConnections && !m.debugMode {
+				continue
+			}
 			m.switchToView(viewType)
 			return *m, nil, true
 		}
@@ -812,10 +829,10 @@ func formatBytes(bytes int64) string {
 }
 
 func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int) Model {
-	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewProcesses)
+	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewProcesses, false)
 }
 
-func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View) Model {
+func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool) Model {
 	scripts := processMgr.GetScripts()
 
 	processesList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
@@ -838,6 +855,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		mcpServer:      mcpServer,
 		mcpPort:        mcpPort,
 		proxyServer:    proxyServer,
+		debugMode:      debugMode,
 		currentView:    initialView,
 		processesList:  processesList,
 		settingsList:   settingsList,
@@ -890,6 +908,15 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 
 	// Initialize unread indicators
 	m.unreadIndicators = make(map[View]UnreadIndicator)
+
+	// Initialize MCP connections view if in debug mode
+	if debugMode {
+		mcpConnectionsList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+		mcpConnectionsList.Title = "MCP Connections"
+		mcpConnectionsList.SetShowStatusBar(false)
+		m.mcpConnectionsList = mcpConnectionsList
+		m.mcpActivityViewport = viewport.New(0, 0)
+	}
 
 	// Check for monorepo on startup
 	m.monorepoInfo, _ = processMgr.GetMonorepoInfo()
@@ -1374,6 +1401,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case ViewMCPConnections:
+		if m.debugMode {
+			// Update connections list
+			newList, cmd := m.mcpConnectionsList.Update(msg)
+			m.mcpConnectionsList = newList
+			cmds = append(cmds, cmd)
+
+			// Update activity viewport
+			newViewport, cmd := m.mcpActivityViewport.Update(msg)
+			m.mcpActivityViewport = newViewport
+			cmds = append(cmds, cmd)
+
+			// Handle selection
+			if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, m.keys.Enter) {
+				if i, ok := m.mcpConnectionsList.SelectedItem().(mcpConnectionItem); ok {
+					m.selectedMCPClient = i.clientID
+					// Update activity viewport with selected client's activity
+					m.updateMCPActivityView()
+				}
+			}
+		}
+
 	}
 
 	return m, tea.Batch(cmds...)
@@ -1456,6 +1505,11 @@ func (m Model) renderContent() string {
 			return m.renderFileBrowser()
 		}
 		return m.renderSettings()
+	case ViewMCPConnections:
+		if m.debugMode {
+			return m.renderMCPConnections()
+		}
+		return m.renderSettings() // Fallback if not in debug mode
 	case ViewFilters:
 		return m.renderFiltersView()
 	default:
@@ -1522,6 +1576,9 @@ func (m *Model) updateSizes() {
 
 func (m *Model) cycleView() {
 	views := []View{ViewProcesses, ViewURLs, ViewLogs, ViewWeb, ViewErrors, ViewSettings}
+	if m.debugMode {
+		views = append(views, ViewMCPConnections)
+	}
 	for i, v := range views {
 		if v == m.currentView {
 			m.currentView = views[(i+1)%len(views)]
@@ -1532,6 +1589,9 @@ func (m *Model) cycleView() {
 
 func (m *Model) cyclePrevView() {
 	views := []View{ViewProcesses, ViewURLs, ViewLogs, ViewWeb, ViewErrors, ViewSettings}
+	if m.debugMode {
+		views = append(views, ViewMCPConnections)
+	}
 	for i, v := range views {
 		if v == m.currentView {
 			// Go to previous view (with wrap-around)
@@ -1558,6 +1618,11 @@ func (m *Model) switchToView(view View) {
 		// Errors view updates automatically via subscription
 	case ViewWeb:
 		// Web view updates automatically via list component
+	case ViewMCPConnections:
+		if m.debugMode {
+			// Initialize MCP connections list
+			m.updateMCPConnectionsList()
+		}
 	}
 }
 
@@ -1916,12 +1981,15 @@ func (m Model) renderHeader() string {
 
 	// Use ordered list of views
 	orderedViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
+	if m.debugMode {
+		orderedViews = append(orderedViews, ViewMCPConnections)
+	}
 	for i, viewType := range orderedViews {
 		if cfg, ok := viewConfigs[viewType]; ok {
-			// Build the base label with icon directly before number
+			// Build the base label with icon and space before number
 			label := fmt.Sprintf("%s.%s", cfg.KeyBinding, cfg.Title)
 			if cfg.Icon != "" {
-				label = cfg.Icon + label
+				label = cfg.Icon + " " + label
 			}
 
 			// Get unread indicator for this view

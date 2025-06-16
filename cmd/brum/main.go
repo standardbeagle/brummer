@@ -35,6 +35,7 @@ var (
 	noProxy       bool
 	showVersion   bool
 	showSettings  bool
+	debugMode     bool
 )
 
 var rootCmd = &cobra.Command{
@@ -101,6 +102,7 @@ func init() {
 	// Feature toggles
 	rootCmd.Flags().BoolVar(&noMCP, "no-mcp", false, "Disable MCP server")
 	rootCmd.Flags().BoolVar(&noTUI, "no-tui", false, "Run in headless mode (MCP server only)")
+	rootCmd.Flags().BoolVar(&debugMode, "debug", false, "Enable debug mode with MCP connections tab")
 
 	// Set version for cobra
 	rootCmd.Version = Version
@@ -463,7 +465,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			// Default to processes view when no package.json (no scripts to select)
 			initialView = tui.ViewProcesses
 		}
-		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, initialView)
+		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, initialView, debugMode)
 		p := tea.NewProgram(model, tea.WithAltScreen())
 
 		// Run TUI in goroutine so we can handle signals

@@ -1,0 +1,304 @@
+=== RUN   TestMCPInspectorIntegration
+    integration_test.go:27: mcp-inspector not found in PATH, skipping integration test
+--- SKIP: TestMCPInspectorIntegration (0.07s)
+=== RUN   TestProtocolEdgeCases
+=== RUN   TestProtocolEdgeCases/empty_batch_request
+=== RUN   TestProtocolEdgeCases/null_request
+=== RUN   TestProtocolEdgeCases/mixed_valid_and_invalid_batch
+=== RUN   TestProtocolEdgeCases/request_with_invalid_JSON-RPC_version
+=== RUN   TestProtocolEdgeCases/request_with_both_result_and_error
+=== RUN   TestProtocolEdgeCases/extremely_large_request
+=== RUN   TestProtocolEdgeCases/request_with_unicode_and_special_characters
+--- PASS: TestProtocolEdgeCases (1.10s)
+    --- PASS: TestProtocolEdgeCases/empty_batch_request (0.00s)
+    --- PASS: TestProtocolEdgeCases/null_request (0.00s)
+    --- PASS: TestProtocolEdgeCases/mixed_valid_and_invalid_batch (0.00s)
+    --- PASS: TestProtocolEdgeCases/request_with_invalid_JSON-RPC_version (0.00s)
+    --- PASS: TestProtocolEdgeCases/request_with_both_result_and_error (0.00s)
+    --- PASS: TestProtocolEdgeCases/extremely_large_request (0.07s)
+    --- PASS: TestProtocolEdgeCases/request_with_unicode_and_special_characters (0.00s)
+=== RUN   TestStreamingEdgeCases
+=== RUN   TestStreamingEdgeCases/client_disconnect_during_streaming
+=== RUN   TestStreamingEdgeCases/rapid_connect/disconnect
+=== RUN   TestStreamingEdgeCases/multiple_concurrent_SSE_connections
+--- PASS: TestStreamingEdgeCases (1.56s)
+    --- PASS: TestStreamingEdgeCases/client_disconnect_during_streaming (0.05s)
+    --- PASS: TestStreamingEdgeCases/rapid_connect/disconnect (0.10s)
+    --- PASS: TestStreamingEdgeCases/multiple_concurrent_SSE_connections (0.20s)
+=== RUN   TestNotificationBroadcasting
+--- PASS: TestNotificationBroadcasting (1.18s)
+=== RUN   TestLogsSearchWithManualEntries
+=== RUN   TestLogsSearchWithManualEntries/search_for_specific_text
+=== RUN   TestLogsSearchWithManualEntries/search_by_process_ID
+=== RUN   TestLogsSearchWithManualEntries/search_for_errors_only
+--- PASS: TestLogsSearchWithManualEntries (0.91s)
+    --- PASS: TestLogsSearchWithManualEntries/search_for_specific_text (0.00s)
+    --- PASS: TestLogsSearchWithManualEntries/search_by_process_ID (0.00s)
+    --- PASS: TestLogsSearchWithManualEntries/search_for_errors_only (0.00s)
+=== RUN   TestLogsStreamTool
+--- PASS: TestLogsStreamTool (0.89s)
+=== RUN   TestRegisterPrompts
+--- PASS: TestRegisterPrompts (0.92s)
+=== RUN   TestPromptsList
+--- PASS: TestPromptsList (0.89s)
+=== RUN   TestPromptsGet
+=== RUN   TestPromptsGet/get_debug_error_prompt
+=== RUN   TestPromptsGet/get_performance_analysis_prompt
+=== RUN   TestPromptsGet/get_api_troubleshooting_prompt
+=== RUN   TestPromptsGet/get_script_configuration_prompt
+=== RUN   TestPromptsGet/get_non-existent_prompt
+=== RUN   TestPromptsGet/missing_prompt_name
+--- PASS: TestPromptsGet (0.71s)
+    --- PASS: TestPromptsGet/get_debug_error_prompt (0.00s)
+    --- PASS: TestPromptsGet/get_performance_analysis_prompt (0.00s)
+    --- PASS: TestPromptsGet/get_api_troubleshooting_prompt (0.00s)
+    --- PASS: TestPromptsGet/get_script_configuration_prompt (0.00s)
+    --- PASS: TestPromptsGet/get_non-existent_prompt (0.00s)
+    --- PASS: TestPromptsGet/missing_prompt_name (0.00s)
+=== RUN   TestPromptArgumentValidation
+=== RUN   TestPromptArgumentValidation/missing_required_arguments
+--- PASS: TestPromptArgumentValidation (0.68s)
+    --- PASS: TestPromptArgumentValidation/missing_required_arguments (0.00s)
+=== RUN   TestPromptContentGeneration
+=== RUN   TestPromptContentGeneration/prompt_incorporates_recent_errors
+--- PASS: TestPromptContentGeneration (0.63s)
+    --- PASS: TestPromptContentGeneration/prompt_incorporates_recent_errors (0.00s)
+=== RUN   TestConcurrentPromptAccess
+--- PASS: TestConcurrentPromptAccess (0.73s)
+=== RUN   TestRegisterResources
+--- PASS: TestRegisterResources (0.66s)
+=== RUN   TestResourcesList
+--- PASS: TestResourcesList (0.74s)
+=== RUN   TestResourcesRead
+=== RUN   TestResourcesRead/read_logs://recent
+=== RUN   TestResourcesRead/read_logs://errors
+=== RUN   TestResourcesRead/read_processes://active
+=== RUN   TestResourcesRead/read_scripts://available
+=== RUN   TestResourcesRead/read_proxy://requests
+=== RUN   TestResourcesRead/invalid_resource_URI
+--- PASS: TestResourcesRead (0.84s)
+    --- PASS: TestResourcesRead/read_logs://recent (0.00s)
+    --- PASS: TestResourcesRead/read_logs://errors (0.00s)
+    --- PASS: TestResourcesRead/read_processes://active (0.00s)
+    --- PASS: TestResourcesRead/read_scripts://available (0.00s)
+    --- PASS: TestResourcesRead/read_proxy://requests (0.00s)
+    --- PASS: TestResourcesRead/invalid_resource_URI (0.00s)
+=== RUN   TestResourceSubscriptionsWithUpdates
+--- PASS: TestResourceSubscriptionsWithUpdates (1.19s)
+=== RUN   TestResourceSubscriptionFlow
+    resources_test.go:311: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/resources_test.go:311
+        	Error:      	Should be true
+        	Test:       	TestResourceSubscriptionFlow
+        	Messages:   	Should be subscribed to logs://recent
+    resources_test.go:311: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/resources_test.go:311
+        	Error:      	Should be true
+        	Test:       	TestResourceSubscriptionFlow
+        	Messages:   	Should be subscribed to logs://errors
+    resources_test.go:311: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/resources_test.go:311
+        	Error:      	Should be true
+        	Test:       	TestResourceSubscriptionFlow
+        	Messages:   	Should be subscribed to processes://active
+    resources_test.go:319: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/resources_test.go:319
+        	Error:      	"map[]" should have 3 item(s), but has 0
+        	Test:       	TestResourceSubscriptionFlow
+    resources_test.go:335: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/resources_test.go:335
+        	Error:      	Should be true
+        	Test:       	TestResourceSubscriptionFlow
+    resources_test.go:336: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/resources_test.go:336
+        	Error:      	Should be true
+        	Test:       	TestResourceSubscriptionFlow
+--- FAIL: TestResourceSubscriptionFlow (1.38s)
+=== RUN   TestConcurrentResourceReads
+--- PASS: TestConcurrentResourceReads (1.43s)
+=== RUN   TestResourceMimeTypes
+--- PASS: TestResourceMimeTypes (0.95s)
+=== RUN   TestResourceErrors
+=== RUN   TestResourceErrors/read_without_URI
+    resources_test.go:464: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/resources_test.go:464
+        	Error:      	"Resource not found" does not contain "Invalid params"
+        	Test:       	TestResourceErrors/read_without_URI
+=== RUN   TestResourceErrors/subscribe_without_URI
+    resources_test.go:464: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/resources_test.go:464
+        	Error:      	"Resource not found" does not contain "Invalid params"
+        	Test:       	TestResourceErrors/subscribe_without_URI
+=== RUN   TestResourceErrors/read_non-existent_resource
+=== RUN   TestResourceErrors/subscribe_to_non-existent_resource
+--- FAIL: TestResourceErrors (1.06s)
+    --- FAIL: TestResourceErrors/read_without_URI (0.00s)
+    --- FAIL: TestResourceErrors/subscribe_without_URI (0.00s)
+    --- PASS: TestResourceErrors/read_non-existent_resource (0.00s)
+    --- PASS: TestResourceErrors/subscribe_to_non-existent_resource (0.00s)
+=== RUN   TestNewStreamableServer
+--- PASS: TestNewStreamableServer (1.04s)
+=== RUN   TestJSONRPCProtocol
+=== RUN   TestJSONRPCProtocol/valid_request
+=== RUN   TestJSONRPCProtocol/invalid_JSON
+=== RUN   TestJSONRPCProtocol/method_not_found
+=== RUN   TestJSONRPCProtocol/batch_request
+=== RUN   TestJSONRPCProtocol/notification_(no_ID)
+--- PASS: TestJSONRPCProtocol (0.98s)
+    --- PASS: TestJSONRPCProtocol/valid_request (0.00s)
+    --- PASS: TestJSONRPCProtocol/invalid_JSON (0.00s)
+    --- PASS: TestJSONRPCProtocol/method_not_found (0.00s)
+    --- PASS: TestJSONRPCProtocol/batch_request (0.00s)
+    --- PASS: TestJSONRPCProtocol/notification_(no_ID) (0.00s)
+=== RUN   TestInitialize
+--- PASS: TestInitialize (0.73s)
+=== RUN   TestToolsList
+--- PASS: TestToolsList (0.62s)
+=== RUN   TestSSEStreaming
+=== RUN   TestSSEStreaming/GET_with_SSE_accept_header
+=== RUN   TestSSEStreaming/POST_with_SSE_accept_header
+--- PASS: TestSSEStreaming (0.70s)
+    --- PASS: TestSSEStreaming/GET_with_SSE_accept_header (0.05s)
+    --- PASS: TestSSEStreaming/POST_with_SSE_accept_header (0.00s)
+=== RUN   TestSessionManagement
+=== RUN   TestSessionManagement/session_creation_with_custom_ID
+--- PASS: TestSessionManagement (0.70s)
+    --- PASS: TestSessionManagement/session_creation_with_custom_ID (0.05s)
+=== RUN   TestResourceSubscriptions
+=== RUN   TestResourceSubscriptions/subscribe_to_resource
+=== RUN   TestResourceSubscriptions/unsubscribe_from_resource
+--- PASS: TestResourceSubscriptions (0.67s)
+    --- PASS: TestResourceSubscriptions/subscribe_to_resource (0.00s)
+    --- PASS: TestResourceSubscriptions/unsubscribe_from_resource (0.00s)
+=== RUN   TestErrorHandling
+=== RUN   TestErrorHandling/invalid_params
+    streamable_server_test.go:474: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/streamable_server_test.go:474
+        	Error:      	"Tool not found" does not contain "Invalid params"
+        	Test:       	TestErrorHandling/invalid_params
+=== RUN   TestErrorHandling/tool_not_found
+--- FAIL: TestErrorHandling (0.79s)
+    --- FAIL: TestErrorHandling/invalid_params (0.00s)
+    --- PASS: TestErrorHandling/tool_not_found (0.00s)
+=== RUN   TestConcurrentRequests
+--- PASS: TestConcurrentRequests (0.66s)
+=== RUN   TestHealthEndpoint
+--- PASS: TestHealthEndpoint (0.66s)
+=== RUN   TestCORSHeaders
+    streamable_server_test.go:555: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/streamable_server_test.go:555
+        	Error:      	Should NOT be empty, but was 
+        	Test:       	TestCORSHeaders
+    streamable_server_test.go:556: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/streamable_server_test.go:556
+        	Error:      	Should NOT be empty, but was 
+        	Test:       	TestCORSHeaders
+    streamable_server_test.go:557: 
+        	Error Trace:	/home/beagle/work/brummer/internal/mcp/streamable_server_test.go:557
+        	Error:      	Should NOT be empty, but was 
+        	Test:       	TestCORSHeaders
+--- FAIL: TestCORSHeaders (0.84s)
+=== RUN   TestScriptsListWithRealPackageJSON
+--- PASS: TestScriptsListWithRealPackageJSON (0.86s)
+=== RUN   TestScriptsRunEchoScript
+    tools_integration_test.go:86: Skipping - process output capture not working in test environment
+--- SKIP: TestScriptsRunEchoScript (0.00s)
+=== RUN   TestScriptsRunErrorScript
+--- PASS: TestScriptsRunErrorScript (1.33s)
+=== RUN   TestScriptsRunAndStop
+coverage: 34.7% of statements
+panic: test timed out after 30s
+	running tests:
+		TestScriptsRunAndStop (1s)
+
+goroutine 368 [running]:
+testing.(*M).startAlarm.func1()
+	/usr/local/go/src/testing/testing.go:2484 +0x394
+created by time.goFunc
+	/usr/local/go/src/time/sleep.go:215 +0x2d
+
+goroutine 1 [chan receive]:
+testing.(*T).Run(0xc0000fa540, {0x91d014?, 0x15?}, 0x95adb8)
+	/usr/local/go/src/testing/testing.go:1859 +0x431
+testing.runTests.func1(0xc0000fa540)
+	/usr/local/go/src/testing/testing.go:2279 +0x37
+testing.tRunner(0xc0000fa540, 0xc00003fc70)
+	/usr/local/go/src/testing/testing.go:1792 +0xf4
+testing.runTests(0xc000010258, {0xce1540, 0x30, 0x30}, {0xcea3e0?, 0x7?, 0xce8a60?})
+	/usr/local/go/src/testing/testing.go:2277 +0x4b4
+testing.(*M).Run(0xc0000a7180)
+	/usr/local/go/src/testing/testing.go:2142 +0x64a
+main.main()
+	_testmain.go:155 +0x9b
+
+goroutine 386 [sleep]:
+time.Sleep(0xbebc200)
+	/usr/local/go/src/runtime/time.go:338 +0x165
+github.com/standardbeagle/brummer/internal/mcp.TestScriptsRunAndStop(0xc00022a000)
+	/home/beagle/work/brummer/internal/mcp/tools_integration_test.go:237 +0x2ce
+testing.tRunner(0xc00022a000, 0x95adb8)
+	/usr/local/go/src/testing/testing.go:1792 +0xf4
+created by testing.(*T).Run in goroutine 1
+	/usr/local/go/src/testing/testing.go:1851 +0x413
+
+goroutine 406 [syscall]:
+syscall.Syscall6(0xf7, 0x3, 0xd, 0xc000314d58, 0x4, 0xc000034360, 0x0)
+	/usr/local/go/src/syscall/syscall_linux.go:95 +0x39
+internal/syscall/unix.Waitid(0x0?, 0x0?, 0x0?, 0x0?, 0x0?)
+	/usr/local/go/src/internal/syscall/unix/waitid_linux.go:18 +0x39
+os.(*Process).pidfdWait.func1(...)
+	/usr/local/go/src/os/pidfd_linux.go:106
+os.ignoringEINTR(...)
+	/usr/local/go/src/os/file_posix.go:251
+os.(*Process).pidfdWait(0x0?)
+	/usr/local/go/src/os/pidfd_linux.go:105 +0x209
+os.(*Process).wait(0x0?)
+	/usr/local/go/src/os/exec_unix.go:27 +0x25
+os.(*Process).Wait(...)
+	/usr/local/go/src/os/exec.go:358
+os/exec.(*Cmd).Wait(0xc000222780)
+	/usr/local/go/src/os/exec/exec.go:922 +0x45
+github.com/standardbeagle/brummer/internal/process.(*Manager).runProcess.func1()
+	/home/beagle/work/brummer/internal/process/manager.go:230 +0x38
+created by github.com/standardbeagle/brummer/internal/process.(*Manager).runProcess in goroutine 386
+	/home/beagle/work/brummer/internal/process/manager.go:229 +0x5c9
+
+goroutine 405 [IO wait]:
+internal/poll.runtime_pollWait(0x7aa35d6d28d8, 0x72)
+	/usr/local/go/src/runtime/netpoll.go:351 +0x85
+internal/poll.(*pollDesc).wait(0xc000198480?, 0xc000154000?, 0x1)
+	/usr/local/go/src/internal/poll/fd_poll_runtime.go:84 +0x27
+internal/poll.(*pollDesc).waitRead(...)
+	/usr/local/go/src/internal/poll/fd_poll_runtime.go:89
+internal/poll.(*FD).Read(0xc000198480, {0xc000154000, 0x1000, 0x1000})
+	/usr/local/go/src/internal/poll/fd_unix.go:165 +0x27a
+os.(*File).read(...)
+	/usr/local/go/src/os/file_posix.go:29
+os.(*File).Read(0xc00006c228, {0xc000154000?, 0x0?, 0x0?})
+	/usr/local/go/src/os/file.go:124 +0x4f
+bufio.(*Reader).fill(0xc000079f20)
+	/usr/local/go/src/bufio/bufio.go:113 +0x103
+bufio.(*Reader).ReadSlice(0xc000079f20, 0xa)
+	/usr/local/go/src/bufio/bufio.go:380 +0x29
+bufio.(*Reader).collectFragments(0xc000079f20, 0xa)
+	/usr/local/go/src/bufio/bufio.go:455 +0x70
+bufio.(*Reader).ReadString(0x0?, 0x0?)
+	/usr/local/go/src/bufio/bufio.go:502 +0x1f
+github.com/standardbeagle/brummer/internal/process.(*Manager).streamLogs(0xc000216000, {0xc00026a408, 0x15}, {0x9e3260, 0xc00006c228?}, 0x1)
+	/home/beagle/work/brummer/internal/process/manager.go:280 +0x28a
+created by github.com/standardbeagle/brummer/internal/process.(*Manager).runProcess in goroutine 386
+	/home/beagle/work/brummer/internal/process/manager.go:227 +0x56e
+
+goroutine 404 [runnable]:
+github.com/standardbeagle/brummer/internal/process.(*Manager).streamLogs(0xc000216000, {0xc00026a408, 0x15}, {0x9e3260, 0xc00006c218?}, 0x0)
+	/home/beagle/work/brummer/internal/process/manager.go:321 +0x39b
+created by github.com/standardbeagle/brummer/internal/process.(*Manager).runProcess in goroutine 386
+	/home/beagle/work/brummer/internal/process/manager.go:226 +0x49a
+
+goroutine 402 [select]:
+os/exec.(*Cmd).watchCtx(0xc000222780, 0xc0002141c0)
+	/usr/local/go/src/os/exec/exec.go:789 +0xb2
+created by os/exec.(*Cmd).Start in goroutine 386
+	/usr/local/go/src/os/exec/exec.go:775 +0x8f3
+FAIL	github.com/standardbeagle/brummer/internal/mcp	30.010s
+FAIL
