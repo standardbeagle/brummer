@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"sync"
@@ -77,6 +78,9 @@ type StreamableServer struct {
 	// Resource update handlers
 	updateHandlersMu sync.RWMutex
 	updateHandlers   map[string]chan ResourceUpdate // sessionID -> update channel
+
+	// Session tracking for connection events
+	seenSessions map[string]bool // Track which sessions we've seen to avoid duplicate connection events
 }
 
 type ClientSession struct {
@@ -172,6 +176,7 @@ func NewStreamableServer(port int, processMgr *process.Manager, logStore *logs.S
 		replResponseChans: make(map[string]chan interface{}),
 		subscriptions:     make(map[string]map[string]bool),
 		updateHandlers:    make(map[string]chan ResourceUpdate),
+		seenSessions:      make(map[string]bool),
 		serverInfo: ServerInfo{
 			Name:    "brummer-mcp",
 			Version: "2.0.0",
@@ -226,6 +231,11 @@ func (s *StreamableServer) setupRoutes() {
 }
 
 func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request) {
+	// Debug logging for incoming requests
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📥 MCP Request: %s %s (Accept: %s)", r.Method, r.URL.Path, r.Header.Get("Accept")), false)
+	}
+
 	// Check Accept header for proper content negotiation
 	acceptHeader := r.Header.Get("Accept")
 	// acceptsJSON := strings.Contains(acceptHeader, "application/json") || acceptHeader == "" || acceptHeader == "*/*"
@@ -283,6 +293,33 @@ func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request)
 	sessionID := r.Header.Get("Mcp-Session-Id")
 	if sessionID == "" {
 		sessionID = uuid.New().String()
+	}
+
+	// Check if this is the first time we've seen this session
+	s.mu.Lock()
+	isFirstTimeSession := !s.seenSessions[sessionID]
+	if isFirstTimeSession {
+		s.seenSessions[sessionID] = true
+	}
+	s.mu.Unlock()
+
+	// Track session for POST requests (if first time seeing this session)
+	if isFirstTimeSession {
+		connectionType := "HTTP"
+		if wantsSSE {
+			connectionType = "HTTP+SSE"
+		}
+
+		s.eventBus.Publish(events.Event{
+			Type: events.MCPConnected,
+			Data: map[string]interface{}{
+				"sessionId":      sessionID,
+				"connectedAt":    time.Now(),
+				"clientInfo":     r.Header.Get("User-Agent"),
+				"connectionType": connectionType,
+				"method":         r.Method,
+			},
+		})
 	}
 
 	// Process messages
@@ -365,15 +402,18 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 
 	s.mu.Lock()
 	s.sessions[sessionID] = session
+	s.seenSessions[sessionID] = true // Mark this session as seen
 	s.mu.Unlock()
 
 	// Publish connection event
 	s.eventBus.Publish(events.Event{
 		Type: events.MCPConnected,
 		Data: map[string]interface{}{
-			"sessionId":   sessionID,
-			"connectedAt": time.Now(),
-			"clientInfo":  r.Header.Get("User-Agent"),
+			"sessionId":      sessionID,
+			"connectedAt":    time.Now(),
+			"clientInfo":     r.Header.Get("User-Agent"),
+			"connectionType": "SSE",
+			"method":         r.Method,
 		},
 	})
 
@@ -498,6 +538,11 @@ func (s *StreamableServer) processMessage(msg *JSONRPCMessage, w http.ResponseWr
 			Data: activityData,
 		})
 	}()
+
+	// Log the method being called
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🔧 MCP Method: %s (ID: %v)", msg.Method, msg.ID), false)
+	}
 
 	// Handle different methods
 	switch msg.Method {
@@ -629,14 +674,25 @@ func (s *StreamableServer) handleHealth(w http.ResponseWriter, r *http.Request) 
 
 // Start starts the MCP server
 func (s *StreamableServer) Start() error {
+	// Log start attempt
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🚀 Starting MCP server on port %d...", s.port), false)
+	}
+
 	// Try to find an available port, starting from the requested port
 	availablePort, err := ports.FindAvailablePort(s.port)
 	if err != nil {
+		if s.logStore != nil {
+			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("❌ Failed to find available port: %v", err), true)
+		}
 		return fmt.Errorf("failed to find available port: %w", err)
 	}
 
 	// Update the port if it changed
 	if availablePort != s.port {
+		if s.logStore != nil {
+			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("⚠️  Port %d unavailable, using port %d instead", s.port, availablePort), false)
+		}
 		s.port = availablePort
 	}
 
@@ -651,7 +707,30 @@ func (s *StreamableServer) Start() error {
 	// Set up event broadcasting
 	go s.setupEventBroadcasting()
 
-	return s.server.ListenAndServe()
+	// Log successful start
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("✅ MCP server started on http://localhost:%d/mcp", s.port), false)
+	}
+
+	// Publish system message event for successful start
+	if s.eventBus != nil {
+		successMsg := fmt.Sprintf("✅ MCP server started on http://localhost:%d/mcp", s.port)
+		s.eventBus.Publish(events.Event{
+			Type: events.EventType("system.message"),
+			Data: map[string]interface{}{
+				"level":   "success",
+				"context": "MCP Server",
+				"message": successMsg,
+			},
+		})
+	}
+
+	// Start the server (blocking call)
+	err = s.server.ListenAndServe()
+	if err != nil && s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("❌ MCP server error: %v", err), true)
+	}
+	return err
 }
 
 // Stop stops the MCP server
@@ -701,7 +780,16 @@ func mustMarshal(v interface{}) json.RawMessage {
 
 // IsRunning returns true if the MCP server is currently running
 func (s *StreamableServer) IsRunning() bool {
-	return s.server != nil
+	if s.server == nil {
+		return false
+	}
+	// Check if we can actually connect to the port
+	conn, err := net.Dial("tcp", fmt.Sprintf("localhost:%d", s.port))
+	if err != nil {
+		return false
+	}
+	conn.Close()
+	return true
 }
 
 // registerREPLResponse registers a channel to receive REPL response for the given ID
@@ -740,7 +828,6 @@ func (s *StreamableServer) handleREPLResponse(responseID string, response interf
 		}
 	}
 }
-
 
 // registerResourceUpdateHandler registers a channel to receive resource updates for a session
 func (s *StreamableServer) registerResourceUpdateHandler(sessionID string, ch chan ResourceUpdate) {
@@ -791,7 +878,7 @@ func (s *StreamableServer) setupResourceUpdateHandlers() {
 	s.eventBus.Subscribe(events.LogLine, func(e events.Event) {
 		// Update logs resources
 		s.notifyResourceUpdate("logs://recent", s.getRecentLogs(100))
-		
+
 		// Check if it's an error log
 		if isError, ok := e.Data["isError"].(bool); ok && isError {
 			s.notifyResourceUpdate("logs://errors", s.getErrorLogs(100))

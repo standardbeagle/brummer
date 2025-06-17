@@ -12,12 +12,14 @@ import (
 
 // mcpConnectionItem represents an MCP client connection
 type mcpConnectionItem struct {
-	clientID      string
-	clientName    string
-	connectedAt   time.Time
-	lastActivity  time.Time
-	requestCount  int
-	isConnected   bool
+	clientID       string
+	clientName     string
+	connectedAt    time.Time
+	lastActivity   time.Time
+	requestCount   int
+	isConnected    bool
+	connectionType string // "SSE", "HTTP", "HTTP+SSE", "Legacy"
+	method         string // "GET", "POST"
 }
 
 func (i mcpConnectionItem) Title() string {
@@ -25,12 +27,27 @@ func (i mcpConnectionItem) Title() string {
 	if !i.isConnected {
 		status = "🔴"
 	}
-	return fmt.Sprintf("%s %s", status, i.clientName)
+
+	// Add connection type icon
+	typeIcon := ""
+	switch i.connectionType {
+	case "SSE":
+		typeIcon = "📡" // Streaming connection
+	case "HTTP":
+		typeIcon = "🌐" // HTTP request
+	case "HTTP+SSE":
+		typeIcon = "🔄" // HTTP with SSE response
+	default:
+		typeIcon = "❓" // Legacy or unknown
+	}
+
+	return fmt.Sprintf("%s %s %s", status, typeIcon, i.clientName)
 }
 
 func (i mcpConnectionItem) Description() string {
 	duration := time.Since(i.connectedAt).Round(time.Second)
-	return fmt.Sprintf("ID: %s | Connected: %s | Requests: %d", i.clientID, duration, i.requestCount)
+	return fmt.Sprintf("ID: %s | %s %s | Connected: %s | Requests: %d",
+		i.clientID, i.connectionType, i.method, duration, i.requestCount)
 }
 
 func (i mcpConnectionItem) FilterValue() string {
@@ -77,7 +94,7 @@ func (m Model) renderMCPConnections() string {
 	content.WriteString("\n")
 
 	// Calculate available height
-	headerHeight := 4 // header + subtitle + margins
+	headerHeight := 4                              // header + subtitle + margins
 	availableHeight := m.height - 6 - headerHeight // standard layout minus our header
 
 	// Create left panel (connections list)
@@ -105,20 +122,20 @@ func (m Model) renderMCPConnections() string {
 	m.mcpActivityViewport.Height = availableHeight - 2
 
 	leftPanel := connectionsStyle.Render(m.mcpConnectionsList.View())
-	
+
 	// Right panel content
 	var rightContent string
 	if m.selectedMCPClient != "" {
 		rightContent = m.mcpActivityViewport.View()
 	} else {
 		noSelectionStyle := lipgloss.NewStyle().
-			Width(rightWidth - 2).
-			Height(availableHeight - 2).
+			Width(rightWidth-2).
+			Height(availableHeight-2).
 			Align(lipgloss.Center, lipgloss.Center).
 			Foreground(lipgloss.Color("245"))
 		rightContent = noSelectionStyle.Render("Select a connection to view activity")
 	}
-	
+
 	rightPanel := activityStyle.Render(rightContent)
 
 	panels := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
@@ -133,7 +150,7 @@ func (m *Model) updateMCPConnectionsList() {
 	defer m.mcpActivityMu.RUnlock()
 
 	items := make([]list.Item, 0, len(m.mcpConnections))
-	
+
 	// Convert connections to list items
 	for _, conn := range m.mcpConnections {
 		items = append(items, *conn)
@@ -159,13 +176,13 @@ func (m *Model) updateMCPActivityView() {
 	defer m.mcpActivityMu.RUnlock()
 
 	var content strings.Builder
-	
+
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
 	methodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
 	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
 	durationStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
-	
+
 	// Find the connection info
 	conn, exists := m.mcpConnections[m.selectedMCPClient]
 	if !exists {
@@ -173,7 +190,7 @@ func (m *Model) updateMCPActivityView() {
 		m.mcpActivityViewport.SetContent(content.String())
 		return
 	}
-	
+
 	content.WriteString(titleStyle.Render(fmt.Sprintf("Activity Log - %s", conn.clientName)))
 	content.WriteString("\n\n")
 
@@ -188,14 +205,14 @@ func (m *Model) updateMCPActivityView() {
 	// Show activities in reverse order (newest first)
 	for i := len(activities) - 1; i >= 0; i-- {
 		activity := activities[i]
-		
+
 		content.WriteString(timestampStyle.Render(activity.Timestamp.Format("15:04:05.000")))
 		content.WriteString(" ")
 		content.WriteString(methodStyle.Render(activity.Method))
 		content.WriteString(" ")
 		content.WriteString(durationStyle.Render(fmt.Sprintf("(%dms)", activity.Duration.Milliseconds())))
 		content.WriteString("\n")
-		
+
 		if activity.Params != "" && activity.Params != "{}" && activity.Params != "null" {
 			params := activity.Params
 			if len(params) > 150 {
@@ -203,7 +220,7 @@ func (m *Model) updateMCPActivityView() {
 			}
 			content.WriteString(fmt.Sprintf("  → Params: %s\n", params))
 		}
-		
+
 		if activity.Error != "" {
 			content.WriteString(errorStyle.Render(fmt.Sprintf("  ✗ Error: %s\n", activity.Error)))
 		} else if activity.Response != "" {
@@ -213,7 +230,7 @@ func (m *Model) updateMCPActivityView() {
 			}
 			content.WriteString(fmt.Sprintf("  ← Response: %s\n", response))
 		}
-		
+
 		content.WriteString("\n")
 	}
 

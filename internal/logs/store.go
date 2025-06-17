@@ -637,3 +637,4 @@ func (s *Store) areLogsIdentical(a, b LogEntry) bool {
 		a.Level == b.Level &&
 		a.IsError == b.IsError
 }
+

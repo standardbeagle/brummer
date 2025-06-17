@@ -116,6 +116,7 @@ type UnreadIndicator struct {
 // MCPServerInterface defines the methods needed by the TUI
 type MCPServerInterface interface {
 	IsRunning() bool
+	GetPort() int
 }
 
 type Model struct {
@@ -202,11 +203,11 @@ type Model struct {
 	updateChan chan tea.Msg
 
 	// MCP connections view state
-	mcpConnectionsList  list.Model     // List of MCP connections
-	mcpActivityViewport viewport.Model // Activity log for selected connection
-	selectedMCPClient   string         // Selected MCP client ID
-	mcpConnections      map[string]*mcpConnectionItem  // sessionId -> connection
-	mcpActivities       map[string][]MCPActivity       // sessionId -> activities
+	mcpConnectionsList  list.Model                    // List of MCP connections
+	mcpActivityViewport viewport.Model                // Activity log for selected connection
+	selectedMCPClient   string                        // Selected MCP client ID
+	mcpConnections      map[string]*mcpConnectionItem // sessionId -> connection
+	mcpActivities       map[string][]MCPActivity      // sessionId -> activities
 	mcpActivityMu       sync.RWMutex
 }
 
@@ -933,16 +934,21 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		m.scriptSelector.SetWidth(60)
 		m.scriptSelector.Focus()
 	}
-	
+
 	// Initialize MCP connections list on first view if in debug mode
 	if debugMode && initialView == ViewMCPConnections {
 		m.updateMCPConnectionsList()
 	}
 
+	// Set up event subscriptions immediately in constructor (not in Init)
+	// This ensures subscriptions are active before MCP server starts
+	m.setupEventSubscriptions()
+
 	return m
 }
 
-func (m Model) Init() tea.Cmd {
+// setupEventSubscriptions sets up all event bus subscriptions
+func (m *Model) setupEventSubscriptions() {
 	// Set up event subscriptions
 	m.eventBus.Subscribe(events.ProcessStarted, func(e events.Event) {
 		m.updateChan <- processUpdateMsg{}
@@ -1003,18 +1009,22 @@ func (m Model) Init() tea.Cmd {
 			sessionId, _ := e.Data["sessionId"].(string)
 			clientInfo, _ := e.Data["clientInfo"].(string)
 			connectedAt, _ := e.Data["connectedAt"].(time.Time)
-			
+			connectionType, _ := e.Data["connectionType"].(string)
+			method, _ := e.Data["method"].(string)
+
 			m.updateChan <- mcpConnectionMsg{
-				sessionId:   sessionId,
-				clientInfo:  clientInfo,
-				connected:   true,
-				connectedAt: connectedAt,
+				sessionId:      sessionId,
+				clientInfo:     clientInfo,
+				connected:      true,
+				connectedAt:    connectedAt,
+				connectionType: connectionType,
+				method:         method,
 			}
 		})
 
 		m.eventBus.Subscribe(events.MCPDisconnected, func(e events.Event) {
 			sessionId, _ := e.Data["sessionId"].(string)
-			
+
 			m.updateChan <- mcpConnectionMsg{
 				sessionId: sessionId,
 				connected: false,
@@ -1028,7 +1038,7 @@ func (m Model) Init() tea.Cmd {
 			response, _ := e.Data["response"].(string)
 			errMsg, _ := e.Data["error"].(string)
 			duration, _ := e.Data["duration"].(time.Duration)
-			
+
 			activity := MCPActivity{
 				Timestamp: time.Now(),
 				Method:    method,
@@ -1037,13 +1047,24 @@ func (m Model) Init() tea.Cmd {
 				Error:     errMsg,
 				Duration:  duration,
 			}
-			
+
 			m.updateChan <- mcpActivityMsg{
 				sessionId: sessionId,
 				activity:  activity,
 			}
 		})
 	}
+}
+
+func (m Model) Init() tea.Cmd {
+	// Add startup system message
+	go func() {
+		m.updateChan <- systemMessageMsg{
+			level:   "info",
+			context: "System",
+			message: "🚀 Brummer started - initializing services...",
+		}
+	}()
 
 	return tea.Batch(
 		textinput.Blink,
@@ -1118,6 +1139,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case systemMessageMsg:
 		m.addSystemMessage(msg.level, msg.context, msg.message)
+		// Debug log to verify system messages are being received
+		if strings.Contains(msg.message, "MCP") {
+			m.logStore.Add("system-debug", "TUI", fmt.Sprintf("Received MCP system message: %s", msg.message), false)
+		}
 		cmds = append(cmds, m.waitForUpdates())
 
 	case tickMsg:
@@ -3102,10 +3127,12 @@ type mcpActivityMsg struct {
 	activity  MCPActivity
 }
 type mcpConnectionMsg struct {
-	sessionId   string
-	clientInfo  string
-	connected   bool
-	connectedAt time.Time
+	sessionId      string
+	clientInfo     string
+	connected      bool
+	connectedAt    time.Time
+	connectionType string
+	method         string
 }
 
 func (m Model) waitForUpdates() tea.Cmd {
@@ -3141,12 +3168,14 @@ func (m *Model) handleMCPConnection(msg mcpConnectionMsg) {
 		}
 
 		m.mcpConnections[msg.sessionId] = &mcpConnectionItem{
-			clientID:     msg.sessionId,
-			clientName:   clientName,
-			connectedAt:  msg.connectedAt,
-			lastActivity: msg.connectedAt,
-			requestCount: 0,
-			isConnected:  true,
+			clientID:       msg.sessionId,
+			clientName:     clientName,
+			connectedAt:    msg.connectedAt,
+			lastActivity:   msg.connectedAt,
+			requestCount:   0,
+			isConnected:    true,
+			connectionType: msg.connectionType,
+			method:         msg.method,
 		}
 		m.mcpActivities[msg.sessionId] = []MCPActivity{}
 	} else {
@@ -3165,17 +3194,30 @@ func (m *Model) handleMCPActivity(msg mcpActivityMsg) {
 	if conn, exists := m.mcpConnections[msg.sessionId]; exists {
 		conn.lastActivity = time.Now()
 		conn.requestCount++
+	} else {
+		// Create a connection entry for sessions that only have activity (e.g., POST requests)
+		// This ensures all sessions are tracked even if they don't establish persistent connections
+		m.mcpConnections[msg.sessionId] = &mcpConnectionItem{
+			clientID:       msg.sessionId,
+			clientName:     "HTTP Client",
+			connectedAt:    msg.activity.Timestamp,
+			lastActivity:   msg.activity.Timestamp,
+			requestCount:   1,
+			isConnected:    false,  // Not a persistent connection
+			connectionType: "HTTP", // Inferred from activity without connection event
+			method:         "POST", // Most likely POST for activity-only sessions
+		}
 	}
 
 	// Add activity to the session's history
 	activities := m.mcpActivities[msg.sessionId]
 	activities = append(activities, msg.activity)
-	
+
 	// Keep only last 100 activities per session
 	if len(activities) > 100 {
 		activities = activities[len(activities)-100:]
 	}
-	
+
 	m.mcpActivities[msg.sessionId] = activities
 }
 
@@ -3193,13 +3235,20 @@ func (m *Model) updateSettingsList() {
 	if m.mcpServer != nil && m.mcpServer.IsRunning() {
 		mcpStatus = "🟢 Running"
 	}
+
+	// Get actual port from MCP server if running
+	actualPort := m.mcpPort
+	if m.mcpServer != nil && m.mcpServer.IsRunning() {
+		actualPort = m.mcpServer.GetPort()
+	}
+
 	items = append(items, mcpServerInfoItem{
-		port:   m.mcpPort,
+		port:   actualPort,
 		status: mcpStatus,
 	})
 
 	// Add MCP endpoint information - always show URL for easy access
-	mcpURL := fmt.Sprintf("http://localhost:%d/mcp", m.mcpPort)
+	mcpURL := fmt.Sprintf("http://localhost:%d/mcp", actualPort)
 	items = append(items, infoDisplayItem{
 		title:       "🔗 MCP Endpoint",
 		description: fmt.Sprintf("%s (JSON-RPC 2.0 - all tools, resources & prompts)", mcpURL),

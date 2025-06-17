@@ -391,6 +391,7 @@ func runApp(cmd *cobra.Command, args []string) {
 	}
 	var mcpServer interface {
 		IsRunning() bool
+		GetPort() int
 		Start() error
 		Stop() error
 	} // For TUI compatibility
@@ -444,8 +445,24 @@ func runApp(cmd *cobra.Command, args []string) {
 		} else {
 			// In TUI mode, run MCP server in background
 			go func() {
+				// Give TUI time to initialize subscriptions
+				time.Sleep(100 * time.Millisecond)
+
+				// Start the server (this will block)
 				if err := mcpServerInterface.Start(); err != nil {
 					// MCP server error (logged internally)
+					errorMsg := fmt.Sprintf("❌ MCP server failed to start: %v", err)
+					logStore.Add("system", "MCP", errorMsg, true)
+
+					// Publish system message event
+					eventBus.Publish(events.Event{
+						Type: events.EventType("system.message"),
+						Data: map[string]interface{}{
+							"level":   "error",
+							"context": "MCP Server",
+							"message": errorMsg,
+						},
+					})
 				}
 			}()
 		}

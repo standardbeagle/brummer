@@ -65,11 +65,64 @@ build:
 	@go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/brum
 	@echo "✅ Build complete: ./$(BINARY_NAME)"
 
-# Run tests
+# Run unit tests
 .PHONY: test
 test:
-	@echo "🧪 Running tests..."
+	@echo "🧪 Running unit tests..."
 	@go test -v ./...
+
+# Run regression test suite
+.PHONY: test-regression
+test-regression: build
+	@echo "🧪 Running regression test suite..."
+	@./test/run_tests.sh
+
+# Run regression tests with verbose output
+.PHONY: test-regression-verbose
+test-regression-verbose: build
+	@echo "🧪 Running regression tests (verbose)..."
+	@./test/run_tests.sh --verbose
+
+# Run regression tests without building (use existing binary)
+.PHONY: test-regression-quick
+test-regression-quick:
+	@echo "🧪 Running regression tests (quick)..."
+	@./test/run_tests.sh --skip-build
+
+# Run only MCP regression tests
+.PHONY: test-mcp
+test-mcp: build
+	@echo "🧪 Running MCP regression tests..."
+	@./test/run_tests.sh --filter MCP
+
+# Run only Proxy regression tests
+.PHONY: test-proxy
+test-proxy: build
+	@echo "🧪 Running Proxy regression tests..."
+	@./test/run_tests.sh --filter Proxy
+
+# Run only Logging regression tests
+.PHONY: test-logging
+test-logging: build
+	@echo "🧪 Running Logging regression tests..."
+	@./test/run_tests.sh --filter Logging
+
+# Run only Process regression tests
+.PHONY: test-processes
+test-processes: build
+	@echo "🧪 Running Process regression tests..."
+	@./test/run_tests.sh --filter Processes
+
+# Run only Integration regression tests
+.PHONY: test-integration
+test-integration: build
+	@echo "🧪 Running Integration regression tests..."
+	@./test/run_tests.sh --filter Integration
+
+# Run all tests (unit + regression)
+.PHONY: test-all
+test-all: test test-regression
+	@echo "✅ All tests completed"
 
 # Install system-wide (requires sudo)
 .PHONY: install
@@ -126,6 +179,8 @@ uninstall:
 clean:
 	@echo "🧹 Cleaning..."
 	@rm -f $(BINARY_NAME)
+	@rm -rf test/test_workspace
+	@rm -rf dist
 	@go clean
 	@echo "✅ Clean complete"
 
@@ -189,7 +244,16 @@ help:
 	@echo "  make clean          - Clean build artifacts"
 	@echo "  make run            - Build and run"
 	@echo "  make dev            - Run in development mode with hot reload"
-	@echo "  make test           - Run tests"
+	@echo "  make test           - Run unit tests"
+	@echo "  make test-regression - Run regression test suite"
+	@echo "  make test-regression-verbose - Run regression tests (verbose)"
+	@echo "  make test-regression-quick - Run regression tests (skip build)"
+	@echo "  make test-mcp       - Run MCP regression tests"
+	@echo "  make test-proxy     - Run Proxy regression tests"
+	@echo "  make test-logging   - Run Logging regression tests"
+	@echo "  make test-processes - Run Process regression tests"
+	@echo "  make test-integration - Run Integration regression tests"
+	@echo "  make test-all       - Run all tests (unit + regression)"
 	@echo "  make fmt            - Format code"
 	@echo "  make lint           - Lint code"
 	@echo "  make build-all      - Build for multiple platforms"
