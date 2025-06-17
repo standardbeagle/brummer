@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -128,34 +129,22 @@ func (m Model) renderMCPConnections() string {
 
 // updateMCPConnectionsList updates the list of MCP connections
 func (m *Model) updateMCPConnectionsList() {
-	// This would be called when MCP connections change
-	// For now, we'll use mock data
-	items := []list.Item{
-		mcpConnectionItem{
-			clientID:     "client-1",
-			clientName:   "Claude Desktop",
-			connectedAt:  time.Now().Add(-5 * time.Minute),
-			lastActivity: time.Now().Add(-30 * time.Second),
-			requestCount: 42,
-			isConnected:  true,
-		},
-		mcpConnectionItem{
-			clientID:     "client-2", 
-			clientName:   "VS Code MCP",
-			connectedAt:  time.Now().Add(-2 * time.Hour),
-			lastActivity: time.Now().Add(-5 * time.Minute),
-			requestCount: 156,
-			isConnected:  true,
-		},
-		mcpConnectionItem{
-			clientID:     "client-3",
-			clientName:   "Test Client",
-			connectedAt:  time.Now().Add(-1 * time.Hour),
-			lastActivity: time.Now().Add(-45 * time.Minute),
-			requestCount: 12,
-			isConnected:  false,
-		},
+	m.mcpActivityMu.RLock()
+	defer m.mcpActivityMu.RUnlock()
+
+	items := make([]list.Item, 0, len(m.mcpConnections))
+	
+	// Convert connections to list items
+	for _, conn := range m.mcpConnections {
+		items = append(items, *conn)
 	}
+
+	// Sort by connection time (newest first)
+	sort.Slice(items, func(i, j int) bool {
+		connI := items[i].(mcpConnectionItem)
+		connJ := items[j].(mcpConnectionItem)
+		return connI.connectedAt.After(connJ.connectedAt)
+	})
 
 	m.mcpConnectionsList.SetItems(items)
 }
@@ -166,75 +155,63 @@ func (m *Model) updateMCPActivityView() {
 		return
 	}
 
-	// This would fetch real activity data for the selected client
-	// For now, we'll use mock data
+	m.mcpActivityMu.RLock()
+	defer m.mcpActivityMu.RUnlock()
+
 	var content strings.Builder
 	
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
 	methodStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
 	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	durationStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("244"))
 	
-	content.WriteString(titleStyle.Render(fmt.Sprintf("Activity Log - %s", m.selectedMCPClient)))
+	// Find the connection info
+	conn, exists := m.mcpConnections[m.selectedMCPClient]
+	if !exists {
+		content.WriteString("Connection not found")
+		m.mcpActivityViewport.SetContent(content.String())
+		return
+	}
+	
+	content.WriteString(titleStyle.Render(fmt.Sprintf("Activity Log - %s", conn.clientName)))
 	content.WriteString("\n\n")
 
-	// Mock activity entries
-	activities := []MCPActivity{
-		{
-			Timestamp: time.Now().Add(-30 * time.Second),
-			Method:    "tools/list",
-			Params:    "{}",
-			Response:  `{"tools": [...]}`,
-			Duration:  15 * time.Millisecond,
-		},
-		{
-			Timestamp: time.Now().Add(-25 * time.Second),
-			Method:    "tools/call",
-			Params:    `{"name": "scripts/list"}`,
-			Response:  `{"scripts": {"dev": "npm run dev", "test": "npm test"}}`,
-			Duration:  23 * time.Millisecond,
-		},
-		{
-			Timestamp: time.Now().Add(-20 * time.Second),
-			Method:    "tools/call",
-			Params:    `{"name": "scripts/run", "arguments": {"script": "dev"}}`,
-			Response:  `{"started": true, "pid": "dev-1234"}`,
-			Duration:  45 * time.Millisecond,
-		},
-		{
-			Timestamp: time.Now().Add(-15 * time.Second),
-			Method:    "resources/list",
-			Params:    "{}",
-			Response:  `{"resources": [...]}`,
-			Duration:  12 * time.Millisecond,
-		},
-		{
-			Timestamp: time.Now().Add(-10 * time.Second),
-			Method:    "resources/read",
-			Params:    `{"uri": "logs://recent"}`,
-			Error:     "Resource not found",
-			Duration:  5 * time.Millisecond,
-		},
+	// Get activities for this client
+	activities, hasActivities := m.mcpActivities[m.selectedMCPClient]
+	if !hasActivities || len(activities) == 0 {
+		content.WriteString(timestampStyle.Render("No activity recorded yet"))
+		m.mcpActivityViewport.SetContent(content.String())
+		return
 	}
 
-	for _, activity := range activities {
-		content.WriteString(timestampStyle.Render(activity.Timestamp.Format("15:04:05")))
+	// Show activities in reverse order (newest first)
+	for i := len(activities) - 1; i >= 0; i-- {
+		activity := activities[i]
+		
+		content.WriteString(timestampStyle.Render(activity.Timestamp.Format("15:04:05.000")))
 		content.WriteString(" ")
 		content.WriteString(methodStyle.Render(activity.Method))
-		content.WriteString(fmt.Sprintf(" (%dms)\n", activity.Duration.Milliseconds()))
+		content.WriteString(" ")
+		content.WriteString(durationStyle.Render(fmt.Sprintf("(%dms)", activity.Duration.Milliseconds())))
+		content.WriteString("\n")
 		
-		if activity.Params != "{}" {
-			content.WriteString(fmt.Sprintf("  Params: %s\n", activity.Params))
+		if activity.Params != "" && activity.Params != "{}" && activity.Params != "null" {
+			params := activity.Params
+			if len(params) > 150 {
+				params = params[:147] + "..."
+			}
+			content.WriteString(fmt.Sprintf("  → Params: %s\n", params))
 		}
 		
 		if activity.Error != "" {
-			content.WriteString(errorStyle.Render(fmt.Sprintf("  Error: %s\n", activity.Error)))
+			content.WriteString(errorStyle.Render(fmt.Sprintf("  ✗ Error: %s\n", activity.Error)))
 		} else if activity.Response != "" {
 			response := activity.Response
-			if len(response) > 100 {
-				response = response[:97] + "..."
+			if len(response) > 150 {
+				response = response[:147] + "..."
 			}
-			content.WriteString(fmt.Sprintf("  Response: %s\n", response))
+			content.WriteString(fmt.Sprintf("  ← Response: %s\n", response))
 		}
 		
 		content.WriteString("\n")

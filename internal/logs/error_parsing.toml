@@ -296,7 +296,7 @@ description = "ESLint warning"
 [error_patterns.generic]
 
 [error_patterns.generic.failed]
-pattern = "(?i)^.*(failed to|unable to|could not)\\s+(.+)"
+pattern = "(?i)^.*((failed to|unable to|could not)\\s+.+)"
 type = "GenericError"
 severity = "error"
 single_line = true

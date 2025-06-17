@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/charmbracelet/bubbles/help"
@@ -204,6 +205,9 @@ type Model struct {
 	mcpConnectionsList  list.Model     // List of MCP connections
 	mcpActivityViewport viewport.Model // Activity log for selected connection
 	selectedMCPClient   string         // Selected MCP client ID
+	mcpConnections      map[string]*mcpConnectionItem  // sessionId -> connection
+	mcpActivities       map[string][]MCPActivity       // sessionId -> activities
+	mcpActivityMu       sync.RWMutex
 }
 
 // handleGlobalKeys handles keys that should work in all views
@@ -916,6 +920,8 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		mcpConnectionsList.SetShowStatusBar(false)
 		m.mcpConnectionsList = mcpConnectionsList
 		m.mcpActivityViewport = viewport.New(0, 0)
+		m.mcpConnections = make(map[string]*mcpConnectionItem)
+		m.mcpActivities = make(map[string][]MCPActivity)
 	}
 
 	// Check for monorepo on startup
@@ -926,6 +932,11 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		m.scriptSelector = NewScriptSelectorAutocompleteWithProcessManager(scripts, processMgr)
 		m.scriptSelector.SetWidth(60)
 		m.scriptSelector.Focus()
+	}
+	
+	// Initialize MCP connections list on first view if in debug mode
+	if debugMode && initialView == ViewMCPConnections {
+		m.updateMCPConnectionsList()
 	}
 
 	return m
@@ -985,6 +996,54 @@ func (m Model) Init() tea.Cmd {
 			}()
 		}
 	})
+
+	// Subscribe to MCP events if in debug mode
+	if m.debugMode {
+		m.eventBus.Subscribe(events.MCPConnected, func(e events.Event) {
+			sessionId, _ := e.Data["sessionId"].(string)
+			clientInfo, _ := e.Data["clientInfo"].(string)
+			connectedAt, _ := e.Data["connectedAt"].(time.Time)
+			
+			m.updateChan <- mcpConnectionMsg{
+				sessionId:   sessionId,
+				clientInfo:  clientInfo,
+				connected:   true,
+				connectedAt: connectedAt,
+			}
+		})
+
+		m.eventBus.Subscribe(events.MCPDisconnected, func(e events.Event) {
+			sessionId, _ := e.Data["sessionId"].(string)
+			
+			m.updateChan <- mcpConnectionMsg{
+				sessionId: sessionId,
+				connected: false,
+			}
+		})
+
+		m.eventBus.Subscribe(events.MCPActivity, func(e events.Event) {
+			sessionId, _ := e.Data["sessionId"].(string)
+			method, _ := e.Data["method"].(string)
+			params, _ := e.Data["params"].(string)
+			response, _ := e.Data["response"].(string)
+			errMsg, _ := e.Data["error"].(string)
+			duration, _ := e.Data["duration"].(time.Duration)
+			
+			activity := MCPActivity{
+				Timestamp: time.Now(),
+				Method:    method,
+				Params:    params,
+				Response:  response,
+				Error:     errMsg,
+				Duration:  duration,
+			}
+			
+			m.updateChan <- mcpActivityMsg{
+				sessionId: sessionId,
+				activity:  activity,
+			}
+		})
+	}
 
 	return tea.Batch(
 		textinput.Blink,
@@ -1064,6 +1123,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		// Continue ticking for periodic updates (e.g., browser status)
 		cmds = append(cmds, m.tickCmd())
+
+	case mcpConnectionMsg:
+		m.handleMCPConnection(msg)
+		if m.currentView == ViewMCPConnections {
+			m.updateMCPConnectionsList()
+		}
+		cmds = append(cmds, m.waitForUpdates())
+
+	case mcpActivityMsg:
+		m.handleMCPActivity(msg)
+		if m.currentView == ViewMCPConnections && m.selectedMCPClient != "" {
+			m.updateMCPActivityView()
+		}
+		cmds = append(cmds, m.waitForUpdates())
 	}
 
 	// Handle run dialog updates
@@ -1582,6 +1655,10 @@ func (m *Model) cycleView() {
 	for i, v := range views {
 		if v == m.currentView {
 			m.currentView = views[(i+1)%len(views)]
+			// Update MCP connections list when switching to that view
+			if m.currentView == ViewMCPConnections && m.debugMode {
+				m.updateMCPConnectionsList()
+			}
 			break
 		}
 	}
@@ -1597,6 +1674,10 @@ func (m *Model) cyclePrevView() {
 			// Go to previous view (with wrap-around)
 			prevIndex := (i - 1 + len(views)) % len(views)
 			m.currentView = views[prevIndex]
+			// Update MCP connections list when switching to that view
+			if m.currentView == ViewMCPConnections && m.debugMode {
+				m.updateMCPConnectionsList()
+			}
 			break
 		}
 	}
@@ -3016,6 +3097,16 @@ type systemMessageMsg struct {
 	message string
 }
 type tickMsg struct{}
+type mcpActivityMsg struct {
+	sessionId string
+	activity  MCPActivity
+}
+type mcpConnectionMsg struct {
+	sessionId   string
+	clientInfo  string
+	connected   bool
+	connectedAt time.Time
+}
 
 func (m Model) waitForUpdates() tea.Cmd {
 	return func() tea.Msg {
@@ -3027,6 +3118,65 @@ func (m Model) tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg{}
 	})
+}
+
+func (m *Model) handleMCPConnection(msg mcpConnectionMsg) {
+	m.mcpActivityMu.Lock()
+	defer m.mcpActivityMu.Unlock()
+
+	if msg.connected {
+		// Determine client name from user agent
+		clientName := "Unknown Client"
+		if msg.clientInfo != "" {
+			// Extract a readable name from the user agent
+			if strings.Contains(strings.ToLower(msg.clientInfo), "claude") {
+				clientName = "Claude Desktop"
+			} else if strings.Contains(strings.ToLower(msg.clientInfo), "vscode") {
+				clientName = "VS Code MCP"
+			} else if strings.Contains(strings.ToLower(msg.clientInfo), "test") {
+				clientName = "Test Client"
+			} else {
+				clientName = msg.clientInfo
+			}
+		}
+
+		m.mcpConnections[msg.sessionId] = &mcpConnectionItem{
+			clientID:     msg.sessionId,
+			clientName:   clientName,
+			connectedAt:  msg.connectedAt,
+			lastActivity: msg.connectedAt,
+			requestCount: 0,
+			isConnected:  true,
+		}
+		m.mcpActivities[msg.sessionId] = []MCPActivity{}
+	} else {
+		// Mark as disconnected
+		if conn, exists := m.mcpConnections[msg.sessionId]; exists {
+			conn.isConnected = false
+		}
+	}
+}
+
+func (m *Model) handleMCPActivity(msg mcpActivityMsg) {
+	m.mcpActivityMu.Lock()
+	defer m.mcpActivityMu.Unlock()
+
+	// Update connection's last activity and request count
+	if conn, exists := m.mcpConnections[msg.sessionId]; exists {
+		conn.lastActivity = time.Now()
+		conn.requestCount++
+	}
+
+	// Add activity to the session's history
+	activities := m.mcpActivities[msg.sessionId]
+	activities = append(activities, msg.activity)
+	
+	// Keep only last 100 activities per session
+	if len(activities) > 100 {
+		activities = activities[len(activities)-100:]
+	}
+	
+	m.mcpActivities[msg.sessionId] = activities
 }
 
 func (m *Model) updateSettingsList() {

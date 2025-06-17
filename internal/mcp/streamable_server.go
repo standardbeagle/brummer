@@ -367,11 +367,30 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 	s.sessions[sessionID] = session
 	s.mu.Unlock()
 
+	// Publish connection event
+	s.eventBus.Publish(events.Event{
+		Type: events.MCPConnected,
+		Data: map[string]interface{}{
+			"sessionId":   sessionID,
+			"connectedAt": time.Now(),
+			"clientInfo":  r.Header.Get("User-Agent"),
+		},
+	})
+
 	defer func() {
 		s.mu.Lock()
 		delete(s.sessions, sessionID)
 		s.mu.Unlock()
 		cancel()
+
+		// Publish disconnection event
+		s.eventBus.Publish(events.Event{
+			Type: events.MCPDisconnected,
+			Data: map[string]interface{}{
+				"sessionId":      sessionID,
+				"disconnectedAt": time.Now(),
+			},
+		})
 	}()
 
 	// Send initial SSE comment with session info as per spec
@@ -445,37 +464,82 @@ func (s *StreamableServer) handleStreamingConnection(w http.ResponseWriter, r *h
 }
 
 func (s *StreamableServer) processMessage(msg *JSONRPCMessage, w http.ResponseWriter, r *http.Request, sessionID string) (*JSONRPCMessage, bool) {
+	startTime := time.Now()
+	var response *JSONRPCMessage
+	var isStreaming bool
+
+	// Track the activity
+	defer func() {
+		// Publish MCP activity event
+		activityData := map[string]interface{}{
+			"sessionId": sessionID,
+			"method":    msg.Method,
+			"params":    string(msg.Params),
+			"duration":  time.Since(startTime),
+		}
+
+		if response != nil {
+			if response.Error != nil {
+				activityData["error"] = response.Error.Message
+			} else if response.Result != nil {
+				// Marshal result for activity tracking
+				if resultBytes, err := json.Marshal(response.Result); err == nil {
+					resultStr := string(resultBytes)
+					if len(resultStr) > 200 {
+						resultStr = resultStr[:197] + "..."
+					}
+					activityData["response"] = resultStr
+				}
+			}
+		}
+
+		s.eventBus.Publish(events.Event{
+			Type: events.MCPActivity,
+			Data: activityData,
+		})
+	}()
+
 	// Handle different methods
 	switch msg.Method {
 	case "initialize":
-		return s.handleInitialize(msg), false
+		response = s.handleInitialize(msg)
+		return response, false
 
 	case "tools/list":
-		return s.handleToolsList(msg), false
+		response = s.handleToolsList(msg)
+		return response, false
 
 	case "tools/call":
-		return s.handleToolCall(msg, w, r)
+		response, isStreaming = s.handleToolCall(msg, w, r)
+		return response, isStreaming
 
 	case "resources/list":
-		return s.handleResourcesList(msg), false
+		response = s.handleResourcesList(msg)
+		return response, false
 
 	case "resources/read":
-		return s.handleResourceRead(msg), false
+		response = s.handleResourceRead(msg)
+		return response, false
 
 	case "resources/subscribe":
-		return s.handleResourceSubscribe(msg, sessionID), false
+		response = s.handleResourceSubscribe(msg, sessionID)
+		return response, false
 
 	case "resources/unsubscribe":
-		return s.handleResourceUnsubscribe(msg, sessionID), false
+		response = s.handleResourceUnsubscribe(msg, sessionID)
+		return response, false
 
 	case "prompts/list":
-		return s.handlePromptsList(msg), false
+		response = s.handlePromptsList(msg)
+		return response, false
 
 	case "prompts/get":
-		return s.handlePromptGet(msg), false
+		response = s.handlePromptGet(msg)
+		return response, false
 
 	default:
-		return s.createErrorResponse(msg.ID, -32601, "Method not found", nil), false
+		response = s.createErrorResponse(msg.ID, -32601, "Method not found", nil)
+		return response, false
 	}
 }
 

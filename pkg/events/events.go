@@ -16,6 +16,9 @@ const (
 	BuildEvent     EventType = "build.event"
 	TestFailed     EventType = "test.failed"
 	TestPassed     EventType = "test.passed"
+	MCPActivity    EventType = "mcp.activity"
+	MCPConnected   EventType = "mcp.connected"
+	MCPDisconnected EventType = "mcp.disconnected"
 )
 
 type Event struct {
