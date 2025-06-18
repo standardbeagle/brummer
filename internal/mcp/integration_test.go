@@ -36,8 +36,26 @@ func TestMCPInspectorIntegration(t *testing.T) {
 		}
 	}()
 
-	// Wait for server to start
-	time.Sleep(100 * time.Millisecond)
+	// Wait for server to be ready
+	serverReady := make(chan bool)
+	go func() {
+		for i := 0; i < 50; i++ { // Try for up to 5 seconds
+			resp, err := http.Get(fmt.Sprintf("http://localhost:%d/mcp", server.GetPort()))
+			if err == nil {
+				resp.Body.Close()
+				close(serverReady)
+				return
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+	}()
+	
+	select {
+	case <-serverReady:
+		// Server is ready
+	case <-time.After(5 * time.Second):
+		t.Fatal("Server failed to start within timeout")
+	}
 
 	// Ensure server cleanup
 	defer func() {
@@ -47,12 +65,18 @@ func TestMCPInspectorIntegration(t *testing.T) {
 	serverURL := fmt.Sprintf("http://localhost:%d/mcp", server.GetPort())
 
 	t.Run("validate protocol with mcp-inspector", func(t *testing.T) {
-		// Run mcp-inspector validate command
-		cmd := exec.Command("mcp-inspector", "validate", serverURL)
+		// Run mcp-inspector validate command with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		
+		cmd := exec.CommandContext(ctx, "mcp-inspector", "--cli", "validate", serverURL)
 		output, err := cmd.CombinedOutput()
 		
 		if err != nil {
 			t.Logf("MCP Inspector output: %s", string(output))
+			if ctx.Err() == context.DeadlineExceeded {
+				t.Fatalf("MCP Inspector validation timed out")
+			}
 			t.Fatalf("MCP Inspector validation failed: %v", err)
 		}
 
@@ -62,8 +86,11 @@ func TestMCPInspectorIntegration(t *testing.T) {
 	})
 
 	t.Run("test methods with mcp-inspector", func(t *testing.T) {
-		// Test initialize method
-		cmd := exec.Command("mcp-inspector", "test", serverURL, "initialize")
+		// Test initialize method with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		
+		cmd := exec.CommandContext(ctx, "mcp-inspector", "test", serverURL, "initialize")
 		output, err := cmd.CombinedOutput()
 		
 		if err != nil {
@@ -71,13 +98,19 @@ func TestMCPInspectorIntegration(t *testing.T) {
 		}
 		assert.NoError(t, err, "Initialize method should work")
 
-		// Test tools/list
-		cmd = exec.Command("mcp-inspector", "test", serverURL, "tools/list")
+		// Test tools/list with timeout
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel2()
+		
+		cmd = exec.CommandContext(ctx2, "mcp-inspector", "--cli", "test", serverURL, "tools/list")
 		output, err = cmd.CombinedOutput()
 		assert.NoError(t, err, "tools/list should work")
 
-		// Test resources/list
-		cmd = exec.Command("mcp-inspector", "test", serverURL, "resources/list")
+		// Test resources/list with timeout
+		ctx3, cancel3 := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel3()
+		
+		cmd = exec.CommandContext(ctx3, "mcp-inspector", "--cli", "test", serverURL, "resources/list")
 		output, err = cmd.CombinedOutput()
 		assert.NoError(t, err, "resources/list should work")
 	})

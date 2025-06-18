@@ -358,7 +358,8 @@ func (m *Manager) StopProcess(processID string) error {
 	}
 
 	// Also kill any processes that might be using development ports
-	m.killProcessesByPort()
+	// Do this asynchronously to avoid blocking
+	go m.killProcessesByPort()
 
 	process.Status = StatusStopped
 	now := time.Now()
@@ -367,15 +368,22 @@ func (m *Manager) StopProcess(processID string) error {
 	process.ExitCode = &exitCode
 	process.mu.Unlock()
 
-	// Give processes a moment to die
-	time.Sleep(100 * time.Millisecond)
+	// Asynchronously verify process termination
+	go func() {
+		// Small delay to allow processes to terminate gracefully
+		timer := time.NewTimer(100 * time.Millisecond)
+		defer timer.Stop()
 
-	// Double-check that the main process is dead
-	if mainPID > 0 {
-		m.ensureProcessDead(mainPID)
-	}
+		select {
+		case <-timer.C:
+			// Double-check that the main process is dead
+			if mainPID > 0 {
+				m.ensureProcessDead(mainPID)
+			}
+		}
+	}()
 
-	// Publish stop event
+	// Publish stop event immediately
 	m.eventBus.Publish(events.Event{
 		Type:      events.ProcessExited,
 		ProcessID: processID,
@@ -429,11 +437,11 @@ func (m *Manager) GetCurrentPackageManager() parser.PackageManager {
 func (m *Manager) IsPackageManagerFromJSON(pm parser.PackageManager) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	
+
 	if m.packageJSON == nil {
 		return false
 	}
-	
+
 	// Check packageManager field
 	if m.packageJSON.PackageManager != "" {
 		parts := strings.Split(m.packageJSON.PackageManager, "@")
@@ -441,13 +449,13 @@ func (m *Manager) IsPackageManagerFromJSON(pm parser.PackageManager) bool {
 			return true
 		}
 	}
-	
+
 	// Check engines field
 	if m.packageJSON.Engines != nil {
 		_, hasEngine := m.packageJSON.Engines[string(pm)]
 		return hasEngine
 	}
-	
+
 	return false
 }
 
@@ -501,7 +509,8 @@ func (m *Manager) Cleanup() error {
 	err := m.StopAllProcesses()
 
 	// Also kill any remaining development processes
-	m.killProcessesByPort()
+	// Do this asynchronously to avoid blocking during cleanup
+	go m.killProcessesByPort()
 
 	return err
 }
@@ -522,8 +531,11 @@ func (m *Manager) killChildProcesses(parentPID int) {
 		return // Skip for Windows
 	}
 
-	// Use ps to find child processes
-	cmd := exec.Command("pgrep", "-P", strconv.Itoa(parentPID))
+	// Use ps to find child processes with timeout
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pgrep", "-P", strconv.Itoa(parentPID))
 	output, err := cmd.Output()
 	if err != nil {
 		return
@@ -576,8 +588,11 @@ func (m *Manager) killProcessUsingPort(port int) {
 			killProcessByPID(pid)
 		}
 	} else {
-		// Unix implementation using lsof
-		cmd := exec.Command("lsof", "-ti", fmt.Sprintf(":%d", port))
+		// Unix implementation using lsof with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		cmd := exec.CommandContext(ctx, "lsof", "-ti", fmt.Sprintf(":%d", port))
 		output, err := cmd.Output()
 		if err != nil {
 			return
@@ -598,7 +613,10 @@ func (m *Manager) killProcessUsingPort(port int) {
 
 // killProcessesByPattern kills processes matching a pattern
 func (m *Manager) killProcessesByPattern(pattern string) {
-	cmd := exec.Command("pgrep", "-f", pattern)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "pgrep", "-f", pattern)
 	output, err := cmd.Output()
 	if err != nil {
 		return
