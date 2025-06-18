@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package test
@@ -211,7 +212,7 @@ func TestMCPBatchRequests(t *testing.T) {
 
 	requestBody, _ := json.Marshal(batch)
 	url := fmt.Sprintf("http://localhost:%d/mcp", port)
-	
+
 	resp, err := http.Post(url, "application/json", bytes.NewBuffer(requestBody))
 	if err != nil {
 		t.Fatalf("Batch request failed: %v", err)

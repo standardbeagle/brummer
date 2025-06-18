@@ -405,19 +405,19 @@ func (s *Store) isValidURL(urlStr string) bool {
 	if !strings.Contains(urlStr, "://") {
 		return false
 	}
-	
+
 	// Split by protocol
 	parts := strings.SplitN(urlStr, "://", 2)
 	if len(parts) != 2 {
 		return false
 	}
-	
+
 	// Host part must not be empty
 	hostPart := parts[1]
 	if hostPart == "" {
 		return false
 	}
-	
+
 	// If there's a colon, it should be followed by a port number or path
 	if idx := strings.Index(hostPart, ":"); idx != -1 {
 		afterColon := hostPart[idx+1:]
@@ -426,14 +426,14 @@ func (s *Store) isValidURL(urlStr string) bool {
 			return false
 		}
 	}
-	
+
 	return true
 }
 
 func detectURLs(content string) []string {
 	// Strip ANSI escape codes before detecting URLs
 	cleanContent := ansiRegex.ReplaceAllString(content, "")
-	
+
 	matches := urlRegex.FindAllString(cleanContent, -1)
 	validURLs := []string{}
 
@@ -448,7 +448,7 @@ func detectURLs(content string) []string {
 			if protocolEnd >= 0 {
 				afterProtocol := url[protocolEnd+3:]
 				colonCount := strings.Count(afterProtocol, ":")
-				
+
 				if colonCount == 1 && strings.HasSuffix(afterProtocol, ":") {
 					// This is like "http://localhost:" - incomplete port, skip it
 					continue
@@ -733,4 +733,3 @@ func (s *Store) areLogsIdentical(a, b LogEntry) bool {
 		a.Level == b.Level &&
 		a.IsError == b.IsError
 }
-

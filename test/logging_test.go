@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package test
@@ -219,7 +220,7 @@ func TestMultilineLogging(t *testing.T) {
 
 	output := bt.Output()
 	lines := strings.Split(output, "\n")
-	
+
 	if len(lines) < 5 {
 		t.Errorf("Expected multiple lines of output, got %d lines", len(lines))
 	} else {
@@ -268,7 +269,7 @@ func TestLogColors(t *testing.T) {
 	output := bt.Output()
 	visualIndicators := []string{"🚀", "✅", "🌐", "📦"}
 	foundCount := 0
-	
+
 	for _, indicator := range visualIndicators {
 		if strings.Contains(output, indicator) {
 			foundCount++

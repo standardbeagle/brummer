@@ -20,11 +20,11 @@ func TestSystemMessages(t *testing.T) {
 
 	// Test adding system message directly
 	model.addSystemMessage("info", "Test", "Test message")
-	
+
 	if len(model.systemMessages) != 1 {
 		t.Errorf("Expected 1 system message, got %d", len(model.systemMessages))
 	}
-	
+
 	if model.systemMessages[0].Message != "Test message" {
 		t.Errorf("Expected 'Test message', got '%s'", model.systemMessages[0].Message)
 	}
@@ -32,9 +32,9 @@ func TestSystemMessages(t *testing.T) {
 	// Test system.message event
 	eventBus.Subscribe(events.EventType("system.message"), func(e events.Event) {
 		level, _ := e.Data["level"].(string)
-		context, _ := e.Data["context"].(string) 
+		context, _ := e.Data["context"].(string)
 		message, _ := e.Data["message"].(string)
-		
+
 		model.updateChan <- systemMessageMsg{
 			level:   level,
 			context: context,

@@ -1,3 +1,4 @@
+//go:build integration
 // +build integration
 
 package test
@@ -131,7 +132,7 @@ func TestProxyRequestHandling(t *testing.T) {
 	// Test proxy request
 	proxyURL := fmt.Sprintf("http://localhost:%d", proxyPort)
 	client := &http.Client{Timeout: 5 * time.Second}
-	
+
 	resp, err := client.Get(proxyURL)
 	if err != nil {
 		// Proxy might reject the request, but it should be reachable
@@ -234,7 +235,7 @@ func TestProxyURLFormat(t *testing.T) {
 	output := bt.Output()
 	urlPattern := regexp.MustCompile(`http://localhost:\d+`)
 	matches := urlPattern.FindAllString(output, -1)
-	
+
 	if len(matches) == 0 {
 		t.Errorf("No localhost URLs found in output")
 	} else {

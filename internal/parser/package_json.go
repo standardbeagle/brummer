@@ -134,7 +134,7 @@ func detectInstalledPackageManagersUncached() []InstalledPackageManager {
 		// Get version with timeout
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		
+
 		cmd := exec.CommandContext(ctx, mgr.command, mgr.versionArgs...)
 		output, err := cmd.Output()
 		if err != nil {
@@ -159,9 +159,9 @@ func findExecutable(name string) (string, error) {
 		path string
 		err  error
 	}
-	
+
 	resultChan := make(chan result, 1)
-	
+
 	go func() {
 		if runtime.GOOS == "windows" {
 			// On Windows, try with common extensions
@@ -179,7 +179,7 @@ func findExecutable(name string) (string, error) {
 			resultChan <- result{path: path, err: err}
 		}
 	}()
-	
+
 	// Wait for result with timeout
 	select {
 	case res := <-resultChan:

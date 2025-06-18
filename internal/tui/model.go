@@ -890,6 +890,9 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// Initialize settings list
 	m.updateSettingsList()
 
+	// Initialize process list with current processes
+	m.updateProcessList()
+
 	// Initialize commands list for run dialog
 	commandsList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	commandsList.Title = "Available Commands"

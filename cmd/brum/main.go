@@ -240,7 +240,7 @@ func runApp(cmd *cobra.Command, args []string) {
 					fmt.Printf("[%s] %s: %s\n", timestamp, proc.Name, line)
 				}
 			}
-			
+
 			entry := logStore.Add(processID, proc.Name, line, isError)
 			detector.ProcessLogLine(processID, proc.Name, line, isError)
 

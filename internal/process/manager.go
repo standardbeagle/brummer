@@ -358,8 +358,14 @@ func (m *Manager) StopProcess(processID string) error {
 	}
 
 	// Also kill any processes that might be using development ports
-	// Do this asynchronously to avoid blocking
-	go m.killProcessesByPort()
+	// Do this asynchronously but with immediate action for dev processes
+	if process.Name == "dev" || process.Name == "start" ||
+		strings.Contains(process.Script, "npm") ||
+		strings.Contains(process.Script, "pnpm") ||
+		strings.Contains(process.Script, "yarn") {
+		// Don't wait - kill immediately in background
+		go m.killProcessesByPort()
+	}
 
 	process.Status = StatusStopped
 	now := time.Now()
@@ -379,6 +385,16 @@ func (m *Manager) StopProcess(processID string) error {
 			// Double-check that the main process is dead
 			if mainPID > 0 {
 				m.ensureProcessDead(mainPID)
+			}
+
+			// For package manager processes, be extra thorough
+			if process.Name == "dev" || process.Name == "start" ||
+				strings.Contains(process.Script, "npm") ||
+				strings.Contains(process.Script, "pnpm") ||
+				strings.Contains(process.Script, "yarn") {
+				// Give package managers extra time then do additional cleanup
+				time.Sleep(200 * time.Millisecond)
+				m.killProcessesByPort()
 			}
 		}
 	}()
@@ -508,9 +524,20 @@ func (m *Manager) StopAllProcesses() error {
 func (m *Manager) Cleanup() error {
 	err := m.StopAllProcesses()
 
-	// Also kill any remaining development processes
-	// Do this asynchronously to avoid blocking during cleanup
-	go m.killProcessesByPort()
+	// Kill any remaining development processes with minimal blocking
+	done := make(chan bool, 1)
+	go func() {
+		m.killProcessesByPort()
+		done <- true
+	}()
+
+	// Wait for cleanup but don't block forever
+	select {
+	case <-done:
+		// Cleanup completed
+	case <-time.After(1 * time.Second):
+		// Timeout - continue shutdown
+	}
 
 	return err
 }
@@ -572,11 +599,23 @@ func (m *Manager) killProcessesByPort() {
 		// On Windows, kill common development processes by name
 		m.killWindowsDevProcesses()
 	} else {
-		// Also check for common development server patterns
+		// Also check for common development server patterns and package managers
+		// Be more specific to avoid killing system processes
+		m.killProcessesByPattern("pnpm run dev")
+		m.killProcessesByPattern("npm run dev")
+		m.killProcessesByPattern("yarn run dev")
+		m.killProcessesByPattern("pnpm run start")
+		m.killProcessesByPattern("npm run start")
+		m.killProcessesByPattern("yarn run start")
 		m.killProcessesByPattern("next dev")
 		m.killProcessesByPattern("next-server")
-		m.killProcessesByPattern("webpack")
+		m.killProcessesByPattern("webpack-dev-server")
 		m.killProcessesByPattern("vite")
+		m.killProcessesByPattern("dev-server")
+		
+		// Kill any remaining node processes that are part of dev servers
+		// But be careful not to kill system node processes
+		m.killNodeDevProcesses()
 	}
 }
 
@@ -605,7 +644,8 @@ func (m *Manager) killProcessUsingPort(port int) {
 
 		for _, line := range strings.Split(lines, "\n") {
 			if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
-				killProcessByPID(pid)
+				// Use the more aggressive killProcessTree for port-based killing
+				m.killProcessTree(pid)
 			}
 		}
 	}
@@ -629,8 +669,69 @@ func (m *Manager) killProcessesByPattern(pattern string) {
 
 	for _, line := range strings.Split(lines, "\n") {
 		if pid, err := strconv.Atoi(strings.TrimSpace(line)); err == nil {
-			killProcessByPID(pid)
+			// Use the more aggressive killProcessTree for pattern-based killing
+			m.killProcessTree(pid)
 		}
+	}
+}
+
+// killNodeDevProcesses kills node processes that are likely development servers
+func (m *Manager) killNodeDevProcesses() {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	// Get all node processes with their command lines
+	cmd := exec.CommandContext(ctx, "ps", "-eo", "pid,cmd")
+	output, err := cmd.Output()
+	if err != nil {
+		return
+	}
+
+	lines := strings.Split(string(output), "\n")
+	var devNodePIDs []int
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+
+		// Split PID and command
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+
+		pid, err := strconv.Atoi(parts[0])
+		if err != nil {
+			continue
+		}
+
+		cmdLine := strings.Join(parts[1:], " ")
+		
+		// Check if this looks like a development server node process
+		if strings.Contains(cmdLine, "node") && (
+			strings.Contains(cmdLine, "next/dist/bin/next") ||
+			strings.Contains(cmdLine, "webpack") ||
+			strings.Contains(cmdLine, "dev-server") ||
+			strings.Contains(cmdLine, "turbopack") ||
+			(strings.Contains(cmdLine, "pnpm") && strings.Contains(cmdLine, "dev")) ||
+			(strings.Contains(cmdLine, "npm") && strings.Contains(cmdLine, "dev")) ||
+			(strings.Contains(cmdLine, "yarn") && strings.Contains(cmdLine, "dev"))) {
+			
+			// Exclude system processes and VSCode processes
+			if !strings.Contains(cmdLine, "vscode-server") &&
+			   !strings.Contains(cmdLine, "mcp-inspector") &&
+			   !strings.Contains(cmdLine, "/usr/lib/") &&
+			   !strings.Contains(cmdLine, "/opt/") {
+				devNodePIDs = append(devNodePIDs, pid)
+			}
+		}
+	}
+
+	// Kill the identified development server processes
+	for _, pid := range devNodePIDs {
+		m.killProcessTree(pid)
 	}
 }
 

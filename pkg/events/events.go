@@ -9,15 +9,15 @@ import (
 type EventType string
 
 const (
-	ProcessStarted EventType = "process.started"
-	ProcessExited  EventType = "process.exited"
-	LogLine        EventType = "log.line"
-	ErrorDetected  EventType = "error.detected"
-	BuildEvent     EventType = "build.event"
-	TestFailed     EventType = "test.failed"
-	TestPassed     EventType = "test.passed"
-	MCPActivity    EventType = "mcp.activity"
-	MCPConnected   EventType = "mcp.connected"
+	ProcessStarted  EventType = "process.started"
+	ProcessExited   EventType = "process.exited"
+	LogLine         EventType = "log.line"
+	ErrorDetected   EventType = "error.detected"
+	BuildEvent      EventType = "build.event"
+	TestFailed      EventType = "test.failed"
+	TestPassed      EventType = "test.passed"
+	MCPActivity     EventType = "mcp.activity"
+	MCPConnected    EventType = "mcp.connected"
 	MCPDisconnected EventType = "mcp.disconnected"
 )
 

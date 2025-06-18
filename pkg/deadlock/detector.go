@@ -47,10 +47,10 @@ func BeforeLock(lock interface{}, lockType string) {
 
 	gid := getGoroutineID()
 	addr := getLockAddr(lock)
-	
+
 	// Get caller info
 	_, file, line, _ := runtime.Caller(2)
-	
+
 	info := lockInfo{
 		addr:       addr,
 		file:       file,
@@ -74,7 +74,7 @@ func AfterUnlock(lock interface{}) {
 
 	gid := getGoroutineID()
 	addr := getLockAddr(lock)
-	
+
 	globalDetector.removeLock(gid, addr)
 }
 
@@ -83,7 +83,7 @@ func (d *Detector) checkDeadlock(gid uint64, newLockAddr uintptr) {
 	// Get current locks held by this goroutine
 	if locksVal, ok := d.locks.Load(gid); ok {
 		currentLocks := locksVal.([]lockInfo)
-		
+
 		// Check if we're trying to acquire a lock we already hold
 		for _, lock := range currentLocks {
 			if lock.addr == newLockAddr {
@@ -251,11 +251,11 @@ func (ltd *LockTimeoutDetector) MonitorLock(lock interface{}) func() {
 
 	gid := getGoroutineID()
 	done := make(chan struct{})
-	
+
 	_, file, line, _ := runtime.Caller(1)
-	
+
 	ltd.checkers.Store(gid, done)
-	
+
 	go func() {
 		select {
 		case <-time.After(ltd.timeout):

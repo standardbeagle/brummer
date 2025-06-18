@@ -486,7 +486,7 @@ func (p *ErrorParser) isStandaloneError(content string) bool {
 		"fatal:", "exception:", "panic:",
 		"cannot ", "could not ", "unable to ",
 	}
-	
+
 	// Also check for simple "Error: " at start of line
 	if regexp.MustCompile(`(?i)^Error:\s+`).MatchString(content) {
 		return true

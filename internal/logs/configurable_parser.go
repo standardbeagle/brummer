@@ -51,10 +51,10 @@ func (p *ConfigurableErrorParser) ProcessLine(processID, processName, content st
 			switch language {
 			case "react", "vue", "nextjs", "eslint":
 				language = "javascript"
-			// Keep typescript as typescript for TS-specific errors
+				// Keep typescript as typescript for TS-specific errors
 			}
 		}
-		
+
 		// Create new error context
 		errorCtx := &ErrorContext{
 			ID:          fmt.Sprintf("%s-%d", processID, timestamp.UnixNano()),
@@ -67,7 +67,7 @@ func (p *ConfigurableErrorParser) ProcessLine(processID, processName, content st
 			Language:    language,
 			Raw:         []string{content},
 		}
-		
+
 		// If language is generic, try to detect from content
 		if language == "generic" {
 			detectedLang := p.detectLanguage(content)

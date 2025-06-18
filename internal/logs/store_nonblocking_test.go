@@ -22,7 +22,7 @@ func TestStoreNonBlockingAdd(t *testing.T) {
 
 	// Measure time for Add operations
 	start := time.Now()
-	
+
 	// Add many logs concurrently
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
@@ -37,13 +37,13 @@ func TestStoreNonBlockingAdd(t *testing.T) {
 			)
 		}(i)
 	}
-	
+
 	wg.Wait()
 	elapsed := time.Since(start)
-	
+
 	// Should complete quickly (non-blocking)
 	assert.Less(t, elapsed, 100*time.Millisecond, "Add operations took too long: %v", elapsed)
-	
+
 	// Check goroutine count didn't explode
 	endGoroutines := runtime.NumGoroutine()
 	assert.LessOrEqual(t, endGoroutines-startGoroutines, 5, "Too many goroutines created")
@@ -101,14 +101,14 @@ func TestStoreConcurrentAddGet(t *testing.T) {
 	// Let it run for a short time
 	time.Sleep(100 * time.Millisecond)
 	close(done)
-	
+
 	// Give goroutines time to exit
 	time.Sleep(10 * time.Millisecond)
 
 	// Verify both operations succeeded many times
 	adds := addCount.Load()
 	gets := getCount.Load()
-	
+
 	assert.Greater(t, adds, int32(100), "Not enough add operations: %d", adds)
 	assert.Greater(t, gets, int32(50), "Not enough get operations: %d", gets)
 }
@@ -190,7 +190,7 @@ func TestStoreNoDeadlock(t *testing.T) {
 	go func() {
 		// Perform many operations that could deadlock
 		var wg sync.WaitGroup
-		
+
 		// Add logs
 		wg.Add(1)
 		go func() {

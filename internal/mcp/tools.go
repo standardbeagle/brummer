@@ -1536,4 +1536,3 @@ func isWSL() bool {
 	}
 	return strings.Contains(strings.ToLower(string(releaseData)), "microsoft")
 }
-

@@ -9,16 +9,16 @@ import (
 // Returns true if condition met, false if timeout
 func WaitForCondition(t *testing.T, timeout time.Duration, condition func() bool) bool {
 	t.Helper()
-	
+
 	deadline := time.Now().Add(timeout)
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
-	
+
 	for {
 		if condition() {
 			return true
 		}
-		
+
 		select {
 		case <-ticker.C:
 			if time.Now().After(deadline) {
