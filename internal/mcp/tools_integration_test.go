@@ -32,7 +32,16 @@ func setupTestServerWithPackageJSON(t testing.TB) (*StreamableServer, string) {
 	processMgr, err := process.NewManager(testDir, eventBus, true)
 	require.NoError(t, err)
 	
-	proxyServer := proxy.NewServer(8080, eventBus)
+	// Use a random port for proxy server in tests to avoid conflicts
+	proxyPort := 8080 + (time.Now().UnixNano() % 1000)
+	proxyServer := proxy.NewServer(int(proxyPort), eventBus)
+	
+	t.Cleanup(func() {
+		// Clean up in reverse order
+		proxyServer.Stop()
+		processMgr.Cleanup()
+		logStore.Close()
+	})
 	
 	server := NewStreamableServer(7777, processMgr, logStore, proxyServer, eventBus)
 	return server, testDir
@@ -103,7 +112,7 @@ func TestScriptsRunEchoScript(t *testing.T) {
 	assert.NotEmpty(t, processID)
 	
 	// Wait for script to complete
-	time.Sleep(1 * time.Second)
+	time.Sleep(100 * time.Millisecond) // Reduced from 1s
 	
 	// First check process status
 	statusMsg := makeJSONRPCRequest("tools/call", map[string]interface{}{
@@ -174,7 +183,7 @@ func TestScriptsRunErrorScript(t *testing.T) {
 	processID := result["processId"].(string)
 	
 	// Wait for script to fail
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond) // Give script time to exit
 	
 	// Check process status
 	statusMsg := makeJSONRPCRequest("tools/call", map[string]interface{}{
@@ -292,7 +301,7 @@ func TestLogsStreamFastOutput(t *testing.T) {
 	processID := result["processId"].(string)
 	
 	// Wait for completion
-	time.Sleep(1 * time.Second)
+	time.Sleep(100 * time.Millisecond) // Reduced from 1s
 	
 	// Search logs
 	searchMsg := makeJSONRPCRequest("tools/call", map[string]interface{}{
@@ -368,7 +377,7 @@ func TestScriptsWithDifferentOutputs(t *testing.T) {
 			processID := result["processId"].(string)
 			
 			// Wait for completion
-			time.Sleep(500 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond) // Reduced from 500ms
 			
 			// Search for expected output
 			searchMsg := makeJSONRPCRequest("tools/call", map[string]interface{}{

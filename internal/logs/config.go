@@ -200,14 +200,16 @@ func CreateUserConfig() error {
 func compileRegexes(config *ErrorParsingConfig) error {
 	// Compile error patterns
 	for language, patterns := range config.ErrorPatterns {
+		compiledPatterns := make(map[string]Pattern)
 		for name, pattern := range patterns {
 			regex, err := regexp.Compile(pattern.Pattern)
 			if err != nil {
 				return fmt.Errorf("failed to compile error pattern %s.%s: %w", language, name, err)
 			}
 			pattern.regex = regex
-			config.ErrorPatterns[language][name] = pattern
+			compiledPatterns[name] = pattern
 		}
+		config.ErrorPatterns[language] = compiledPatterns
 	}
 
 	// Compile stack patterns

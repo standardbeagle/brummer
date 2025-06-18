@@ -65,11 +65,19 @@ build:
 	@go build $(LDFLAGS) -o $(BINARY_NAME) ./cmd/brum
 	@echo "✅ Build complete: ./$(BINARY_NAME)"
 
-# Run unit tests
+# Run unit tests (excluding integration tests)
 .PHONY: test
 test:
 	@echo "🧪 Running unit tests..."
-	@go test -v ./...
+	@go test -timeout 30s -v \
+		./internal/config \
+		./internal/logs \
+		./internal/parser \
+		./internal/process \
+		./internal/proxy \
+		./internal/tui \
+		./internal/mcp \
+		./pkg/...
 
 # Run regression test suite
 .PHONY: test-regression

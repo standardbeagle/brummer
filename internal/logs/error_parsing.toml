@@ -83,12 +83,27 @@ severity = "error"
 single_line = true
 description = "Simple JavaScript error format"
 
-[error_patterns.javascript.stack_error]
-pattern = "^\\s*(\\w+Error):\\s*(.+)"
+
+[error_patterns.javascript.type_error]
+pattern = "^(TypeError):\\s*(.+)"
 type = "JavaScriptError"
 severity = "error"
 single_line = true
-description = "JavaScript error with stack trace"
+description = "JavaScript TypeError"
+
+[error_patterns.javascript.reference_error]
+pattern = "^(ReferenceError):\\s*(.+)"
+type = "JavaScriptError"  
+severity = "error"
+single_line = true
+description = "JavaScript ReferenceError"
+
+[error_patterns.javascript.fetch_error]
+pattern = "^(FetchError):\\s*(.+)"
+type = "NetworkError"
+severity = "error"
+single_line = true
+description = "JavaScript FetchError"
 
 [error_patterns.javascript.promise_rejection]
 pattern = "^\\s*(?:UnhandledPromiseRejectionWarning:|PromiseRejectionHandledWarning:)\\s*(.+)"
@@ -96,6 +111,20 @@ type = "PromiseRejection"
 severity = "warning"
 single_line = false
 description = "Promise rejection warning"
+
+[error_patterns.javascript.syntax_error]
+pattern = "^(SyntaxError):\\s*(.+)"
+type = "SyntaxError"
+severity = "error"
+single_line = false
+description = "JavaScript SyntaxError"
+
+[error_patterns.javascript.generic_error]
+pattern = "^(\\w+Error):\\s*(.+)"
+type = "JavaScriptError"
+severity = "error"
+single_line = true
+description = "Generic JavaScript error"
 
 # TypeScript Error Patterns
 [error_patterns.typescript]
@@ -122,7 +151,7 @@ single_line = true
 description = "TypeScript file-specific error with line/column"
 
 [error_patterns.typescript.build_error]
-pattern = "^(?:Build Error|Compilation Error|ERROR):\\s*(.+)"
+pattern = "^(?:Build Error|Compilation Error):\\s*(.+)"
 type = "BuildError"
 severity = "error"
 single_line = true
@@ -135,11 +164,18 @@ severity = "error"
 single_line = true
 description = "Failed to compile message"
 
+[error_patterns.typescript.argument_type]
+pattern = "^Argument of type\\s+.+\\s+is not assignable to parameter"
+type = "TypeScriptError"
+severity = "error"
+single_line = true
+description = "TypeScript type assignment error"
+
 # React Error Patterns
 [error_patterns.react]
 
 [error_patterns.react.jsx_key]
-pattern = "(?i)each\\s+child\\s+in\\s+a\\s+list\\s+should\\s+have\\s+a\\s+unique\\s+\"key\"\\s+prop|missing\\s+\"key\"\\s+prop\\s+for\\s+element"
+pattern = "(?i)(?:ERROR:\\s*)?(?:each\\s+child\\s+in\\s+a\\s+list\\s+should\\s+have\\s+a\\s+unique\\s+\"key\"\\s+prop|missing\\s+\"key\"\\s+prop\\s+for\\s+element)"
 type = "ReactError"
 severity = "warning"
 single_line = true
@@ -292,6 +328,16 @@ severity = "warning"
 single_line = true
 description = "ESLint warning"
 
+# Database Error Patterns
+[error_patterns.database]
+
+[error_patterns.database.mongo_error]
+pattern = "^(MongoError|MongoNetworkError|MongoTimeoutError):\\s*(.+)"
+type = "MongoError"
+severity = "error"
+single_line = false
+description = "MongoDB error"
+
 # Generic Error Patterns
 [error_patterns.generic]
 
@@ -308,6 +354,20 @@ type = "GenericError"
 severity = "error"
 single_line = true
 description = "Error with symbols/prefixes"
+
+[error_patterns.generic.simple_error]
+pattern = "^Error:\\s*(.+)"
+type = "Error"
+severity = "error"
+single_line = false
+description = "Simple error message"
+
+[error_patterns.generic.exit_error]
+pattern = "^ERROR:\\s*\"([^\"]+)\"\\s+exited\\s+with\\s+(\\d+)\\.?"
+type = "Error"
+severity = "error"
+single_line = true
+description = "Process exit error"
 
 # Stack Trace Patterns
 # These patterns identify stack trace lines that should be grouped with errors
@@ -417,6 +477,12 @@ patterns = [
 ]
 exclude_if_matches = [
     "^TS\\d+:",                                   # Don't strip TypeScript error codes
+    "^\\w+Error:",                                # Don't strip JavaScript error types (TypeError:, ReferenceError:, etc.)
+    "^\\w+Exception:",                            # Don't strip exception types
+    "^UnhandledPromiseRejectionWarning:",         # Don't strip promise rejection warnings
+    "^PromiseRejectionHandledWarning:",           # Don't strip promise rejection warnings
+    "^ERROR:",                                    # Don't strip ERROR: prefix (used in exit_error pattern)
+    "^Error:",                                    # Don't strip Error: prefix (used in simple_error pattern)
 ]
 
 # Custom Error Types

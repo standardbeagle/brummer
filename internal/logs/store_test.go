@@ -6,6 +6,7 @@ import (
 
 func TestDetectURLsInContent(t *testing.T) {
 	store := NewStore(100)
+	defer store.Close()
 
 	tests := []struct {
 		name     string
@@ -67,6 +68,7 @@ func TestDetectURLsInContent(t *testing.T) {
 				t.Errorf("DetectURLsInContent() returned %d URLs, want %d", len(urls), len(tt.expected))
 				t.Errorf("Got: %v", urls)
 				t.Errorf("Want: %v", tt.expected)
+				t.Logf("Input content: %q", tt.content)
 				return
 			}
 
@@ -81,6 +83,7 @@ func TestDetectURLsInContent(t *testing.T) {
 
 func TestUpdateProxyURL(t *testing.T) {
 	store := NewStore(100)
+	defer store.Close()
 
 	// Add a URL through normal log processing
 	store.Add("test-process", "test", "Server at http://localhost:3000", false)

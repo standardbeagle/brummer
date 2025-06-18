@@ -231,6 +231,16 @@ func runApp(cmd *cobra.Command, args []string) {
 	// Set up log processing with event detection
 	processMgr.AddLogCallback(func(processID, line string, isError bool) {
 		if proc, exists := processMgr.GetProcess(processID); exists {
+			// In noTUI mode, print logs directly to stdout/stderr
+			if noTUI && line != "" {
+				timestamp := time.Now().Format("15:04:05")
+				if isError {
+					fmt.Fprintf(os.Stderr, "[%s] %s: %s\n", timestamp, proc.Name, line)
+				} else {
+					fmt.Printf("[%s] %s: %s\n", timestamp, proc.Name, line)
+				}
+			}
+			
 			entry := logStore.Add(processID, proc.Name, line, isError)
 			detector.ProcessLogLine(processID, proc.Name, line, isError)
 

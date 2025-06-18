@@ -25,7 +25,17 @@ func setupTestServer(t testing.TB) *StreamableServer {
 	eventBus := events.NewEventBus()
 	logStore := logs.NewStore(10000)
 	processMgr, _ := process.NewManager(".", eventBus, false)
-	proxyServer := proxy.NewServer(8080, eventBus)
+	
+	// Use a random port for proxy server in tests to avoid conflicts
+	proxyPort := 8080 + (time.Now().UnixNano() % 1000)
+	proxyServer := proxy.NewServer(int(proxyPort), eventBus)
+	
+	t.Cleanup(func() {
+		// Clean up in reverse order
+		proxyServer.Stop()
+		processMgr.Cleanup()
+		logStore.Close()
+	})
 	
 	server := NewStreamableServer(7777, processMgr, logStore, proxyServer, eventBus)
 	return server
@@ -247,7 +257,7 @@ func TestSSEStreaming(t *testing.T) {
 		// Use a channel to signal when to stop
 		done := make(chan bool)
 		go func() {
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(50 * time.Millisecond) // Reduced delay for faster tests
 			close(done)
 		}()
 		
@@ -262,7 +272,7 @@ func TestSSEStreaming(t *testing.T) {
 		}()
 		
 		// Wait for initial response
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(20 * time.Millisecond) // Reduced delay
 		
 		// Check headers
 		assert.Equal(t, "text/event-stream", rec.Header().Get("Content-Type"))

@@ -50,15 +50,17 @@ func NewErrorParser() *ErrorParser {
 			"js_unhandled":     regexp.MustCompile(`^\s*⨯\s*unhandled(?:Rejection)?:?\s*\[?(\w+(?:Error|Exception))\]?:?\s*(.+)`),
 			"js_error_bracket": regexp.MustCompile(`^\[?(\w+(?:Error|Exception))\]?:\s*(.+)`),
 			"js_error_simple":  regexp.MustCompile(`(?i)^(?:error:|fatal:|uncaught exception:)\s*(.+)`),
-			"js_stack_error":   regexp.MustCompile(`^\s*(\w+Error):\s*(.+)`),
+			"js_error_type":    regexp.MustCompile(`^(\w+Error):\s*(.+)`),
+			"js_fetch_error":   regexp.MustCompile(`^(FetchError):\s*(.+)`),
 			"js_rejection":     regexp.MustCompile(`^\s*(?:UnhandledPromiseRejectionWarning:|PromiseRejectionHandledWarning:)\s*(.+)`),
 
 			// TypeScript/Build errors (higher priority)
 			"ts_error":       regexp.MustCompile(`^(?:ERROR|Error)\s+in\s+(.+)`),
 			"ts_specific":    regexp.MustCompile(`(TS\d+):\s*(.+)`),
-			"ts_file_error":  regexp.MustCompile(`^(.+\.tsx?)\(\d+,\d+\):\s+error\s+(TS\d+):\s*(.+)`),
+			"ts_file_error":  regexp.MustCompile(`^(.+\.tsx?)\((\d+,\d+)\):\s+error\s+(TS\d+):\s*(.+)`),
 			"build_error":    regexp.MustCompile(`^(?:Build Error|Compilation Error|ERROR):\s*(.+)`),
-			"failed_compile": regexp.MustCompile(`(?i)failed\s+to\s+compile`),
+			"failed_compile": regexp.MustCompile(`(?i)failed\s+to\s+compile\.?`),
+			"error_exit":     regexp.MustCompile(`^ERROR:\s*"([^"]+)"\s+exited\s+with\s+(\d+)\.?`),
 
 			// React/JSX specific errors
 			"react_jsx_key":          regexp.MustCompile(`(?i)missing\s+"key"\s+prop\s+for\s+element`),
@@ -96,9 +98,13 @@ func NewErrorParser() *ErrorParser {
 			"eslint_warning":  regexp.MustCompile(`^\s*\d+:\d+\s+warning\s+(.+)`),
 			"lint_line_error": regexp.MustCompile(`^\s*\d+:\d+\s+Error:\s*(.+)`),
 
+			// Database errors
+			"mongo_error": regexp.MustCompile(`^(MongoError|MongoNetworkError|MongoTimeoutError):\s*(.+)`),
+
 			// Generic errors
-			"generic_failed": regexp.MustCompile(`(?i)^.*(failed to|cannot|unable to|could not)\s+(.+)`),
-			"generic_error":  regexp.MustCompile(`(?i)^\s*(?:⚠|❌|✖|ERROR|FAIL)\s+(.+)`),
+			"generic_failed":   regexp.MustCompile(`(?i)^.*(failed to|cannot|unable to|could not)\s+(.+)`),
+			"generic_error":    regexp.MustCompile(`(?i)^\s*(?:⚠|❌|✖|ERROR|FAIL)\s+(.+)`),
+			"generic_argument": regexp.MustCompile(`^Argument of type\s+.+\s+is not assignable to parameter`),
 		},
 
 		stackPatterns: map[string]*regexp.Regexp{
@@ -266,15 +272,31 @@ func (p *ErrorParser) detectErrorStart(content string) (string, map[string]strin
 
 			switch {
 			case strings.HasPrefix(patternName, "js_"):
-				if len(matches) > 1 {
+				if patternName == "js_rejection" {
+					// Handle promise rejection warnings
+					if strings.Contains(content, "UnhandledPromiseRejectionWarning:") {
+						info["type"] = "UnhandledPromiseRejectionWarning"
+					} else {
+						info["type"] = "PromiseRejectionHandledWarning"
+					}
+					if len(matches) > 1 {
+						info["message"] = strings.TrimSpace(matches[1])
+					}
+				} else if (patternName == "js_error_type" || patternName == "js_fetch_error") && len(matches) > 1 {
+					// Handle specific error types like TypeError, ReferenceError, FetchError, etc.
 					info["type"] = matches[1]
+					if len(matches) > 2 {
+						info["message"] = strings.TrimSpace(matches[2])
+					}
+				} else if len(matches) > 1 {
+					info["type"] = matches[1]
+					if len(matches) > 2 {
+						info["message"] = strings.TrimSpace(matches[2])
+					} else {
+						info["message"] = strings.TrimSpace(matches[1])
+					}
 				} else if strings.Contains(content, "unhandled") {
 					info["type"] = "UnhandledRejection"
-				}
-				if len(matches) > 2 {
-					info["message"] = strings.TrimSpace(matches[2])
-				} else if len(matches) > 1 {
-					info["message"] = strings.TrimSpace(matches[1])
 				}
 			case strings.HasPrefix(patternName, "react_"):
 				info["type"] = "ReactError"
@@ -284,9 +306,9 @@ func (p *ErrorParser) detectErrorStart(content string) (string, map[string]strin
 					info["message"] = content
 				}
 			case strings.HasPrefix(patternName, "ts_"):
-				if patternName == "ts_file_error" && len(matches) >= 4 {
-					info["type"] = matches[2] // TS error code
-					info["message"] = fmt.Sprintf("%s: %s", matches[1], matches[3])
+				if patternName == "ts_file_error" && len(matches) >= 5 {
+					info["type"] = matches[3] // TS error code
+					info["message"] = fmt.Sprintf("%s: %s", matches[1], matches[4])
 				} else if patternName == "ts_specific" && len(matches) >= 3 {
 					info["type"] = matches[1] // TS error code
 					info["message"] = matches[2]
@@ -299,6 +321,13 @@ func (p *ErrorParser) detectErrorStart(content string) (string, map[string]strin
 			case patternName == "failed_compile":
 				info["type"] = "CompilationError"
 				info["message"] = content
+			case patternName == "error_exit":
+				info["type"] = "Error"
+				if len(matches) > 1 {
+					info["message"] = fmt.Sprintf("\"%s\" exited with %s", matches[1], matches[2])
+				} else {
+					info["message"] = content
+				}
 			case patternName == "lint_line_error":
 				info["type"] = "LintError"
 				if len(matches) > 1 {
@@ -351,6 +380,11 @@ func (p *ErrorParser) detectErrorStart(content string) (string, map[string]strin
 				info["type"] = "RustError"
 				if len(matches) > 1 {
 					info["message"] = matches[1]
+				}
+			case patternName == "mongo_error" && len(matches) > 1:
+				info["type"] = matches[1] // MongoError, MongoNetworkError, etc.
+				if len(matches) > 2 {
+					info["message"] = matches[2]
 				}
 			default:
 				info["type"] = "Error"
@@ -452,6 +486,11 @@ func (p *ErrorParser) isStandaloneError(content string) bool {
 		"fatal:", "exception:", "panic:",
 		"cannot ", "could not ", "unable to ",
 	}
+	
+	// Also check for simple "Error: " at start of line
+	if regexp.MustCompile(`(?i)^Error:\s+`).MatchString(content) {
+		return true
+	}
 
 	for _, keyword := range errorKeywords {
 		if strings.Contains(lower, keyword) {
@@ -501,6 +540,8 @@ func (p *ErrorParser) detectLanguage(content string) string {
 		strings.Contains(content, "TypeScript") ||
 		strings.Contains(content, "ESLint") ||
 		strings.Contains(strings.ToLower(content), "failed to compile") ||
+		strings.Contains(content, "UnhandledPromiseRejectionWarning") ||
+		strings.Contains(content, "PromiseRejectionHandledWarning") ||
 		regexp.MustCompile(`\w+Error:`).MatchString(content) ||
 		regexp.MustCompile(`TS\d+:`).MatchString(content) {
 		return "javascript"

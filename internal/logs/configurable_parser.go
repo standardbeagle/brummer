@@ -43,6 +43,18 @@ func (p *ConfigurableErrorParser) ProcessLine(processID, processName, content st
 
 	// Check if this line starts a new error
 	if errorType, errorInfo := p.detectErrorStart(cleanContent); errorType != "" {
+		// Extract language from errorType (format: "language.pattern_name")
+		language := "unknown"
+		if parts := strings.Split(errorType, "."); len(parts) == 2 {
+			language = parts[0]
+			// Map framework-specific languages to their base language
+			switch language {
+			case "react", "vue", "nextjs", "eslint":
+				language = "javascript"
+			// Keep typescript as typescript for TS-specific errors
+			}
+		}
+		
 		// Create new error context
 		errorCtx := &ErrorContext{
 			ID:          fmt.Sprintf("%s-%d", processID, timestamp.UnixNano()),
@@ -52,8 +64,16 @@ func (p *ConfigurableErrorParser) ProcessLine(processID, processName, content st
 			Type:        errorInfo["type"],
 			Message:     errorInfo["message"],
 			Severity:    p.determineSeverity(content, errorInfo["severity"]),
-			Language:    p.detectLanguage(content),
+			Language:    language,
 			Raw:         []string{content},
+		}
+		
+		// If language is generic, try to detect from content
+		if language == "generic" {
+			detectedLang := p.detectLanguage(content)
+			if detectedLang != "unknown" {
+				errorCtx.Language = detectedLang
+			}
 		}
 
 		// Check if this is a single-line error based on config
@@ -138,7 +158,8 @@ func (p *ConfigurableErrorParser) stripLogPrefixes(content string) string {
 // detectErrorStart checks if content matches any configured error patterns
 func (p *ConfigurableErrorParser) detectErrorStart(content string) (string, map[string]string) {
 	// Check specific language patterns first (prioritize over generic)
-	languageOrder := []string{"javascript", "typescript", "react", "vue", "nextjs", "eslint", "go", "python", "java", "rust"}
+	// Database patterns should be checked before javascript to catch MongoError, etc.
+	languageOrder := []string{"database", "typescript", "react", "vue", "nextjs", "eslint", "javascript", "go", "python", "java", "rust"}
 
 	for _, language := range languageOrder {
 		if patterns, exists := p.config.ErrorPatterns[language]; exists {

@@ -7,6 +7,7 @@ import (
 
 func TestLogCollapsing(t *testing.T) {
 	store := NewStore(100)
+	defer store.Close()
 
 	// Add some identical consecutive logs
 	store.Add("proc1", "test", "This is a test message", false)
@@ -67,6 +68,7 @@ func TestLogCollapsing(t *testing.T) {
 
 func TestLogCollapsingByProcess(t *testing.T) {
 	store := NewStore(100)
+	defer store.Close()
 
 	// Add logs from different processes
 	store.Add("proc1", "test1", "Message A", false)
@@ -106,6 +108,7 @@ func TestLogCollapsingByProcess(t *testing.T) {
 
 func TestLogCollapsingWithDifferentLevels(t *testing.T) {
 	store := NewStore(100)
+	defer store.Close()
 
 	// Add identical content but one as error
 	store.Add("proc1", "test", "Test message", false)
@@ -151,16 +154,17 @@ func TestLogCollapsingWithDifferentLevels(t *testing.T) {
 
 func TestLogCollapsingTimestamps(t *testing.T) {
 	store := NewStore(100)
+	defer store.Close()
 
 	// Add logs with measurable time differences
 	start := time.Now()
 	store.Add("proc1", "test", "Repeated message", false)
 
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(2 * time.Millisecond) // Reduced delay
 	middle := time.Now()
 	store.Add("proc1", "test", "Repeated message", false)
 
-	time.Sleep(10 * time.Millisecond)
+	time.Sleep(2 * time.Millisecond) // Reduced delay
 	end := time.Now()
 	store.Add("proc1", "test", "Repeated message", false)
 
@@ -190,6 +194,7 @@ func TestLogCollapsingTimestamps(t *testing.T) {
 
 func TestAreLogsIdentical(t *testing.T) {
 	store := NewStore(100)
+	defer store.Close()
 
 	now := time.Now()
 

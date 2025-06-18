@@ -52,6 +52,11 @@ type Store struct {
 	maxEntries    int
 	filters       []filters.Filter
 	mu            sync.RWMutex
+
+	// Channel-based async operations
+	addChan   chan *addLogRequest
+	closeChan chan struct{}
+	wg        sync.WaitGroup
 }
 
 type URLEntry struct {
@@ -63,8 +68,16 @@ type URLEntry struct {
 	Context     string
 }
 
+type addLogRequest struct {
+	processID   string
+	processName string
+	content     string
+	isError     bool
+	result      chan *LogEntry
+}
+
 func NewStore(maxEntries int) *Store {
-	return &Store{
+	s := &Store{
 		entries:       make([]LogEntry, 0, maxEntries),
 		byProcess:     make(map[string][]int),
 		errors:        make([]LogEntry, 0, 100),
@@ -74,10 +87,77 @@ func NewStore(maxEntries int) *Store {
 		urlMap:        make(map[string]*URLEntry),
 		maxEntries:    maxEntries,
 		filters:       []filters.Filter{},
+		addChan:       make(chan *addLogRequest, 1000),
+		closeChan:     make(chan struct{}),
 	}
+
+	// Start async worker
+	s.wg.Add(1)
+	go s.processAddRequests()
+
+	return s
 }
 
 func (s *Store) Add(processID, processName, content string, isError bool) *LogEntry {
+	req := &addLogRequest{
+		processID:   processID,
+		processName: processName,
+		content:     content,
+		isError:     isError,
+		result:      make(chan *LogEntry, 1),
+	}
+
+	// Try non-blocking send first
+	select {
+	case s.addChan <- req:
+		// Wait for result with timeout
+		select {
+		case entry := <-req.result:
+			return entry
+		case <-time.After(100 * time.Millisecond):
+			// Timeout, fallback to sync
+			return s.addSync(processID, processName, content, isError)
+		}
+	default:
+		// Channel full, fallback to sync
+		return s.addSync(processID, processName, content, isError)
+	}
+}
+
+func (s *Store) processAddRequests() {
+	defer s.wg.Done()
+
+	for {
+		select {
+		case req := <-s.addChan:
+			entry := s.addSync(req.processID, req.processName, req.content, req.isError)
+			if req.result != nil {
+				select {
+				case req.result <- entry:
+				default:
+				}
+			}
+		case <-s.closeChan:
+			// Drain remaining requests
+			for {
+				select {
+				case req := <-s.addChan:
+					entry := s.addSync(req.processID, req.processName, req.content, req.isError)
+					if req.result != nil {
+						select {
+						case req.result <- entry:
+						default:
+						}
+					}
+				default:
+					return
+				}
+			}
+		}
+	}
+}
+
+func (s *Store) addSync(processID, processName, content string, isError bool) *LogEntry {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -124,7 +204,7 @@ func (s *Store) Add(processID, processName, content string, isError bool) *LogEn
 	}
 
 	// Detect and track URLs (with deduplication)
-	urls := s.detectURLs(content)
+	urls := detectURLs(content)
 	for _, url := range urls {
 		// Check if we already have this URL
 		if existing, exists := s.urlMap[url]; exists {
@@ -350,7 +430,7 @@ func (s *Store) isValidURL(urlStr string) bool {
 	return true
 }
 
-func (s *Store) detectURLs(content string) []string {
+func detectURLs(content string) []string {
 	// Strip ANSI escape codes before detecting URLs
 	cleanContent := ansiRegex.ReplaceAllString(content, "")
 	
@@ -361,19 +441,20 @@ func (s *Store) detectURLs(content string) []string {
 		// Remove trailing punctuation
 		url = strings.TrimRight(url, ".,;!?)")
 
-		// Handle trailing colons
+		// Handle trailing colons - these could be incomplete ports or punctuation
 		if strings.HasSuffix(url, ":") {
-			// Find the last colon
-			lastColon := strings.LastIndex(url, ":")
-			// Check if this is not part of the protocol (://)
-			if lastColon > 0 {
-				// Check bounds before accessing
-				if lastColon >= 2 && url[lastColon-1:lastColon] == "/" {
-					// This is part of :// or :/
-					// Keep the URL as is
-				} else {
-					// This is a trailing colon, remove it
-					url = url[:lastColon]
+			// Count colons after the protocol
+			protocolEnd := strings.Index(url, "://")
+			if protocolEnd >= 0 {
+				afterProtocol := url[protocolEnd+3:]
+				colonCount := strings.Count(afterProtocol, ":")
+				
+				if colonCount == 1 && strings.HasSuffix(afterProtocol, ":") {
+					// This is like "http://localhost:" - incomplete port, skip it
+					continue
+				} else if colonCount > 1 {
+					// Multiple colons like "http://localhost:3000:" - remove trailing
+					url = strings.TrimSuffix(url, ":")
 				}
 			}
 		}
@@ -382,6 +463,15 @@ func (s *Store) detectURLs(content string) []string {
 		if strings.Contains(url, "://") {
 			parts := strings.SplitN(url, "://", 2)
 			if len(parts) == 2 && len(parts[1]) > 0 {
+				// Additional validation: check if URL ends with bare colon after hostname
+				if strings.HasSuffix(url, ":") && !strings.HasSuffix(url, "://") {
+					// Check if there's anything after the last colon
+					lastColon := strings.LastIndex(url, ":")
+					protocolEnd := strings.Index(url, "://")
+					if lastColon > protocolEnd+2 { // Colon is after the protocol
+						continue // Skip incomplete URLs like http://localhost:
+					}
+				}
 				validURLs = append(validURLs, url)
 			}
 		}
@@ -406,6 +496,12 @@ func (s *Store) GetURLs() []URLEntry {
 	result := make([]URLEntry, len(s.urls))
 	copy(result, s.urls)
 	return result
+}
+
+// Close shuts down the async worker
+func (s *Store) Close() {
+	close(s.closeChan)
+	s.wg.Wait()
 }
 
 func (s *Store) ClearLogs() {
@@ -550,7 +646,7 @@ func (s *Store) UpdateProxyURL(originalURL, proxyURL string) {
 
 // DetectURLsInContent detects URLs in the given content without storing them
 func (s *Store) DetectURLsInContent(content string) []string {
-	return s.detectURLs(content)
+	return detectURLs(content)
 }
 
 // GetAllCollapsed returns all log entries with consecutive duplicates collapsed

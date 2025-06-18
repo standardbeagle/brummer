@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -13,19 +14,26 @@ func TestMCPActivityTracking(t *testing.T) {
 	server := setupTestServer(t)
 	
 	// Track events
+	var mu sync.Mutex
 	var activityEvents []events.Event
 	var connectionEvents []events.Event
 	
 	server.eventBus.Subscribe(events.MCPActivity, func(e events.Event) {
+		mu.Lock()
 		activityEvents = append(activityEvents, e)
+		mu.Unlock()
 	})
 	
 	server.eventBus.Subscribe(events.MCPConnected, func(e events.Event) {
+		mu.Lock()
 		connectionEvents = append(connectionEvents, e)
+		mu.Unlock()
 	})
 	
 	server.eventBus.Subscribe(events.MCPDisconnected, func(e events.Event) {
+		mu.Lock()
 		connectionEvents = append(connectionEvents, e)
+		mu.Unlock()
 	})
 	
 	// Send a request
@@ -37,12 +45,15 @@ func TestMCPActivityTracking(t *testing.T) {
 	assert.Nil(t, response.Error)
 	
 	// Wait for events to be processed
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(activityEvents) >= 1
+	}, 500*time.Millisecond, 10*time.Millisecond, "Expected 1 activity event")
 	
-	// Check activity event was published
-	assert.Len(t, activityEvents, 1)
-	
+	mu.Lock()
 	activity := activityEvents[0]
+	mu.Unlock()
 	assert.Equal(t, events.MCPActivity, activity.Type)
 	assert.Equal(t, "initialize", activity.Data["method"])
 	assert.NotEmpty(t, activity.Data["sessionId"])
@@ -55,12 +66,15 @@ func TestMCPActivityTracking(t *testing.T) {
 	assert.Nil(t, response2.Error)
 	
 	// Wait for events
-	time.Sleep(100 * time.Millisecond)
+	assert.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(activityEvents) >= 2
+	}, 500*time.Millisecond, 10*time.Millisecond, "Expected 2 activity events")
 	
-	// Should have 2 activity events now
-	assert.Len(t, activityEvents, 2)
-	
+	mu.Lock()
 	activity2 := activityEvents[1]
+	mu.Unlock()
 	assert.Equal(t, "tools/list", activity2.Data["method"])
 }
 

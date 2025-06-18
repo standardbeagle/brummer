@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
+	"time"
 )
 
 type PackageJSON struct {
@@ -94,8 +97,21 @@ type InstalledPackageManager struct {
 	Path    string
 }
 
+var (
+	cachedInstalledManagers []InstalledPackageManager
+	cacheOnce               sync.Once
+)
+
 // DetectInstalledPackageManagers checks which package managers are installed on the system
 func DetectInstalledPackageManagers() []InstalledPackageManager {
+	cacheOnce.Do(func() {
+		cachedInstalledManagers = detectInstalledPackageManagersUncached()
+	})
+	return cachedInstalledManagers
+}
+
+// detectInstalledPackageManagersUncached performs the actual detection
+func detectInstalledPackageManagersUncached() []InstalledPackageManager {
 	var installed []InstalledPackageManager
 
 	managers := []struct {
@@ -115,8 +131,11 @@ func DetectInstalledPackageManagers() []InstalledPackageManager {
 			continue
 		}
 
-		// Get version
-		cmd := exec.Command(mgr.command, mgr.versionArgs...)
+		// Get version with timeout
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		
+		cmd := exec.CommandContext(ctx, mgr.command, mgr.versionArgs...)
 		output, err := cmd.Output()
 		if err != nil {
 			continue
@@ -135,19 +154,39 @@ func DetectInstalledPackageManagers() []InstalledPackageManager {
 
 // findExecutable finds the full path to an executable, cross-platform
 func findExecutable(name string) (string, error) {
-	if runtime.GOOS == "windows" {
-		// On Windows, try with common extensions
-		extensions := []string{"", ".exe", ".cmd", ".bat"}
-		for _, ext := range extensions {
-			path, err := exec.LookPath(name + ext)
-			if err == nil {
-				return path, nil
-			}
-		}
-		return "", fmt.Errorf("executable not found: %s", name)
+	// Use a channel to implement timeout for LookPath
+	type result struct {
+		path string
+		err  error
 	}
-
-	return exec.LookPath(name)
+	
+	resultChan := make(chan result, 1)
+	
+	go func() {
+		if runtime.GOOS == "windows" {
+			// On Windows, try with common extensions
+			extensions := []string{"", ".exe", ".cmd", ".bat"}
+			for _, ext := range extensions {
+				path, err := exec.LookPath(name + ext)
+				if err == nil {
+					resultChan <- result{path: path, err: nil}
+					return
+				}
+			}
+			resultChan <- result{path: "", err: fmt.Errorf("executable not found: %s", name)}
+		} else {
+			path, err := exec.LookPath(name)
+			resultChan <- result{path: path, err: err}
+		}
+	}()
+	
+	// Wait for result with timeout
+	select {
+	case res := <-resultChan:
+		return res.path, res.err
+	case <-time.After(1 * time.Second):
+		return "", fmt.Errorf("timeout finding executable: %s", name)
+	}
 }
 
 // GetPreferredPackageManager determines the preferred package manager based on:

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Brummer Regression Test Runner
-# This script builds Brummer and runs the comprehensive regression test suite
+# Brummer Test Runner
+# This script builds Brummer and runs the test suite using standard Go testing
 
 set -e
 
@@ -13,10 +13,11 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Default values
-VERBOSE=false
-BINARY_PATH=""
+VERBOSE=""
 SKIP_BUILD=false
 TEST_FILTER=""
+SHORT_MODE=false
+COVERAGE=false
 
 # Function to print colored output
 print_status() {
@@ -40,21 +41,23 @@ show_usage() {
     cat << EOF
 Usage: $0 [OPTIONS]
 
-Brummer Regression Test Runner
+Brummer Test Runner - Uses Go standard testing
 
 OPTIONS:
     -h, --help          Show this help message
-    -v, --verbose       Enable verbose output
-    -b, --binary PATH   Use existing binary instead of building
-    -s, --skip-build    Skip building, use existing binary in project root
-    -f, --filter TERM   Only run tests containing TERM in their name
+    -v, --verbose       Enable verbose test output
+    -s, --skip-build    Skip building, use existing binary
+    -f, --filter TERM   Only run tests matching TERM (uses -run flag)
+    --short             Run in short mode (skip long tests)
+    --coverage          Generate coverage report
     
 EXAMPLES:
     $0                          # Build and run all tests
     $0 --verbose                # Run with verbose output
-    $0 --binary ./my-brum       # Use specific binary
     $0 --skip-build             # Use existing ./brum binary
-    $0 --filter MCP             # Only run MCP-related tests
+    $0 --filter TestMCP         # Only run MCP tests
+    $0 --short                  # Skip long-running tests
+    $0 --coverage               # Generate test coverage
 
 EOF
 }
@@ -67,12 +70,8 @@ while [[ $# -gt 0 ]]; do
             exit 0
             ;;
         -v|--verbose)
-            VERBOSE=true
+            VERBOSE="-v"
             shift
-            ;;
-        -b|--binary)
-            BINARY_PATH="$2"
-            shift 2
             ;;
         -s|--skip-build)
             SKIP_BUILD=true
@@ -81,6 +80,14 @@ while [[ $# -gt 0 ]]; do
         -f|--filter)
             TEST_FILTER="$2"
             shift 2
+            ;;
+        --short)
+            SHORT_MODE=true
+            shift
+            ;;
+        --coverage)
+            COVERAGE=true
+            shift
             ;;
         *)
             print_error "Unknown option: $1"
@@ -94,27 +101,16 @@ done
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TEST_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-print_status "Brummer Regression Test Suite"
+print_status "Brummer Test Suite"
 print_status "Project root: $PROJECT_ROOT"
 print_status "Test directory: $TEST_DIR"
 
-# Determine binary path
-if [[ -n "$BINARY_PATH" ]]; then
-    print_status "Using provided binary: $BINARY_PATH"
-elif [[ "$SKIP_BUILD" == "true" ]]; then
-    BINARY_PATH="$PROJECT_ROOT/brum"
-    print_status "Using existing binary: $BINARY_PATH"
-else
-    BINARY_PATH="$PROJECT_ROOT/brum"
-    print_status "Will build binary: $BINARY_PATH"
-fi
-
 # Build the binary if needed
-if [[ "$SKIP_BUILD" != "true" && -z "$2" ]]; then
+if [[ "$SKIP_BUILD" != "true" ]]; then
     print_status "Building Brummer binary..."
     cd "$PROJECT_ROOT"
     
-    if ! go build -o brum ./cmd/brum; then
+    if ! go build -o brum ./cmd/brum/; then
         print_error "Failed to build Brummer binary"
         exit 1
     fi
@@ -123,29 +119,61 @@ if [[ "$SKIP_BUILD" != "true" && -z "$2" ]]; then
 fi
 
 # Check if binary exists
+BINARY_PATH="$PROJECT_ROOT/brum"
 if [[ ! -f "$BINARY_PATH" ]]; then
     print_error "Binary not found: $BINARY_PATH"
+    print_error "Run without --skip-build to build it"
     exit 1
 fi
 
 # Make binary executable
 chmod +x "$BINARY_PATH"
 
-# Run the test suite
-print_status "Running regression test suite..."
-cd "$TEST_DIR"
+# Export binary path for tests
+export BRUMMER_BINARY="$BINARY_PATH"
 
-# Build test arguments
-TEST_ARGS=("$BINARY_PATH")
-if [[ "$VERBOSE" == "true" ]]; then
-    TEST_ARGS+=("--verbose")
+# Build test command
+TEST_CMD="go test -tags=integration"
+
+# Add verbose flag
+if [[ -n "$VERBOSE" ]]; then
+    TEST_CMD="$TEST_CMD $VERBOSE"
 fi
 
+# Add test filter
+if [[ -n "$TEST_FILTER" ]]; then
+    TEST_CMD="$TEST_CMD -run $TEST_FILTER"
+fi
+
+# Add short mode
+if [[ "$SHORT_MODE" == "true" ]]; then
+    TEST_CMD="$TEST_CMD -short"
+fi
+
+# Add coverage
+if [[ "$COVERAGE" == "true" ]]; then
+    TEST_CMD="$TEST_CMD -coverprofile=coverage.out"
+fi
+
+# Add timeout
+TEST_CMD="$TEST_CMD -timeout 5m"
+
 # Run the tests
-if go run *.go "${TEST_ARGS[@]}"; then
-    print_success "All regression tests passed!"
+print_status "Running tests..."
+print_status "Command: $TEST_CMD ./test/..."
+cd "$PROJECT_ROOT"
+
+if $TEST_CMD ./test/...; then
+    print_success "All tests passed!"
+    
+    # Show coverage if enabled
+    if [[ "$COVERAGE" == "true" ]]; then
+        print_status "Coverage report saved to coverage.out"
+        print_status "View with: go tool cover -html=coverage.out"
+    fi
+    
     exit 0
 else
-    print_error "Some regression tests failed!"
+    print_error "Some tests failed!"
     exit 1
 fi

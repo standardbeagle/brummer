@@ -1,0 +1,14 @@
+{
+  "name": "brummer-test-project",
+  "version": "1.0.0",
+  "scripts": {
+    "test": "echo '[test] Running tests...' && sleep 1 && echo '[test] Tests completed!' && exit 0",
+    "test-fail": "echo '[test-fail] Running tests...' && sleep 1 && echo '[test-fail] Tests failed!' && exit 1",
+    "build": "echo '[build] Building project...' && sleep 0.5 && echo '[build] Build completed!'",
+    "dev": "echo '[dev] Starting dev server...' && sleep 0.5 && echo '[dev] Dev server running on http://localhost:3000' && sleep 10",
+    "start": "echo '[start] Starting server...' && echo '[start] Server running on http://localhost:8080' && sleep 10",
+    "lint": "echo '[lint] Running linter...' && echo '[lint] No issues found!'",
+    "error": "echo '[error] Starting with error...' && echo 'Error: Something went wrong!' >&2 && exit 1",
+    "long-running": "echo '[long] Long running process...' && sleep 30 && echo '[long] Process done'"
+  }
+}
