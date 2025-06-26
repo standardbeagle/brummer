@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -10,6 +12,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	mcplib "github.com/mark3labs/mcp-go/mcp"
+	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
@@ -36,6 +40,7 @@ var (
 	showVersion   bool
 	showSettings  bool
 	debugMode     bool
+	mcpHub        bool
 )
 
 var rootCmd = &cobra.Command{
@@ -103,6 +108,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&noMCP, "no-mcp", false, "Disable MCP server")
 	rootCmd.Flags().BoolVar(&noTUI, "no-tui", false, "Run in headless mode (MCP server only)")
 	rootCmd.Flags().BoolVar(&debugMode, "debug", false, "Enable debug mode with MCP connections tab")
+	rootCmd.Flags().BoolVar(&mcpHub, "mcp", false, "Run as MCP hub (stdio transport, no TUI)")
 
 	// Set version for cobra
 	rootCmd.Version = Version
@@ -125,6 +131,12 @@ func runApp(cmd *cobra.Command, args []string) {
 	// Handle settings flag
 	if showSettings {
 		showCurrentSettings()
+		return
+	}
+
+	// Handle MCP hub mode
+	if mcpHub {
+		runMCPHub()
 		return
 	}
 
@@ -584,4 +596,75 @@ func showCurrentSettings() {
 	}
 
 	fmt.Print(cfg.DisplaySettingsWithSources())
+}
+
+// runMCPHub runs the MCP hub in stdio mode for discovering and managing instances
+func runMCPHub() {
+	// Create MCP server
+	mcpServer := server.NewMCPServer(
+		"brummer-hub",
+		Version,
+		server.WithToolCapabilities(true),
+	)
+	
+	// Add instances/list tool
+	listTool := mcplib.NewTool("instances/list",
+		mcplib.WithDescription("List all running brummer instances"),
+	)
+	mcpServer.AddTool(listTool, handleInstancesList)
+	
+	// Add instances/connect tool
+	connectTool := mcplib.NewTool("instances/connect",
+		mcplib.WithDescription("Connect to a specific brummer instance"),
+		mcplib.WithString("instance_id",
+			mcplib.Required(),
+			mcplib.Description("The ID of the instance to connect to"),
+		),
+	)
+	mcpServer.AddTool(connectTool, handleInstancesConnect)
+	
+	// Start stdio server
+	if err := server.ServeStdio(mcpServer); err != nil {
+		// Log to stderr to avoid corrupting stdio protocol
+		fmt.Fprintf(os.Stderr, "Hub server error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+// handleInstancesList returns a list of all running brummer instances
+func handleInstancesList(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
+	// Placeholder - will implement in step 2
+	instances := []map[string]interface{}{}
+	
+	data, err := json.Marshal(instances)
+	if err != nil {
+		return nil, err
+	}
+	
+	return &mcplib.CallToolResult{
+		Content: []mcplib.Content{
+			mcplib.TextContent{
+				Type: "text",
+				Text: string(data),
+			},
+		},
+	}, nil
+}
+
+// handleInstancesConnect connects to a specific brummer instance
+func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
+	instanceID, err := request.RequireString("instance_id")
+	if err != nil {
+		return mcplib.NewToolResultError(err.Error()), nil
+	}
+	
+	// Placeholder - will implement in step 4
+	return &mcplib.CallToolResult{
+		Content: []mcplib.Content{
+			mcplib.TextContent{
+				Type: "text",
+				Text: fmt.Sprintf("Connection to instance %s not implemented yet", instanceID),
+			},
+		},
+	}, nil
 }
