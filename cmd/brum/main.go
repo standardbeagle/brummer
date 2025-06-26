@@ -16,6 +16,7 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
 	"github.com/standardbeagle/brummer/internal/config"
+	"github.com/standardbeagle/brummer/internal/discovery"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/process"
@@ -432,12 +433,33 @@ func runApp(cmd *cobra.Command, args []string) {
 			// Give the server a moment to start and potentially change ports
 			time.Sleep(100 * time.Millisecond)
 
-			// Display the actual port being used (may be different if there was a conflict)
+			// Get actual port and register instance
+			actualPort := mcpPort
 			if mcpStreamable, ok := mcpServer.(*mcp.StreamableServer); ok {
-				fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", mcpStreamable.GetPort())
-			} else {
-				fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", mcpPort)
+				actualPort = mcpStreamable.GetPort()
 			}
+			
+			// Register this instance with the discovery system
+			instanceID := fmt.Sprintf("brummer-%s-%d", filepath.Base(absWorkDir), os.Getpid())
+			instance := &discovery.Instance{
+				ID:        instanceID,
+				Name:      filepath.Base(absWorkDir),
+				Directory: absWorkDir,
+				Port:      actualPort,
+				StartedAt: time.Now(),
+				LastPing:  time.Now(),
+			}
+			instance.ProcessInfo.PID = os.Getpid()
+			instance.ProcessInfo.Executable, _ = os.Executable()
+			
+			instancesDir := discovery.GetDefaultInstancesDir()
+			if err := discovery.RegisterInstance(instancesDir, instance); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to register instance: %v\n", err)
+			}
+			defer discovery.UnregisterInstance(instancesDir, instanceID)
+
+			// Display the actual port being used (may be different if there was a conflict)
+			fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", actualPort)
 			fmt.Printf("Press Ctrl+C to stop.\n")
 
 			// Set up signal handling
@@ -485,6 +507,36 @@ func runApp(cmd *cobra.Command, args []string) {
 							"message": errorMsg,
 						},
 					})
+				}
+			}()
+			
+			// Register instance after server starts
+			go func() {
+				time.Sleep(200 * time.Millisecond) // Give server time to start
+				
+				actualPort := mcpPort
+				if mcpStreamable, ok := mcpServer.(*mcp.StreamableServer); ok {
+					actualPort = mcpStreamable.GetPort()
+				}
+				
+				// Register this instance with the discovery system
+				instanceID := fmt.Sprintf("brummer-%s-%d", filepath.Base(absWorkDir), os.Getpid())
+				instance := &discovery.Instance{
+					ID:        instanceID,
+					Name:      filepath.Base(absWorkDir),
+					Directory: absWorkDir,
+					Port:      actualPort,
+					StartedAt: time.Now(),
+					LastPing:  time.Now(),
+				}
+				instance.ProcessInfo.PID = os.Getpid()
+				instance.ProcessInfo.Executable, _ = os.Executable()
+				
+				instancesDir := discovery.GetDefaultInstancesDir()
+				if err := discovery.RegisterInstance(instancesDir, instance); err != nil {
+					logStore.Add("system", "discovery", fmt.Sprintf("⚠️  Failed to register instance: %v", err), true)
+				} else {
+					logStore.Add("system", "discovery", fmt.Sprintf("✅ Registered instance: %s", instanceID), false)
 				}
 			}()
 		}
@@ -535,6 +587,11 @@ func runApp(cmd *cobra.Command, args []string) {
 		if mcpServerInterface != nil {
 			fmt.Println("Stopping MCP server...")
 			_ = mcpServerInterface.Stop() // Ignore cleanup errors during shutdown
+			
+			// Unregister instance
+			instanceID := fmt.Sprintf("brummer-%s-%d", filepath.Base(absWorkDir), os.Getpid())
+			instancesDir := discovery.GetDefaultInstancesDir()
+			_ = discovery.UnregisterInstance(instancesDir, instanceID)
 		}
 
 		if proxyServer != nil {
@@ -598,8 +655,24 @@ func showCurrentSettings() {
 	fmt.Print(cfg.DisplaySettingsWithSources())
 }
 
+// Global discovery system for the hub
+var discoverySystem *discovery.Discovery
+
 // runMCPHub runs the MCP hub in stdio mode for discovering and managing instances
 func runMCPHub() {
+	// Initialize discovery system
+	instancesDir := discovery.GetDefaultInstancesDir()
+	var err error
+	discoverySystem, err = discovery.New(instancesDir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize discovery: %v\n", err)
+		os.Exit(1)
+	}
+	defer discoverySystem.Stop()
+	
+	// Start discovery
+	discoverySystem.Start()
+	
 	// Create MCP server
 	mcpServer := server.NewMCPServer(
 		"brummer-hub",
@@ -633,10 +706,24 @@ func runMCPHub() {
 
 // handleInstancesList returns a list of all running brummer instances
 func handleInstancesList(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
-	// Placeholder - will implement in step 2
-	instances := []map[string]interface{}{}
+	// Get instances from discovery system
+	instances := discoverySystem.GetInstances()
 	
-	data, err := json.Marshal(instances)
+	// Convert to slice for JSON output
+	instanceList := make([]map[string]interface{}, 0, len(instances))
+	for _, inst := range instances {
+		instanceList = append(instanceList, map[string]interface{}{
+			"id":          inst.ID,
+			"name":        inst.Name,
+			"directory":   inst.Directory,
+			"port":        inst.Port,
+			"started_at":  inst.StartedAt.Format(time.RFC3339),
+			"last_ping":   inst.LastPing.Format(time.RFC3339),
+			"process_pid": inst.ProcessInfo.PID,
+		})
+	}
+	
+	data, err := json.Marshal(instanceList)
 	if err != nil {
 		return nil, err
 	}
