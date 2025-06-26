@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -407,6 +409,10 @@ func runApp(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	// Track instance registration for cleanup
+	var registeredInstanceID string
+	var registeredInstancesDir string
+
 	// Start MCP server if enabled
 	var mcpServerInterface interface {
 		Start() error
@@ -440,7 +446,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			}
 			
 			// Register this instance with the discovery system
-			instanceID := fmt.Sprintf("brummer-%s-%d", filepath.Base(absWorkDir), os.Getpid())
+			instanceID := generateInstanceID(filepath.Base(absWorkDir))
 			instance := &discovery.Instance{
 				ID:        instanceID,
 				Name:      filepath.Base(absWorkDir),
@@ -452,11 +458,24 @@ func runApp(cmd *cobra.Command, args []string) {
 			instance.ProcessInfo.PID = os.Getpid()
 			instance.ProcessInfo.Executable, _ = os.Executable()
 			
-			instancesDir := discovery.GetDefaultInstancesDir()
-			if err := discovery.RegisterInstance(instancesDir, instance); err != nil {
+			registeredInstancesDir = discovery.GetDefaultInstancesDir()
+			registeredInstanceID = instanceID
+			if err := discovery.RegisterInstance(registeredInstancesDir, instance); err != nil {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to register instance: %v\n", err)
 			}
-			defer discovery.UnregisterInstance(instancesDir, instanceID)
+			defer discovery.UnregisterInstance(registeredInstancesDir, registeredInstanceID)
+			
+			// Start ping update routine
+			pingTicker := time.NewTicker(30 * time.Second)
+			defer pingTicker.Stop()
+			
+			go func() {
+				for range pingTicker.C {
+					if err := discovery.UpdateInstancePing(registeredInstancesDir, registeredInstanceID); err != nil {
+						fmt.Fprintf(os.Stderr, "Warning: Failed to update instance ping: %v\n", err)
+					}
+				}
+			}()
 
 			// Display the actual port being used (may be different if there was a conflict)
 			fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", actualPort)
@@ -520,7 +539,7 @@ func runApp(cmd *cobra.Command, args []string) {
 				}
 				
 				// Register this instance with the discovery system
-				instanceID := fmt.Sprintf("brummer-%s-%d", filepath.Base(absWorkDir), os.Getpid())
+				instanceID := generateInstanceID(filepath.Base(absWorkDir))
 				instance := &discovery.Instance{
 					ID:        instanceID,
 					Name:      filepath.Base(absWorkDir),
@@ -533,10 +552,23 @@ func runApp(cmd *cobra.Command, args []string) {
 				instance.ProcessInfo.Executable, _ = os.Executable()
 				
 				instancesDir := discovery.GetDefaultInstancesDir()
+				registeredInstanceID = instanceID
+				registeredInstancesDir = instancesDir
 				if err := discovery.RegisterInstance(instancesDir, instance); err != nil {
 					logStore.Add("system", "discovery", fmt.Sprintf("⚠️  Failed to register instance: %v", err), true)
 				} else {
 					logStore.Add("system", "discovery", fmt.Sprintf("✅ Registered instance: %s", instanceID), false)
+					
+					// Start ping update routine
+					pingTicker := time.NewTicker(30 * time.Second)
+					go func() {
+						defer pingTicker.Stop()
+						for range pingTicker.C {
+							if err := discovery.UpdateInstancePing(instancesDir, instanceID); err != nil {
+								// Silent failure - don't spam logs
+							}
+						}
+					}()
 				}
 			}()
 		}
@@ -589,9 +621,9 @@ func runApp(cmd *cobra.Command, args []string) {
 			_ = mcpServerInterface.Stop() // Ignore cleanup errors during shutdown
 			
 			// Unregister instance
-			instanceID := fmt.Sprintf("brummer-%s-%d", filepath.Base(absWorkDir), os.Getpid())
-			instancesDir := discovery.GetDefaultInstancesDir()
-			_ = discovery.UnregisterInstance(instancesDir, instanceID)
+			if registeredInstanceID != "" && registeredInstancesDir != "" {
+				_ = discovery.UnregisterInstance(registeredInstancesDir, registeredInstanceID)
+			}
 		}
 
 		if proxyServer != nil {
@@ -655,6 +687,19 @@ func showCurrentSettings() {
 	fmt.Print(cfg.DisplaySettingsWithSources())
 }
 
+// generateInstanceID creates a secure, unique instance ID
+func generateInstanceID(prefix string) string {
+	// Generate 8 random bytes
+	randomBytes := make([]byte, 8)
+	if _, err := rand.Read(randomBytes); err != nil {
+		// Fallback to timestamp-based ID on error
+		return fmt.Sprintf("%s-%d", prefix, time.Now().UnixNano())
+	}
+	// Convert to hex string (16 characters)
+	randomHex := hex.EncodeToString(randomBytes)
+	return fmt.Sprintf("%s-%s", prefix, randomHex)
+}
+
 // Global discovery system for the hub
 var discoverySystem *discovery.Discovery
 
@@ -672,6 +717,17 @@ func runMCPHub() {
 	
 	// Start discovery
 	discoverySystem.Start()
+	
+	// Start periodic cleanup of stale instances
+	go func() {
+		ticker := time.NewTicker(time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := discoverySystem.CleanupStaleInstances(); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to cleanup stale instances: %v\n", err)
+			}
+		}
+	}()
 	
 	// Create MCP server
 	mcpServer := server.NewMCPServer(

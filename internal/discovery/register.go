@@ -9,10 +9,16 @@ import (
 	"time"
 )
 
-// RegisterInstance registers a brummer instance atomically
+// RegisterInstance registers a brummer instance atomically.
+// The instance data is validated before writing.
 func RegisterInstance(instancesDir string, instance *Instance) error {
-	// Ensure instances directory exists
-	if err := os.MkdirAll(instancesDir, 0755); err != nil {
+	// Validate instance before writing
+	if err := validateInstance(instance); err != nil {
+		return fmt.Errorf("invalid instance: %w", err)
+	}
+
+	// Ensure instances directory exists with proper permissions
+	if err := os.MkdirAll(instancesDir, DefaultDirMode); err != nil {
 		return fmt.Errorf("failed to create instances directory: %w", err)
 	}
 
@@ -25,17 +31,10 @@ func RegisterInstance(instancesDir string, instance *Instance) error {
 	// Write atomically using temp file + rename
 	filename := fmt.Sprintf("%s.json", instance.ID)
 	finalPath := filepath.Join(instancesDir, filename)
-	tempPath := finalPath + ".tmp"
-
-	// Write to temp file
-	if err := os.WriteFile(tempPath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write temp file: %w", err)
-	}
-
-	// Atomic rename
-	if err := os.Rename(tempPath, finalPath); err != nil {
-		os.Remove(tempPath) // Clean up on error
-		return fmt.Errorf("failed to rename temp file: %w", err)
+	
+	// Use AtomicWriteFile for safe writing
+	if err := AtomicWriteFile(finalPath, data, DefaultFileMode); err != nil {
+		return fmt.Errorf("failed to write instance file: %w", err)
 	}
 
 	return nil
