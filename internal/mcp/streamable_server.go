@@ -81,6 +81,9 @@ type StreamableServer struct {
 
 	// Session tracking for connection events
 	seenSessions map[string]bool // Track which sessions we've seen to avoid duplicate connection events
+	
+	// Connection manager for hub mode
+	connectionManager *ConnectionManager
 }
 
 type ClientSession struct {
@@ -896,4 +899,105 @@ func (s *StreamableServer) setupResourceUpdateHandlers() {
 
 	// For now, we'll update proxy resources periodically or on demand
 	// since there's no ProxyRequest event type yet
+}
+
+// RegisterTool dynamically registers a tool at runtime
+func (s *StreamableServer) RegisterTool(name string, tool MCPTool) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Check if tool already exists
+	if _, exists := s.tools[name]; exists {
+		return fmt.Errorf("tool %s already exists", name)
+	}
+	
+	s.tools[name] = tool
+	
+	// Notify connected clients about tool list change
+	s.BroadcastNotification("notifications/tools/list_changed", nil)
+	
+	// Log the registration
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🔧 Registered tool: %s", name), false)
+	}
+	
+	return nil
+}
+
+// UnregisterTool removes a tool at runtime
+func (s *StreamableServer) UnregisterTool(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Check if tool exists
+	if _, exists := s.tools[name]; !exists {
+		return fmt.Errorf("tool %s not found", name)
+	}
+	
+	delete(s.tools, name)
+	
+	// Notify connected clients about tool list change
+	s.BroadcastNotification("notifications/tools/list_changed", nil)
+	
+	// Log the unregistration
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🔧 Unregistered tool: %s", name), false)
+	}
+	
+	return nil
+}
+
+// RegisterToolsFromInstance registers multiple tools from a connected instance
+func (s *StreamableServer) RegisterToolsFromInstance(instanceID string, tools []MCPTool) error {
+	for _, tool := range tools {
+		// Prefix tool name with instance ID to avoid conflicts
+		prefixedName := fmt.Sprintf("%s/%s", instanceID, tool.Name)
+		tool.Name = prefixedName
+		if err := s.RegisterTool(prefixedName, tool); err != nil {
+			// If registration fails, unregister any tools we already added
+			s.UnregisterToolsFromInstance(instanceID)
+			return fmt.Errorf("failed to register tool %s: %w", tool.Name, err)
+		}
+	}
+	return nil
+}
+
+// UnregisterToolsFromInstance removes all tools belonging to an instance
+func (s *StreamableServer) UnregisterToolsFromInstance(instanceID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	prefix := instanceID + "/"
+	var toRemove []string
+	
+	// Find all tools with the instance prefix
+	for name := range s.tools {
+		if strings.HasPrefix(name, prefix) {
+			toRemove = append(toRemove, name)
+		}
+	}
+	
+	// Remove the tools
+	for _, name := range toRemove {
+		delete(s.tools, name)
+	}
+	
+	if len(toRemove) > 0 {
+		// Notify connected clients about tool list change
+		s.BroadcastNotification("notifications/tools/list_changed", nil)
+		
+		// Log the unregistration
+		if s.logStore != nil {
+			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🔧 Unregistered %d tools from instance %s", len(toRemove), instanceID), false)
+		}
+	}
+	
+	return nil
+}
+
+// SetConnectionManager sets the connection manager for hub mode
+func (s *StreamableServer) SetConnectionManager(cm *ConnectionManager) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.connectionManager = cm
 }
