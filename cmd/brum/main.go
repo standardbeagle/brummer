@@ -428,55 +428,90 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Use new StreamableServer by default
 		mcpServer = mcp.NewStreamableServer(mcpPort, processMgr, logStore, proxyServer, eventBus)
 		mcpServerInterface = mcpServer
-		if noTUI {
-			// In headless mode, run MCP server in foreground
-			go func() {
-				if err := mcpServerInterface.Start(); err != nil {
+		
+		// Start MCP server in background regardless of TUI mode
+		go func() {
+			if !noTUI {
+				// Give TUI time to initialize subscriptions
+				time.Sleep(100 * time.Millisecond)
+			}
+			
+			if err := mcpServerInterface.Start(); err != nil {
+				if noTUI {
 					log.Fatal("MCP server error:", err)
+				} else {
+					// MCP server error (logged internally)
+					errorMsg := fmt.Sprintf("❌ MCP server failed to start: %v", err)
+					logStore.Add("system", "MCP", errorMsg, true)
+
+					// Publish system message event
+					eventBus.Publish(events.Event{
+						Type: events.EventType("system.message"),
+						Data: map[string]interface{}{
+							"level":   "error",
+							"context": "MCP Server",
+							"message": errorMsg,
+						},
+					})
 				}
-			}()
-
-			// Give the server a moment to start and potentially change ports
-			time.Sleep(100 * time.Millisecond)
-
-			// Get actual port and register instance
-			actualPort := mcpPort
-			if mcpStreamable, ok := mcpServer.(*mcp.StreamableServer); ok {
-				actualPort = mcpStreamable.GetPort()
 			}
-			
-			// Register this instance with the discovery system
-			instanceID := generateInstanceID(filepath.Base(absWorkDir))
-			instance := &discovery.Instance{
-				ID:        instanceID,
-				Name:      filepath.Base(absWorkDir),
-				Directory: absWorkDir,
-				Port:      actualPort,
-				StartedAt: time.Now(),
-				LastPing:  time.Now(),
-			}
-			instance.ProcessInfo.PID = os.Getpid()
-			instance.ProcessInfo.Executable, _ = os.Executable()
-			
-			registeredInstancesDir = discovery.GetDefaultInstancesDir()
-			registeredInstanceID = instanceID
-			if err := discovery.RegisterInstance(registeredInstancesDir, instance); err != nil {
+		}()
+
+		// Give the server a moment to start and potentially change ports
+		time.Sleep(200 * time.Millisecond)
+
+		// Get actual port and register instance (same for both TUI and no-TUI)
+		actualPort := mcpPort
+		if mcpStreamable, ok := mcpServer.(*mcp.StreamableServer); ok {
+			actualPort = mcpStreamable.GetPort()
+		}
+		
+		// Register this instance with the discovery system
+		instanceID := generateInstanceID(filepath.Base(absWorkDir))
+		instance := &discovery.Instance{
+			ID:        instanceID,
+			Name:      filepath.Base(absWorkDir),
+			Directory: absWorkDir,
+			Port:      actualPort,
+			StartedAt: time.Now(),
+			LastPing:  time.Now(),
+		}
+		instance.ProcessInfo.PID = os.Getpid()
+		instance.ProcessInfo.Executable, _ = os.Executable()
+		
+		registeredInstancesDir = discovery.GetDefaultInstancesDir()
+		registeredInstanceID = instanceID
+		
+		if noTUI {
+			fmt.Printf("Registering instance: %s at %s\n", instanceID, registeredInstancesDir)
+		}
+		
+		if err := discovery.RegisterInstance(registeredInstancesDir, instance); err != nil {
+			if noTUI {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to register instance: %v\n", err)
+			} else {
+				logStore.Add("system", "discovery", fmt.Sprintf("⚠️  Failed to register instance: %v", err), true)
 			}
-			defer discovery.UnregisterInstance(registeredInstancesDir, registeredInstanceID)
-			
-			// Start ping update routine
-			pingTicker := time.NewTicker(30 * time.Second)
+		} else {
+			if noTUI {
+				fmt.Printf("Successfully registered instance: %s\n", instanceID)
+			} else {
+				logStore.Add("system", "discovery", fmt.Sprintf("✅ Registered instance: %s", instanceID), false)
+			}
+		}
+		
+		// Start ping update routine
+		pingTicker := time.NewTicker(30 * time.Second)
+		go func() {
 			defer pingTicker.Stop()
-			
-			go func() {
-				for range pingTicker.C {
-					if err := discovery.UpdateInstancePing(registeredInstancesDir, registeredInstanceID); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: Failed to update instance ping: %v\n", err)
-					}
+			for range pingTicker.C {
+				if err := discovery.UpdateInstancePing(registeredInstancesDir, registeredInstanceID); err != nil {
+					// Silent failure - don't spam logs
 				}
-			}()
-
+			}
+		}()
+		
+		if noTUI {
 			// Display the actual port being used (may be different if there was a conflict)
 			fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", actualPort)
 			fmt.Printf("Press Ctrl+C to stop.\n")
@@ -497,6 +532,11 @@ func runApp(cmd *cobra.Command, args []string) {
 
 			fmt.Println("Stopping MCP server...")
 			_ = mcpServerInterface.Stop() // Ignore cleanup errors during shutdown
+			
+			// Unregister instance
+			if registeredInstanceID != "" && registeredInstancesDir != "" {
+				_ = discovery.UnregisterInstance(registeredInstancesDir, registeredInstanceID)
+			}
 
 			if proxyServer != nil {
 				fmt.Println("Stopping proxy server...")
@@ -505,72 +545,6 @@ func runApp(cmd *cobra.Command, args []string) {
 
 			fmt.Println("Cleanup complete.")
 			return
-		} else {
-			// In TUI mode, run MCP server in background
-			go func() {
-				// Give TUI time to initialize subscriptions
-				time.Sleep(100 * time.Millisecond)
-
-				// Start the server (this will block)
-				if err := mcpServerInterface.Start(); err != nil {
-					// MCP server error (logged internally)
-					errorMsg := fmt.Sprintf("❌ MCP server failed to start: %v", err)
-					logStore.Add("system", "MCP", errorMsg, true)
-
-					// Publish system message event
-					eventBus.Publish(events.Event{
-						Type: events.EventType("system.message"),
-						Data: map[string]interface{}{
-							"level":   "error",
-							"context": "MCP Server",
-							"message": errorMsg,
-						},
-					})
-				}
-			}()
-			
-			// Register instance after server starts
-			go func() {
-				time.Sleep(200 * time.Millisecond) // Give server time to start
-				
-				actualPort := mcpPort
-				if mcpStreamable, ok := mcpServer.(*mcp.StreamableServer); ok {
-					actualPort = mcpStreamable.GetPort()
-				}
-				
-				// Register this instance with the discovery system
-				instanceID := generateInstanceID(filepath.Base(absWorkDir))
-				instance := &discovery.Instance{
-					ID:        instanceID,
-					Name:      filepath.Base(absWorkDir),
-					Directory: absWorkDir,
-					Port:      actualPort,
-					StartedAt: time.Now(),
-					LastPing:  time.Now(),
-				}
-				instance.ProcessInfo.PID = os.Getpid()
-				instance.ProcessInfo.Executable, _ = os.Executable()
-				
-				instancesDir := discovery.GetDefaultInstancesDir()
-				registeredInstanceID = instanceID
-				registeredInstancesDir = instancesDir
-				if err := discovery.RegisterInstance(instancesDir, instance); err != nil {
-					logStore.Add("system", "discovery", fmt.Sprintf("⚠️  Failed to register instance: %v", err), true)
-				} else {
-					logStore.Add("system", "discovery", fmt.Sprintf("✅ Registered instance: %s", instanceID), false)
-					
-					// Start ping update routine
-					pingTicker := time.NewTicker(30 * time.Second)
-					go func() {
-						defer pingTicker.Stop()
-						for range pingTicker.C {
-							if err := discovery.UpdateInstancePing(instancesDir, instanceID); err != nil {
-								// Silent failure - don't spam logs
-							}
-						}
-					}()
-				}
-			}()
 		}
 	}
 
@@ -700,11 +674,18 @@ func generateInstanceID(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, randomHex)
 }
 
-// Global discovery system for the hub
-var discoverySystem *discovery.Discovery
+// Global systems for the hub
+var (
+	discoverySystem *discovery.Discovery
+	connectionMgr   *mcp.ConnectionManager
+)
 
 // runMCPHub runs the MCP hub in stdio mode for discovering and managing instances
 func runMCPHub() {
+	// Initialize connection manager
+	connectionMgr = mcp.NewConnectionManager()
+	defer connectionMgr.Stop()
+	
 	// Initialize discovery system
 	instancesDir := discovery.GetDefaultInstancesDir()
 	var err error
@@ -714,6 +695,16 @@ func runMCPHub() {
 		os.Exit(1)
 	}
 	defer discoverySystem.Stop()
+	
+	// Register callback to handle discovered instances
+	discoverySystem.OnUpdate(func(instances map[string]*discovery.Instance) {
+		// Register new instances with connection manager
+		for _, inst := range instances {
+			if err := connectionMgr.RegisterInstance(inst); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to register instance %s: %v\n", inst.ID, err)
+			}
+		}
+	})
 	
 	// Start discovery
 	discoverySystem.Start()
@@ -762,20 +753,20 @@ func runMCPHub() {
 
 // handleInstancesList returns a list of all running brummer instances
 func handleInstancesList(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
-	// Get instances from discovery system
-	instances := discoverySystem.GetInstances()
+	// Get instances from connection manager (includes connection state)
+	connections := connectionMgr.ListInstances()
 	
 	// Convert to slice for JSON output
-	instanceList := make([]map[string]interface{}, 0, len(instances))
-	for _, inst := range instances {
+	instanceList := make([]map[string]interface{}, 0, len(connections))
+	for _, conn := range connections {
 		instanceList = append(instanceList, map[string]interface{}{
-			"id":          inst.ID,
-			"name":        inst.Name,
-			"directory":   inst.Directory,
-			"port":        inst.Port,
-			"started_at":  inst.StartedAt.Format(time.RFC3339),
-			"last_ping":   inst.LastPing.Format(time.RFC3339),
-			"process_pid": inst.ProcessInfo.PID,
+			"id":          conn.InstanceID,
+			"name":        conn.Name,
+			"directory":   conn.Directory,
+			"port":        conn.Port,
+			"process_pid": conn.ProcessPID,
+			"state":       conn.State.String(),
+			"connected":   conn.State == mcp.StateActive,
 		})
 	}
 	
@@ -801,12 +792,27 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 		return mcplib.NewToolResultError(err.Error()), nil
 	}
 	
-	// Placeholder - will implement in step 4
+	// For stdio transport, we use a single global session
+	// In a real implementation, this would come from the MCP context
+	sessionID := "stdio-session"
+	
+	// Connect session to instance
+	if err := connectionMgr.ConnectSession(sessionID, instanceID); err != nil {
+		return &mcplib.CallToolResult{
+			Content: []mcplib.Content{
+				mcplib.TextContent{
+					Type: "text",
+					Text: fmt.Sprintf("Failed to connect: %v", err),
+				},
+			},
+		}, nil
+	}
+	
 	return &mcplib.CallToolResult{
 		Content: []mcplib.Content{
 			mcplib.TextContent{
 				Type: "text",
-				Text: fmt.Sprintf("Connection to instance %s not implemented yet", instanceID),
+				Text: fmt.Sprintf("Connected to instance %s", instanceID),
 			},
 		},
 	}, nil
