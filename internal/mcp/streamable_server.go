@@ -1001,3 +1001,187 @@ func (s *StreamableServer) SetConnectionManager(cm *ConnectionManager) {
 	defer s.mu.Unlock()
 	s.connectionManager = cm
 }
+
+// RegisterResource dynamically registers a resource at runtime
+func (s *StreamableServer) RegisterResource(uri string, resource Resource) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Check if resource already exists
+	if _, exists := s.resources[uri]; exists {
+		return fmt.Errorf("resource %s already exists", uri)
+	}
+	
+	s.resources[uri] = resource
+	
+	// Notify connected clients about resource list change
+	s.BroadcastNotification("notifications/resources/list_changed", nil)
+	
+	// Log the registration
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📚 Registered resource: %s", uri), false)
+	}
+	
+	return nil
+}
+
+// UnregisterResource removes a resource at runtime
+func (s *StreamableServer) UnregisterResource(uri string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Check if resource exists
+	if _, exists := s.resources[uri]; !exists {
+		return fmt.Errorf("resource %s not found", uri)
+	}
+	
+	delete(s.resources, uri)
+	
+	// Notify connected clients about resource list change
+	s.BroadcastNotification("notifications/resources/list_changed", nil)
+	
+	// Log the unregistration
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📚 Unregistered resource: %s", uri), false)
+	}
+	
+	return nil
+}
+
+// RegisterResourcesFromInstance registers multiple resources from a connected instance
+func (s *StreamableServer) RegisterResourcesFromInstance(instanceID string, resources []ResourceWithHandler) error {
+	for _, resource := range resources {
+		// Resource URI is already prefixed in ProxyResource
+		if err := s.RegisterResource(resource.URI, resource.Resource); err != nil {
+			// If registration fails, unregister any resources we already added
+			s.UnregisterResourcesFromInstance(instanceID)
+			return fmt.Errorf("failed to register resource %s: %w", resource.URI, err)
+		}
+	}
+	return nil
+}
+
+// UnregisterResourcesFromInstance removes all resources belonging to an instance
+func (s *StreamableServer) UnregisterResourcesFromInstance(instanceID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	prefix := instanceID + "/"
+	var toRemove []string
+	
+	// Find all resources with the instance prefix
+	for uri := range s.resources {
+		if strings.HasPrefix(uri, prefix) {
+			toRemove = append(toRemove, uri)
+		}
+	}
+	
+	// Remove the resources
+	for _, uri := range toRemove {
+		delete(s.resources, uri)
+	}
+	
+	if len(toRemove) > 0 {
+		// Notify connected clients about resource list change
+		s.BroadcastNotification("notifications/resources/list_changed", nil)
+		
+		// Log the unregistration
+		if s.logStore != nil {
+			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📚 Unregistered %d resources from instance %s", len(toRemove), instanceID), false)
+		}
+	}
+	
+	return nil
+}
+
+// RegisterPrompt dynamically registers a prompt at runtime
+func (s *StreamableServer) RegisterPrompt(name string, prompt Prompt) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Check if prompt already exists
+	if _, exists := s.prompts[name]; exists {
+		return fmt.Errorf("prompt %s already exists", name)
+	}
+	
+	s.prompts[name] = prompt
+	
+	// Notify connected clients about prompt list change
+	s.BroadcastNotification("notifications/prompts/list_changed", nil)
+	
+	// Log the registration
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("💭 Registered prompt: %s", name), false)
+	}
+	
+	return nil
+}
+
+// UnregisterPrompt removes a prompt at runtime
+func (s *StreamableServer) UnregisterPrompt(name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	// Check if prompt exists
+	if _, exists := s.prompts[name]; !exists {
+		return fmt.Errorf("prompt %s not found", name)
+	}
+	
+	delete(s.prompts, name)
+	
+	// Notify connected clients about prompt list change
+	s.BroadcastNotification("notifications/prompts/list_changed", nil)
+	
+	// Log the unregistration
+	if s.logStore != nil {
+		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("💭 Unregistered prompt: %s", name), false)
+	}
+	
+	return nil
+}
+
+// RegisterPromptsFromInstance registers multiple prompts from a connected instance
+func (s *StreamableServer) RegisterPromptsFromInstance(instanceID string, prompts []PromptWithHandler) error {
+	for _, prompt := range prompts {
+		// Prompt name is already prefixed in ProxyPrompt
+		if err := s.RegisterPrompt(prompt.Name, prompt.Prompt); err != nil {
+			// If registration fails, unregister any prompts we already added
+			s.UnregisterPromptsFromInstance(instanceID)
+			return fmt.Errorf("failed to register prompt %s: %w", prompt.Name, err)
+		}
+	}
+	return nil
+}
+
+// UnregisterPromptsFromInstance removes all prompts belonging to an instance
+func (s *StreamableServer) UnregisterPromptsFromInstance(instanceID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	
+	prefix := instanceID + "/"
+	var toRemove []string
+	
+	// Find all prompts with the instance prefix
+	for name := range s.prompts {
+		if strings.HasPrefix(name, prefix) {
+			toRemove = append(toRemove, name)
+		}
+	}
+	
+	// Remove the prompts
+	for _, name := range toRemove {
+		delete(s.prompts, name)
+	}
+	
+	if len(toRemove) > 0 {
+		// Notify connected clients about prompt list change
+		s.BroadcastNotification("notifications/prompts/list_changed", nil)
+		
+		// Log the unregistration
+		if s.logStore != nil {
+			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("💭 Unregistered %d prompts from instance %s", len(toRemove), instanceID), false)
+		}
+	}
+	
+	return nil
+}

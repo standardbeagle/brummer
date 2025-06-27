@@ -678,6 +678,8 @@ func generateInstanceID(prefix string) string {
 var (
 	discoverySystem *discovery.Discovery
 	connectionMgr   *mcp.ConnectionManager
+	healthMonitor   *mcp.HealthMonitor
+	sessionManager  *mcp.SessionManager
 )
 
 // Global hub MCP server for dynamic tool registration
@@ -688,6 +690,28 @@ func runMCPHub() {
 	// Initialize connection manager
 	connectionMgr = mcp.NewConnectionManager()
 	defer connectionMgr.Stop()
+	
+	// Initialize session manager
+	sessionManager = mcp.NewSessionManager()
+	
+	// Initialize health monitor
+	healthMonitor = mcp.NewHealthMonitor(connectionMgr, nil)
+	healthMonitor.SetCallbacks(
+		func(instanceID string, status *mcp.HealthStatus) {
+			fmt.Fprintf(os.Stderr, "Instance %s became unhealthy: %v\n", instanceID, status.LastError)
+		},
+		func(instanceID string, status *mcp.HealthStatus) {
+			fmt.Fprintf(os.Stderr, "Instance %s recovered (response time: %v)\n", instanceID, status.ResponseTime)
+		},
+		func(instanceID string, status *mcp.HealthStatus) {
+			fmt.Fprintf(os.Stderr, "Instance %s marked as dead after %d failures\n", 
+				instanceID, status.ConsecutiveFailures)
+			// Disconnect all sessions from dead instance
+			sessionManager.DisconnectAllFromInstance(instanceID)
+		},
+	)
+	healthMonitor.Start()
+	defer healthMonitor.Stop()
 	
 	// Initialize discovery system
 	instancesDir := discovery.GetDefaultInstancesDir()
@@ -712,13 +736,39 @@ func runMCPHub() {
 	// Start discovery
 	discoverySystem.Start()
 	
-	// Start periodic cleanup of stale instances
+	// Start periodic cleanup
 	go func() {
 		ticker := time.NewTicker(time.Minute)
 		defer ticker.Stop()
 		for range ticker.C {
+			// Cleanup stale instance files
 			if err := discoverySystem.CleanupStaleInstances(); err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to cleanup stale instances: %v\n", err)
+			}
+			
+			// Cleanup inactive sessions
+			removed := sessionManager.CleanupInactiveSessions(30 * time.Minute)
+			if removed > 0 {
+				fmt.Fprintf(os.Stderr, "Cleaned up %d inactive sessions\n", removed)
+			}
+			
+			// Cleanup dead connections
+			connections := connectionMgr.ListInstances()
+			for _, conn := range connections {
+				if conn.State == mcp.StateDead {
+					// Unregister tools, resources, and prompts
+					if hubMCPServer != nil {
+						// Clean up registered proxy tools
+						if toolNames, exists := registeredProxyTools[conn.InstanceID]; exists {
+							delete(registeredProxyTools, conn.InstanceID)
+							fmt.Fprintf(os.Stderr, "Cleaned up %d proxy tools from dead instance %s\n", 
+								len(toolNames), conn.InstanceID)
+						}
+					}
+					
+					// Dead instances will be cleaned up by CleanupStaleInstances
+					// based on process checks
+				}
 			}
 		}
 	}()
@@ -890,6 +940,54 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 			registeredProxyTools[instanceID] = toolNames
 			
 			fmt.Fprintf(os.Stderr, "Registered %d proxy tools from instance %s\n", len(toolNames), instanceID)
+		}
+		
+		// Also fetch and register resources
+		resourcesData, err := activeClient.ListResources(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list resources from instance %s: %v\n", instanceID, err)
+		} else {
+			// Parse resources
+			var resourcesResponse struct {
+				Resources []struct {
+					URI         string `json:"uri"`
+					Name        string `json:"name"`
+					Description string `json:"description"`
+					MimeType    string `json:"mimeType"`
+				} `json:"resources"`
+			}
+			
+			if err := json.Unmarshal(resourcesData, &resourcesResponse); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to parse resources from instance %s: %v\n", instanceID, err)
+			} else {
+				// Note: We can't dynamically register resources with mark3labs library
+				// This is a limitation - resources won't be available through the hub
+				fmt.Fprintf(os.Stderr, "Instance %s has %d resources (not proxied due to library limitations)\n", 
+					instanceID, len(resourcesResponse.Resources))
+			}
+		}
+		
+		// Also fetch and register prompts
+		promptsData, err := activeClient.ListPrompts(ctx)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to list prompts from instance %s: %v\n", instanceID, err)
+		} else {
+			// Parse prompts
+			var promptsResponse struct {
+				Prompts []struct {
+					Name        string `json:"name"`
+					Description string `json:"description"`
+				} `json:"prompts"`
+			}
+			
+			if err := json.Unmarshal(promptsData, &promptsResponse); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to parse prompts from instance %s: %v\n", instanceID, err)
+			} else {
+				// Note: We can't dynamically register prompts with mark3labs library
+				// This is a limitation - prompts won't be available through the hub
+				fmt.Fprintf(os.Stderr, "Instance %s has %d prompts (not proxied due to library limitations)\n", 
+					instanceID, len(promptsResponse.Prompts))
+			}
 		}
 	}
 	
