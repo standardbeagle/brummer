@@ -225,6 +225,37 @@ The Settings tab provides:
   - Augment (experimental)
   - Cody (experimental)
 
+## MCP Hub Mode 🆕
+
+Brummer Hub Mode enables MCP clients to discover and control multiple brummer instances through a single connection:
+
+### Quick Setup
+
+1. **Configure your MCP client once:**
+   ```json
+   {
+     "servers": {
+       "brummer-hub": {
+         "command": "brum",
+         "args": ["--mcp"]
+       }
+     }
+   }
+   ```
+
+2. **Run brummer in each project:**
+   ```bash
+   cd ~/projects/frontend && brum
+   cd ~/projects/backend && brum
+   ```
+
+3. **Use hub tools in your MCP client:**
+   - `instances/list` - See all running instances
+   - `instances/connect` - Connect to a specific instance
+   - All instance tools become available with prefixes
+
+[📚 Full Hub Mode Documentation](docs/hub-mode.md)
+
 ## MCP Server API
 
 The MCP server runs on port 7777 by default and provides RESTful endpoints:
