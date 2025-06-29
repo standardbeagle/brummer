@@ -25,7 +25,7 @@ type ResourceWithHandler struct {
 // ProxyResource creates a proxy Resource that forwards reads to a connected instance
 func ProxyResource(instanceID string, resourceInfo ResourceInfo, connMgr *ConnectionManager) ResourceWithHandler {
 	// Prefix the URI with instance ID
-	prefixedURI := fmt.Sprintf("%s/%s", instanceID, resourceInfo.URI)
+	prefixedURI := fmt.Sprintf("%s_%s", instanceID, resourceInfo.URI)
 	
 	return ResourceWithHandler{
 		Resource: Resource{
@@ -73,9 +73,9 @@ func ProxyResource(instanceID string, resourceInfo ResourceInfo, connMgr *Connec
 
 // ExtractInstanceAndResource parses a prefixed resource URI to get instance ID and original URI
 func ExtractInstanceAndResource(prefixedURI string) (instanceID, resourceURI string, err error) {
-	parts := strings.SplitN(prefixedURI, "/", 2)
+	parts := strings.SplitN(prefixedURI, "_", 2)
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid resource URI format: expected 'instanceID/uri', got '%s'", prefixedURI)
+		return "", "", fmt.Errorf("invalid resource URI format: expected 'instanceID_uri', got '%s'", prefixedURI)
 	}
 	return parts[0], parts[1], nil
 }

@@ -37,6 +37,14 @@ func (s ConnectionState) String() string {
 	}
 }
 
+// StateTransition records a state change
+type StateTransition struct {
+	From      ConnectionState
+	To        ConnectionState
+	Timestamp time.Time
+	Reason    string
+}
+
 // ConnectionInfo tracks instance connection
 type ConnectionInfo struct {
 	// Instance metadata
@@ -55,6 +63,11 @@ type ConnectionInfo struct {
 	
 	// Session mapping
 	Sessions       map[string]bool // Active sessions for this instance
+	
+	// State timing tracking
+	DiscoveredAt   time.Time
+	StateChangedAt time.Time
+	StateHistory   []StateTransition
 }
 
 // Request types for channel operations
@@ -82,6 +95,7 @@ type ensureRequest struct {
 type stateChangeRequest struct {
 	instanceID string
 	newState   ConnectionState
+	reason     string
 	response   chan error
 }
 
@@ -197,6 +211,7 @@ func (cm *ConnectionManager) handleRegister(req registerRequest) {
 	}
 	
 	// Create connection info
+	now := time.Now()
 	info := &ConnectionInfo{
 		InstanceID:     req.instance.ID,
 		Name:           req.instance.Name,
@@ -204,8 +219,11 @@ func (cm *ConnectionManager) handleRegister(req registerRequest) {
 		Port:           req.instance.Port,
 		ProcessPID:     req.instance.ProcessInfo.PID,
 		State:          StateDiscovered,
-		LastActivity:   time.Now(),
+		LastActivity:   now,
 		Sessions:       make(map[string]bool),
+		DiscoveredAt:   now,
+		StateChangedAt: now,
+		StateHistory:   []StateTransition{},
 	}
 	
 	cm.connections[req.instance.ID] = info
@@ -279,6 +297,22 @@ func (cm *ConnectionManager) handleStateChange(req stateChangeRequest) {
 	
 	oldState := info.State
 	info.State = req.newState
+	now := time.Now()
+	info.StateChangedAt = now
+	
+	// Record state transition
+	transition := StateTransition{
+		From:      oldState,
+		To:        req.newState,
+		Timestamp: now,
+		Reason:    req.reason,
+	}
+	info.StateHistory = append(info.StateHistory, transition)
+	
+	// Keep history size reasonable
+	if len(info.StateHistory) > 100 {
+		info.StateHistory = info.StateHistory[len(info.StateHistory)-50:]
+	}
 	
 	log.Printf("Instance %s: %s -> %s", req.instanceID, oldState, req.newState)
 	
@@ -410,7 +444,8 @@ func (cm *ConnectionManager) checkConnections() {
 			// Check if still responsive
 			if time.Since(info.LastActivity) > 20*time.Second {
 				log.Printf("Instance %s not responsive, marking as retrying", info.InstanceID)
-				cm.updateState(info.InstanceID, StateRetrying)
+				cm.updateStateWithReason(info.InstanceID, StateRetrying, 
+					fmt.Sprintf("No activity for %v", time.Since(info.LastActivity)))
 			}
 			
 		case StateRetrying:
@@ -487,10 +522,16 @@ func (cm *ConnectionManager) UpdateActivity(instanceID string) bool {
 
 // Helper to update state
 func (cm *ConnectionManager) updateState(instanceID string, newState ConnectionState) error {
+	return cm.updateStateWithReason(instanceID, newState, "")
+}
+
+// updateStateWithReason updates state with a reason
+func (cm *ConnectionManager) updateStateWithReason(instanceID string, newState ConnectionState, reason string) error {
 	respChan := make(chan error)
 	cm.stateChan <- stateChangeRequest{
 		instanceID: instanceID,
 		newState:   newState,
+		reason:     reason,
 		response:   respChan,
 	}
 	return <-respChan

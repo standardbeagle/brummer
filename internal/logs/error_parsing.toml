@@ -99,7 +99,7 @@ single_line = true
 description = "JavaScript ReferenceError"
 
 [error_patterns.javascript.fetch_error]
-pattern = "^(FetchError):\\s*(.+)"
+pattern = "^(FetchError):\\s*(request to .+)"
 type = "NetworkError"
 severity = "error"
 single_line = true
@@ -208,6 +208,7 @@ type = "ReactError"
 severity = "error"
 single_line = true
 description = "Invalid React child element"
+
 
 # Go Error Patterns
 [error_patterns.go]
@@ -337,6 +338,13 @@ type = "MongoError"
 severity = "error"
 single_line = false
 description = "MongoDB error"
+
+[error_patterns.database.network_error]
+pattern = "^(ECONNREFUSED|ENOTFOUND|ETIMEDOUT):\\s*(.+)"
+type = "NetworkError"
+severity = "error"
+single_line = true
+description = "Network connection error"
 
 # Generic Error Patterns
 [error_patterns.generic]
@@ -483,6 +491,9 @@ exclude_if_matches = [
     "^PromiseRejectionHandledWarning:",           # Don't strip promise rejection warnings
     "^ERROR:",                                    # Don't strip ERROR: prefix (used in exit_error pattern)
     "^Error:",                                    # Don't strip Error: prefix (used in simple_error pattern)
+    "^ECONNREFUSED:",                             # Don't strip network error codes
+    "^ENOTFOUND:",                                # Don't strip network error codes
+    "^ETIMEDOUT:",                                # Don't strip network error codes
 ]
 
 # Custom Error Types
@@ -512,9 +523,9 @@ patterns = [
 [custom_error_types.network]
 type = "NetworkError" 
 patterns = [
-    "ECONNREFUSED",
-    "ENOTFOUND",
-    "ETIMEDOUT",
+    "^ECONNREFUSED",
+    "^ENOTFOUND",
+    "^ETIMEDOUT",
     "network.*error",
 ]
 

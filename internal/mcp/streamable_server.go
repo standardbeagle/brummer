@@ -967,7 +967,7 @@ func (s *StreamableServer) UnregisterToolsFromInstance(instanceID string) error 
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	
-	prefix := instanceID + "/"
+	prefix := instanceID + "_"
 	var toRemove []string
 	
 	// Find all tools with the instance prefix
@@ -1066,7 +1066,7 @@ func (s *StreamableServer) UnregisterResourcesFromInstance(instanceID string) er
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	
-	prefix := instanceID + "/"
+	prefix := instanceID + "_"
 	var toRemove []string
 	
 	// Find all resources with the instance prefix
@@ -1158,7 +1158,7 @@ func (s *StreamableServer) UnregisterPromptsFromInstance(instanceID string) erro
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	
-	prefix := instanceID + "/"
+	prefix := instanceID + "_"
 	var toRemove []string
 	
 	// Find all prompts with the instance prefix

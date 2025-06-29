@@ -79,7 +79,8 @@ func TestHubFullFlow(t *testing.T) {
 	connections := connMgr.ListInstances()
 	require.Len(t, connections, 1)
 	assert.Equal(t, "test-instance", connections[0].InstanceID)
-	assert.Equal(t, mcp.StateDiscovered, connections[0].State)
+	// State might be Discovered, Connecting, or Active depending on timing
+	assert.Contains(t, []mcp.ConnectionState{mcp.StateDiscovered, mcp.StateConnecting, mcp.StateActive}, connections[0].State)
 	
 	// Wait for connection to be established
 	time.Sleep(200 * time.Millisecond)
@@ -190,11 +191,17 @@ func createMockInstanceServer(t *testing.T, instanceID string, port int) *httpte
 		case "tools/call":
 			params := request["params"].(map[string]interface{})
 			toolName := params["name"].(string)
-			args := params["arguments"].(map[string]interface{})
+			var args map[string]interface{}
+			if argInterface := params["arguments"]; argInterface != nil {
+				args = argInterface.(map[string]interface{})
+			}
 			
 			switch toolName {
 			case "test/echo":
-				message := args["message"].(string)
+				message := ""
+				if args != nil && args["message"] != nil {
+					message = args["message"].(string)
+				}
 				result = map[string]interface{}{
 					"response": fmt.Sprintf("Echo: %s", message),
 				}

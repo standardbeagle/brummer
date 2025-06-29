@@ -184,8 +184,9 @@ func (hm *HealthMonitor) recordSuccess(status *HealthStatus, responseTime time.D
 	status.LastError = nil
 	
 	// Update connection activity time
-	// This would normally update LastActivity in ConnectionInfo
-	// but we don't have direct access, so we'll skip for now
+	if hm.connMgr.UpdateActivity(status.InstanceID) {
+		log.Printf("Updated activity for instance %s (response time: %v)", status.InstanceID, responseTime)
+	}
 	
 	// Trigger recovery callback if instance recovered
 	if wasUnhealthy && hm.onRecovered != nil {
@@ -211,13 +212,9 @@ func (hm *HealthMonitor) recordFailure(status *HealthStatus, err error) {
 		// Update connection manager state
 		if status.ConsecutiveFailures == hm.maxFailures {
 			// First time becoming unhealthy
-			stateReq := make(chan error)
-			hm.connMgr.stateChan <- stateChangeRequest{
-				instanceID: status.InstanceID,
-				newState:   StateRetrying,
-				response:   stateReq,
-			}
-			<-stateReq
+			hm.connMgr.updateStateWithReason(status.InstanceID, StateRetrying,
+				fmt.Sprintf("Health check failed %d times: %v", 
+					status.ConsecutiveFailures, err))
 			
 			// Trigger unhealthy callback
 			if wasHealthy && hm.onUnhealthy != nil {
@@ -225,13 +222,9 @@ func (hm *HealthMonitor) recordFailure(status *HealthStatus, err error) {
 			}
 		} else if status.ConsecutiveFailures > hm.maxFailures*2 {
 			// Mark as dead after too many failures
-			stateReq := make(chan error)
-			hm.connMgr.stateChan <- stateChangeRequest{
-				instanceID: status.InstanceID,
-				newState:   StateDead,
-				response:   stateReq,
-			}
-			<-stateReq
+			hm.connMgr.updateStateWithReason(status.InstanceID, StateDead,
+				fmt.Sprintf("Failed %d consecutive health checks: %v", 
+					status.ConsecutiveFailures, status.LastError))
 			
 			// Trigger dead callback
 			if hm.onDead != nil {

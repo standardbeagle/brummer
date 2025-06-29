@@ -53,7 +53,6 @@ func TestStoreNonBlockingAdd(t *testing.T) {
 func TestStoreConcurrentAddGet(t *testing.T) {
 	store := NewStore(100)
 	defer store.Close()
-	defer store.Close()
 
 	var addCount atomic.Int32
 	var getCount atomic.Int32
@@ -117,7 +116,6 @@ func TestStoreConcurrentAddGet(t *testing.T) {
 func TestStoreChannelBackpressure(t *testing.T) {
 	store := NewStore(10)
 	defer store.Close()
-	defer store.Close()
 
 	// Flood with adds
 	start := time.Now()
@@ -137,7 +135,6 @@ func TestStoreChannelBackpressure(t *testing.T) {
 // TestStoreAsyncProcessing verifies async processing works correctly
 func TestStoreAsyncProcessing(t *testing.T) {
 	store := NewStore(100)
-	defer store.Close()
 	defer store.Close()
 
 	// Add a log with URL

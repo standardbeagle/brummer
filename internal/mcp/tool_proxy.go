@@ -18,7 +18,7 @@ type ToolInfo struct {
 // ProxyTool creates a proxy MCPTool that forwards calls to a connected instance
 func ProxyTool(instanceID string, toolInfo ToolInfo, connMgr *ConnectionManager) MCPTool {
 	return MCPTool{
-		Name:        fmt.Sprintf("%s/%s", instanceID, toolInfo.Name),
+		Name:        fmt.Sprintf("%s_%s", instanceID, toolInfo.Name),
 		Description: fmt.Sprintf("[%s] %s", instanceID, toolInfo.Description),
 		InputSchema: toolInfo.InputSchema,
 		Handler: func(args json.RawMessage) (interface{}, error) {
@@ -70,9 +70,9 @@ func ProxyTool(instanceID string, toolInfo ToolInfo, connMgr *ConnectionManager)
 
 // ExtractInstanceAndTool parses a prefixed tool name to get instance ID and original tool name
 func ExtractInstanceAndTool(prefixedName string) (instanceID, toolName string, err error) {
-	parts := strings.SplitN(prefixedName, "/", 2)
+	parts := strings.SplitN(prefixedName, "_", 2)
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid tool name format: expected 'instanceID/toolName', got '%s'", prefixedName)
+		return "", "", fmt.Errorf("invalid tool name format: expected 'instanceID_toolName', got '%s'", prefixedName)
 	}
 	return parts[0], parts[1], nil
 }

@@ -42,7 +42,7 @@ func TestToolProxyIntegration(t *testing.T) {
 	proxyTool := mcp.ProxyTool("test-instance", toolInfo, connMgr)
 	
 	// Verify tool properties
-	assert.Equal(t, "test-instance/test/tool", proxyTool.Name)
+	assert.Equal(t, "test-instance_test/tool", proxyTool.Name)
 	assert.Contains(t, proxyTool.Description, "[test-instance]")
 	assert.Contains(t, proxyTool.Description, "A test tool")
 	assert.NotNil(t, proxyTool.Handler)
@@ -59,7 +59,7 @@ func TestExtractInstanceAndTool(t *testing.T) {
 	}{
 		{
 			name:         "valid prefixed name",
-			prefixedName: "instance-123/scripts/run",
+			prefixedName: "instance-123_scripts/run",
 			wantInstance: "instance-123",
 			wantTool:     "scripts/run",
 			wantErr:      false,
@@ -79,10 +79,10 @@ func TestExtractInstanceAndTool(t *testing.T) {
 			wantErr:      true,
 		},
 		{
-			name:         "multiple slashes",
-			prefixedName: "instance-123/scripts/run/something",
+			name:         "tool with underscore",
+			prefixedName: "instance-123_scripts_run",
 			wantInstance: "instance-123",
-			wantTool:     "scripts/run/something",
+			wantTool:     "scripts_run",
 			wantErr:      false,
 		},
 	}

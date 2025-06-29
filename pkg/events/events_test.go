@@ -4,370 +4,402 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestEventBus(t *testing.T) {
+// TestEventBusCreation tests creating a new event bus
+func TestEventBusCreation(t *testing.T) {
 	bus := NewEventBus()
-
-	t.Run("Subscribe and Publish", func(t *testing.T) {
-		var received Event
-		var wg sync.WaitGroup
-		wg.Add(1)
-
-		// Subscribe to events
-		bus.Subscribe(EventProcessStarted, func(e Event) {
-			received = e
-			wg.Done()
-		})
-
-		// Publish event
-		event := Event{
-			Type:      EventProcessStarted,
-			ProcessID: "test-process",
-			Data: map[string]interface{}{
-				"command": "echo hello",
-				"pid":     12345,
-			},
-		}
-		bus.Publish(event)
-
-		// Wait for event
-		done := make(chan bool)
-		go func() {
-			wg.Wait()
-			done <- true
-		}()
-
-		select {
-		case <-done:
-			// Event received
-		case <-time.After(1 * time.Second):
-			t.Fatal("Timeout waiting for event")
-		}
-
-		// Verify event data
-		if received.Type != EventProcessStarted {
-			t.Errorf("Expected type %v, got %v", EventProcessStarted, received.Type)
-		}
-		if received.ProcessID != "test-process" {
-			t.Errorf("Expected process ID 'test-process', got %s", received.ProcessID)
-		}
-		if received.Data["command"] != "echo hello" {
-			t.Errorf("Expected command 'echo hello', got %v", received.Data["command"])
-		}
-	})
-
-	t.Run("Multiple Subscribers", func(t *testing.T) {
-		var received1, received2 Event
-		var wg sync.WaitGroup
-		wg.Add(2)
-
-		// Multiple subscribers
-		bus.Subscribe(EventLogLine, func(e Event) {
-			received1 = e
-			wg.Done()
-		})
-		bus.Subscribe(EventLogLine, func(e Event) {
-			received2 = e
-			wg.Done()
-		})
-
-		// Publish event
-		event := Event{
-			Type:      EventLogLine,
-			ProcessID: "logger",
-			Data: map[string]interface{}{
-				"line":    "Test log message",
-				"isError": false,
-			},
-		}
-		bus.Publish(event)
-
-		// Wait for both events
-		done := make(chan bool)
-		go func() {
-			wg.Wait()
-			done <- true
-		}()
-
-		select {
-		case <-done:
-			// Both events received
-		case <-time.After(1 * time.Second):
-			t.Fatal("Timeout waiting for events")
-		}
-
-		// Both should have received the same event
-		if received1.ProcessID != "logger" || received2.ProcessID != "logger" {
-			t.Error("Not all subscribers received the event")
-		}
-	})
-
-	t.Run("Different Event Types", func(t *testing.T) {
-		var processEvents, logEvents int
-		var wg sync.WaitGroup
-		wg.Add(3) // We'll send 2 process events and 1 log event
-
-		bus.Subscribe(EventProcessStarted, func(e Event) {
-			processEvents++
-			wg.Done()
-		})
-		bus.Subscribe(EventProcessExited, func(e Event) {
-			processEvents++
-			wg.Done()
-		})
-		bus.Subscribe(EventLogLine, func(e Event) {
-			logEvents++
-			wg.Done()
-		})
-
-		// Publish different types
-		bus.Publish(Event{Type: EventProcessStarted, ProcessID: "proc1"})
-		bus.Publish(Event{Type: EventProcessExited, ProcessID: "proc1"})
-		bus.Publish(Event{Type: EventLogLine, ProcessID: "proc1"})
-
-		// Wait for all events
-		done := make(chan bool)
-		go func() {
-			wg.Wait()
-			done <- true
-		}()
-
-		select {
-		case <-done:
-			// All events received
-		case <-time.After(1 * time.Second):
-			t.Fatal("Timeout waiting for events")
-		}
-
-		if processEvents != 2 {
-			t.Errorf("Expected 2 process events, got %d", processEvents)
-		}
-		if logEvents != 1 {
-			t.Errorf("Expected 1 log event, got %d", logEvents)
-		}
-	})
-
-	t.Run("Concurrent Publishing", func(t *testing.T) {
-		var eventCount int
-		var mutex sync.Mutex
-		var wg sync.WaitGroup
-
-		// Subscribe to count events
-		bus.Subscribe(EventBuildEvent, func(e Event) {
-			mutex.Lock()
-			eventCount++
-			mutex.Unlock()
-			wg.Done()
-		})
-
-		// Publish many events concurrently
-		numEvents := 100
-		wg.Add(numEvents)
-
-		for i := 0; i < numEvents; i++ {
-			go func(id int) {
-				bus.Publish(Event{
-					Type:      EventBuildEvent,
-					ProcessID: "builder",
-					Data: map[string]interface{}{
-						"id": id,
-					},
-				})
-			}(i)
-		}
-
-		// Wait for all events
-		done := make(chan bool)
-		go func() {
-			wg.Wait()
-			done <- true
-		}()
-
-		select {
-		case <-done:
-			// All events received
-		case <-time.After(5 * time.Second):
-			t.Fatal("Timeout waiting for concurrent events")
-		}
-
-		mutex.Lock()
-		finalCount := eventCount
-		mutex.Unlock()
-
-		if finalCount != numEvents {
-			t.Errorf("Expected %d events, got %d", numEvents, finalCount)
-		}
-	})
-
-	t.Run("Unsubscribe", func(t *testing.T) {
-		var eventCount int
-		var wg sync.WaitGroup
-
-		handler := func(e Event) {
-			eventCount++
-			wg.Done()
-		}
-
-		// Subscribe
-		bus.Subscribe(EventTestResult, handler)
-
-		// Send first event
-		wg.Add(1)
-		bus.Publish(Event{Type: EventTestResult, ProcessID: "test1"})
-		wg.Wait()
-
-		// Unsubscribe
-		bus.Unsubscribe(EventTestResult, handler)
-
-		// Send second event (should not be received)
-		bus.Publish(Event{Type: EventTestResult, ProcessID: "test2"})
-
-		// Give some time for potential delivery
-		time.Sleep(100 * time.Millisecond)
-
-		if eventCount != 1 {
-			t.Errorf("Expected 1 event (before unsubscribe), got %d", eventCount)
-		}
-	})
-
-	t.Run("Event Type String Representation", func(t *testing.T) {
-		tests := []struct {
-			eventType EventType
-			expected  string
-		}{
-			{EventProcessStarted, "process.started"},
-			{EventProcessExited, "process.exited"},
-			{EventLogLine, "log.line"},
-			{EventErrorDetected, "error.detected"},
-			{EventBuildEvent, "build.event"},
-			{EventTestResult, "test.result"},
-		}
-
-		for _, tt := range tests {
-			if string(tt.eventType) != tt.expected {
-				t.Errorf("Expected %s, got %s", tt.expected, string(tt.eventType))
-			}
-		}
-	})
-
-	t.Run("Event Data Integrity", func(t *testing.T) {
-		var receivedEvent Event
-		var wg sync.WaitGroup
-		wg.Add(1)
-
-		bus.Subscribe(EventErrorDetected, func(e Event) {
-			receivedEvent = e
-			wg.Done()
-		})
-
-		// Create complex event data
-		originalData := map[string]interface{}{
-			"error": map[string]interface{}{
-				"message": "Test error",
-				"file":    "/path/to/file.go",
-				"line":    42,
-			},
-			"context": []string{"context1", "context2"},
-			"metadata": map[string]interface{}{
-				"timestamp": time.Now().Unix(),
-				"level":     "error",
-			},
-		}
-
-		event := Event{
-			Type:      EventErrorDetected,
-			ProcessID: "error-process",
-			Data:      originalData,
-		}
-
-		bus.Publish(event)
-		wg.Wait()
-
-		// Verify data integrity
-		errorData := receivedEvent.Data["error"].(map[string]interface{})
-		if errorData["message"] != "Test error" {
-			t.Error("Event data was corrupted during transmission")
-		}
-
-		context := receivedEvent.Data["context"].([]string)
-		if len(context) != 2 || context[0] != "context1" {
-			t.Error("Array data was corrupted")
-		}
-	})
+	require.NotNil(t, bus)
+	assert.NotNil(t, bus.handlers)
 }
 
-func TestEventBusMemoryLeaks(t *testing.T) {
-	bus := NewEventBus()
-
-	t.Run("No Memory Leak on Subscribe/Unsubscribe", func(t *testing.T) {
-		initialHandlerCount := len(bus.handlers)
-
-		// Add many handlers
-		var handlers []Handler
-		for i := 0; i < 100; i++ {
-			handler := func(e Event) {}
-			handlers = append(handlers, handler)
-			bus.Subscribe(EventLogLine, handler)
-		}
-
-		// Verify handlers were added
-		if len(bus.handlers[EventLogLine]) != 100 {
-			t.Errorf("Expected 100 handlers, got %d", len(bus.handlers[EventLogLine]))
-		}
-
-		// Remove all handlers
-		for _, handler := range handlers {
-			bus.Unsubscribe(EventLogLine, handler)
-		}
-
-		// Should be back to initial state
-		currentHandlerCount := len(bus.handlers)
-		if currentHandlerCount != initialHandlerCount {
-			t.Errorf("Memory leak: expected %d handler maps, got %d", 
-				initialHandlerCount, currentHandlerCount)
-		}
-	})
-}
-
-func BenchmarkEventBus(b *testing.B) {
+// TestEventSubscription tests subscribing to events
+func TestEventSubscription(t *testing.T) {
 	bus := NewEventBus()
 	
-	// Subscribe a simple handler
-	bus.Subscribe(EventLogLine, func(e Event) {
-		// Minimal processing
-		_ = e.ProcessID
-	})
-
-	event := Event{
-		Type:      EventLogLine,
-		ProcessID: "bench-process",
+	var receivedEvents []Event
+	var mu sync.Mutex
+	
+	handler := func(event Event) {
+		mu.Lock()
+		receivedEvents = append(receivedEvents, event)
+		mu.Unlock()
+	}
+	
+	// Subscribe to ProcessStarted events
+	bus.Subscribe(ProcessStarted, handler)
+	
+	// Publish an event
+	testEvent := Event{
+		Type:      ProcessStarted,
+		ProcessID: "test-process",
 		Data: map[string]interface{}{
-			"line":    "Benchmark log line",
+			"command": "echo hello",
+			"pid":     12345,
+		},
+	}
+	
+	bus.Publish(testEvent)
+	
+	// Wait for async handler execution
+	time.Sleep(10 * time.Millisecond)
+	
+	// Verify event was received
+	mu.Lock()
+	defer mu.Unlock()
+	require.Len(t, receivedEvents, 1)
+	assert.Equal(t, ProcessStarted, receivedEvents[0].Type)
+	assert.Equal(t, "test-process", receivedEvents[0].ProcessID)
+	assert.Equal(t, "echo hello", receivedEvents[0].Data["command"])
+	assert.Equal(t, 12345, receivedEvents[0].Data["pid"])
+	assert.NotEmpty(t, receivedEvents[0].ID)        // ID should be auto-generated
+	assert.False(t, receivedEvents[0].Timestamp.IsZero()) // Timestamp should be set
+}
+
+// TestMultipleSubscribers tests multiple handlers for the same event type
+func TestMultipleSubscribers(t *testing.T) {
+	bus := NewEventBus()
+	
+	var handler1Events []Event
+	var handler2Events []Event
+	var mu1, mu2 sync.Mutex
+	
+	handler1 := func(event Event) {
+		mu1.Lock()
+		handler1Events = append(handler1Events, event)
+		mu1.Unlock()
+	}
+	
+	handler2 := func(event Event) {
+		mu2.Lock()
+		handler2Events = append(handler2Events, event)
+		mu2.Unlock()
+	}
+	
+	// Both handlers subscribe to the same event type
+	bus.Subscribe(LogLine, handler1)
+	bus.Subscribe(LogLine, handler2)
+	
+	// Publish an event
+	testEvent := Event{
+		Type:      LogLine,
+		ProcessID: "test-process",
+		Data: map[string]interface{}{
+			"line":    "Test log line",
 			"isError": false,
 		},
 	}
-
-	b.ResetTimer()
 	
-	b.Run("Publish", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			bus.Publish(event)
-		}
-	})
+	bus.Publish(testEvent)
+	
+	// Wait for async handler execution
+	time.Sleep(10 * time.Millisecond)
+	
+	// Both handlers should have received the event
+	mu1.Lock()
+	defer mu1.Unlock()
+	mu2.Lock()
+	defer mu2.Unlock()
+	
+	require.Len(t, handler1Events, 1)
+	require.Len(t, handler2Events, 1)
+	
+	assert.Equal(t, LogLine, handler1Events[0].Type)
+	assert.Equal(t, LogLine, handler2Events[0].Type)
+	assert.Equal(t, "Test log line", handler1Events[0].Data["line"])
+	assert.Equal(t, "Test log line", handler2Events[0].Data["line"])
+}
 
-	b.Run("Subscribe", func(b *testing.B) {
-		handler := func(e Event) {}
-		for i := 0; i < b.N; i++ {
-			bus.Subscribe(EventLogLine, handler)
-		}
+// TestMultipleEventTypes tests subscribing to different event types
+func TestMultipleEventTypes(t *testing.T) {
+	bus := NewEventBus()
+	
+	var processEvents []Event
+	var logEvents []Event
+	var errorEvents []Event
+	var muProcess, muLog, muError sync.Mutex
+	
+	bus.Subscribe(ProcessStarted, func(event Event) {
+		muProcess.Lock()
+		processEvents = append(processEvents, event)
+		muProcess.Unlock()
 	})
+	
+	bus.Subscribe(LogLine, func(event Event) {
+		muLog.Lock()
+		logEvents = append(logEvents, event)
+		muLog.Unlock()
+	})
+	
+	bus.Subscribe(ErrorDetected, func(event Event) {
+		muError.Lock()
+		errorEvents = append(errorEvents, event)
+		muError.Unlock()
+	})
+	
+	// Publish different types of events
+	bus.Publish(Event{Type: ProcessStarted, ProcessID: "proc1", Data: map[string]interface{}{"command": "echo"}})
+	bus.Publish(Event{Type: LogLine, ProcessID: "proc1", Data: map[string]interface{}{"line": "output"}})
+	bus.Publish(Event{Type: ErrorDetected, ProcessID: "proc1", Data: map[string]interface{}{"error": "test error"}})
+	bus.Publish(Event{Type: LogLine, ProcessID: "proc1", Data: map[string]interface{}{"line": "more output"}})
+	
+	// Wait for async handler execution
+	time.Sleep(10 * time.Millisecond)
+	
+	// Verify each handler only received its event type
+	muProcess.Lock()
+	defer muProcess.Unlock()
+	muLog.Lock()
+	defer muLog.Unlock()
+	muError.Lock()
+	defer muError.Unlock()
+	
+	assert.Len(t, processEvents, 1)
+	assert.Len(t, logEvents, 2)
+	assert.Len(t, errorEvents, 1)
+	
+	assert.Equal(t, ProcessStarted, processEvents[0].Type)
+	assert.Equal(t, LogLine, logEvents[0].Type)
+	assert.Equal(t, LogLine, logEvents[1].Type)
+	assert.Equal(t, ErrorDetected, errorEvents[0].Type)
+}
 
-	b.Run("Concurrent", func(b *testing.B) {
-		b.RunParallel(func(pb *testing.PB) {
-			for pb.Next() {
-				bus.Publish(event)
+// TestEventMetadata tests automatic ID and timestamp generation
+func TestEventMetadata(t *testing.T) {
+	bus := NewEventBus()
+	
+	var receivedEvent Event
+	var received bool
+	var mu sync.Mutex
+	
+	bus.Subscribe(BuildEvent, func(event Event) {
+		mu.Lock()
+		receivedEvent = event
+		received = true
+		mu.Unlock()
+	})
+	
+	// Publish event without ID or timestamp
+	originalEvent := Event{
+		Type:      BuildEvent,
+		ProcessID: "build-process",
+		Data:      map[string]interface{}{"buildID": 123},
+	}
+	
+	publishTime := time.Now()
+	bus.Publish(originalEvent)
+	
+	// Wait for async handler execution
+	time.Sleep(10 * time.Millisecond)
+	
+	mu.Lock()
+	defer mu.Unlock()
+	
+	require.True(t, received)
+	
+	// Verify metadata was automatically added
+	assert.NotEmpty(t, receivedEvent.ID)
+	assert.False(t, receivedEvent.Timestamp.IsZero())
+	assert.True(t, receivedEvent.Timestamp.After(publishTime.Add(-1*time.Second)))
+	assert.True(t, receivedEvent.Timestamp.Before(publishTime.Add(1*time.Second)))
+	
+	// Original data should be preserved
+	assert.Equal(t, BuildEvent, receivedEvent.Type)
+	assert.Equal(t, "build-process", receivedEvent.ProcessID)
+	assert.Equal(t, 123, receivedEvent.Data["buildID"])
+}
+
+// TestConcurrentPublishing tests thread safety with concurrent publishing
+func TestConcurrentPublishing(t *testing.T) {
+	bus := NewEventBus()
+	
+	var receivedEvents []Event
+	var mu sync.Mutex
+	
+	bus.Subscribe(TestPassed, func(event Event) {
+		mu.Lock()
+		receivedEvents = append(receivedEvents, event)
+		mu.Unlock()
+	})
+	
+	// Publish events concurrently from multiple goroutines
+	var wg sync.WaitGroup
+	numPublishers := 10
+	eventsPerPublisher := 5
+	
+	for i := 0; i < numPublishers; i++ {
+		wg.Add(1)
+		go func(publisherID int) {
+			defer wg.Done()
+			
+			for j := 0; j < eventsPerPublisher; j++ {
+				bus.Publish(Event{
+					Type:      TestPassed,
+					ProcessID: "test-process",
+					Data: map[string]interface{}{
+						"publisherID": publisherID,
+						"eventID":     j,
+					},
+				})
 			}
-		})
+		}(i)
+	}
+	
+	wg.Wait()
+	
+	// Wait for all async handlers to complete
+	time.Sleep(50 * time.Millisecond)
+	
+	mu.Lock()
+	defer mu.Unlock()
+	
+	// Should have received all published events
+	expectedCount := numPublishers * eventsPerPublisher
+	assert.Len(t, receivedEvents, expectedCount)
+	
+	// Verify all events have unique IDs
+	idSet := make(map[string]bool)
+	for _, event := range receivedEvents {
+		assert.False(t, idSet[event.ID], "Duplicate event ID found: %s", event.ID)
+		idSet[event.ID] = true
+		assert.Equal(t, TestPassed, event.Type)
+	}
+}
+
+// TestConcurrentSubscription tests thread safety with concurrent subscription
+func TestConcurrentSubscription(t *testing.T) {
+	bus := NewEventBus()
+	
+	var totalReceived int64
+	var mu sync.Mutex
+	
+	// Add subscribers concurrently
+	var wg sync.WaitGroup
+	numSubscribers := 5
+	
+	for i := 0; i < numSubscribers; i++ {
+		wg.Add(1)
+		go func(subscriberID int) {
+			defer wg.Done()
+			
+			bus.Subscribe(TestFailed, func(event Event) {
+				mu.Lock()
+				totalReceived++
+				mu.Unlock()
+			})
+		}(i)
+	}
+	
+	wg.Wait()
+	
+	// Publish a single event
+	bus.Publish(Event{
+		Type:      TestFailed,
+		ProcessID: "test-process",
+		Data:      map[string]interface{}{"test": "concurrent subscription"},
 	})
+	
+	// Wait for all handlers
+	time.Sleep(20 * time.Millisecond)
+	
+	mu.Lock()
+	defer mu.Unlock()
+	
+	// All subscribers should have received the event
+	assert.Equal(t, int64(numSubscribers), totalReceived)
+}
+
+// TestEventTypeConstants tests all defined event type constants
+func TestEventTypeConstants(t *testing.T) {
+	eventTypes := []EventType{
+		ProcessStarted,
+		ProcessExited,
+		LogLine,
+		ErrorDetected,
+		BuildEvent,
+		TestFailed,
+		TestPassed,
+		MCPActivity,
+		MCPConnected,
+		MCPDisconnected,
+	}
+	
+	bus := NewEventBus()
+	var receivedTypes []EventType
+	var mu sync.Mutex
+	
+	// Subscribe to all event types
+	for _, eventType := range eventTypes {
+		bus.Subscribe(eventType, func(event Event) {
+			mu.Lock()
+			receivedTypes = append(receivedTypes, event.Type)
+			mu.Unlock()
+		})
+	}
+	
+	// Publish events of all types
+	for i, eventType := range eventTypes {
+		bus.Publish(Event{
+			Type:      eventType,
+			ProcessID: "test-process",
+			Data:      map[string]interface{}{"index": i},
+		})
+	}
+	
+	// Wait for all handlers
+	time.Sleep(20 * time.Millisecond)
+	
+	mu.Lock()
+	defer mu.Unlock()
+	
+	// Should have received all event types
+	assert.Len(t, receivedTypes, len(eventTypes))
+	
+	// Verify all types were received
+	receivedSet := make(map[EventType]bool)
+	for _, eventType := range receivedTypes {
+		receivedSet[eventType] = true
+	}
+	
+	for _, expectedType := range eventTypes {
+		assert.True(t, receivedSet[expectedType], "Event type %s was not received", expectedType)
+	}
+}
+
+// TestEmptyEventHandling tests handling of events with minimal data
+func TestEmptyEventHandling(t *testing.T) {
+	bus := NewEventBus()
+	
+	var receivedEvent Event
+	var received bool
+	var mu sync.Mutex
+	
+	bus.Subscribe(MCPActivity, func(event Event) {
+		mu.Lock()
+		receivedEvent = event
+		received = true
+		mu.Unlock()
+	})
+	
+	// Publish event with minimal data
+	bus.Publish(Event{
+		Type: MCPActivity,
+		// ProcessID is empty
+		// Data is nil
+	})
+	
+	time.Sleep(10 * time.Millisecond)
+	
+	mu.Lock()
+	defer mu.Unlock()
+	
+	require.True(t, received)
+	assert.Equal(t, MCPActivity, receivedEvent.Type)
+	assert.Empty(t, receivedEvent.ProcessID)
+	assert.Nil(t, receivedEvent.Data)
+	assert.NotEmpty(t, receivedEvent.ID)
+	assert.False(t, receivedEvent.Timestamp.IsZero())
 }

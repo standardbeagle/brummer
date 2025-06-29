@@ -428,14 +428,14 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Use new StreamableServer by default
 		mcpServer = mcp.NewStreamableServer(mcpPort, processMgr, logStore, proxyServer, eventBus)
 		mcpServerInterface = mcpServer
-		
+
 		// Start MCP server in background regardless of TUI mode
 		go func() {
 			if !noTUI {
 				// Give TUI time to initialize subscriptions
 				time.Sleep(100 * time.Millisecond)
 			}
-			
+
 			if err := mcpServerInterface.Start(); err != nil {
 				if noTUI {
 					log.Fatal("MCP server error:", err)
@@ -465,7 +465,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		if mcpStreamable, ok := mcpServer.(*mcp.StreamableServer); ok {
 			actualPort = mcpStreamable.GetPort()
 		}
-		
+
 		// Register this instance with the discovery system
 		instanceID := generateInstanceID(filepath.Base(absWorkDir))
 		instance := &discovery.Instance{
@@ -478,14 +478,14 @@ func runApp(cmd *cobra.Command, args []string) {
 		}
 		instance.ProcessInfo.PID = os.Getpid()
 		instance.ProcessInfo.Executable, _ = os.Executable()
-		
+
 		registeredInstancesDir = discovery.GetDefaultInstancesDir()
 		registeredInstanceID = instanceID
-		
+
 		if noTUI {
 			fmt.Printf("Registering instance: %s at %s\n", instanceID, registeredInstancesDir)
 		}
-		
+
 		if err := discovery.RegisterInstance(registeredInstancesDir, instance); err != nil {
 			if noTUI {
 				fmt.Fprintf(os.Stderr, "Warning: Failed to register instance: %v\n", err)
@@ -499,7 +499,7 @@ func runApp(cmd *cobra.Command, args []string) {
 				logStore.Add("system", "discovery", fmt.Sprintf("✅ Registered instance: %s", instanceID), false)
 			}
 		}
-		
+
 		// Start ping update routine
 		pingTicker := time.NewTicker(30 * time.Second)
 		go func() {
@@ -510,7 +510,7 @@ func runApp(cmd *cobra.Command, args []string) {
 				}
 			}
 		}()
-		
+
 		if noTUI {
 			// Display the actual port being used (may be different if there was a conflict)
 			fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", actualPort)
@@ -532,7 +532,7 @@ func runApp(cmd *cobra.Command, args []string) {
 
 			fmt.Println("Stopping MCP server...")
 			_ = mcpServerInterface.Stop() // Ignore cleanup errors during shutdown
-			
+
 			// Unregister instance
 			if registeredInstanceID != "" && registeredInstancesDir != "" {
 				_ = discovery.UnregisterInstance(registeredInstancesDir, registeredInstanceID)
@@ -593,7 +593,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		if mcpServerInterface != nil {
 			fmt.Println("Stopping MCP server...")
 			_ = mcpServerInterface.Stop() // Ignore cleanup errors during shutdown
-			
+
 			// Unregister instance
 			if registeredInstanceID != "" && registeredInstancesDir != "" {
 				_ = discovery.UnregisterInstance(registeredInstancesDir, registeredInstanceID)
@@ -674,6 +674,64 @@ func generateInstanceID(prefix string) string {
 	return fmt.Sprintf("%s-%s", prefix, randomHex)
 }
 
+// isTerminal checks if stdin/stdout are connected to a terminal
+func isTerminal() bool {
+	// Check if both stdin and stdout are terminals
+	// This will be false when called by an MCP client through stdio
+	stdinStat, _ := os.Stdin.Stat()
+	stdoutStat, _ := os.Stdout.Stat()
+
+	// Check if stdin is a terminal (not piped)
+	stdinIsTerminal := (stdinStat.Mode() & os.ModeCharDevice) != 0
+	// Check if stdout is a terminal (not piped)
+	stdoutIsTerminal := (stdoutStat.Mode() & os.ModeCharDevice) != 0
+
+	return stdinIsTerminal && stdoutIsTerminal
+}
+
+// displayHubModeHelp shows information about hub mode when run from terminal
+func displayHubModeHelp() {
+	fmt.Print(`
+╭─────────────────────────────────────────────────────────────────╮
+│                    🐝 Brummer Hub Mode                          │
+╰─────────────────────────────────────────────────────────────────╯
+
+Hub mode (--mcp) is designed to be called by MCP clients like:
+• Claude Desktop
+• VSCode (with MCP extension)
+• Cursor
+• Windsurf
+
+You appear to be running this from the command line directly.
+
+🔧 To use hub mode properly:
+
+1. Add this configuration to your MCP client:
+
+   {
+     "servers": {
+       "brummer-hub": {
+         "command": "brum",
+         "args": ["--mcp"]
+       }
+     }
+   }
+
+2. The MCP client will then start the hub automatically.
+
+📖 For manual testing, you can interact with the hub using:
+   
+   # Send JSON-RPC commands via stdin
+   echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | brum --mcp
+
+🚀 To run Brummer normally (with TUI), just use:
+   
+   brum
+
+📚 Full documentation: https://github.com/standardbeagle/brummer/docs/hub-mode.md
+`)
+}
+
 // Global systems for the hub
 var (
 	discoverySystem *discovery.Discovery
@@ -687,13 +745,19 @@ var hubMCPServer *server.MCPServer
 
 // runMCPHub runs the MCP hub in stdio mode for discovering and managing instances
 func runMCPHub() {
+	// Check if we're running in a terminal (not being piped or called by MCP client)
+	if isTerminal() {
+		displayHubModeHelp()
+		os.Exit(0)
+	}
+
 	// Initialize connection manager
 	connectionMgr = mcp.NewConnectionManager()
 	defer connectionMgr.Stop()
-	
+
 	// Initialize session manager
 	sessionManager = mcp.NewSessionManager()
-	
+
 	// Initialize health monitor
 	healthMonitor = mcp.NewHealthMonitor(connectionMgr, nil)
 	healthMonitor.SetCallbacks(
@@ -704,7 +768,7 @@ func runMCPHub() {
 			fmt.Fprintf(os.Stderr, "Instance %s recovered (response time: %v)\n", instanceID, status.ResponseTime)
 		},
 		func(instanceID string, status *mcp.HealthStatus) {
-			fmt.Fprintf(os.Stderr, "Instance %s marked as dead after %d failures\n", 
+			fmt.Fprintf(os.Stderr, "Instance %s marked as dead after %d failures\n",
 				instanceID, status.ConsecutiveFailures)
 			// Disconnect all sessions from dead instance
 			sessionManager.DisconnectAllFromInstance(instanceID)
@@ -712,7 +776,7 @@ func runMCPHub() {
 	)
 	healthMonitor.Start()
 	defer healthMonitor.Stop()
-	
+
 	// Initialize discovery system
 	instancesDir := discovery.GetDefaultInstancesDir()
 	var err error
@@ -722,7 +786,7 @@ func runMCPHub() {
 		os.Exit(1)
 	}
 	defer discoverySystem.Stop()
-	
+
 	// Register callback to handle discovered instances
 	discoverySystem.OnUpdate(func(instances map[string]*discovery.Instance) {
 		// Register new instances with connection manager
@@ -732,10 +796,18 @@ func runMCPHub() {
 			}
 		}
 	})
-	
+
 	// Start discovery
 	discoverySystem.Start()
 	
+	// Process any instances that were already present during initial scan
+	existingInstances := discoverySystem.GetInstances()
+	for _, inst := range existingInstances {
+		if err := connectionMgr.RegisterInstance(inst); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to register existing instance %s: %v\n", inst.ID, err)
+		}
+	}
+
 	// Start periodic cleanup
 	go func() {
 		ticker := time.NewTicker(time.Minute)
@@ -745,13 +817,13 @@ func runMCPHub() {
 			if err := discoverySystem.CleanupStaleInstances(); err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to cleanup stale instances: %v\n", err)
 			}
-			
+
 			// Cleanup inactive sessions
 			removed := sessionManager.CleanupInactiveSessions(30 * time.Minute)
 			if removed > 0 {
 				fmt.Fprintf(os.Stderr, "Cleaned up %d inactive sessions\n", removed)
 			}
-			
+
 			// Cleanup dead connections
 			connections := connectionMgr.ListInstances()
 			for _, conn := range connections {
@@ -761,31 +833,31 @@ func runMCPHub() {
 						// Clean up registered proxy tools
 						if toolNames, exists := registeredProxyTools[conn.InstanceID]; exists {
 							delete(registeredProxyTools, conn.InstanceID)
-							fmt.Fprintf(os.Stderr, "Cleaned up %d proxy tools from dead instance %s\n", 
+							fmt.Fprintf(os.Stderr, "Cleaned up %d proxy tools from dead instance %s\n",
 								len(toolNames), conn.InstanceID)
 						}
 					}
-					
+
 					// Dead instances will be cleaned up by CleanupStaleInstances
 					// based on process checks
 				}
 			}
 		}
 	}()
-	
+
 	// Create MCP server
 	hubMCPServer = server.NewMCPServer(
 		"brummer-hub",
 		Version,
 		server.WithToolCapabilities(true),
 	)
-	
+
 	// Add instances/list tool
 	listTool := mcplib.NewTool("instances/list",
-		mcplib.WithDescription("List all running brummer instances"),
+		mcplib.WithDescription("List all brummer instances with connection state (discovered/connecting/active/retrying/dead) and timing statistics"),
 	)
 	hubMCPServer.AddTool(listTool, handleInstancesList)
-	
+
 	// Add instances/connect tool
 	connectTool := mcplib.NewTool("instances/connect",
 		mcplib.WithDescription("Connect to a specific brummer instance"),
@@ -795,13 +867,13 @@ func runMCPHub() {
 		),
 	)
 	hubMCPServer.AddTool(connectTool, handleInstancesConnect)
-	
+
 	// Add instances/disconnect tool
 	disconnectTool := mcplib.NewTool("instances/disconnect",
 		mcplib.WithDescription("Disconnect from the current brummer instance"),
 	)
 	hubMCPServer.AddTool(disconnectTool, handleInstancesDisconnect)
-	
+
 	// Start stdio server
 	if err := server.ServeStdio(hubMCPServer); err != nil {
 		// Log to stderr to avoid corrupting stdio protocol
@@ -814,26 +886,50 @@ func runMCPHub() {
 func handleInstancesList(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 	// Get instances from connection manager (includes connection state)
 	connections := connectionMgr.ListInstances()
-	
+
 	// Convert to slice for JSON output
 	instanceList := make([]map[string]interface{}, 0, len(connections))
+	now := time.Now()
 	for _, conn := range connections {
+		// Calculate time in current state
+		timeInState := now.Sub(conn.StateChangedAt)
+		totalTime := now.Sub(conn.DiscoveredAt)
+		
+		// Calculate state statistics
+		stateStats := make(map[string]interface{})
+		if len(conn.StateHistory) > 0 {
+			// Count transitions
+			transitions := make(map[string]int)
+			for _, trans := range conn.StateHistory {
+				key := fmt.Sprintf("%s->%s", trans.From, trans.To)
+				transitions[key]++
+			}
+			stateStats["transitions"] = transitions
+			stateStats["total_transitions"] = len(conn.StateHistory)
+		}
+		
 		instanceList = append(instanceList, map[string]interface{}{
-			"id":          conn.InstanceID,
-			"name":        conn.Name,
-			"directory":   conn.Directory,
-			"port":        conn.Port,
-			"process_pid": conn.ProcessPID,
-			"state":       conn.State.String(),
-			"connected":   conn.State == mcp.StateActive,
+			"id":               conn.InstanceID,
+			"name":             conn.Name,
+			"directory":        conn.Directory,
+			"port":             conn.Port,
+			"process_pid":      conn.ProcessPID,
+			"state":            conn.State.String(),
+			"connected":        conn.State == mcp.StateActive,
+			"discovered_at":    conn.DiscoveredAt.Format(time.RFC3339),
+			"state_changed_at": conn.StateChangedAt.Format(time.RFC3339),
+			"time_in_state":    timeInState.String(),
+			"total_time":       totalTime.String(),
+			"retry_count":      conn.RetryCount,
+			"state_stats":      stateStats,
 		})
 	}
-	
+
 	data, err := json.Marshal(instanceList)
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return &mcplib.CallToolResult{
 		Content: []mcplib.Content{
 			mcplib.TextContent{
@@ -853,11 +949,11 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 	if err != nil {
 		return mcplib.NewToolResultError(err.Error()), nil
 	}
-	
+
 	// For stdio transport, we use a single global session
 	// In a real implementation, this would come from the MCP context
 	sessionID := "stdio-session"
-	
+
 	// Connect session to instance
 	if err := connectionMgr.ConnectSession(sessionID, instanceID); err != nil {
 		return &mcplib.CallToolResult{
@@ -869,7 +965,7 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 			},
 		}, nil
 	}
-	
+
 	// Get the client for this instance
 	connections := connectionMgr.ListInstances()
 	var activeClient *mcp.HubClient
@@ -879,7 +975,7 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 			break
 		}
 	}
-	
+
 	if activeClient == nil {
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
@@ -890,7 +986,7 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 			},
 		}, nil
 	}
-	
+
 	// Fetch tools from the instance
 	toolsData, err := activeClient.ListTools(ctx)
 	if err != nil {
@@ -905,7 +1001,7 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 				InputSchema json.RawMessage `json:"inputSchema"`
 			} `json:"tools"`
 		}
-		
+
 		if err := json.Unmarshal(toolsData, &toolsResponse); err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to parse tools from instance %s: %v\n", instanceID, err)
 		} else {
@@ -915,33 +1011,33 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 				// Create prefixed tool name
 				prefixedName := fmt.Sprintf("%s/%s", instanceID, tool.Name)
 				toolNames = append(toolNames, prefixedName)
-				
+
 				// Create proxy tool handler
 				handler := createProxyToolHandler(instanceID, tool.Name, connectionMgr)
-				
+
 				// Parse input schema for tool creation
 				var inputSchema map[string]interface{}
 				if len(tool.InputSchema) > 0 {
 					json.Unmarshal(tool.InputSchema, &inputSchema)
 				}
-				
+
 				// Create tool with mark3labs library
 				proxyTool := mcplib.NewTool(prefixedName,
 					mcplib.WithDescription(fmt.Sprintf("[%s] %s", instanceID, tool.Description)),
 					// Note: We can't dynamically add schema with mark3labs library
 					// This is a limitation we'll need to work around
 				)
-				
+
 				// Add tool to hub server
 				hubMCPServer.AddTool(proxyTool, handler)
 			}
-			
+
 			// Track registered tools for cleanup
 			registeredProxyTools[instanceID] = toolNames
-			
+
 			fmt.Fprintf(os.Stderr, "Registered %d proxy tools from instance %s\n", len(toolNames), instanceID)
 		}
-		
+
 		// Also fetch and register resources
 		resourcesData, err := activeClient.ListResources(ctx)
 		if err != nil {
@@ -956,17 +1052,17 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 					MimeType    string `json:"mimeType"`
 				} `json:"resources"`
 			}
-			
+
 			if err := json.Unmarshal(resourcesData, &resourcesResponse); err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to parse resources from instance %s: %v\n", instanceID, err)
 			} else {
 				// Note: We can't dynamically register resources with mark3labs library
 				// This is a limitation - resources won't be available through the hub
-				fmt.Fprintf(os.Stderr, "Instance %s has %d resources (not proxied due to library limitations)\n", 
+				fmt.Fprintf(os.Stderr, "Instance %s has %d resources (not proxied due to library limitations)\n",
 					instanceID, len(resourcesResponse.Resources))
 			}
 		}
-		
+
 		// Also fetch and register prompts
 		promptsData, err := activeClient.ListPrompts(ctx)
 		if err != nil {
@@ -979,18 +1075,18 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 					Description string `json:"description"`
 				} `json:"prompts"`
 			}
-			
+
 			if err := json.Unmarshal(promptsData, &promptsResponse); err != nil {
 				fmt.Fprintf(os.Stderr, "Failed to parse prompts from instance %s: %v\n", instanceID, err)
 			} else {
 				// Note: We can't dynamically register prompts with mark3labs library
 				// This is a limitation - prompts won't be available through the hub
-				fmt.Fprintf(os.Stderr, "Instance %s has %d prompts (not proxied due to library limitations)\n", 
+				fmt.Fprintf(os.Stderr, "Instance %s has %d prompts (not proxied due to library limitations)\n",
 					instanceID, len(promptsResponse.Prompts))
 			}
 		}
 	}
-	
+
 	return &mcplib.CallToolResult{
 		Content: []mcplib.Content{
 			mcplib.TextContent{
@@ -1013,23 +1109,23 @@ func createProxyToolHandler(instanceID, toolName string, connMgr *mcp.Connection
 				break
 			}
 		}
-		
+
 		if activeClient == nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Instance %s is not connected", instanceID)), nil
 		}
-		
+
 		// Convert request arguments to map
 		args := make(map[string]interface{})
 		// The mark3labs library doesn't provide direct access to raw arguments
 		// We need to extract them from the request
 		// This is a limitation - we'll work with what we have
-		
+
 		// Forward the tool call
 		result, err := activeClient.CallTool(ctx, toolName, args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Tool call failed: %v", err)), nil
 		}
-		
+
 		// Parse result and return
 		var response interface{}
 		if err := json.Unmarshal(result, &response); err != nil {
@@ -1043,7 +1139,7 @@ func createProxyToolHandler(instanceID, toolName string, connMgr *mcp.Connection
 				},
 			}, nil
 		}
-		
+
 		// Convert response to text
 		responseText, _ := json.Marshal(response)
 		return &mcplib.CallToolResult{
@@ -1061,7 +1157,7 @@ func createProxyToolHandler(instanceID, toolName string, connMgr *mcp.Connection
 func handleInstancesDisconnect(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 	// For stdio transport, we use a single global session
 	sessionID := "stdio-session"
-	
+
 	// Get current instance before disconnecting
 	var currentInstanceID string
 	connections := connectionMgr.ListInstances()
@@ -1071,7 +1167,7 @@ func handleInstancesDisconnect(ctx context.Context, request mcplib.CallToolReque
 			break
 		}
 	}
-	
+
 	// Disconnect session
 	if err := connectionMgr.DisconnectSession(sessionID); err != nil {
 		return &mcplib.CallToolResult{
@@ -1083,7 +1179,7 @@ func handleInstancesDisconnect(ctx context.Context, request mcplib.CallToolReque
 			},
 		}, nil
 	}
-	
+
 	// Remove proxy tools if we found the instance
 	if currentInstanceID != "" && hubMCPServer != nil {
 		if toolNames, exists := registeredProxyTools[currentInstanceID]; exists {
@@ -1091,11 +1187,11 @@ func handleInstancesDisconnect(ctx context.Context, request mcplib.CallToolReque
 			// This is a limitation - tools will remain registered but will fail when called
 			// In a production system, we'd need to work around this
 			delete(registeredProxyTools, currentInstanceID)
-			fmt.Fprintf(os.Stderr, "Note: %d proxy tools from instance %s remain registered (library limitation)\n", 
+			fmt.Fprintf(os.Stderr, "Note: %d proxy tools from instance %s remain registered (library limitation)\n",
 				len(toolNames), currentInstanceID)
 		}
 	}
-	
+
 	return &mcplib.CallToolResult{
 		Content: []mcplib.Content{
 			mcplib.TextContent{

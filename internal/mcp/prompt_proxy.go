@@ -24,7 +24,7 @@ type PromptWithHandler struct {
 // ProxyPrompt creates a proxy Prompt that forwards requests to a connected instance
 func ProxyPrompt(instanceID string, promptInfo PromptInfo, connMgr *ConnectionManager) PromptWithHandler {
 	// Prefix the name with instance ID
-	prefixedName := fmt.Sprintf("%s/%s", instanceID, promptInfo.Name)
+	prefixedName := fmt.Sprintf("%s_%s", instanceID, promptInfo.Name)
 	
 	return PromptWithHandler{
 		Prompt: Prompt{
@@ -71,9 +71,9 @@ func ProxyPrompt(instanceID string, promptInfo PromptInfo, connMgr *ConnectionMa
 
 // ExtractInstanceAndPrompt parses a prefixed prompt name to get instance ID and original name
 func ExtractInstanceAndPrompt(prefixedName string) (instanceID, promptName string, err error) {
-	parts := strings.SplitN(prefixedName, "/", 2)
+	parts := strings.SplitN(prefixedName, "_", 2)
 	if len(parts) != 2 {
-		return "", "", fmt.Errorf("invalid prompt name format: expected 'instanceID/promptName', got '%s'", prefixedName)
+		return "", "", fmt.Errorf("invalid prompt name format: expected 'instanceID_promptName', got '%s'", prefixedName)
 	}
 	return parts[0], parts[1], nil
 }
