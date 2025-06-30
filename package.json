@@ -1,6 +1,6 @@
 {
   "name": "@standardbeagle/brum",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Your Terminal UI Development Buddy with intelligent monitoring",
   "main": "index.js",
   "bin": {
