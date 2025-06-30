@@ -844,13 +844,145 @@ func runMCPHub() {
 
 	// Add instances_list tool
 	listTool := mcplib.NewTool("instances_list",
-		mcplib.WithDescription("List all brummer instances with connection state (discovered/connecting/active/retrying/dead) and timing statistics"),
+		mcplib.WithDescription(`List all brummer instances with connection states, timing statistics, and detailed coordination information.
+
+**When to use:**
+- User asks about running projects: "what instances are available?", "show me all running services", "what projects are active?"
+- Before using any hub_* tools to identify target instances
+- Hub coordination setup: understanding the distributed development environment
+- Health monitoring: checking instance states and connection stability
+- Debugging connection issues between hub and instances
+
+**Hub workflow foundation:**
+This is typically the FIRST tool you use in hub mode:
+1. instances_list to see available instances and their states
+2. instances_connect to establish session routing to target instance
+3. Use hub_* tools with the connected instance ID
+4. instances_disconnect when switching contexts
+
+**Few-shot examples:**
+1. User: "What projects are running?"
+   → Use: instances_list
+   
+2. User: "Before I start working, show me what's available"
+   → Use: instances_list to see all instances and their states
+   
+3. User: "Which instances can I connect to?"
+   → Use: instances_list, then look for instances with state "active"
+   
+4. User: "Debug connection issues"
+   → Use: instances_list to see connection states and retry counts
+
+**Instance information provided:**
+- **ID**: Unique identifier needed for all hub_* tools
+- **Name & Directory**: Human-readable project information
+- **State**: Connection status (discovered/connecting/active/retrying/dead)
+- **Port & PID**: Technical details for debugging
+- **Timing**: Connection duration, state changes, retry counts
+- **State Statistics**: Transition history for debugging
+
+**Connection states explained:**
+- **discovered**: Instance file found, not yet connected
+- **connecting**: Initial connection attempt in progress
+- **active**: Connected and ready for hub_* tool usage
+- **retrying**: Connection lost, attempting reconnection
+- **dead**: Maximum retries exceeded, requires manual intervention
+
+**Using instance IDs:**
+Copy the "id" field from instances_list output for use with:
+- instances_connect: {"instance_id": "frontend-abc123"}
+- All hub_* tools: {"instance_id": "frontend-abc123", ...}
+
+**Health monitoring:**
+- Check "state" field - only "active" instances are usable
+- Monitor "retry_count" for connection stability
+- Review "time_in_state" for performance insights
+- Check "state_stats" for historical connection patterns
+
+**Best practices:**
+- Always call instances_list before using hub_* tools
+- Only use "active" instances for hub operations
+- Monitor retry counts for debugging connection issues
+- Use instance names and directories to identify projects
+
+**Troubleshooting:**
+- "dead" instances: May need manual restart or cleanup
+- High retry counts: Network or instance health issues
+- "discovered" but not "active": Connection problems
+- Empty list: No instances running or discovery issues`),
 	)
 	hubMCPServer.AddTool(listTool, handleInstancesList)
 
 	// Add instances_connect tool
 	connectTool := mcplib.NewTool("instances_connect",
-		mcplib.WithDescription("Connect to a specific brummer instance"),
+		mcplib.WithDescription(`Connect to a specific brummer instance to establish session-based routing for hub tools.
+
+**When to use:**
+- User wants to work with a specific project: "connect to the frontend", "work with the backend instance"
+- Before using hub_* tools for focused work on one instance
+- Establishing persistent routing context for a development session
+- Switching between different projects in multi-instance environment
+- Setting up targeted debugging or development workflow
+
+**Hub session workflow:**
+1. instances_list to see available instances
+2. instances_connect to establish routing to target instance
+3. Use hub_* tools without needing to specify instance_id repeatedly
+4. instances_disconnect when switching to different instance
+
+**Session-based routing:**
+After connecting, subsequent hub_* tools are automatically routed to the connected instance:
+- No need to repeat instance_id in every hub_* tool call
+- Maintains context throughout development session
+- Simplifies multi-tool workflows on single instance
+
+**Few-shot examples:**
+1. User: "I want to work on the frontend project"
+   → instances_list to find frontend instance ID
+   → instances_connect with {"instance_id": "frontend-abc123"}
+   → Now hub_* tools route to frontend automatically
+   
+2. User: "Switch to working on the backend"
+   → instances_disconnect (from current instance)
+   → instances_connect with {"instance_id": "backend-def456"}
+   
+3. User: "Connect to the admin panel instance"
+   → instances_connect with {"instance_id": "admin-ghi789"}
+   
+4. User: "Set up for debugging the user service"
+   → instances_connect with {"instance_id": "user-service-jkl012"}
+
+**Connection requirements:**
+- **instance_id**: Must be from instances_list output
+- Instance must be in "active" state
+- Only one instance can be connected per session
+- Connection persists until instances_disconnect is called
+
+**Benefits of session routing:**
+- **Simplified workflow**: No need to repeat instance_id
+- **Context preservation**: Tools remember which instance you're working with
+- **Error reduction**: Less chance of targeting wrong instance
+- **Development focus**: Clear context for current work
+
+**Session management:**
+- One active connection per hub session
+- Connecting to new instance automatically disconnects previous
+- Use instances_disconnect for explicit disconnection
+- Connection state maintained throughout session
+
+**Error scenarios:**
+- Invalid instance_id: Use instances_list to get valid IDs
+- Instance not active: Check instance state, may need restart
+- Connection failed: Instance may be unhealthy or unreachable
+- Already connected: Previous connection automatically replaced
+
+**Best practices:**
+- Always check instances_list first to verify instance is active
+- Use instances_connect at start of focused work session
+- Disconnect when switching between major project contexts
+- Monitor connection with instances_list if issues arise
+
+**vs. direct hub_* tool usage:** instances_connect establishes session routing so you don't need to specify instance_id in every hub_* tool call.`),
 		mcplib.WithString("instance_id",
 			mcplib.Required(),
 			mcplib.Description("The ID of the instance to connect to"),
@@ -860,7 +992,79 @@ func runMCPHub() {
 
 	// Add instances_disconnect tool
 	disconnectTool := mcplib.NewTool("instances_disconnect",
-		mcplib.WithDescription("Disconnect from the current brummer instance"),
+		mcplib.WithDescription(`Disconnect from the current brummer instance to clear session routing context.
+
+**When to use:**
+- User wants to switch projects: "switch to different instance", "stop working on current project"
+- Before connecting to a different instance for clear context
+- Ending focused work session on specific instance
+- Clearing routing context to use hub_* tools with explicit instance_id again
+- Cleanup before switching development contexts
+
+**Hub session management:**
+1. instances_connect establishes routing to specific instance
+2. Work with hub_* tools (automatically routed)
+3. instances_disconnect clears routing context
+4. Either connect to new instance or use hub_* tools with explicit instance_id
+
+**Session routing cleanup:**
+After disconnecting:
+- hub_* tools require explicit instance_id parameter again
+- No automatic routing to previously connected instance
+- Clean slate for connecting to different instance
+- Session context cleared and ready for new workflow
+
+**Few-shot examples:**
+1. User: "I'm done working on the frontend, switch to backend"
+   → instances_disconnect
+   → instances_connect with {"instance_id": "backend-def456"}
+   
+2. User: "Stop working on this instance"
+   → instances_disconnect
+   
+3. User: "Clear my current connection"
+   → instances_disconnect
+   
+4. User: "I want to use different instances for different tools"
+   → instances_disconnect (to use explicit instance_id in hub_* tools)
+
+**When to disconnect:**
+- **Project switching**: Moving between different development contexts
+- **Multi-instance workflow**: Need to use different instances per tool
+- **Session cleanup**: Ending focused work on specific instance
+- **Error recovery**: Clearing potentially problematic connection state
+- **Context clarity**: Ensuring clean routing state
+
+**Workflow patterns:**
+
+*Focused work session:*
+1. instances_connect to target instance
+2. Use multiple hub_* tools (automatically routed)
+3. instances_disconnect when done
+
+*Multi-instance coordination:*
+1. instances_disconnect (clear any existing routing)
+2. Use hub_* tools with explicit instance_id for each call
+3. Work across multiple instances simultaneously
+
+*Project switching:*
+1. instances_disconnect from current
+2. instances_connect to new target
+3. Continue with hub_* tools routed to new instance
+
+**Effect of disconnection:**
+- Session routing context cleared
+- No active instance connection
+- hub_* tools require explicit instance_id parameter
+- Safe operation - no error if not currently connected
+
+**Best practices:**
+- Disconnect before connecting to different instance for clarity
+- Use when switching between major project contexts
+- Disconnect at end of focused development sessions
+- Safe to call even if not currently connected
+
+**vs. instances_connect:** instances_disconnect clears routing context while instances_connect establishes it. Use together for clean session management.`),
 	)
 	hubMCPServer.AddTool(disconnectTool, handleInstancesDisconnect)
 
