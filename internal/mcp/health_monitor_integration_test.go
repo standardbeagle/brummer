@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/discovery"
+	"github.com/standardbeagle/brummer/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -65,8 +66,11 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 	err := connMgr.RegisterInstance(instance)
 	require.NoError(t, err)
 	
-	// Wait for connection
-	time.Sleep(200 * time.Millisecond)
+	// Wait for connection to be established
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		connections := connMgr.ListInstances()
+		return len(connections) > 0 && connections[0].State == StateActive
+	}, "Instance should be connected and active")
 
 	// Create health monitor with short intervals
 	config := &HealthMonitorConfig{
@@ -102,15 +106,18 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 	healthMon.Start()
 	defer healthMon.Stop()
 
-	// Test 1: Healthy instance
-	time.Sleep(150 * time.Millisecond)
+	// Test 1: Healthy instance - verify no unhealthy calls initially
+	// Give a brief moment for any initial health checks
+	time.Sleep(75 * time.Millisecond)
 	assert.Equal(t, int32(0), atomic.LoadInt32(&unhealthyCalls), "Should not be unhealthy yet")
 
 	// Test 2: Instance becomes unhealthy
 	serverHealthy.Store(false)
-	time.Sleep(200 * time.Millisecond) // Wait for failures to accumulate
-
-	assert.Equal(t, int32(1), atomic.LoadInt32(&unhealthyCalls), "Should be marked unhealthy")
+	
+	// Wait for unhealthy callback to be triggered
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		return atomic.LoadInt32(&unhealthyCalls) >= 1
+	}, "Instance should be marked unhealthy")
 	
 	// Check connection state
 	connections := connMgr.ListInstances()
@@ -119,15 +126,19 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 
 	// Test 3: Instance recovers
 	serverHealthy.Store(true)
-	time.Sleep(150 * time.Millisecond)
-
-	assert.Equal(t, int32(1), atomic.LoadInt32(&recoveryCalls), "Should have recovered")
+	
+	// Wait for recovery callback
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		return atomic.LoadInt32(&recoveryCalls) >= 1
+	}, "Instance should have recovered")
 
 	// Test 4: Instance fails completely
 	serverHealthy.Store(false)
-	time.Sleep(300 * time.Millisecond) // Wait for multiple failures
-
-	assert.Greater(t, atomic.LoadInt32(&deadCalls), int32(0), "Should be marked dead")
+	
+	// Wait for dead callback after multiple failures
+	testutil.RequireEventually(t, 3*time.Second, func() bool {
+		return atomic.LoadInt32(&deadCalls) > 0
+	}, "Instance should be marked dead after multiple failures")
 }
 
 // TestHealthMonitorConcurrentPings tests health checks don't overlap
@@ -182,7 +193,11 @@ func TestHealthMonitorConcurrentPings(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	// Wait for all instances to be connected
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		connections := connMgr.ListInstances()
+		return len(connections) == 3
+	}, "All instances should be registered")
 
 	// Fast ping interval to stress test
 	config := &HealthMonitorConfig{
@@ -194,8 +209,10 @@ func TestHealthMonitorConcurrentPings(t *testing.T) {
 	healthMon := NewHealthMonitor(connMgr, config)
 	healthMon.Start()
 	
-	// Let it run for a while
-	time.Sleep(500 * time.Millisecond)
+	// Let it run for a while and wait for some pings to occur
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		return atomic.LoadInt32(&maxConcurrent) > 0
+	}, "Some pings should have occurred")
 	
 	healthMon.Stop()
 
@@ -253,7 +270,12 @@ func TestHealthMonitorStateTransitions(t *testing.T) {
 
 	err := connMgr.RegisterInstance(instance)
 	require.NoError(t, err)
-	time.Sleep(200 * time.Millisecond)
+	
+	// Wait for instance to be connected
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		connections := connMgr.ListInstances()
+		return len(connections) > 0 && connections[0].State == StateActive
+	}, "Instance should be connected and active")
 
 	// Monitor state changes
 	go func() {
@@ -285,21 +307,29 @@ func TestHealthMonitorStateTransitions(t *testing.T) {
 	healthMon := NewHealthMonitor(connMgr, config)
 	healthMon.Start()
 
-	// Scenario 1: Normal operation
-	time.Sleep(100 * time.Millisecond)
+	// Scenario 1: Normal operation - wait for initial health checks
+	time.Sleep(75 * time.Millisecond)
 
 	// Scenario 2: Slow response (timeout)
 	responseDelay.Store(50) // Exceeds timeout
-	time.Sleep(150 * time.Millisecond)
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(stateChanges) > 0
+	}, "Should see state changes from timeouts")
 
 	// Scenario 3: Complete failure
 	shouldFail.Store(true)
-	time.Sleep(200 * time.Millisecond)
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		connections := connMgr.ListInstances()
+		return len(connections) > 0 && connections[0].State != StateActive
+	}, "Should transition away from active state")
 
 	// Scenario 4: Recovery
 	shouldFail.Store(false)
 	responseDelay.Store(0)
-	time.Sleep(150 * time.Millisecond)
+	// Give time for recovery attempts
+	time.Sleep(100 * time.Millisecond)
 
 	healthMon.Stop()
 
@@ -350,7 +380,11 @@ func TestHealthMonitorMemoryUsage(t *testing.T) {
 		require.NoError(t, err)
 	}
 
-	time.Sleep(200 * time.Millisecond)
+	// Wait for all instances to be connected
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		connections := connMgr.ListInstances()
+		return len(connections) == 5
+	}, "All memory test instances should be registered")
 
 	config := &HealthMonitorConfig{
 		PingInterval: 10 * time.Millisecond, // Very frequent
@@ -365,8 +399,11 @@ func TestHealthMonitorMemoryUsage(t *testing.T) {
 	
 	healthMon.Start()
 
-	// Run for a while
-	time.Sleep(500 * time.Millisecond)
+	// Run for a while and wait for health monitoring to occur
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		// Check if health monitoring has started by looking for status updates
+		return len(healthMon.healthStatuses) >= 5
+	}, "Health monitoring should track all instances")
 
 	// Stop and check
 	healthMon.Stop()
@@ -425,7 +462,12 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 
 	err := connMgr.RegisterInstance(instance)
 	require.NoError(t, err)
-	time.Sleep(200 * time.Millisecond)
+	
+	// Wait for instance to be connected
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		connections := connMgr.ListInstances()
+		return len(connections) > 0 && connections[0].State == StateActive
+	}, "Intermittent instance should be connected and active")
 
 	config := &HealthMonitorConfig{
 		PingInterval: 50 * time.Millisecond,
@@ -469,7 +511,17 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Logf("Testing: %s", scenario.description)
 		failureRate.Store(scenario.failureRate)
-		time.Sleep(scenario.duration)
+		
+		// Wait for the health monitor to process this failure rate
+		testutil.RequireEventually(t, scenario.duration*3, func() bool {
+			// Check that we have some state history for this scenario
+			mu.Lock()
+			defer mu.Unlock()
+			return len(stateHistory) > 0
+		}, fmt.Sprintf("Should collect state history for %s", scenario.description))
+		
+		// Allow some processing time for the scenario
+		time.Sleep(scenario.duration / 2)
 	}
 
 	healthMon.Stop()

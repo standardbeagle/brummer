@@ -1,9 +1,0 @@
-{
-  "name": "brummer-telemetry-test",
-  "version": "1.0.0",
-  "description": "Test application for Brummer enhanced telemetry",
-  "scripts": {
-    "start": "node test-server.js",
-    "dev": "node test-server.js"
-  }
-}

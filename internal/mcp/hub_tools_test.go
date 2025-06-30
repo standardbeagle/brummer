@@ -11,6 +11,7 @@ import (
 
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/standardbeagle/brummer/internal/discovery"
+	"github.com/standardbeagle/brummer/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -94,6 +95,18 @@ func TestHubToolsWithMockInstance(t *testing.T) {
 						{"type": "text", "text": `{"logs": [{"timestamp": "2024-01-01T00:00:00Z", "message": "test log"}]}`},
 					},
 				}
+			case "browser_screenshot":
+				result = map[string]interface{}{
+					"content": []map[string]interface{}{
+						{"type": "text", "text": `{"tool": "browser_screenshot", "dataURL": "data:image/png;base64,iVBORw0KGgoAAAANS=", "success": true}`},
+					},
+				}
+			case "repl_execute":
+				result = map[string]interface{}{
+					"content": []map[string]interface{}{
+						{"type": "text", "text": `{"tool": "repl_execute", "result": "executed successfully", "success": true}`},
+					},
+				}
 			default:
 				result = map[string]interface{}{
 					"content": []map[string]interface{}{
@@ -147,7 +160,10 @@ func TestHubToolsWithMockInstance(t *testing.T) {
 	require.NoError(t, err)
 	
 	// Wait for connection to be established
-	time.Sleep(100 * time.Millisecond)
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		connections := connMgr.ListInstances()
+		return len(connections) > 0 && connections[0].State == StateActive
+	}, "Instance should be connected and active")
 	
 	// Verify instance is connected
 	connections := connMgr.ListInstances()
@@ -173,6 +189,50 @@ func TestHubToolsWithMockInstance(t *testing.T) {
 		result, err := callInstanceTool(context.Background(), connMgr, "test-instance", "logs_stream", args)
 		require.NoError(t, err)
 		assert.Contains(t, string(result), "logs")
+	})
+
+	// Test browser screenshot tool
+	t.Run("hub_browser_screenshot", func(t *testing.T) {
+		args := map[string]interface{}{
+			"format":   "png",
+			"fullPage": false,
+		}
+		result, err := callInstanceTool(context.Background(), connMgr, "test-instance", "browser_screenshot", args)
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "tool")
+	})
+
+	// Test REPL execute tool
+	t.Run("hub_repl_execute", func(t *testing.T) {
+		args := map[string]interface{}{
+			"code": "console.log('test'); return 'executed';",
+		}
+		result, err := callInstanceTool(context.Background(), connMgr, "test-instance", "repl_execute", args)
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "tool")
+	})
+
+	// Test browser tools with specific parameters
+	t.Run("hub_browser_screenshot_with_selector", func(t *testing.T) {
+		args := map[string]interface{}{
+			"format":   "jpeg",
+			"quality":  85,
+			"selector": "#main-content",
+		}
+		result, err := callInstanceTool(context.Background(), connMgr, "test-instance", "browser_screenshot", args)
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "tool")
+	})
+
+	// Test REPL with session ID
+	t.Run("hub_repl_execute_with_session", func(t *testing.T) {
+		args := map[string]interface{}{
+			"code":      "return document.title;",
+			"sessionId": "test-session-123",
+		}
+		result, err := callInstanceTool(context.Background(), connMgr, "test-instance", "repl_execute", args)
+		require.NoError(t, err)
+		assert.Contains(t, string(result), "tool")
 	})
 
 	// Test error cases

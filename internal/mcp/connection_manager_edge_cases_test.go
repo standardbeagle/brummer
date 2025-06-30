@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/discovery"
+	"github.com/standardbeagle/brummer/internal/testutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,7 +35,12 @@ func TestStateTransitionValidation(t *testing.T) {
 
 	err := cm.RegisterInstance(instance)
 	require.NoError(t, err)
-	time.Sleep(100 * time.Millisecond)
+	
+	// Wait for instance to be registered and in a stable state
+	testutil.RequireEventually(t, 2*time.Second, func() bool {
+		instances := cm.ListInstances()
+		return len(instances) > 0
+	}, "Instance should be registered")
 
 	// Test invalid transitions
 	tests := []struct {
