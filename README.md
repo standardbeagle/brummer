@@ -256,38 +256,51 @@ Brummer Hub Mode enables MCP clients to discover and control multiple brummer in
 
 [📚 Full Hub Mode Documentation](docs/hub-mode.md)
 
-## MCP Server API
+## MCP Server Integration
 
-The MCP server runs on port 7777 by default and provides RESTful endpoints:
+The MCP server runs on port 7777 by default and implements the official MCP Streamable HTTP transport protocol:
 
-### Connection
+### Transport Protocol
 
-```bash
-POST /mcp/connect
-{
-  "clientName": "your-client-name"
-}
+**Single Endpoint**: `http://localhost:7777/mcp`
+
+**Connection Types**:
+1. **Standard JSON-RPC** (POST with `Accept: application/json`)
+2. **Server-Sent Events** (GET with `Accept: text/event-stream`)
+3. **SSE Response** (POST with `Accept: text/event-stream`)
+
+### Example Connection
+
+```javascript
+// SSE streaming connection
+const eventSource = new EventSource('http://localhost:7777/mcp');
+eventSource.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+  console.log('Received:', msg);
+};
+
+// Send JSON-RPC requests
+fetch('http://localhost:7777/mcp', {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+    'Accept': 'application/json'
+  },
+  body: JSON.stringify({
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'tools/list'
+  })
+});
 ```
 
-### Endpoints
+### Available Tools
 
-- `GET /mcp/scripts` - List available scripts
-- `GET /mcp/processes` - List running processes
-- `GET /mcp/logs?processId=<id>` - Get logs (optional processId filter)
-- `POST /mcp/execute` - Execute a script
-- `POST /mcp/stop` - Stop a process
-- `GET /mcp/search?query=<query>` - Search logs
-- `GET /mcp/events` - SSE endpoint for real-time events
-
-### Event Types
-
-- `process.started`
-- `process.exited`
-- `log.line`
-- `error.detected`
-- `build.event`
-- `test.failed`
-- `test.passed`
+**Script Management**: `scripts_list`, `scripts_run`, `scripts_stop`, `scripts_status`
+**Log Management**: `logs_stream`, `logs_search`
+**Browser Tools**: `browser_open`, `browser_screenshot`, `browser_navigate`, `repl_execute`
+**Proxy Tools**: `proxy_requests`
+**Telemetry**: `telemetry_sessions`, `telemetry_events`
 
 ## Examples
 
@@ -347,19 +360,6 @@ go build -o brum ./cmd/brum
 go test ./...
 ```
 
-### Cleanup Tools
-
-**Check development ports:**
-```bash
-./check-ports.sh
-```
-
-**Clean up orphaned processes:**
-```bash
-./cleanup-processes.sh
-```
-
-These tools help manage orphaned development processes that can occur during testing or if processes aren't properly terminated.
 
 
 ## License
