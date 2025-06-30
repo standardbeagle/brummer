@@ -18,6 +18,9 @@ type HubClient struct {
 
 // NewHubClient creates a new HTTP client for connecting to an instance
 func NewHubClient(port int) (*HubClient, error) {
+	if port <= 0 || port > 65535 {
+		return nil, fmt.Errorf("invalid port number: %d", port)
+	}
 	return &HubClient{
 		baseURL: fmt.Sprintf("http://localhost:%d/mcp", port),
 		httpClient: &http.Client{

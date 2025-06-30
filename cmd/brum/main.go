@@ -828,16 +828,6 @@ func runMCPHub() {
 			connections := connectionMgr.ListInstances()
 			for _, conn := range connections {
 				if conn.State == mcp.StateDead {
-					// Unregister tools, resources, and prompts
-					if hubMCPServer != nil {
-						// Clean up registered proxy tools
-						if toolNames, exists := registeredProxyTools[conn.InstanceID]; exists {
-							delete(registeredProxyTools, conn.InstanceID)
-							fmt.Fprintf(os.Stderr, "Cleaned up %d proxy tools from dead instance %s\n",
-								len(toolNames), conn.InstanceID)
-						}
-					}
-
 					// Dead instances will be cleaned up by CleanupStaleInstances
 					// based on process checks
 				}
@@ -852,14 +842,14 @@ func runMCPHub() {
 		server.WithToolCapabilities(true),
 	)
 
-	// Add instances/list tool
-	listTool := mcplib.NewTool("instances/list",
+	// Add instances_list tool
+	listTool := mcplib.NewTool("instances_list",
 		mcplib.WithDescription("List all brummer instances with connection state (discovered/connecting/active/retrying/dead) and timing statistics"),
 	)
 	hubMCPServer.AddTool(listTool, handleInstancesList)
 
-	// Add instances/connect tool
-	connectTool := mcplib.NewTool("instances/connect",
+	// Add instances_connect tool
+	connectTool := mcplib.NewTool("instances_connect",
 		mcplib.WithDescription("Connect to a specific brummer instance"),
 		mcplib.WithString("instance_id",
 			mcplib.Required(),
@@ -868,11 +858,14 @@ func runMCPHub() {
 	)
 	hubMCPServer.AddTool(connectTool, handleInstancesConnect)
 
-	// Add instances/disconnect tool
-	disconnectTool := mcplib.NewTool("instances/disconnect",
+	// Add instances_disconnect tool
+	disconnectTool := mcplib.NewTool("instances_disconnect",
 		mcplib.WithDescription("Disconnect from the current brummer instance"),
 	)
 	hubMCPServer.AddTool(disconnectTool, handleInstancesDisconnect)
+
+	// Register all hub proxy tools
+	mcp.RegisterHubTools(hubMCPServer, connectionMgr)
 
 	// Start stdio server
 	if err := server.ServeStdio(hubMCPServer); err != nil {
@@ -940,8 +933,6 @@ func handleInstancesList(ctx context.Context, request mcplib.CallToolRequest) (*
 	}, nil
 }
 
-// Track registered proxy tools for cleanup
-var registeredProxyTools = make(map[string][]string) // instanceID -> tool names
 
 // handleInstancesConnect connects to a specific brummer instance
 func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
@@ -966,125 +957,25 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 		}, nil
 	}
 
-	// Get the client for this instance
+	// Verify the connection is active
 	connections := connectionMgr.ListInstances()
-	var activeClient *mcp.HubClient
+	var found bool
 	for _, conn := range connections {
-		if conn.InstanceID == instanceID && conn.State == mcp.StateActive && conn.Client != nil {
-			activeClient = conn.Client
+		if conn.InstanceID == instanceID && conn.State == mcp.StateActive {
+			found = true
 			break
 		}
 	}
 
-	if activeClient == nil {
+	if !found {
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
 					Type: "text",
-					Text: fmt.Sprintf("Failed to get client for instance %s", instanceID),
+					Text: fmt.Sprintf("Instance %s is not in active state", instanceID),
 				},
 			},
 		}, nil
-	}
-
-	// Fetch tools from the instance
-	toolsData, err := activeClient.ListTools(ctx)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to list tools from instance %s: %v\n", instanceID, err)
-		// Continue anyway - connection is still established
-	} else {
-		// Parse tools and register proxies
-		var toolsResponse struct {
-			Tools []struct {
-				Name        string          `json:"name"`
-				Description string          `json:"description"`
-				InputSchema json.RawMessage `json:"inputSchema"`
-			} `json:"tools"`
-		}
-
-		if err := json.Unmarshal(toolsData, &toolsResponse); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to parse tools from instance %s: %v\n", instanceID, err)
-		} else {
-			// Register proxy tools
-			var toolNames []string
-			for _, tool := range toolsResponse.Tools {
-				// Create prefixed tool name
-				prefixedName := fmt.Sprintf("%s/%s", instanceID, tool.Name)
-				toolNames = append(toolNames, prefixedName)
-
-				// Create proxy tool handler
-				handler := createProxyToolHandler(instanceID, tool.Name, connectionMgr)
-
-				// Parse input schema for tool creation
-				var inputSchema map[string]interface{}
-				if len(tool.InputSchema) > 0 {
-					json.Unmarshal(tool.InputSchema, &inputSchema)
-				}
-
-				// Create tool with mark3labs library
-				proxyTool := mcplib.NewTool(prefixedName,
-					mcplib.WithDescription(fmt.Sprintf("[%s] %s", instanceID, tool.Description)),
-					// Note: We can't dynamically add schema with mark3labs library
-					// This is a limitation we'll need to work around
-				)
-
-				// Add tool to hub server
-				hubMCPServer.AddTool(proxyTool, handler)
-			}
-
-			// Track registered tools for cleanup
-			registeredProxyTools[instanceID] = toolNames
-
-			fmt.Fprintf(os.Stderr, "Registered %d proxy tools from instance %s\n", len(toolNames), instanceID)
-		}
-
-		// Also fetch and register resources
-		resourcesData, err := activeClient.ListResources(ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to list resources from instance %s: %v\n", instanceID, err)
-		} else {
-			// Parse resources
-			var resourcesResponse struct {
-				Resources []struct {
-					URI         string `json:"uri"`
-					Name        string `json:"name"`
-					Description string `json:"description"`
-					MimeType    string `json:"mimeType"`
-				} `json:"resources"`
-			}
-
-			if err := json.Unmarshal(resourcesData, &resourcesResponse); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to parse resources from instance %s: %v\n", instanceID, err)
-			} else {
-				// Note: We can't dynamically register resources with mark3labs library
-				// This is a limitation - resources won't be available through the hub
-				fmt.Fprintf(os.Stderr, "Instance %s has %d resources (not proxied due to library limitations)\n",
-					instanceID, len(resourcesResponse.Resources))
-			}
-		}
-
-		// Also fetch and register prompts
-		promptsData, err := activeClient.ListPrompts(ctx)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to list prompts from instance %s: %v\n", instanceID, err)
-		} else {
-			// Parse prompts
-			var promptsResponse struct {
-				Prompts []struct {
-					Name        string `json:"name"`
-					Description string `json:"description"`
-				} `json:"prompts"`
-			}
-
-			if err := json.Unmarshal(promptsData, &promptsResponse); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to parse prompts from instance %s: %v\n", instanceID, err)
-			} else {
-				// Note: We can't dynamically register prompts with mark3labs library
-				// This is a limitation - prompts won't be available through the hub
-				fmt.Fprintf(os.Stderr, "Instance %s has %d prompts (not proxied due to library limitations)\n",
-					instanceID, len(promptsResponse.Prompts))
-			}
-		}
 	}
 
 	return &mcplib.CallToolResult{
@@ -1097,76 +988,12 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 	}, nil
 }
 
-// createProxyToolHandler creates a handler that forwards tool calls to the instance
-func createProxyToolHandler(instanceID, toolName string, connMgr *mcp.ConnectionManager) func(context.Context, mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
-	return func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
-		// Get the client for this instance
-		connections := connMgr.ListInstances()
-		var activeClient *mcp.HubClient
-		for _, conn := range connections {
-			if conn.InstanceID == instanceID && conn.State == mcp.StateActive && conn.Client != nil {
-				activeClient = conn.Client
-				break
-			}
-		}
-
-		if activeClient == nil {
-			return mcplib.NewToolResultError(fmt.Sprintf("Instance %s is not connected", instanceID)), nil
-		}
-
-		// Convert request arguments to map
-		args := make(map[string]interface{})
-		// The mark3labs library doesn't provide direct access to raw arguments
-		// We need to extract them from the request
-		// This is a limitation - we'll work with what we have
-
-		// Forward the tool call
-		result, err := activeClient.CallTool(ctx, toolName, args)
-		if err != nil {
-			return mcplib.NewToolResultError(fmt.Sprintf("Tool call failed: %v", err)), nil
-		}
-
-		// Parse result and return
-		var response interface{}
-		if err := json.Unmarshal(result, &response); err != nil {
-			// Return raw result as text if parsing fails
-			return &mcplib.CallToolResult{
-				Content: []mcplib.Content{
-					mcplib.TextContent{
-						Type: "text",
-						Text: string(result),
-					},
-				},
-			}, nil
-		}
-
-		// Convert response to text
-		responseText, _ := json.Marshal(response)
-		return &mcplib.CallToolResult{
-			Content: []mcplib.Content{
-				mcplib.TextContent{
-					Type: "text",
-					Text: string(responseText),
-				},
-			},
-		}, nil
-	}
-}
 
 // handleInstancesDisconnect disconnects from the current instance
 func handleInstancesDisconnect(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 	// For stdio transport, we use a single global session
 	sessionID := "stdio-session"
 
-	// Get current instance before disconnecting
-	var currentInstanceID string
-	connections := connectionMgr.ListInstances()
-	for _, conn := range connections {
-		if conn.Sessions[sessionID] {
-			currentInstanceID = conn.InstanceID
-			break
-		}
-	}
 
 	// Disconnect session
 	if err := connectionMgr.DisconnectSession(sessionID); err != nil {
@@ -1180,17 +1007,6 @@ func handleInstancesDisconnect(ctx context.Context, request mcplib.CallToolReque
 		}, nil
 	}
 
-	// Remove proxy tools if we found the instance
-	if currentInstanceID != "" && hubMCPServer != nil {
-		if toolNames, exists := registeredProxyTools[currentInstanceID]; exists {
-			// Note: mark3labs library doesn't support removing tools dynamically
-			// This is a limitation - tools will remain registered but will fail when called
-			// In a production system, we'd need to work around this
-			delete(registeredProxyTools, currentInstanceID)
-			fmt.Fprintf(os.Stderr, "Note: %d proxy tools from instance %s remain registered (library limitation)\n",
-				len(toolNames), currentInstanceID)
-		}
-	}
 
 	return &mcplib.CallToolResult{
 		Content: []mcplib.Content{
