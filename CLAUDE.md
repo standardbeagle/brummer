@@ -57,70 +57,242 @@ brum --settings > .brum.example.toml  # Create example config file
 
 ## Architecture
 
-### Core Components
+Brummer's architecture consists of three main integrated systems: **Process Manager**, **Hub**, and **Proxy Server**. These components work together to provide comprehensive development environment management with MCP integration.
 
-**Process Management (`internal/process/manager.go`)**
-- Manages lifecycle of child processes spawned from package.json scripts
-- Supports npm, yarn, pnpm, bun package managers
-- Detects monorepo structures (pnpm/npm/yarn workspaces, Lerna, Nx, Rush)
-- Auto-detects executable commands for multiple languages (Go, Rust, Java, Python, etc.)
-- Uses context.Context for graceful shutdown
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Brummer Architecture                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
+│  │ Process Manager │    │   Hub System    │    │  Proxy Server   │         │
+│  │                 │    │                 │    │                 │         │
+│  │ • npm/yarn/pnpm │    │ • Instance Mgmt │    │ • URL Discovery │         │
+│  │ • Script Running│    │ • MCP Routing   │    │ • Request Proxy │         │
+│  │ • Log Capture   │────┤ • Health Monitor│────┤ • Telemetry     │         │
+│  │ • Event Emission│    │ • Discovery     │    │ • Browser Tools │         │
+│  └─────────────────┘    │ • Session Mgmt  │    └─────────────────┘         │
+│           │              └─────────────────┘             │                 │
+│           │                       │                      │                 │
+│           └───────────────────────┼──────────────────────┘                 │
+│                                   │                                        │
+│                          ┌─────────────────┐                               │
+│                          │   Event Bus     │                               │
+│                          │                 │                               │
+│                          │ • ProcessEvents │                               │
+│                          │ • LogLines      │                               │
+│                          │ • ErrorEvents   │                               │
+│                          │ • URL Detection │                               │
+│                          └─────────────────┘                               │
+│                                   │                                        │
+│                          ┌─────────────────┐                               │
+│                          │      TUI        │                               │
+│                          │                 │                               │
+│                          │ • View Updates  │                               │
+│                          │ • User Commands │                               │
+│                          │ • Status Display│                               │
+│                          └─────────────────┘                               │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
 
-**TUI System (`internal/tui/model.go`)**
-- Built with Bubble Tea framework (Model-Update-View pattern)
-- Multiple views: Scripts, Processes, Logs, Errors, URLs, Settings
-- Event-driven updates via EventBus
-- Slash command system for filtering: `/show pattern`, `/hide pattern`
-- Process status tracking with visual indicators
+### Core Components Integration
 
-**Log Management (`internal/logs/store.go`)**
-- Thread-safe log storage with configurable size limit
-- Error context extraction with language-specific parsing
-- URL detection and deduplication
-- Regex-based filtering system
-- Priority-based log categorization
+#### **Process Manager** (`internal/process/manager.go`)
+The Process Manager is the foundation that spawns and manages child processes:
 
-**MCP Server (`internal/mcp/streamable_server.go`)**
-- JSON-RPC 2.0 compliant Model Context Protocol implementation
-- Single endpoint `/mcp` exposing multiple tools, resources, and prompts
-- Supports real-time streaming for logs, telemetry, and tool execution
-- Session-based client management with Server-Sent Events
-- Full MCP protocol support: tools/list, tools/call, resources/list, resources/read, prompts/list, prompts/get
+- **Script Execution**: Supports npm, yarn, pnpm, bun package managers with automatic detection
+- **Process Lifecycle**: Tracks process status (pending → running → stopped/success/failed)
+- **Log Processing**: Captures stdout/stderr and emits LogLine events via EventBus
+- **URL Detection**: Automatically discovers URLs in process logs for proxy registration
+- **Monorepo Support**: Detects workspaces (pnpm/npm/yarn, Lerna, Nx, Rush)
+- **Multi-Language**: Auto-detects executables (Go, Rust, Java, Python, Node.js, etc.)
+- **Instance Registration**: Automatically registers itself for hub discovery
 
-**Event System (`pkg/events/events.go`)**
-- Central EventBus for component communication
-- Event types: ProcessStarted, ProcessExited, LogLine, ErrorDetected, BuildEvent, TestResult
-- Asynchronous event propagation between components
+**Process Lifecycle Flow:**
+```
+CLI Args → Process Manager → Script/Command Execution
+    ↓                              ↓
+Event Bus ← Log Processing ← Process stdout/stderr
+    ↓                              ↓
+TUI/MCP Updates              URL Detection → Proxy Registration
+```
 
-**Configuration System (`internal/config/config.go`)**
-- TOML-based configuration with hierarchical override chain
-- Loads from: current directory → parent directories → root → `~/.brum.toml`
-- Source tracking for debugging configuration values
-- Supports MCP port, proxy settings, and package manager preferences
-- `--settings` flag displays current config with source file comments
+#### **Hub System** (`internal/mcp/`)
+The Hub manages multiple Brummer instances and coordinates MCP tool routing:
+
+**Connection Manager** (`connection_manager.go`):
+- **Instance States**: discovered → connecting → active → retrying → dead
+- **Health Monitoring**: Periodic health checks with automatic reconnection
+- **Session Tracking**: Maps client sessions to active instances
+- **State Transitions**: Records timing and reasons for debugging
+
+**Discovery System** (`internal/discovery/`):
+- **File-Based Discovery**: Watches shared directory for instance JSON files
+- **Instance Metadata**: ID, name, directory, port, PID, startup time
+- **Automatic Cleanup**: Removes stale instances based on process checks
+- **Real-Time Updates**: Notifies connection manager of changes
+
+**Hub Client** (`hub_client.go`):
+- **HTTP Communication**: JSON-RPC 2.0 client for instance MCP servers
+- **Tool Routing**: Routes tools/call requests to appropriate instances
+- **Session Management**: Handles connection initialization and cleanup
+
+**Hub Mode** (stdio MCP transport):
+- **Multi-Instance Coordination**: Central hub for MCP clients
+- **Tool Aggregation**: Exposes tools from all connected instances
+- **Session Routing**: Routes client sessions to specific instances
+
+#### **Proxy Server** (`internal/proxy/server.go`)
+The Proxy Server provides HTTP interception and browser automation:
+
+**Proxy Modes**:
+- **Reverse Mode** (default): Creates shareable URLs for detected endpoints
+- **Full Mode**: Traditional HTTP proxy requiring browser configuration
+
+**URL Discovery & Management**:
+- **Automatic Detection**: Monitors process logs for HTTP/HTTPS URLs
+- **Intelligent Labeling**: Extracts meaningful names from log context
+- **Process Association**: Maps URLs to originating processes
+- **Port Allocation**: Auto-assigns unique ports for reverse proxy
+
+**Browser Automation**:
+- **Screenshot Capture**: Supports PNG, JPEG, WebP formats
+- **JavaScript Execution**: Browser REPL with session management
+- **Telemetry Collection**: Page performance and error tracking
+- **Request Interception**: Captures and analyzes HTTP traffic
+
+### Integration Patterns
+
+#### **Event-Driven Architecture**
+Central EventBus (`pkg/events/events.go`) coordinates all components:
+
+```
+Process Events: ProcessStarted, ProcessExited, ProcessFailed
+Log Events:     LogLine → URL Detection → Proxy Registration
+Error Events:   ErrorDetected → Context Extraction → TUI Alerts
+Build Events:   BuildStarted, BuildCompleted → Status Updates
+Test Events:    TestStarted, TestPassed, TestFailed → Results
+```
+
+#### **Data Flow Pipeline**
+```
+1. Process stdout/stderr → LogStore → EventDetector
+2. EventDetector → EventBus → Component Updates
+3. URL Detection → Proxy Server → Shareable URLs
+4. MCP Requests → Hub Router → Instance Tools
+5. Browser Actions → Proxy Server → Telemetry
+```
+
+#### **Instance Discovery Flow**
+```
+1. Brummer Instance Starts → Registers JSON file in shared directory
+2. Discovery System → Detects new file → Notifies ConnectionManager
+3. ConnectionManager → Attempts connection → Updates state
+4. Health Monitor → Periodic checks → Maintains connection state
+5. Hub Tools → Route to active instances → Return results
+```
+
+#### **MCP Tool Routing**
+Tools are categorized and routed based on prefixes:
+
+- **Single-Instance Tools**: `scripts_*`, `logs_*`, `proxy_*` (local instance)
+- **Hub Tools**: `hub_*` prefix routes through ConnectionManager
+- **Browser Tools**: `browser_*`, `repl_*` coordinate across instances
+- **Session Tools**: Client sessions route to specific instances
+
+### Deployment Modes
+
+#### **Single Instance Mode** (Default)
+```bash
+brum                    # TUI mode with local MCP server
+brum --no-tui          # Headless mode, MCP server only
+brum -p 8080           # Custom MCP port
+```
+- Process Manager handles local scripts
+- MCP server exposes local tools only
+- Proxy server for local URL management
+
+#### **Hub Mode** (Multi-Instance Coordination)
+```bash
+brum --mcp             # Stdio MCP transport for external clients
+```
+- Runs as MCP hub without TUI
+- Discovers and coordinates multiple instances
+- Routes tools between instances
+- Session management for clients
+
+#### **Configuration Chain**
+```
+Command Line Args → Current Directory Config → Parent Dir → ~/.brum.toml
+```
 
 ### Key Design Patterns
 
-1. **Variable Shadowing**: Be careful not to shadow package names with variables (e.g., don't use `logs` as a variable name when importing the `logs` package)
-   - Never shadow variables in go, double check before naming variables
-   - Use different naming conventions for go variables and go types to prevent shadowing
+1. **Event-Driven Communication**: Components communicate via EventBus, avoiding tight coupling
+2. **State Machine Management**: Connection states with explicit transitions and timing
+3. **Discovery-Based Architecture**: File-based instance discovery enables dynamic coordination
+4. **Session-Based Routing**: MCP tools route through session-to-instance mapping
+5. **Graceful Degradation**: System continues operating when components fail
+6. **Resource Cleanup**: Automatic cleanup of processes, connections, and temporary files
 
-2. **Process Cleanup**: All processes are tracked and cleaned up on exit via `processMgr.Cleanup()`
+### Error Handling & Recovery
 
-3. **Log Processing Pipeline**: 
-   - Process stdout/stderr → LogStore → EventDetector → EventBus → TUI/MCP updates
-
-4. **Error Context**: The error parser (`internal/logs/error_parser.go`) maintains state to capture multi-line errors with context
+- **Process Failures**: Automatic restart detection and status updates
+- **Connection Failures**: Health monitoring with exponential backoff retry
+- **Discovery Failures**: Stale instance cleanup and re-discovery
+- **Proxy Failures**: URL re-registration and port conflict resolution
+- **Session Failures**: Automatic session cleanup and reconnection
 
 ## MCP (Model Context Protocol) Integration
 
+Brummer provides comprehensive MCP integration with two operational modes: **Single Instance** and **Hub Mode** for coordinating multiple instances.
+
+### Deployment Architectures
+
+#### **Single Instance Mode** (Default)
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   MCP Client    │────▶│ Brummer Instance│────▶│   Local Tools   │
+│ (Claude/VSCode) │     │  (Port 7777)    │     │ • scripts_*     │
+└─────────────────┘     └─────────────────┘     │ • logs_*        │
+                                                │ • proxy_*       │
+                                                │ • browser_*     │
+                                                └─────────────────┘
+```
+
+#### **Hub Mode** (Multi-Instance Coordination)
+```
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│   MCP Client    │────▶│  Brummer Hub    │────▶│   Instance A    │
+│ (Claude/VSCode) │     │ (stdio transport│     │  (Port 7778)    │
+└─────────────────┘     │   discovery +   │     └─────────────────┘
+                        │  routing)       │     ┌─────────────────┐
+                        └─────────────────┘────▶│   Instance B    │
+                                                │  (Port 7779)    │
+                                                └─────────────────┘
+                                                ┌─────────────────┐
+                                               ▶│   Instance C    │
+                                                │  (Port 7780)    │
+                                                └─────────────────┘
+```
+
 ### Server Configuration
+
+#### **Single Instance Configuration**
 - **Primary Endpoint**: `http://localhost:7777/mcp` (single URL for all MCP functionality)
 - **Protocol**: JSON-RPC 2.0 with Server-Sent Events streaming support
 - **Default Port**: 7777 (configurable with `-p` or `--port`)
 - **Startup**: Automatically enabled unless `--no-mcp` flag is used
 
+#### **Hub Mode Configuration**
+- **Transport**: stdio (JSON-RPC over stdin/stdout)
+- **Discovery**: File-based instance discovery in shared directory
+- **Routing**: Automatic tool routing to appropriate instances
+- **Session Management**: Client session to instance mapping
+
 ### Client Configuration
+
+#### **Single Instance Setup**
 For MCP clients (Claude Desktop, VSCode, etc.), configure the server executable:
 ```json
 {
@@ -135,21 +307,105 @@ For MCP clients (Claude Desktop, VSCode, etc.), configure the server executable:
 
 For direct HTTP connections, use: `http://localhost:7777/mcp`
 
-### Available MCP Tools
-- **scripts/list**: List all npm/yarn/pnpm/bun scripts from package.json
-- **scripts/run**: Execute a script with real-time output streaming
-- **scripts/stop**: Stop a running script process
-- **scripts/status**: Check the status of running scripts
-- **logs/stream**: Stream real-time logs from all processes (supports filtering)
-- **logs/search**: Search historical logs with regex patterns and filters
-- **proxy/requests**: Get captured HTTP requests from the proxy server
-- **telemetry/sessions**: Access browser telemetry session data
-- **telemetry/events**: Stream real-time browser telemetry events
-- **browser/open**: Open URLs with automatic proxy configuration
-- **browser/refresh**: Refresh connected browser tabs
-- **browser/navigate**: Navigate browser tabs to new URLs
-- **browser/screenshot**: Capture screenshots of browser tabs (limited without extension)
-- **repl/execute**: Execute JavaScript in browser context
+#### **Hub Mode Setup** (Recommended for Multiple Projects)
+```json
+{
+  "servers": {
+    "brummer-hub": {
+      "command": "brum",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+### MCP Tool Categories & Routing
+
+#### **Single-Instance Tools** (Local Execution)
+These tools execute on the local instance:
+
+**Script Management:**
+- **scripts_list**: List all npm/yarn/pnpm/bun scripts from package.json
+- **scripts_run**: Execute a script with real-time output streaming
+- **scripts_stop**: Stop a running script process
+- **scripts_status**: Check the status of running scripts
+
+**Log Management:**
+- **logs_stream**: Stream real-time logs from all processes (supports filtering)
+- **logs_search**: Search historical logs with regex patterns and filters
+
+**Proxy & Browser:**
+- **proxy_requests**: Get captured HTTP requests from the proxy server
+- **browser_open**: Open URLs with automatic proxy configuration
+- **browser_refresh**: Refresh connected browser tabs
+- **browser_navigate**: Navigate browser tabs to new URLs
+- **browser_screenshot**: Capture screenshots of browser tabs
+- **repl_execute**: Execute JavaScript in browser context
+
+**Telemetry:**
+- **telemetry_sessions**: Access browser telemetry session data
+- **telemetry_events**: Stream real-time browser telemetry events
+
+#### **Hub Tools** (Multi-Instance Coordination)
+These tools are only available in hub mode and route to instances:
+
+**Instance Management:**
+- **instances_list**: List all discovered instances with connection states
+- **instances_connect**: Connect to a specific instance (session routing)
+- **instances_disconnect**: Disconnect from current instance
+
+**Routed Tools** (with `hub_` prefix):
+- **hub_scripts_list**: Route scripts_list to connected instance
+- **hub_scripts_run**: Route scripts_run to connected instance
+- **hub_logs_stream**: Route logs_stream to connected instance
+- **hub_browser_screenshot**: Route browser_screenshot to connected instance
+- **hub_repl_execute**: Route repl_execute to connected instance
+- (All single-instance tools available with `hub_` prefix)
+
+### Session Management & Routing
+
+#### **Session-Based Tool Routing**
+```
+1. Client connects to hub with session ID
+2. Client calls instances_connect with target instance ID
+3. Session is mapped to instance
+4. Subsequent hub_* tools route to mapped instance
+5. Client can disconnect and connect to different instance
+```
+
+#### **Connection State Management**
+Instances progress through states with automatic health monitoring:
+
+```
+discovered → connecting → active → [retrying] → dead
+     ↑                      ↓           ↑
+     └──── cleanup ←────────┴───────────┘
+```
+
+**State Transitions:**
+- **discovered**: Instance file found, not yet connected
+- **connecting**: Attempting initial connection
+- **active**: Connected and responsive to health checks
+- **retrying**: Connection lost, attempting reconnection
+- **dead**: Maximum retries exceeded, marked for cleanup
+
+### Tool Execution Flow
+
+#### **Single Instance Flow**
+```
+MCP Client → HTTP Request → Streamable Server → Tool Handler → Response
+```
+
+#### **Hub Mode Flow**
+```
+MCP Client → stdio → Hub Server → Connection Manager → Instance Client
+                                       ↓
+Instance Server ← HTTP Request ← Hub Client ← Tool Router
+      ↓
+Tool Handler → Response → Hub Client → Connection Manager → Hub Server
+                                              ↓
+                                        stdio → MCP Client
+```
 
 ### MCP Resources
 Structured data access via resources:
@@ -222,6 +478,271 @@ fetch('http://localhost:7777/mcp', {
 });
 ```
 
+## Practical Examples & Configuration
+
+### Multi-Project Development Workflow
+
+#### **Scenario: Frontend + Backend + Database**
+
+**Step 1: Set up individual instances**
+```bash
+# Terminal 1: Frontend (React/Vite)
+cd frontend/
+brum dev                 # Starts on port 7777
+
+# Terminal 2: Backend (Node.js API)  
+cd backend/
+brum -p 7778 dev        # Starts on port 7778
+
+# Terminal 3: Database utilities
+cd database/
+brum -p 7779 migrate    # Starts on port 7779
+```
+
+**Step 2: Configure MCP hub for coordination**
+```json
+// Claude Desktop config
+{
+  "servers": {
+    "my-project-hub": {
+      "command": "brum",
+      "args": ["--mcp"]
+    }
+  }
+}
+```
+
+**Step 3: Use hub tools to coordinate**
+```bash
+# List all running instances
+instances_list
+
+# Connect to frontend instance
+instances_connect frontend-abc123
+
+# Run frontend-specific commands
+hub_scripts_list        # Lists frontend package.json scripts
+hub_logs_stream         # Streams frontend logs
+hub_browser_screenshot  # Takes screenshot of frontend
+
+# Switch to backend
+instances_connect backend-def456
+hub_logs_search "error" # Search backend logs for errors
+```
+
+### Proxy Configuration Examples
+
+#### **Automatic URL Detection**
+Brummer automatically detects URLs in process logs:
+
+```bash
+# Start development server
+brum dev
+
+# Logs show: "Local: http://localhost:3000"
+# Brummer automatically:
+# 1. Detects the URL
+# 2. Creates reverse proxy: http://localhost:20888
+# 3. Makes it shareable across network
+```
+
+#### **Manual Proxy Configuration**
+```bash
+# Start with specific URL proxying
+brum --proxy-url http://localhost:3000 dev
+
+# Use traditional HTTP proxy mode
+brum --proxy-mode full --proxy-port 8888
+
+# Configure browser to use proxy:
+# HTTP Proxy: localhost:8888
+# PAC URL: http://localhost:8888/proxy.pac
+```
+
+#### **Multiple URL Handling**
+```bash
+# Start multiple services
+brum "npm run dev & npm run api & npm run docs"
+
+# Brummer detects and proxies:
+# Frontend: http://localhost:3000 → http://localhost:20888
+# API:      http://localhost:3001 → http://localhost:20889  
+# Docs:     http://localhost:3002 → http://localhost:20890
+```
+
+### Browser Automation Examples
+
+#### **Screenshot Workflow**
+```javascript
+// Single instance
+browser_screenshot({
+  "format": "png",
+  "fullPage": true,
+  "quality": 90
+})
+
+// Hub mode (routes to connected instance)
+hub_browser_screenshot({
+  "format": "jpeg", 
+  "selector": "#main-content",
+  "quality": 85
+})
+```
+
+#### **JavaScript Testing**
+```javascript
+// Execute JavaScript in browser
+repl_execute({
+  "code": "document.title = 'Test'; return document.title;"
+})
+
+// Hub mode with session
+instances_connect("frontend-instance")
+hub_repl_execute({
+  "code": "console.log('Testing frontend'); return window.location.href;"
+})
+```
+
+### Advanced Configuration
+
+#### **Multi-Instance Hub Setup**
+```toml
+# ~/.brum.toml
+[instances]
+discovery_dir = "~/.brum/instances"
+cleanup_interval = "1m"
+stale_timeout = "5m"
+
+[hub]
+health_check_interval = "30s" 
+max_retry_attempts = 3
+retry_backoff = "exponential"
+
+[proxy]
+mode = "reverse"
+base_port = 20888
+enable_telemetry = true
+```
+
+#### **Project-Specific Configuration**
+```toml
+# project/.brum.toml
+[process]
+preferred_package_manager = "pnpm"
+
+[proxy]
+mode = "reverse"
+proxy_url = "http://localhost:3000"
+
+[mcp]
+port = 7777
+enable_browser_tools = true
+```
+
+### Troubleshooting Common Issues
+
+#### **Instance Discovery Problems**
+```bash
+# Check instance discovery
+ls ~/.brum/instances/          # Should show JSON files
+
+# Manually clean up stale instances
+rm ~/.brum/instances/*.json
+
+# Check instance connectivity
+instances_list                 # Shows connection states
+```
+
+#### **Port Conflicts**
+```bash
+# Find available port
+brum --port 0                  # Auto-assign available port
+
+# Check what's using a port
+lsof -i :7777                  # macOS/Linux
+netstat -ano | findstr :7777   # Windows
+```
+
+#### **Proxy Issues**
+```bash
+# Reset proxy configuration
+brum --no-proxy               # Disable proxy temporarily
+
+# Check proxy mappings
+proxy_requests                # Show captured requests
+
+# Force URL re-detection
+# Restart process to trigger URL detection
+```
+
+#### **Health Monitoring Debug**
+```bash
+# Instance health information
+instances_list | jq '.[] | {id, state, retry_count, time_in_state}'
+
+# Connection state history
+instances_list | jq '.[] | .state_stats'
+```
+
+### Integration with External Tools
+
+#### **VS Code Integration**
+```json
+// .vscode/settings.json
+{
+  "mcp.servers": {
+    "brummer": {
+      "command": "brum",
+      "args": ["--no-tui", "--port", "7777"]
+    }
+  }
+}
+```
+
+#### **CI/CD Integration**
+```bash
+# Headless operation for CI
+brum --no-tui --no-proxy test
+
+# Export test results
+logs_search "test.*" > test-results.log
+
+# Health check endpoint
+curl http://localhost:7777/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+#### **Docker Integration**
+```dockerfile
+# Dockerfile
+FROM node:18
+COPY . /app
+WORKDIR /app
+RUN npm install && npm install -g brum
+EXPOSE 7777 20888-20899
+CMD ["brum", "--no-tui", "--port", "7777"]
+```
+
+### Performance Optimization
+
+#### **Log Management**
+```toml
+# .brum.toml
+[logs]
+max_entries = 10000          # Limit memory usage
+max_line_length = 2048       # Truncate long lines
+enable_url_detection = true  # Auto-detect URLs
+```
+
+#### **Resource Limits**
+```bash
+# Limit process resources
+ulimit -n 1024              # File descriptor limit
+ulimit -u 256               # Process limit
+
+# Monitor resource usage
+logs_search "memory|cpu"    # Search for resource logs
+```
+
 ## Important Notes
 
 - The executable is named `brum` (not `brummer`)
@@ -231,4 +752,6 @@ fetch('http://localhost:7777/mcp', {
 - Slash commands use Go regex syntax for pattern matching
 - Process IDs are generated as `<scriptname>-<timestamp>`
 - URLs are automatically extracted from logs and deduplicated per process
-- Rewrite test-script.sh to write proxy testing code so you don't get your scripts manually approved
+- Hub mode requires file-based discovery for instance coordination
+- Proxy reverse mode creates shareable URLs for detected endpoints
+- Health monitoring maintains connection state with automatic recovery
