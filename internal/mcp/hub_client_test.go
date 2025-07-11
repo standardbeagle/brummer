@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -255,9 +256,9 @@ func TestHubClientCallTool(t *testing.T) {
 
 // TestHubClientConcurrentRequests tests concurrent requests to the same instance
 func TestHubClientConcurrentRequests(t *testing.T) {
-	requestCount := 0
+	var requestCount int64
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		requestCount++
+		count := atomic.AddInt64(&requestCount, 1)
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
 		
@@ -269,7 +270,7 @@ func TestHubClientConcurrentRequests(t *testing.T) {
 			ID:      req.ID,
 			Result: map[string]interface{}{
 				"content": []map[string]interface{}{
-					{"type": "text", "text": fmt.Sprintf("response %d", requestCount)},
+					{"type": "text", "text": fmt.Sprintf("response %d", count)},
 				},
 			},
 		}
@@ -297,7 +298,7 @@ func TestHubClientConcurrentRequests(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	assert.Equal(t, 5, requestCount)
+	assert.Equal(t, int64(5), atomic.LoadInt64(&requestCount))
 }
 
 // TestHubClientReconnection tests client behavior during instance restart
