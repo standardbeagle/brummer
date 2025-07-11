@@ -65,7 +65,7 @@ type MCPActivity struct {
 }
 
 // renderMCPConnections renders the MCP connections view
-func (m Model) renderMCPConnections() string {
+func (m *Model) renderMCPConnections() string {
 	if !m.debugMode {
 		return m.renderSettings()
 	}

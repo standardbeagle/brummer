@@ -79,7 +79,7 @@ func (c *CommandAutocomplete) updateScriptSelectorSuggestions() {
 }
 
 // RenderScriptSelector renders the script selector view
-func (m Model) renderScriptSelector() string {
+func (m *Model) renderScriptSelector() string {
 	// Adaptive sizing based on terminal size
 	var containerWidth, containerHeight int
 	var showSkipSection bool

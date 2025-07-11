@@ -224,7 +224,7 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		}
 
 		if runningProcesses > 0 {
-			return *m, tea.Sequence(
+			return m, tea.Sequence(
 				tea.Printf("Stopping %d running processes...\n", runningProcesses),
 				func() tea.Msg {
 					_ = m.processMgr.Cleanup() // Ignore cleanup errors during shutdown
@@ -234,7 +234,7 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 				tea.Quit,
 			), true
 		} else {
-			return *m, tea.Sequence(
+			return m, tea.Sequence(
 				tea.Printf("%s", renderExitScreen()),
 				tea.Quit,
 			), true
@@ -242,23 +242,23 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 
 	case key.Matches(msg, m.keys.Tab):
 		m.cycleView()
-		return *m, nil, true
+		return m, nil, true
 
 	case msg.String() == "shift+tab":
 		m.cyclePrevView()
-		return *m, nil, true
+		return m, nil, true
 
 	case msg.String() == "left":
 		m.cyclePrevView()
-		return *m, nil, true
+		return m, nil, true
 
 	case msg.String() == "right":
 		m.cycleView()
-		return *m, nil, true
+		return m, nil, true
 
 	case key.Matches(msg, m.keys.ClearScreen):
 		m.handleClearScreen()
-		return *m, nil, true
+		return m, nil, true
 
 	case key.Matches(msg, m.keys.Back):
 		if m.currentView == ViewFilters {
@@ -266,30 +266,30 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		} else if m.currentView == ViewLogs || m.currentView == ViewErrors || m.currentView == ViewURLs {
 			m.currentView = ViewProcesses
 		}
-		return *m, nil, true
+		return m, nil, true
 
 	case key.Matches(msg, m.keys.Priority):
 		if m.currentView == ViewLogs {
 			m.showHighPriority = !m.showHighPriority
 			m.updateLogsView()
 		}
-		return *m, nil, true
+		return m, nil, true
 
 	case key.Matches(msg, m.keys.RestartAll):
 		if m.currentView == ViewProcesses {
 			m.logStore.Add("system", "System", "Restarting all running processes...", false)
-			return *m, m.handleRestartAll(), true
+			return m, m.handleRestartAll(), true
 		}
-		return *m, nil, true
+		return m, nil, true
 
 	case key.Matches(msg, m.keys.CopyError):
-		return *m, m.handleCopyError(), true
+		return m, m.handleCopyError(), true
 
 	case key.Matches(msg, m.keys.ClearLogs):
 		if m.currentView == ViewLogs {
 			m.handleClearLogs()
 		}
-		return *m, nil, true
+		return m, nil, true
 
 	case key.Matches(msg, m.keys.ToggleError):
 		if len(m.systemMessages) > 0 {
@@ -299,7 +299,7 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 				m.updateSystemPanelViewport()
 			}
 		}
-		return *m, nil, true
+		return m, nil, true
 
 	case key.Matches(msg, m.keys.ClearMessages):
 		// Clear system messages
@@ -309,9 +309,9 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 			// Clear the viewport content explicitly
 			m.systemPanelViewport.SetContent("")
 			// Force immediate re-render
-			return *m, tea.ClearScreen, true
+			return m, tea.ClearScreen, true
 		}
-		return *m, nil, true
+		return m, nil, true
 	}
 
 	// Handle number keys for view switching
@@ -322,11 +322,11 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 				continue
 			}
 			m.switchToView(viewType)
-			return *m, nil, true
+			return m, nil, true
 		}
 	}
 
-	return *m, nil, false // Key not handled
+	return m, nil, false // Key not handled
 }
 
 type keyMap struct {
@@ -833,11 +833,11 @@ func formatBytes(bytes int64) string {
 	}
 }
 
-func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int) Model {
+func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int) *Model {
 	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewProcesses, false)
 }
 
-func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool) Model {
+func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool) *Model {
 	scripts := processMgr.GetScripts()
 
 	processesList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
@@ -947,7 +947,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// This ensures subscriptions are active before MCP server starts
 	m.setupEventSubscriptions()
 
-	return m
+	return &m
 }
 
 // setupEventSubscriptions sets up all event bus subscriptions
@@ -1059,7 +1059,7 @@ func (m *Model) setupEventSubscriptions() {
 	}
 }
 
-func (m Model) Init() tea.Cmd {
+func (m *Model) Init() tea.Cmd {
 	// Add startup system message
 	go func() {
 		m.updateChan <- systemMessageMsg{
@@ -1076,7 +1076,7 @@ func (m Model) Init() tea.Cmd {
 	)
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
@@ -1529,7 +1529,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m Model) View() string {
+func (m *Model) View() string {
 	if m.width == 0 {
 		return "Loading..."
 	}
@@ -1547,7 +1547,7 @@ func (m Model) View() string {
 }
 
 // renderLayout provides consistent layout for all views
-func (m Model) renderLayout(content string) string {
+func (m *Model) renderLayout(content string) string {
 	// Calculate content height
 	contentHeight := m.height - 4 // Header (2) + Help (2)
 
@@ -1581,7 +1581,7 @@ func (m Model) renderLayout(content string) string {
 }
 
 // renderContent renders the main content area based on current view
-func (m Model) renderContent() string {
+func (m *Model) renderContent() string {
 	if m.showingRunDialog {
 		return m.renderRunDialog()
 	}
@@ -1619,7 +1619,7 @@ func (m Model) renderContent() string {
 }
 
 // getViewStatus returns status information for the current view
-func (m Model) getViewStatus() string {
+func (m *Model) getViewStatus() string {
 	switch m.currentView {
 	case ViewProcesses:
 		processes := m.processMgr.GetAllProcesses()
@@ -2013,7 +2013,7 @@ func (m *Model) areLogsIdentical(a, b logs.LogEntry) bool {
 		a.IsError == b.IsError
 }
 
-func (m Model) cleanLogContent(content string) string {
+func (m *Model) cleanLogContent(content string) string {
 	// Keep the original content with ANSI codes
 	cleaned := content
 
@@ -2027,7 +2027,7 @@ func (m Model) cleanLogContent(content string) string {
 	return cleaned
 }
 
-func (m Model) getLogStyle(log logs.LogEntry) lipgloss.Style {
+func (m *Model) getLogStyle(log logs.LogEntry) lipgloss.Style {
 	base := lipgloss.NewStyle()
 
 	switch log.Level {
@@ -2045,7 +2045,7 @@ func (m Model) getLogStyle(log logs.LogEntry) lipgloss.Style {
 	}
 }
 
-func (m Model) renderHeader() string {
+func (m *Model) renderHeader() string {
 	// Get process count information
 	processes := m.processMgr.GetAllProcesses()
 	runningCount := 0
@@ -2138,7 +2138,7 @@ func (m Model) renderHeader() string {
 	)
 }
 
-func (m Model) renderProcessesView() string {
+func (m *Model) renderProcessesView() string {
 	processes := m.processMgr.GetAllProcesses()
 
 	instructions := lipgloss.NewStyle().
@@ -2164,7 +2164,7 @@ func (m Model) renderProcessesView() string {
 	)
 }
 
-func (m Model) renderLogsView() string {
+func (m *Model) renderLogsView() string {
 	title := "Logs"
 	if m.selectedProcess != "" {
 		if proc, exists := m.processMgr.GetProcess(m.selectedProcess); exists {
@@ -2208,7 +2208,7 @@ func (m Model) renderLogsView() string {
 	return lipgloss.JoinVertical(lipgloss.Left, headerContent, m.logsViewport.View())
 }
 
-func (m Model) renderFiltersView() string {
+func (m *Model) renderFiltersView() string {
 	filters := m.logStore.GetFilters()
 	if len(filters) == 0 {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No filters configured. Use / commands: /show <pattern> or /hide <pattern> to filter logs")
@@ -2374,7 +2374,7 @@ func (m *Model) renderURLsView() string {
 	return m.urlsViewport.View()
 }
 
-func (m Model) renderWebView() string {
+func (m *Model) renderWebView() string {
 	if m.width < 100 {
 		// For narrow screens, use the simple view
 		return m.renderWebViewSimple()
@@ -2421,7 +2421,7 @@ func (m Model) renderWebView() string {
 	return lipgloss.JoinHorizontal(lipgloss.Top, listView, " ", detailView)
 }
 
-func (m Model) renderWebViewSimple() string {
+func (m *Model) renderWebViewSimple() string {
 	var content strings.Builder
 
 	// Compact header: combine status + filter on one line, help + indicators on another
@@ -2485,7 +2485,7 @@ func (m Model) renderWebViewSimple() string {
 	return content.String()
 }
 
-func (m Model) renderRequestsList(requests []proxy.Request, width int) string {
+func (m *Model) renderRequestsList(requests []proxy.Request, width int) string {
 	var content strings.Builder
 
 	// Header with filter info and auto-scroll indicator
@@ -2623,7 +2623,7 @@ func (m Model) renderRequestsList(requests []proxy.Request, width int) string {
 	return content.String()
 }
 
-func (m Model) renderRequestDetail() string {
+func (m *Model) renderRequestDetail() string {
 	if m.selectedRequest == nil {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("Select a request to view details")
 	}
@@ -2710,7 +2710,7 @@ func (m Model) renderRequestDetail() string {
 	return content.String()
 }
 
-func (m Model) formatStatus(status int) string {
+func (m *Model) formatStatus(status int) string {
 	var color string
 	switch {
 	case status >= 200 && status < 300:
@@ -2727,7 +2727,7 @@ func (m Model) formatStatus(status int) string {
 	return lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true).Render(fmt.Sprintf("%d", status))
 }
 
-func (m Model) renderTelemetryDetails(session *proxy.PageSession) string {
+func (m *Model) renderTelemetryDetails(session *proxy.PageSession) string {
 	var content strings.Builder
 
 	if len(session.Events) == 0 {
@@ -2810,7 +2810,7 @@ func (m Model) renderTelemetryDetails(session *proxy.PageSession) string {
 	return content.String()
 }
 
-func (m Model) formatTelemetryEvent(event proxy.TelemetryEvent) string {
+func (m *Model) formatTelemetryEvent(event proxy.TelemetryEvent) string {
 	switch event.Type {
 	case proxy.TelemetryPageLoad:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("Page Loaded")
@@ -2842,7 +2842,7 @@ func (m Model) formatTelemetryEvent(event proxy.TelemetryEvent) string {
 }
 
 // getFilteredRequests returns requests filtered by current filter
-func (m Model) getFilteredRequests() []proxy.Request {
+func (m *Model) getFilteredRequests() []proxy.Request {
 	if m.proxyServer == nil {
 		return []proxy.Request{}
 	}
@@ -2877,7 +2877,7 @@ func (m Model) getFilteredRequests() []proxy.Request {
 }
 
 // isPageRequest checks if request is for an HTML page
-func (m Model) isPageRequest(req proxy.Request) bool {
+func (m *Model) isPageRequest(req proxy.Request) bool {
 	// XHR requests are never pages
 	if req.IsXHR {
 		return false
@@ -2886,7 +2886,7 @@ func (m Model) isPageRequest(req proxy.Request) bool {
 }
 
 // isAPIRequest checks if request is an API call
-func (m Model) isAPIRequest(req proxy.Request) bool {
+func (m *Model) isAPIRequest(req proxy.Request) bool {
 	// Check content type for response (if available)
 	contentType := ""
 	if req.Telemetry != nil && len(req.Telemetry.Events) > 0 {
@@ -2912,7 +2912,7 @@ func (m Model) isAPIRequest(req proxy.Request) bool {
 }
 
 // isImageRequest checks if request is for an image
-func (m Model) isImageRequest(req proxy.Request) bool {
+func (m *Model) isImageRequest(req proxy.Request) bool {
 	return strings.HasSuffix(req.Path, ".jpg") || strings.HasSuffix(req.Path, ".jpeg") ||
 		strings.HasSuffix(req.Path, ".png") || strings.HasSuffix(req.Path, ".gif") ||
 		strings.HasSuffix(req.Path, ".webp") || strings.HasSuffix(req.Path, ".svg") ||
@@ -2982,7 +2982,7 @@ func (m *Model) updateWebRequestsList(requests []proxy.Request) {
 }
 
 // renderWebRequestsListWithHeader renders the filter tabs and requests list for split view
-func (m Model) renderWebRequestsListWithHeader() string {
+func (m *Model) renderWebRequestsListWithHeader() string {
 	var content strings.Builder
 
 	// Compact header: combine everything on minimal lines
@@ -3029,7 +3029,7 @@ func (m Model) renderWebRequestsListWithHeader() string {
 }
 
 // renderTelemetrySummary renders a one-line summary of telemetry data
-func (m Model) renderTelemetrySummary(session *proxy.PageSession) string {
+func (m *Model) renderTelemetrySummary(session *proxy.PageSession) string {
 	if session == nil || len(session.Events) == 0 {
 		return ""
 	}
@@ -3138,13 +3138,13 @@ type mcpConnectionMsg struct {
 	method         string
 }
 
-func (m Model) waitForUpdates() tea.Cmd {
+func (m *Model) waitForUpdates() tea.Cmd {
 	return func() tea.Msg {
 		return <-m.updateChan
 	}
 }
 
-func (m Model) tickCmd() tea.Cmd {
+func (m *Model) tickCmd() tea.Cmd {
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
 		return tickMsg{}
 	})
@@ -3749,7 +3749,7 @@ func (m *Model) handleRunCommand() tea.Cmd {
 	return nil
 }
 
-func (m Model) renderRunDialog() string {
+func (m *Model) renderRunDialog() string {
 	var content strings.Builder
 
 	titleStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("226"))
@@ -3775,7 +3775,7 @@ func (m Model) renderRunDialog() string {
 	return content.String()
 }
 
-func (m Model) renderCustomCommandDialog() string {
+func (m *Model) renderCustomCommandDialog() string {
 	var content strings.Builder
 
 	// Create a dialog box style
@@ -3973,7 +3973,7 @@ func (m *Model) updateErrorDetailView() {
 	m.errorDetailView.SetContent(content.String())
 }
 
-func (m Model) findLowestCodeReference(errorCtx *logs.ErrorContext) string {
+func (m *Model) findLowestCodeReference(errorCtx *logs.ErrorContext) string {
 	// Look for file paths with line numbers in stack traces
 	filePattern := regexp.MustCompile(`([^\s\(\)]+\.(js|ts|jsx|tsx|go|py|java|rs|rb|php)):(\d+)(?::(\d+))?`)
 
@@ -4021,7 +4021,7 @@ func (m Model) findLowestCodeReference(errorCtx *logs.ErrorContext) string {
 	return lowestRef
 }
 
-func (m Model) renderErrorsViewSplit() string {
+func (m *Model) renderErrorsViewSplit() string {
 	if m.width < 100 {
 		// For narrow screens, use the old view
 		return m.renderErrorsView()
@@ -4046,8 +4046,7 @@ func (m Model) renderErrorsViewSplit() string {
 	// Update list items if needed
 	currentItems := m.errorsList.Items()
 	if len(currentItems) != len(errorContexts) {
-		const_m := &m
-		const_m.updateErrorsList()
+		m.updateErrorsList()
 	}
 
 	// Create border styles
@@ -4425,7 +4424,7 @@ func (m *Model) handleCommandWindow(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) renderCommandWindow() string {
+func (m *Model) renderCommandWindow() string {
 	// Safety check for minimum dimensions
 	if m.width < 20 || m.height < 10 {
 		// Just return empty string if window is too small
@@ -4671,7 +4670,7 @@ func (m *Model) addSystemMessage(level, context, message string) {
 // Brummer messages.
 
 // getSystemMessageIcon returns the appropriate icon for a system message level
-func (m Model) getSystemMessageIcon(level string) string {
+func (m *Model) getSystemMessageIcon(level string) string {
 	switch level {
 	case "error":
 		return "❌"
@@ -4805,7 +4804,7 @@ func (m *Model) formatSystemMessagesForDisplay() string {
 }
 
 // overlaySystemPanel overlays the system panel on top of the main content
-func (m Model) overlaySystemPanel(mainContent string) string {
+func (m *Model) overlaySystemPanel(mainContent string) string {
 	// Split main content into lines
 	lines := strings.Split(mainContent, "\n")
 
@@ -4836,7 +4835,7 @@ func (m Model) overlaySystemPanel(mainContent string) string {
 }
 
 // renderSystemPanelOverlay renders the system panel for overlay mode
-func (m Model) renderSystemPanelOverlay() string {
+func (m *Model) renderSystemPanelOverlay() string {
 	// Create a semi-transparent style with background
 	panelStyle := lipgloss.NewStyle().
 		Border(lipgloss.NormalBorder()).
@@ -4901,7 +4900,7 @@ func (m Model) renderSystemPanelOverlay() string {
 }
 
 // renderSystemPanel renders the system message panel at the bottom of the screen
-func (m Model) renderSystemPanel() string {
+func (m *Model) renderSystemPanel() string {
 	// Don't show if no messages
 	if len(m.systemMessages) == 0 {
 		return ""
@@ -4935,7 +4934,7 @@ func (m Model) renderSystemPanel() string {
 }
 
 // renderSettings provides an enhanced settings view with better UX design
-func (m Model) renderSettings() string {
+func (m *Model) renderSettings() string {
 	var content strings.Builder
 
 	// Header with branding and description
