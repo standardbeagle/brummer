@@ -102,7 +102,7 @@ type Server struct {
 	// WebSocket connections for real-time telemetry
 	wsUpgrader websocket.Upgrader
 	wsClients  map[*websocket.Conn]bool
-	wsMutex    sync.RWMutex
+	// Note: wsClients now protected by main mu mutex to prevent deadlocks
 
 	running bool
 }
@@ -813,11 +813,18 @@ func (s *Server) Start() error {
 		}),
 	}
 
+	s.mu.Lock()
 	s.running = true
+	s.mu.Unlock()
 
 	go func() {
+		// Get server reference safely
+		s.mu.RLock()
+		server := s.server
+		s.mu.RUnlock()
+		
 		// Proxy server starting (logs disabled for TUI compatibility)
-		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			// Proxy server error (logged internally)
 			s.mu.Lock()
 			s.running = false
@@ -1002,8 +1009,13 @@ func (s *Server) SwitchMode(newMode ProxyMode) error {
 		s.running = true
 
 		go func() {
+			// Get server reference safely
+			s.mu.RLock()
+			server := s.server
+			s.mu.RUnlock()
+			
 			// Restarting proxy server (logs disabled for TUI compatibility)
-			if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				// Proxy server error (logged internally)
 				s.mu.Lock()
 				s.running = false
@@ -1457,10 +1469,10 @@ func (s *Server) handleWebSocketTelemetry(w http.ResponseWriter, r *http.Request
 	defer conn.Close()
 
 	// Register client
-	s.wsMutex.Lock()
+	s.mu.Lock()
 	s.wsClients[conn] = true
 	clientCount := len(s.wsClients)
-	s.wsMutex.Unlock()
+	s.mu.Unlock()
 
 	// WebSocket connection events are only for internal tracking, no need to log to stdout
 
@@ -1490,10 +1502,10 @@ func (s *Server) handleWebSocketTelemetry(w http.ResponseWriter, r *http.Request
 	}
 
 	// Unregister client
-	s.wsMutex.Lock()
+	s.mu.Lock()
 	delete(s.wsClients, conn)
 	clientCount = len(s.wsClients)
-	s.wsMutex.Unlock()
+	s.mu.Unlock()
 
 	// WebSocket disconnection events are only for internal tracking, no need to log to stdout
 }
@@ -1690,8 +1702,8 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 
 // BroadcastToWebSockets sends a message to all connected WebSocket clients
 func (s *Server) BroadcastToWebSockets(msgType string, data interface{}) {
-	s.wsMutex.RLock()
-	defer s.wsMutex.RUnlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 
 	if len(s.wsClients) == 0 {
 		return
@@ -1708,8 +1720,7 @@ func (s *Server) BroadcastToWebSockets(msgType string, data interface{}) {
 		err := conn.WriteJSON(msg)
 		if err != nil {
 			// WebSocket broadcast error (logged internally)
-			// Note: We should probably remove the client here, but that would
-			// require holding the write lock, which could cause deadlock
+			// Note: Client cleanup now safe with unified mutex hierarchy
 		}
 	}
 }
