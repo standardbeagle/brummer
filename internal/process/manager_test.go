@@ -79,7 +79,7 @@ func TestProcessStartStop(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, proc)
 	assert.Equal(t, "echo-test", proc.Name)
-	assert.Equal(t, StatusRunning, proc.Status)
+	assert.Equal(t, StatusRunning, proc.GetStatus())
 
 	// Wait for process to complete
 	time.Sleep(100 * time.Millisecond)
@@ -87,7 +87,7 @@ func TestProcessStartStop(t *testing.T) {
 	// Check process completed successfully
 	proc, exists := mgr.GetProcess(proc.ID)
 	require.True(t, exists)
-	assert.Equal(t, StatusSuccess, proc.Status)
+	assert.Equal(t, StatusSuccess, proc.GetStatus())
 	
 	// Verify events were published
 	eventsMu.Lock()
@@ -140,7 +140,8 @@ func TestProcessManagement(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	stoppedProc, exists := mgr.GetProcess(proc1.ID)
 	require.True(t, exists)
-	assert.True(t, stoppedProc.Status == StatusStopped || stoppedProc.Status == StatusSuccess)
+	status := stoppedProc.GetStatus()
+	assert.True(t, status == StatusStopped || status == StatusSuccess)
 
 	// Test stopping all processes
 	err = mgr.StopAllProcesses()
@@ -181,7 +182,7 @@ func TestScriptExecution(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		proc, exists := mgr.GetProcess(proc.ID)
 		require.True(t, exists)
-		finalStatus = proc.Status
+		finalStatus = proc.GetStatus()
 		if finalStatus == StatusSuccess || finalStatus == StatusFailed {
 			break
 		}
@@ -201,7 +202,7 @@ func TestScriptExecution(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		procFail, exists := mgr.GetProcess(procFail.ID)
 		require.True(t, exists)
-		failStatus = procFail.Status
+		failStatus = procFail.GetStatus()
 		if failStatus == StatusSuccess || failStatus == StatusFailed {
 			break
 		}
@@ -290,8 +291,8 @@ func TestCleanup(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify they're running
-	assert.Equal(t, StatusRunning, proc1.Status)
-	assert.Equal(t, StatusRunning, proc2.Status)
+	assert.Equal(t, StatusRunning, proc1.GetStatus())
+	assert.Equal(t, StatusRunning, proc2.GetStatus())
 
 	// Cleanup should stop all processes
 	err = mgr.Cleanup()
@@ -303,11 +304,13 @@ func TestCleanup(t *testing.T) {
 	// Check processes are stopped
 	proc1, exists := mgr.GetProcess(proc1.ID)
 	require.True(t, exists)
-	assert.True(t, proc1.Status == StatusStopped || proc1.Status == StatusFailed)
+	status1 := proc1.GetStatus()
+	assert.True(t, status1 == StatusStopped || status1 == StatusFailed)
 
 	proc2, exists = mgr.GetProcess(proc2.ID)
 	require.True(t, exists)
-	assert.True(t, proc2.Status == StatusStopped || proc2.Status == StatusFailed)
+	status2 := proc2.GetStatus()
+	assert.True(t, status2 == StatusStopped || status2 == StatusFailed)
 }
 
 // TestConcurrentOperations tests thread safety

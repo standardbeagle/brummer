@@ -31,6 +31,38 @@ type Process struct {
 	mu        sync.RWMutex
 }
 
+// Thread-safe getters for Process fields
+func (p *Process) GetStatus() ProcessStatus {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.Status
+}
+
+func (p *Process) GetStartTime() time.Time {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.StartTime
+}
+
+func (p *Process) GetEndTime() *time.Time {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.EndTime
+}
+
+func (p *Process) GetExitCode() *int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.ExitCode
+}
+
+// Thread-safe setters for Process fields  
+func (p *Process) SetStatus(status ProcessStatus) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Status = status
+}
+
 type ProcessStatus string
 
 const (
@@ -145,7 +177,7 @@ func (m *Manager) StartScript(scriptName string) (*Process, error) {
 	m.processes[processID] = process
 
 	if err := m.runProcess(process); err != nil {
-		process.Status = StatusFailed
+		process.SetStatus(StatusFailed)
 		return nil, err
 	}
 
@@ -186,7 +218,7 @@ func (m *Manager) StartCommand(name string, command string, args []string) (*Pro
 	m.processes[processID] = process
 
 	if err := m.runProcess(process); err != nil {
-		process.Status = StatusFailed
+		process.SetStatus(StatusFailed)
 		return nil, err
 	}
 
@@ -504,7 +536,7 @@ func (m *Manager) StopAllProcesses() error {
 	m.mu.RLock()
 	var processIDs []string
 	for id, proc := range m.processes {
-		if proc.Status == StatusRunning {
+		if proc.GetStatus() == StatusRunning {
 			processIDs = append(processIDs, id)
 		}
 	}
