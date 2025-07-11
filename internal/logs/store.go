@@ -99,27 +99,29 @@ func NewStore(maxEntries int) *Store {
 }
 
 func (s *Store) Add(processID, processName, content string, isError bool) *LogEntry {
+	// For high-frequency operations, try pure async first
 	req := &addLogRequest{
 		processID:   processID,
 		processName: processName,
 		content:     content,
 		isError:     isError,
-		result:      make(chan *LogEntry, 1),
+		result:      nil, // No result channel for fire-and-forget
 	}
 
-	// Try non-blocking send first
+	// Non-blocking send to channel
 	select {
 	case s.addChan <- req:
-		// Wait for result with timeout
-		select {
-		case entry := <-req.result:
-			return entry
-		case <-time.After(100 * time.Millisecond):
-			// Timeout, fallback to sync
-			return s.addSync(processID, processName, content, isError)
+		// Return a dummy entry for async operation (fire-and-forget)
+		return &LogEntry{
+			ID:          fmt.Sprintf("%s-%d", processID, time.Now().UnixNano()),
+			ProcessID:   processID,
+			ProcessName: processName,
+			Timestamp:   time.Now(),
+			Content:     content,
+			IsError:     isError,
 		}
 	default:
-		// Channel full, fallback to sync
+		// Channel full, immediate fallback to sync
 		return s.addSync(processID, processName, content, isError)
 	}
 }
