@@ -26,6 +26,11 @@ jobs:
       - name: Run tests
         run: go test -v ./...
 
+      - name: Run race detector tests
+        env:
+          CGO_ENABLED: 1
+        run: go test -race -timeout=10m ./...
+
       - name: Run linter
         uses: golangci/golangci-lint-action@v3
         with:

@@ -118,11 +118,20 @@ test-unit-all:
 .PHONY: test-race
 test-race:
 	@echo "🧪 Running tests with race detection..."
-	@go test -race -timeout 2m \
+	@CGO_ENABLED=1 go test -race -timeout 10m \
 		./internal/config \
 		./internal/logs \
 		./internal/discovery \
+		./internal/tui \
+		./internal/process \
+		./internal/proxy \
 		./pkg/events
+
+# Run comprehensive race detection across all packages
+.PHONY: test-race-all
+test-race-all:
+	@echo "🧪 Running comprehensive race detection..."
+	@CGO_ENABLED=1 go test -race -timeout=10m ./...
 
 # Run tests with coverage
 .PHONY: test-coverage
@@ -326,6 +335,7 @@ help:
 	@echo "  make test-fast      - Run fast unit tests only"
 	@echo "  make test-unit-all  - Run all unit tests (including slower ones)"
 	@echo "  make test-race      - Run tests with race detection"
+	@echo "  make test-race-all  - Run comprehensive race detection"
 	@echo "  make test-coverage  - Run tests with coverage report"
 	@echo "  make test-mcp-unit  - Run MCP unit tests"
 	@echo "  make test-integration-unit - Run integration tests"

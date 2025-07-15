@@ -1130,6 +1130,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLogsView()
 		cmds = append(cmds, m.waitForUpdates())
 
+	case restartProcessMsg:
+		if msg.clearLogs {
+			m.logStore.ClearLogs()
+			m.logStore.ClearErrors()
+		}
+		m.logStore.Add("system", "System", msg.message, msg.isError)
+		m.updateProcessList()
+		m.updateLogsView()
+		cmds = append(cmds, m.waitForUpdates())
+
+	case restartAllMsg:
+		if msg.clearLogs {
+			m.logStore.ClearLogs()
+			m.logStore.ClearErrors()
+		}
+		m.logStore.Add("system", "System", msg.message, msg.isError)
+		m.updateProcessList()
+		m.updateLogsView()
+		cmds = append(cmds, m.waitForUpdates())
+
 	case errorUpdateMsg:
 		m.updateErrorsList()
 		cmds = append(cmds, m.waitForUpdates())
@@ -3138,6 +3158,20 @@ type mcpConnectionMsg struct {
 	method         string
 }
 
+type restartProcessMsg struct {
+	processName string
+	message     string
+	isError     bool
+	clearLogs   bool
+}
+
+type restartAllMsg struct {
+	message     string
+	isError     bool
+	clearLogs   bool
+	restarted   int
+}
+
 func (m *Model) waitForUpdates() tea.Cmd {
 	return func() tea.Msg {
 		return <-m.updateChan
@@ -3480,56 +3514,76 @@ func (m *Model) installMCPToFile(filePath string) {
 
 func (m *Model) handleRestartProcess(proc *process.Process) tea.Cmd {
 	return func() tea.Msg {
-		// Clear logs and errors before restarting
-		m.logStore.ClearLogs()
-		m.logStore.ClearErrors()
-
 		// Stop the process first
 		if err := m.processMgr.StopProcess(proc.ID); err != nil {
-			m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", proc.Name, err), true)
-			return logUpdateMsg{}
+			return restartProcessMsg{
+				processName: proc.Name,
+				message:     fmt.Sprintf("Error stopping process %s: %v", proc.Name, err),
+				isError:     true,
+				clearLogs:   false,
+			}
 		}
 
 		// Start it again
 		_, err := m.processMgr.StartScript(proc.Name)
 		if err != nil {
-			m.logStore.Add("system", "System", fmt.Sprintf("Error restarting script %s: %v", proc.Name, err), true)
-		} else {
-			m.logStore.Add("system", "System", fmt.Sprintf("🔄 Restarted process: %s (logs cleared)", proc.Name), false)
+			return restartProcessMsg{
+				processName: proc.Name,
+				message:     fmt.Sprintf("Error restarting script %s: %v", proc.Name, err),
+				isError:     true,
+				clearLogs:   true,
+			}
 		}
-		return processUpdateMsg{}
+
+		return restartProcessMsg{
+			processName: proc.Name,
+			message:     fmt.Sprintf("🔄 Restarted process: %s (logs cleared)", proc.Name),
+			isError:     false,
+			clearLogs:   true,
+		}
 	}
 }
 
 func (m *Model) handleRestartAll() tea.Cmd {
 	return func() tea.Msg {
-		// Clear logs and errors before restarting all
-		m.logStore.ClearLogs()
-		m.logStore.ClearErrors()
-
 		processes := m.processMgr.GetAllProcesses()
 		restarted := 0
+		var errors []string
 
 		for _, proc := range processes {
 			if proc.Status == process.StatusRunning {
 				// Stop the process
 				if err := m.processMgr.StopProcess(proc.ID); err != nil {
-					m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", proc.Name, err), true)
+					errors = append(errors, fmt.Sprintf("Error stopping process %s: %v", proc.Name, err))
 					continue
 				}
 
 				// Start it again
 				_, err := m.processMgr.StartScript(proc.Name)
 				if err != nil {
-					m.logStore.Add("system", "System", fmt.Sprintf("Error restarting script %s: %v", proc.Name, err), true)
+					errors = append(errors, fmt.Sprintf("Error restarting script %s: %v", proc.Name, err))
 				} else {
 					restarted++
 				}
 			}
 		}
 
-		m.logStore.Add("system", "System", fmt.Sprintf("🔄 Restarted %d processes (logs cleared)", restarted), false)
-		return processUpdateMsg{}
+		var message string
+		var isError bool
+		if len(errors) > 0 {
+			message = fmt.Sprintf("🔄 Restarted %d processes with %d errors (logs cleared): %s", restarted, len(errors), strings.Join(errors, "; "))
+			isError = true
+		} else {
+			message = fmt.Sprintf("🔄 Restarted %d processes (logs cleared)", restarted)
+			isError = false
+		}
+
+		return restartAllMsg{
+			message:   message,
+			isError:   isError,
+			clearLogs: true,
+			restarted: restarted,
+		}
 	}
 }
 
