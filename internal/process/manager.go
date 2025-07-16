@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/config"
@@ -56,7 +57,7 @@ func (p *Process) GetExitCode() *int {
 	return p.ExitCode
 }
 
-// Thread-safe setters for Process fields  
+// Thread-safe setters for Process fields
 func (p *Process) SetStatus(status ProcessStatus) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
@@ -290,6 +291,23 @@ func (m *Manager) runProcess(p *Process) error {
 		}
 		p.mu.Unlock()
 
+		// Add a failure summary log for failed processes
+		if p.Status == StatusFailed {
+			m.mu.RLock()
+			callbacks := m.logCallbacks
+			m.mu.RUnlock()
+			
+			var exitCodeStr string
+			if p.ExitCode != nil {
+				exitCodeStr = fmt.Sprintf(" (exit code: %d)", *p.ExitCode)
+			}
+			
+			failureMsg := fmt.Sprintf("❌ Process '%s' failed%s", p.Name, exitCodeStr)
+			for _, cb := range callbacks {
+				cb(p.ID, failureMsg, true)
+			}
+		}
+
 		m.eventBus.Publish(events.Event{
 			Type:      events.ProcessExited,
 			ProcessID: p.ID,
@@ -396,7 +414,7 @@ func (m *Manager) StopProcess(processID string) error {
 		strings.Contains(process.Script, "pnpm") ||
 		strings.Contains(process.Script, "yarn") {
 		// Don't wait - kill immediately in background
-		go m.killProcessesByPort()
+		go m.KillProcessesByPort()
 	}
 
 	process.Status = StatusStopped
@@ -426,7 +444,7 @@ func (m *Manager) StopProcess(processID string) error {
 				strings.Contains(process.Script, "yarn") {
 				// Give package managers extra time then do additional cleanup
 				time.Sleep(200 * time.Millisecond)
-				m.killProcessesByPort()
+				m.KillProcessesByPort()
 			}
 		}
 	}()
@@ -442,6 +460,62 @@ func (m *Manager) StopProcess(processID string) error {
 	})
 
 	return nil
+}
+
+// StopProcessAndWait stops a process and waits for it to terminate completely
+func (m *Manager) StopProcessAndWait(processID string, timeout time.Duration) error {
+	// First stop the process normally
+	if err := m.StopProcess(processID); err != nil {
+		return err
+	}
+
+	// Get the process to check its PID
+	m.mu.RLock()
+	process, exists := m.processes[processID]
+	m.mu.RUnlock()
+	if !exists {
+		return nil // Process already cleaned up
+	}
+
+	// Get the PID to monitor
+	var mainPID int
+	process.mu.RLock()
+	if process.Cmd != nil && process.Cmd.Process != nil {
+		mainPID = process.Cmd.Process.Pid
+	}
+	process.mu.RUnlock()
+
+	if mainPID <= 0 {
+		return nil // No PID to monitor
+	}
+
+	// Wait for the process to actually terminate
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	ticker := time.NewTicker(50 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Timeout reached - force one more cleanup and return
+			m.ensureProcessDead(mainPID)
+			return fmt.Errorf("timeout waiting for process %s (PID %d) to terminate", processID, mainPID)
+		case <-ticker.C:
+			// Check if process still exists
+			if proc, err := os.FindProcess(mainPID); err == nil {
+				// Send signal 0 to check if process exists
+				if err := proc.Signal(syscall.Signal(0)); err != nil {
+					// Process is dead
+					return nil
+				}
+			} else {
+				// Process is dead
+				return nil
+			}
+		}
+	}
 }
 
 func (m *Manager) GetProcess(processID string) (*Process, bool) {
@@ -461,6 +535,24 @@ func (m *Manager) GetAllProcesses() []*Process {
 		processes = append(processes, p)
 	}
 	return processes
+}
+
+// CleanupFinishedProcesses removes terminated processes from the map
+// This prevents accumulation of stopped/failed processes
+func (m *Manager) CleanupFinishedProcesses() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for id, proc := range m.processes {
+		proc.mu.RLock()
+		status := proc.Status
+		proc.mu.RUnlock()
+
+		// Remove processes that have finished (failed, stopped, or succeeded)
+		if status == StatusFailed || status == StatusStopped || status == StatusSuccess {
+			delete(m.processes, id)
+		}
+	}
 }
 
 func (m *Manager) RegisterLogCallback(cb LogCallback) {
@@ -559,7 +651,7 @@ func (m *Manager) Cleanup() error {
 	// Kill any remaining development processes with minimal blocking
 	done := make(chan bool, 1)
 	go func() {
-		m.killProcessesByPort()
+		m.KillProcessesByPort()
 		done <- true
 	}()
 
@@ -620,8 +712,8 @@ func (m *Manager) ensureProcessDead(pid int) {
 	ensureProcessDead(pid)
 }
 
-// killProcessesByPort kills processes using development ports
-func (m *Manager) killProcessesByPort() {
+// KillProcessesByPort kills processes using development ports
+func (m *Manager) KillProcessesByPort() {
 	// Find processes using development ports (3000-3009)
 	for port := 3000; port <= 3009; port++ {
 		m.killProcessUsingPort(port)
@@ -644,7 +736,7 @@ func (m *Manager) killProcessesByPort() {
 		m.killProcessesByPattern("webpack-dev-server")
 		m.killProcessesByPattern("vite")
 		m.killProcessesByPattern("dev-server")
-		
+
 		// Kill any remaining node processes that are part of dev servers
 		// But be careful not to kill system node processes
 		m.killNodeDevProcesses()
@@ -740,22 +832,21 @@ func (m *Manager) killNodeDevProcesses() {
 		}
 
 		cmdLine := strings.Join(parts[1:], " ")
-		
+
 		// Check if this looks like a development server node process
-		if strings.Contains(cmdLine, "node") && (
-			strings.Contains(cmdLine, "next/dist/bin/next") ||
+		if strings.Contains(cmdLine, "node") && (strings.Contains(cmdLine, "next/dist/bin/next") ||
 			strings.Contains(cmdLine, "webpack") ||
 			strings.Contains(cmdLine, "dev-server") ||
 			strings.Contains(cmdLine, "turbopack") ||
 			(strings.Contains(cmdLine, "pnpm") && strings.Contains(cmdLine, "dev")) ||
 			(strings.Contains(cmdLine, "npm") && strings.Contains(cmdLine, "dev")) ||
 			(strings.Contains(cmdLine, "yarn") && strings.Contains(cmdLine, "dev"))) {
-			
+
 			// Exclude system processes and VSCode processes
 			if !strings.Contains(cmdLine, "vscode-server") &&
-			   !strings.Contains(cmdLine, "mcp-inspector") &&
-			   !strings.Contains(cmdLine, "/usr/lib/") &&
-			   !strings.Contains(cmdLine, "/opt/") {
+				!strings.Contains(cmdLine, "mcp-inspector") &&
+				!strings.Contains(cmdLine, "/usr/lib/") &&
+				!strings.Contains(cmdLine, "/opt/") {
 				devNodePIDs = append(devNodePIDs, pid)
 			}
 		}

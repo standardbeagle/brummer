@@ -22,7 +22,7 @@ Brummer provides a comprehensive MCP server implementing the official JSON-RPC 2
 
 ### Script Management
 
-#### `scripts/list`
+#### `scripts_list`
 
 List all available npm/yarn/pnpm/bun scripts from package.json.
 
@@ -42,13 +42,13 @@ List all available npm/yarn/pnpm/bun scripts from package.json.
 
 **Example**:
 ```javascript
-const result = await mcp.call('scripts/list');
+const result = await mcp.call('scripts_list');
 console.log(result.scripts);
 ```
 
 ---
 
-#### `scripts/run`
+#### `scripts_run`
 
 Execute a package.json script with real-time output streaming.
 
@@ -91,7 +91,7 @@ Execute a package.json script with real-time output streaming.
 
 ---
 
-#### `scripts/stop`
+#### `scripts_stop`
 
 Stop a running script process.
 
@@ -122,7 +122,7 @@ Stop a running script process.
 
 ---
 
-#### `scripts/status`
+#### `scripts_status`
 
 Check the status of running scripts.
 
@@ -155,7 +155,7 @@ Check the status of running scripts.
 
 ### Log Management
 
-#### `logs/stream`
+#### `logs_stream`
 
 Stream real-time logs from running processes with filtering support.
 
@@ -204,7 +204,7 @@ Stream real-time logs from running processes with filtering support.
 
 ---
 
-#### `logs/search`
+#### `logs_search`
 
 Search through historical logs using text or regex patterns.
 
@@ -236,7 +236,7 @@ Search through historical logs using text or regex patterns.
 
 **Example**:
 ```javascript
-const results = await mcp.call('logs/search', {
+const results = await mcp.call('logs_search', {
   query: "error",
   level: "error",
   limit: 50
@@ -245,7 +245,7 @@ const results = await mcp.call('logs/search', {
 
 ### Proxy & Telemetry
 
-#### `proxy/requests`
+#### `proxy_requests`
 
 Get HTTP requests captured by the proxy server.
 
@@ -272,7 +272,7 @@ Get HTTP requests captured by the proxy server.
 
 ---
 
-#### `telemetry/sessions`
+#### `telemetry_sessions`
 
 Get browser telemetry sessions with performance metrics.
 
@@ -301,7 +301,7 @@ Get browser telemetry sessions with performance metrics.
 
 ---
 
-#### `telemetry/events`
+#### `telemetry_events`
 
 Stream real-time telemetry events from the browser.
 
@@ -331,7 +331,7 @@ Stream real-time telemetry events from the browser.
 
 ### Browser Automation
 
-#### `browser/open`
+#### `browser_open`
 
 Open a URL in the default browser with automatic proxy configuration.
 
@@ -352,7 +352,7 @@ Open a URL in the default browser with automatic proxy configuration.
 
 ---
 
-#### `browser/refresh`
+#### `browser_refresh`
 
 Send refresh command to connected browser tabs.
 
@@ -368,7 +368,7 @@ Send refresh command to connected browser tabs.
 
 ---
 
-#### `browser/navigate`
+#### `browser_navigate`
 
 Navigate browser tabs to a different URL.
 
@@ -384,9 +384,103 @@ Navigate browser tabs to a different URL.
 }
 ```
 
+---
+
+#### `browser_screenshot`
+
+Capture screenshots of browser tabs for debugging, documentation, and visual testing.
+
+**Parameters**:
+- `sessionId` (string, optional): Session to capture from (defaults to most recent)
+- `format` (string, optional): Image format ("png", "jpeg", "webp", default: "png")
+- `quality` (integer, optional): Quality for jpeg/webp formats (0-100, default: 90)
+- `fullPage` (boolean, optional): Capture full page instead of viewport (default: false)
+- `selector` (string, optional): CSS selector to capture specific element
+
+**Input Schema**:
+```json
+{
+  "type": "object",
+  "properties": {
+    "sessionId": {
+      "type": "string",
+      "description": "Session to capture screenshot from (defaults to most recent)"
+    },
+    "format": {
+      "type": "string",
+      "enum": ["png", "jpeg", "webp"],
+      "default": "png",
+      "description": "Image format for the screenshot"
+    },
+    "quality": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "default": 90,
+      "description": "Quality for jpeg/webp formats (0-100)"
+    },
+    "fullPage": {
+      "type": "boolean",
+      "default": false,
+      "description": "Capture full page instead of just viewport"
+    },
+    "selector": {
+      "type": "string",
+      "description": "CSS selector to capture specific element"
+    }
+  }
+}
+```
+
+**Response**:
+```json
+{
+  "success": true,
+  "screenshot": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAA...",
+  "format": "png",
+  "dimensions": {
+    "width": 1920,
+    "height": 1080
+  }
+}
+```
+
+**Features**:
+- Multiple image formats (PNG, JPEG, WebP)
+- Full-page capture including scrolled content
+- Element-specific capture with CSS selectors
+- High-DPI display support with proper scaling
+- Cross-platform compatibility
+
+**Example**:
+```javascript
+// Standard viewport screenshot
+await mcp.call('browser_screenshot', {
+  format: "png"
+});
+
+// Full page capture for documentation
+await mcp.call('browser_screenshot', {
+  format: "png",
+  fullPage: true
+});
+
+// Capture specific component
+await mcp.call('browser_screenshot', {
+  selector: "#main-content",
+  format: "png"
+});
+
+// High-quality JPEG for photo content
+await mcp.call('browser_screenshot', {
+  format: "jpeg",
+  quality: 95
+});
+```
+
 ### JavaScript REPL
 
-#### `repl/execute`
+#### `repl_execute`
 
 Execute JavaScript code in the browser context with async/await support.
 
@@ -432,7 +526,7 @@ Execute JavaScript code in the browser context with async/await support.
 
 **Example**:
 ```javascript
-await mcp.call('repl/execute', {
+await mcp.call('repl_execute', {
   code: `
     const response = await fetch('/api/users');
     const users = await response.json();
@@ -506,9 +600,9 @@ Help configure npm scripts for common tasks.
 
 The following tools support real-time streaming:
 
-- ✅ `scripts/run` - Real-time script execution logs
-- ✅ `logs/stream` - Live log monitoring
-- ✅ `telemetry/events` - Real-time browser events
+- ✅ `scripts_run` - Real-time script execution logs
+- ✅ `logs_stream` - Live log monitoring
+- ✅ `telemetry_events` - Real-time browser events
 
 ### Protocol Details
 
@@ -562,7 +656,7 @@ const response = await fetch('http://localhost:7777/mcp', {
   body: JSON.stringify({
     jsonrpc: "2.0",
     id: 1,
-    method: "scripts/list"
+    method: "scripts_list"
   })
 });
 
@@ -596,6 +690,276 @@ For standard MCP clients (Claude Desktop, VSCode, etc.):
 }
 ```
 
+## Hub Mode Tools
+
+Hub mode enables coordination of multiple Brummer instances through a central hub. These tools are only available when running in hub mode (`brum --mcp`).
+
+### Instance Management
+
+#### `instances_list`
+
+List all discovered Brummer instances with their connection states and details.
+
+**Parameters**: None
+
+**Response**:
+```json
+[
+  {
+    "id": "frontend-abc123",
+    "name": "frontend",
+    "directory": "/home/user/projects/frontend",
+    "state": "active",
+    "port": 7777,
+    "pid": 12345,
+    "startupTime": "2024-01-09T10:00:00Z",
+    "timeInState": "5m30s",
+    "retryCount": 0,
+    "stateStats": {
+      "discovered": 1,
+      "connecting": 1,
+      "active": 1
+    }
+  }
+]
+```
+
+**Connection States**:
+- `discovered`: Instance file found, not yet connected
+- `connecting`: Attempting initial connection
+- `active`: Connected and ready for hub tools
+- `retrying`: Connection lost, attempting reconnection
+- `dead`: Maximum retries exceeded
+
+---
+
+#### `instances_connect`
+
+Establish session routing to a specific instance for subsequent hub tool calls.
+
+**Parameters**:
+- `instance_id` (string, required): Instance ID from `instances_list`
+
+**Response**:
+```json
+{
+  "success": true,
+  "instanceId": "frontend-abc123",
+  "previousConnection": null
+}
+```
+
+**Session Routing**: After connecting, all `hub_*` tools automatically route to the connected instance without needing to specify `instance_id`.
+
+---
+
+#### `instances_disconnect`
+
+Clear the current session routing context.
+
+**Parameters**: None
+
+**Response**:
+```json
+{
+  "success": true,
+  "previousConnection": "frontend-abc123"
+}
+```
+
+### Hub Proxy Tools
+
+All single-instance tools are available with `hub_` prefix for multi-instance coordination:
+
+#### `hub_scripts_list`
+
+List scripts from a specific instance. Same as `scripts_list` but requires `instance_id`.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+
+---
+
+#### `hub_scripts_run`
+
+Run a script on a specific instance. Same as `scripts_run` but requires `instance_id`.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `name` (string, required): Script name to execute
+
+---
+
+#### `hub_scripts_stop`
+
+Stop a process on a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `processId` (string, required): Process ID to stop
+
+---
+
+#### `hub_scripts_status`
+
+Check script status on a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `name` (string, optional): Specific script name
+
+---
+
+#### `hub_logs_stream`
+
+Stream logs from a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `processId` (string, optional): Filter by process
+- `level` (string, optional): Log level filter
+- `follow` (boolean, optional): Stream real-time
+
+---
+
+#### `hub_logs_search`
+
+Search logs from a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `query` (string, required): Search query
+- `regex` (boolean, optional): Use regex matching
+- `level` (string, optional): Filter by log level
+
+---
+
+#### `hub_proxy_requests`
+
+Get proxy requests from a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `processName` (string, optional): Filter by process
+- `status` (string, optional): Filter by status
+
+---
+
+#### `hub_telemetry_sessions`
+
+Get telemetry sessions from a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `active` (boolean, optional): Only active sessions
+- `limit` (integer, optional): Maximum sessions
+
+---
+
+#### `hub_telemetry_events`
+
+Stream telemetry events from a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `sessionId` (string, optional): Filter by session
+- `eventType` (string, optional): Event type filter
+- `follow` (boolean, optional): Stream real-time
+
+---
+
+#### `hub_browser_open`
+
+Open URL in browser via a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `url` (string, required): URL to open
+- `processName` (string, optional): Associate with process
+
+---
+
+#### `hub_browser_refresh`
+
+Refresh browser tabs connected to a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `sessionId` (string, optional): Specific session
+
+---
+
+#### `hub_browser_navigate`
+
+Navigate browser tabs via a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `url` (string, required): URL to navigate to
+- `sessionId` (string, optional): Specific session
+
+---
+
+#### `hub_browser_screenshot`
+
+Capture screenshot via a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `sessionId` (string, optional): Specific session
+- `format` (string, optional): Image format
+- `fullPage` (boolean, optional): Full page capture
+- `selector` (string, optional): Element selector
+
+---
+
+#### `hub_repl_execute`
+
+Execute JavaScript in browser context via a specific instance.
+
+**Parameters**:
+- `instance_id` (string, required): Target instance ID
+- `code` (string, required): JavaScript code
+- `sessionId` (string, optional): Target session
+
+### Hub Workflow Examples
+
+**Multi-Instance Setup**:
+```javascript
+// 1. List available instances
+const instances = await mcp.call('instances_list');
+
+// 2. Connect to frontend instance
+await mcp.call('instances_connect', {
+  instance_id: 'frontend-abc123'
+});
+
+// 3. Now hub tools route automatically
+const scripts = await mcp.call('hub_scripts_list');
+await mcp.call('hub_scripts_run', { name: 'dev' });
+
+// 4. Switch to backend instance
+await mcp.call('instances_connect', {
+  instance_id: 'backend-def456'
+});
+
+const logs = await mcp.call('hub_logs_stream', { follow: true });
+```
+
+**Direct Instance Targeting**:
+```javascript
+// Target specific instances without session routing
+await mcp.call('hub_scripts_run', {
+  instance_id: 'frontend-abc123',
+  name: 'dev'
+});
+
+await mcp.call('hub_scripts_run', {
+  instance_id: 'backend-def456', 
+  name: 'start'
+});
+```
+
 ## Special Features
 
 - **Cross-Platform**: Full support for Windows, Mac, Linux, and WSL2
@@ -603,5 +967,7 @@ For standard MCP clients (Claude Desktop, VSCode, etc.):
 - **Proxy Integration**: HTTP request interception and analysis
 - **Real-Time Monitoring**: Live logs, telemetry, and events
 - **Browser Automation**: Remote control of browser tabs
+- **Hub Mode**: Multi-instance coordination and management
+- **Session Routing**: Simplified hub tool usage with automatic routing
 - **Security**: Token-based authentication for client connections
 - **Memory Management**: Configurable storage limits and automatic cleanup

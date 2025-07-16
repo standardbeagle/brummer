@@ -44,7 +44,7 @@ func TestRegisterHubTools(t *testing.T) {
 
 	// Verify we have the expected number of tools
 	assert.Equal(t, 14, len(expectedTools))
-	
+
 	// Note: We can't directly inspect the server's registered tools
 	// In a real test, we'd need to call the tools/list method
 }
@@ -79,7 +79,7 @@ func TestHubToolsWithMockInstance(t *testing.T) {
 			var params map[string]interface{}
 			json.Unmarshal(req.Params, &params)
 			toolName := params["name"].(string)
-			
+
 			// Return different responses based on tool
 			var result interface{}
 			switch toolName {
@@ -114,7 +114,7 @@ func TestHubToolsWithMockInstance(t *testing.T) {
 					},
 				}
 			}
-			
+
 			resp := JSONRPCMessage{
 				Jsonrpc: "2.0",
 				ID:      req.ID,
@@ -142,7 +142,7 @@ func TestHubToolsWithMockInstance(t *testing.T) {
 
 	// Create connection manager and register instance
 	connMgr := NewConnectionManager()
-	
+
 	// Create discovery instance
 	instance := &discovery.Instance{
 		ID:        "test-instance",
@@ -154,17 +154,17 @@ func TestHubToolsWithMockInstance(t *testing.T) {
 	}
 	instance.ProcessInfo.PID = 12345
 	instance.ProcessInfo.Executable = "brum"
-	
+
 	// Register instance
 	err := connMgr.RegisterInstance(instance)
 	require.NoError(t, err)
-	
+
 	// Wait for connection to be established
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		connections := connMgr.ListInstances()
 		return len(connections) > 0 && connections[0].State == StateActive
 	}, "Instance should be connected and active")
-	
+
 	// Verify instance is connected
 	connections := connMgr.ListInstances()
 	require.Len(t, connections, 1)
@@ -269,7 +269,7 @@ func TestHubToolsConcurrentAccess(t *testing.T) {
 			} else if req.Method == "tools/call" {
 				// Simulate some processing
 				time.Sleep(10 * time.Millisecond)
-				
+
 				resp := JSONRPCMessage{
 					Jsonrpc: "2.0",
 					ID:      req.ID,
@@ -292,29 +292,29 @@ func TestHubToolsConcurrentAccess(t *testing.T) {
 
 	// Create connection manager and register instances
 	connMgr := NewConnectionManager()
-	
+
 	for i, server := range mockInstances {
 		var port int
 		fmt.Sscanf(server.URL, "http://127.0.0.1:%d", &port)
-		
+
 		instance := &discovery.Instance{
-			ID:         fmt.Sprintf("instance-%d", i+1),
-			Name:       fmt.Sprintf("Mock Instance %d", i+1),
-			Directory:  fmt.Sprintf("/tmp/test%d", i+1),
-			Port:       port,
+			ID:        fmt.Sprintf("instance-%d", i+1),
+			Name:      fmt.Sprintf("Mock Instance %d", i+1),
+			Directory: fmt.Sprintf("/tmp/test%d", i+1),
+			Port:      port,
 			StartedAt: time.Now(),
 			LastPing:  time.Now(),
 		}
 		instance.ProcessInfo.PID = 12345 + i
 		instance.ProcessInfo.Executable = "brum"
-		
+
 		err := connMgr.RegisterInstance(instance)
 		require.NoError(t, err)
 	}
-	
+
 	// Wait for connections
 	time.Sleep(200 * time.Millisecond)
-	
+
 	// Verify all instances are connected
 	connections := connMgr.ListInstances()
 	require.Len(t, connections, 3)
@@ -325,9 +325,9 @@ func TestHubToolsConcurrentAccess(t *testing.T) {
 	// Launch concurrent tool calls
 	results := make(chan string, 15)
 	errors := make(chan error, 15)
-	
+
 	tools := []string{"scripts_list", "logs_stream", "browser_open", "proxy_requests", "repl_execute"}
-	
+
 	for i := 1; i <= 3; i++ {
 		for _, tool := range tools {
 			go func(instanceID, toolName string) {
@@ -344,7 +344,7 @@ func TestHubToolsConcurrentAccess(t *testing.T) {
 	// Collect results
 	successCount := 0
 	errorCount := 0
-	
+
 	for i := 0; i < 15; i++ {
 		select {
 		case err := <-errors:
@@ -358,7 +358,7 @@ func TestHubToolsConcurrentAccess(t *testing.T) {
 			t.Fatal("Timeout waiting for results")
 		}
 	}
-	
+
 	assert.Equal(t, 15, successCount)
 	assert.Equal(t, 0, errorCount)
 }
@@ -366,7 +366,7 @@ func TestHubToolsConcurrentAccess(t *testing.T) {
 // TestHubToolsInstanceLifecycle tests tool behavior during instance lifecycle
 func TestHubToolsInstanceLifecycle(t *testing.T) {
 	connMgr := NewConnectionManager()
-	
+
 	// Create a mock instance that can be controlled
 	var serverRunning bool
 	mockInstance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -375,10 +375,10 @@ func TestHubToolsInstanceLifecycle(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		
+
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		resp := JSONRPCMessage{
 			Jsonrpc: "2.0",
 			ID:      req.ID,
@@ -388,7 +388,7 @@ func TestHubToolsInstanceLifecycle(t *testing.T) {
 				},
 			},
 		}
-		
+
 		if req.Method == "initialize" {
 			resp.Result = map[string]interface{}{
 				"protocolVersion": "1.0",
@@ -398,39 +398,39 @@ func TestHubToolsInstanceLifecycle(t *testing.T) {
 				},
 			}
 		}
-		
+
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer mockInstance.Close()
-	
+
 	var port int
 	fmt.Sscanf(mockInstance.URL, "http://127.0.0.1:%d", &port)
-	
+
 	instance := &discovery.Instance{
-		ID:         "lifecycle-instance",
-		Name:       "Lifecycle Test",
-		Directory:  "/tmp/lifecycle",
-		Port:       port,
+		ID:        "lifecycle-instance",
+		Name:      "Lifecycle Test",
+		Directory: "/tmp/lifecycle",
+		Port:      port,
 		StartedAt: time.Now(),
 		LastPing:  time.Now(),
 	}
 	instance.ProcessInfo.PID = 99999
 	instance.ProcessInfo.Executable = "brum"
-	
+
 	// Test 1: Instance starts up
 	serverRunning = true
 	err := connMgr.RegisterInstance(instance)
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Should be able to call tools
 	result, err := callInstanceTool(context.Background(), connMgr, "lifecycle-instance", "scripts_list", nil)
 	assert.NoError(t, err)
 	assert.Contains(t, string(result), "ok")
-	
+
 	// Test 2: Instance goes down
 	serverRunning = false
-	
+
 	// Tool calls should fail but not crash
 	_, err = callInstanceTool(context.Background(), connMgr, "lifecycle-instance", "scripts_list", nil)
 	// Could fail immediately or after health check detects it
@@ -440,10 +440,10 @@ func TestHubToolsInstanceLifecycle(t *testing.T) {
 		_, err = callInstanceTool(context.Background(), connMgr, "lifecycle-instance", "scripts_list", nil)
 	}
 	// Don't assert specific error as it depends on timing
-	
+
 	// Test 3: Instance comes back up
 	serverRunning = true
-	
+
 	// The hub should handle intermittent availability
 	// In real scenario, discovery would re-register the instance
 	// For this test, we'll simulate by checking state
@@ -455,11 +455,11 @@ func TestHubToolsInstanceLifecycle(t *testing.T) {
 func TestStreamingToolsNotImplemented(t *testing.T) {
 	// This test documents that streaming is not yet implemented
 	// When implemented, this test should be updated
-	
+
 	mockInstance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		if req.Method == "initialize" {
 			resp := JSONRPCMessage{
 				Jsonrpc: "2.0",
@@ -488,39 +488,39 @@ func TestStreamingToolsNotImplemented(t *testing.T) {
 		}
 	}))
 	defer mockInstance.Close()
-	
+
 	var port int
 	fmt.Sscanf(mockInstance.URL, "http://127.0.0.1:%d", &port)
-	
+
 	connMgr := NewConnectionManager()
 	instance := &discovery.Instance{
-		ID:         "streaming-instance",
-		Name:       "Streaming Test",
-		Directory:  "/tmp/streaming",
-		Port:       port,
+		ID:        "streaming-instance",
+		Name:      "Streaming Test",
+		Directory: "/tmp/streaming",
+		Port:      port,
 		StartedAt: time.Now(),
 		LastPing:  time.Now(),
 	}
 	instance.ProcessInfo.PID = 88888
 	instance.ProcessInfo.Executable = "brum"
-	
+
 	err := connMgr.RegisterInstance(instance)
 	require.NoError(t, err)
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Test logs_stream with follow=true
 	args := map[string]interface{}{
 		"follow": true,
 	}
 	result, err := callInstanceTool(context.Background(), connMgr, "streaming-instance", "logs_stream", args)
 	require.NoError(t, err)
-	
+
 	// Verify it's JSON, not a stream
 	var parsed map[string]interface{}
 	err = json.Unmarshal([]byte(string(result)), &parsed)
 	assert.NoError(t, err, "Expected JSON response, not a stream")
 	assert.Contains(t, string(result), "static response")
-	
+
 	// TODO: When streaming is implemented, update this test to verify:
 	// - Response is Server-Sent Events format
 	// - Multiple events are received over time

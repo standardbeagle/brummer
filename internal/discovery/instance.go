@@ -8,7 +8,6 @@
 package discovery
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -52,6 +51,7 @@ type Discovery struct {
 	updateCallbacks []func(instances map[string]*Instance)
 	stopCh          chan struct{}
 	stoppedCh       chan struct{}
+	atomicOps       *AtomicFileOperations
 }
 
 // New creates a new instance discovery system.
@@ -81,6 +81,7 @@ func New(instancesDir string) (*Discovery, error) {
 		watcher:      watcher,
 		stopCh:       make(chan struct{}),
 		stoppedCh:    make(chan struct{}),
+		atomicOps:    NewAtomicFileOperations(instancesDir),
 	}
 
 	// Add the instances directory to the watcher
@@ -107,13 +108,13 @@ func (d *Discovery) Start() {
 func (d *Discovery) Stop() error {
 	// Signal stop
 	close(d.stopCh)
-	
+
 	// Close watcher to trigger event loop exit
 	err := d.watcher.Close()
-	
+
 	// Wait for watch goroutine to complete
 	<-d.stoppedCh
-	
+
 	return err
 }
 
@@ -139,22 +140,18 @@ func (d *Discovery) OnUpdate(callback func(instances map[string]*Instance)) {
 
 // scanDirectory scans the instances directory for existing instance files
 func (d *Discovery) scanDirectory() error {
-	entries, err := os.ReadDir(d.instancesDir)
+	// Use atomic operations to safely list all instances
+	instances, err := d.atomicOps.SafeListInstances()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to list instances: %w", err)
 	}
 
-	for _, entry := range entries {
-		if entry.IsDir() || !isInstanceFile(entry.Name()) {
-			continue
-		}
-
-		instancePath := filepath.Join(d.instancesDir, entry.Name())
-		if err := d.loadInstance(instancePath); err != nil {
-			// Log error but continue scanning
-			fmt.Fprintf(os.Stderr, "Failed to load instance %s: %v\n", entry.Name(), err)
-		}
+	// Update in-memory cache with discovered instances
+	d.mu.Lock()
+	for id, instance := range instances {
+		d.instances[id] = instance
 	}
+	d.mu.Unlock()
 
 	return nil
 }
@@ -162,12 +159,12 @@ func (d *Discovery) scanDirectory() error {
 // watch monitors the instances directory for changes
 func (d *Discovery) watch() {
 	defer close(d.stoppedCh)
-	
+
 	for {
 		select {
 		case <-d.stopCh:
 			return
-			
+
 		case event, ok := <-d.watcher.Events:
 			if !ok {
 				return
@@ -199,24 +196,22 @@ func (d *Discovery) watch() {
 
 // loadInstance loads an instance from a file
 func (d *Discovery) loadInstance(path string) error {
-	data, err := os.ReadFile(path)
+	// Extract instance ID from the filename
+	filename := filepath.Base(path)
+	instanceID := extractInstanceID(filename)
+	if instanceID == "" {
+		return fmt.Errorf("invalid instance filename: %s", filename)
+	}
+
+	// Use atomic operations to safely read the instance
+	instance, err := d.atomicOps.SafeReadInstance(instanceID)
 	if err != nil {
-		return fmt.Errorf("read file: %w", err)
-	}
-
-	var instance Instance
-	if err := json.Unmarshal(data, &instance); err != nil {
-		return fmt.Errorf("unmarshal JSON: %w", err)
-	}
-
-	// Validate instance data
-	if err := validateInstance(&instance); err != nil {
-		return fmt.Errorf("invalid instance: %w", err)
+		return fmt.Errorf("failed to read instance %s: %w", instanceID, err)
 	}
 
 	// Get callbacks while holding lock to ensure consistency
 	d.mu.Lock()
-	d.instances[instance.ID] = &instance
+	d.instances[instance.ID] = instance
 	// Create a copy of callbacks to avoid holding lock during callback execution
 	callbacks := make([]func(map[string]*Instance), len(d.updateCallbacks))
 	copy(callbacks, d.updateCallbacks)
@@ -290,7 +285,7 @@ func (d *Discovery) removeInstance(path string) {
 		d.mu.Unlock()
 		return
 	}
-	
+
 	delete(d.instances, instanceID)
 	// Create a copy of callbacks to avoid holding lock during callback execution
 	callbacks := make([]func(map[string]*Instance), len(d.updateCallbacks))
@@ -326,34 +321,35 @@ func (d *Discovery) CleanupStaleInstances() error {
 
 	now := time.Now()
 	staleIDs := []string{}
-	
+
 	// Find stale instances
 	for id, inst := range d.instances {
-		if now.Sub(inst.LastPing) > StaleInstanceTimeout {
+		isStale := now.Sub(inst.LastPing) > StaleInstanceTimeout
+		
+		// Also check if the process is actually running
+		if isStale || !d.isProcessRunning(inst.ProcessInfo.PID) {
 			staleIDs = append(staleIDs, id)
 		}
 	}
-	
-	// Remove stale instances
+
+	// Remove stale instances using atomic operations
 	for _, id := range staleIDs {
 		// Remove from memory
 		delete(d.instances, id)
-		
-		// Remove file
-		filename := fmt.Sprintf("%s.json", id)
-		path := filepath.Join(d.instancesDir, filename)
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+
+		// Remove file atomically
+		if err := d.atomicOps.SafeUnregisterInstance(id); err != nil {
 			// Log error but continue cleanup
-			fmt.Fprintf(os.Stderr, "Failed to remove stale instance file %s: %v\n", path, err)
+			fmt.Fprintf(os.Stderr, "Failed to remove stale instance file %s: %v\n", id, err)
 		}
 	}
-	
+
 	// Notify callbacks if any instances were removed
 	if len(staleIDs) > 0 {
 		callbacks := make([]func(map[string]*Instance), len(d.updateCallbacks))
 		copy(callbacks, d.updateCallbacks)
 		instancesCopy := d.getInstancesLocked()
-		
+
 		// Release lock before callbacks
 		d.mu.Unlock()
 		for _, callback := range callbacks {
@@ -361,6 +357,28 @@ func (d *Discovery) CleanupStaleInstances() error {
 		}
 		d.mu.Lock() // Re-acquire for defer
 	}
-	
+
 	return nil
+}
+
+// isProcessRunning checks if a process with the given PID is currently running
+func (d *Discovery) isProcessRunning(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+
+	// Use Linux /proc filesystem approach which is more reliable
+	procPath := fmt.Sprintf("/proc/%d", pid)
+	if _, err := os.Stat(procPath); os.IsNotExist(err) {
+		return false
+	}
+
+	// Check if the process is actually running by reading its status
+	statusPath := filepath.Join(procPath, "stat")
+	if _, err := os.Stat(statusPath); os.IsNotExist(err) {
+		return false
+	}
+
+	// If /proc/PID/stat exists, the process is running
+	return true
 }

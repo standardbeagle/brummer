@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	
+
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 )
@@ -13,22 +13,22 @@ import (
 func RegisterHubTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 	// Script management tools
 	registerHubScriptTools(srv, connMgr)
-	
-	// Log management tools  
+
+	// Log management tools
 	registerHubLogTools(srv, connMgr)
-	
+
 	// Proxy and telemetry tools
 	registerHubProxyTools(srv, connMgr)
-	
+
 	// Browser automation tools
 	registerHubBrowserTools(srv, connMgr)
-	
+
 	// REPL tool
 	registerHubREPLTool(srv, connMgr)
 }
 
 // getHubClient gets the active client for an instance
-func getHubClient(connMgr *ConnectionManager, instanceID string) (*HubClient, error) {
+func getHubClient(connMgr *ConnectionManager, instanceID string) (HubClientInterface, error) {
 	connections := connMgr.ListInstances()
 	for _, conn := range connections {
 		if conn.InstanceID == instanceID && conn.State == StateActive && conn.Client != nil {
@@ -44,7 +44,7 @@ func callInstanceTool(ctx context.Context, connMgr *ConnectionManager, instanceI
 	if err != nil {
 		return nil, err
 	}
-	
+
 	return client.CallTool(ctx, toolName, args)
 }
 
@@ -91,12 +91,12 @@ Get instance_id from instances_list output, which shows:
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "scripts_list", nil)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to list scripts: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -106,7 +106,7 @@ Get instance_id from instances_list output, which shows:
 			},
 		}, nil
 	})
-	
+
 	// hub_scripts_run - Run a script on a specific instance
 	runTool := mcplib.NewTool("hub_scripts_run",
 		mcplib.WithDescription(`Start a package.json script on a specific brummer instance via hub routing with full process management.
@@ -165,21 +165,21 @@ Get instance_id from instances_list output, which shows:
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		scriptName, err := request.RequireString("name")
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := map[string]interface{}{
 			"name": scriptName,
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "scripts_run", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to run script: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -189,7 +189,7 @@ Get instance_id from instances_list output, which shows:
 			},
 		}, nil
 	})
-	
+
 	// hub_scripts_stop - Stop a script on a specific instance
 	stopTool := mcplib.NewTool("hub_scripts_stop",
 		mcplib.WithDescription(`Stop a running script process on a specific brummer instance via hub routing.
@@ -250,21 +250,21 @@ Get processId from:
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		processID, err := request.RequireString("processId")
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := map[string]interface{}{
 			"processId": processID,
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "scripts_stop", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to stop script: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -274,7 +274,7 @@ Get processId from:
 			},
 		}, nil
 	})
-	
+
 	// hub_scripts_status - Check script status on a specific instance
 	statusTool := mcplib.NewTool("hub_scripts_status",
 		mcplib.WithDescription(`Check the status of running scripts on a specific brummer instance with process details and proxy URLs.
@@ -339,17 +339,17 @@ Central tool for cross-instance process monitoring:
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := make(map[string]interface{})
 		if name := request.GetString("name", ""); name != "" {
 			args["name"] = name
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "scripts_status", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to get status: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -428,7 +428,7 @@ func registerHubLogTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := make(map[string]interface{})
 		if processID := request.GetString("processId", ""); processID != "" {
 			args["processId"] = processID
@@ -442,12 +442,12 @@ func registerHubLogTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "logs_stream", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to stream logs: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -457,7 +457,7 @@ func registerHubLogTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 			},
 		}, nil
 	})
-	
+
 	// hub_logs_search - Search logs on a specific instance
 	searchTool := mcplib.NewTool("hub_logs_search",
 		mcplib.WithDescription(`Search through historical logs on a specific brummer instance via hub routing for distributed debugging.
@@ -533,16 +533,16 @@ func registerHubLogTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		query, err := request.RequireString("query")
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := map[string]interface{}{
 			"query": query,
 		}
-		
+
 		if regex := request.GetBool("regex", false); regex {
 			args["regex"] = regex
 		}
@@ -558,12 +558,12 @@ func registerHubLogTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "logs_search", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to search logs: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -638,7 +638,7 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := make(map[string]interface{})
 		if processName := request.GetString("processName", ""); processName != "" {
 			args["processName"] = processName
@@ -649,12 +649,12 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "proxy_requests", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to get proxy requests: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -730,7 +730,7 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := make(map[string]interface{})
 		if active := request.GetBool("active", false); active {
 			args["active"] = active
@@ -738,12 +738,12 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "telemetry_sessions", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to get telemetry sessions: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -826,7 +826,7 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := make(map[string]interface{})
 		if sessionID := request.GetString("sessionId", ""); sessionID != "" {
 			args["sessionId"] = sessionID
@@ -840,12 +840,12 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "telemetry_events", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to get telemetry events: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -925,25 +925,25 @@ func registerHubBrowserTools(srv *server.MCPServer, connMgr *ConnectionManager) 
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		url, err := request.RequireString("url")
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := map[string]interface{}{
 			"url": url,
 		}
-		
+
 		if processName := request.GetString("processName", ""); processName != "" {
 			args["processName"] = processName
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "browser_open", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to open browser: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -1014,17 +1014,17 @@ func registerHubBrowserTools(srv *server.MCPServer, connMgr *ConnectionManager) 
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := make(map[string]interface{})
 		if sessionID := request.GetString("sessionId", ""); sessionID != "" {
 			args["sessionId"] = sessionID
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "browser_refresh", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to refresh browser: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -1105,25 +1105,25 @@ func registerHubBrowserTools(srv *server.MCPServer, connMgr *ConnectionManager) 
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		url, err := request.RequireString("url")
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := map[string]interface{}{
 			"url": url,
 		}
-		
+
 		if sessionID := request.GetString("sessionId", ""); sessionID != "" {
 			args["sessionId"] = sessionID
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "browser_navigate", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to navigate browser: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -1203,7 +1203,7 @@ func registerHubBrowserTools(srv *server.MCPServer, connMgr *ConnectionManager) 
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := make(map[string]interface{})
 		if sessionID := request.GetString("sessionId", ""); sessionID != "" {
 			args["sessionId"] = sessionID
@@ -1211,12 +1211,12 @@ func registerHubBrowserTools(srv *server.MCPServer, connMgr *ConnectionManager) 
 		if outputPath := request.GetString("outputPath", ""); outputPath != "" {
 			args["outputPath"] = outputPath
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "browser_screenshot", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to take screenshot: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{
@@ -1310,25 +1310,25 @@ func registerHubREPLTool(srv *server.MCPServer, connMgr *ConnectionManager) {
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		code, err := request.RequireString("code")
 		if err != nil {
 			return mcplib.NewToolResultError(err.Error()), nil
 		}
-		
+
 		args := map[string]interface{}{
 			"code": code,
 		}
-		
+
 		if sessionID := request.GetString("sessionId", ""); sessionID != "" {
 			args["sessionId"] = sessionID
 		}
-		
+
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "repl_execute", args)
 		if err != nil {
 			return mcplib.NewToolResultError(fmt.Sprintf("Failed to execute REPL: %v", err)), nil
 		}
-		
+
 		return &mcplib.CallToolResult{
 			Content: []mcplib.Content{
 				mcplib.TextContent{

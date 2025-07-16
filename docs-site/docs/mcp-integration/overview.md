@@ -66,13 +66,14 @@ Control your development processes from any MCP client:
 
 ```javascript
 // Start a development server
-await mcp.call('brummer.startProcess', { name: 'dev' });
+await mcp.call('scripts_run', { name: 'dev' });
 
 // Stop a process
-await mcp.call('brummer.stopProcess', { name: 'dev' });
+const status = await mcp.call('scripts_status', { name: 'dev' });
+await mcp.call('scripts_stop', { processId: status.processId });
 
-// Get process status
-const status = await mcp.call('brummer.getProcesses');
+// Get all processes status
+const allStatus = await mcp.call('scripts_status');
 ```
 
 ### 2. Log Streaming
@@ -80,15 +81,16 @@ const status = await mcp.call('brummer.getProcesses');
 Access logs in real-time:
 
 ```javascript
-// Get recent logs
-const logs = await mcp.call('brummer.getLogs', {
-  processName: 'dev',
+// Search recent logs
+const logs = await mcp.call('logs_search', {
+  query: 'dev',
   limit: 100
 });
 
 // Stream logs as they happen
-const stream = await mcp.call('brummer.streamLogs', {
-  follow: true
+const stream = await mcp.call('logs_stream', {
+  follow: true,
+  limit: 100
 });
 ```
 
@@ -98,14 +100,16 @@ Get notified of errors immediately:
 
 ```javascript
 // Get recent errors
-const errors = await mcp.call('brummer.getErrors', {
-  severity: 'error',
+const errors = await mcp.call('logs_search', {
+  query: 'error',
+  level: 'error',
   limit: 10
 });
 
-// Subscribe to error events
-await mcp.subscribe('error', (error) => {
-  console.log('Error detected:', error);
+// Stream error events
+const errorStream = await mcp.call('logs_stream', {
+  level: 'error',
+  follow: true
 });
 ```
 
@@ -114,11 +118,13 @@ await mcp.subscribe('error', (error) => {
 Access detected URLs:
 
 ```javascript
-// Get all detected URLs
-const urls = await mcp.call('brummer.getUrls');
+// Get HTTP requests from proxy
+const requests = await mcp.call('proxy_requests', {
+  limit: 50
+});
 
-// Check URL status
-const status = await mcp.call('brummer.checkUrl', {
+// Open URL in browser
+await mcp.call('browser_open', {
   url: 'http://localhost:3000'
 });
 ```
@@ -133,13 +139,11 @@ Start Brummer with MCP enabled:
 brum --mcp
 ```
 
-Or configure in `.brummer.yaml`:
+Or configure in `.brum.toml`:
 
-```yaml
-mcp:
-  enabled: true
-  transport: stdio  # or websocket
-  port: 3280       # for websocket
+```toml
+mcp_port = 7777
+no_mcp = false
 ```
 
 ### 2. Connect from VSCode
@@ -197,13 +201,12 @@ Run tests and get results programmatically:
 
 ```javascript
 // Start test process
-await mcp.call('brummer.startProcess', { name: 'test' });
+const testProcess = await mcp.call('scripts_run', { name: 'test' });
 
-// Wait for completion
-await mcp.subscribe('test.complete', (result) => {
-  if (result.failed > 0) {
-    // Handle test failures
-  }
+// Monitor test logs
+const testLogs = await mcp.call('logs_stream', {
+  processId: testProcess.processId,
+  follow: true
 });
 ```
 
@@ -212,13 +215,16 @@ await mcp.subscribe('test.complete', (result) => {
 Track resource usage:
 
 ```javascript
-// Get process stats
-const stats = await mcp.call('brummer.getProcessStats', {
-  name: 'dev'
+// Get telemetry sessions
+const sessions = await mcp.call('telemetry_sessions', {
+  limit: 10
 });
 
-console.log(`Memory: ${stats.memory / 1024 / 1024}MB`);
-console.log(`CPU: ${stats.cpu}%`);
+// Monitor browser performance
+const events = await mcp.call('telemetry_events', {
+  eventType: 'performance',
+  follow: true
+});
 ```
 
 ### 4. Build Automation
@@ -227,11 +233,12 @@ Integrate with build pipelines:
 
 ```javascript
 // Start build
-await mcp.call('brummer.startProcess', { name: 'build' });
+const buildProcess = await mcp.call('scripts_run', { name: 'build' });
 
-// Monitor progress
-await mcp.subscribe('build.progress', (progress) => {
-  console.log(`Build ${progress.percent}% complete`);
+// Monitor build logs
+const buildLogs = await mcp.call('logs_stream', {
+  processId: buildProcess.processId,
+  follow: true
 });
 ```
 
@@ -241,39 +248,28 @@ await mcp.subscribe('build.progress', (progress) => {
 
 Enable authentication for production use:
 
-```yaml
-mcp:
-  auth:
-    enabled: true
-    token: "your-secret-token"
+```toml
+# Security is handled at the process level
+# MCP server runs locally on localhost:7777
 ```
 
 ### Access Control
 
 Limit MCP server access:
 
-```yaml
-mcp:
-  allowed_methods:
-    - brummer.getProcesses
-    - brummer.getLogs
-  denied_methods:
-    - brummer.stopProcess
+```toml
+# Tool access is controlled by MCP client configuration
+# All tools are available to connected clients
 ```
 
 ### Network Security
 
 For WebSocket transport:
 
-```yaml
-mcp:
-  transport: websocket
-  host: localhost  # Only local connections
-  port: 3280
-  ssl:
-    enabled: true
-    cert: /path/to/cert.pem
-    key: /path/to/key.pem
+```toml
+# Brummer uses Streamable HTTP transport
+mcp_port = 7777
+# Server only accepts local connections
 ```
 
 ## Advanced Configuration
@@ -282,44 +278,40 @@ mcp:
 
 Add custom MCP commands:
 
-```yaml
-mcp:
-  custom_commands:
-    - name: "deploy"
-      description: "Deploy to staging"
-      script: "./scripts/deploy.sh"
-      
-    - name: "db:reset"
-      description: "Reset database"
-      script: "npm run db:reset"
+```json
+// Add custom scripts to package.json
+{
+  "scripts": {
+    "deploy": "./scripts/deploy.sh",
+    "db:reset": "npm run db:reset"
+  }
+}
 ```
 
 ### Event Filtering
 
 Control which events are exposed:
 
-```yaml
-mcp:
-  events:
-    include:
-      - process.*
-      - log.error
-      - build.complete
-    exclude:
-      - log.debug
-      - process.heartbeat
+```javascript
+// Filter events using tool parameters
+const errorLogs = await mcp.call('logs_stream', {
+  level: 'error',
+  follow: true
+});
+
+const processLogs = await mcp.call('logs_stream', {
+  processId: 'specific-process-id',
+  follow: true
+});
 ```
 
 ### Rate Limiting
 
 Prevent abuse:
 
-```yaml
-mcp:
-  rate_limit:
-    enabled: true
-    requests_per_minute: 100
-    burst: 20
+```toml
+# Rate limiting handled by HTTP server
+# Default limits are appropriate for development use
 ```
 
 ## Troubleshooting

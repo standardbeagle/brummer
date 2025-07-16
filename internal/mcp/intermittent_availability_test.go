@@ -39,7 +39,7 @@ func TestIntermittentAvailabilityScenario(t *testing.T) {
 		}
 
 		generation := serverGeneration.Load()
-		
+
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
 
@@ -61,17 +61,17 @@ func TestIntermittentAvailabilityScenario(t *testing.T) {
 		case "tools/call":
 			var params map[string]interface{}
 			json.Unmarshal(req.Params, &params)
-			
+
 			// Simulate actual work
 			time.Sleep(10 * time.Millisecond)
-			
+
 			resp := JSONRPCMessage{
 				Jsonrpc: "2.0",
 				ID:      req.ID,
 				Result: map[string]interface{}{
 					"content": []map[string]interface{}{
 						{
-							"type": "text", 
+							"type": "text",
 							"text": fmt.Sprintf(`{"generation": %d, "status": "ok"}`, generation),
 						},
 					},
@@ -116,28 +116,28 @@ func TestIntermittentAvailabilityScenario(t *testing.T) {
 		// Step 2: Dev server crashes (e.g., syntax error)
 		t.Log("Simulating server crash...")
 		serverRunning.Store(false)
-		
+
 		// Hub should handle gracefully
 		time.Sleep(100 * time.Millisecond)
-		
+
 		// Calls should fail but not panic
 		_, err = callInstanceTool(context.Background(), connMgr, "my-dev-app", "scripts_list", nil)
 		// This might succeed if health check hasn't detected failure yet
-		
+
 		// Step 3: Developer fixes issue and restarts
 		t.Log("Simulating server restart...")
 		serverGeneration.Add(1)
 		serverRunning.Store(true)
-		
+
 		// In real scenario, file watcher would detect new instance
 		// For test, we'll simulate by re-registering
 		instance.StartedAt = time.Now()
 		instance.ProcessInfo.PID = 12346 // New PID
 		err = connMgr.RegisterInstance(instance)
-		
+
 		// Wait for reconnection
 		time.Sleep(200 * time.Millisecond)
-		
+
 		// Should work again
 		result, err = callInstanceTool(context.Background(), connMgr, "my-dev-app", "scripts_list", nil)
 		if err != nil {
@@ -150,10 +150,10 @@ func TestIntermittentAvailabilityScenario(t *testing.T) {
 		// Step 4: Multiple rapid restarts (hot reload scenario)
 		for i := 0; i < 3; i++ {
 			t.Logf("Rapid restart %d", i+1)
-			
+
 			serverRunning.Store(false)
 			time.Sleep(50 * time.Millisecond)
-			
+
 			serverGeneration.Add(1)
 			serverRunning.Store(true)
 			time.Sleep(50 * time.Millisecond)
@@ -176,13 +176,13 @@ func TestIntermittentAvailabilityScenario(t *testing.T) {
 		// Client tries to use a tool
 		if len(instances) > 0 {
 			instanceID := instances[0].InstanceID
-			
+
 			// This might fail if instance is down
 			_, err := callInstanceTool(context.Background(), connMgr, instanceID, "logs_stream", map[string]interface{}{
 				"follow": true,
 				"limit":  10,
 			})
-			
+
 			if err != nil {
 				// Client gets clear error, not a connection failure to hub
 				assert.Contains(t, err.Error(), "not connected")
@@ -239,13 +239,13 @@ func TestRealisticDeveloperScenarios(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Run(scenario.name, func(t *testing.T) {
 			t.Logf("Scenario: %s", scenario.description)
-			
+
 			connMgr := NewConnectionManager()
 			defer connMgr.Stop()
-			
+
 			// Run scenario-specific test
 			scenario.test(t, connMgr)
-			
+
 			// Verify hub is still operational
 			instances := connMgr.ListInstances()
 			t.Logf("Hub still operational with %d instances", len(instances))
@@ -264,11 +264,11 @@ func TestHubStabilityMetrics(t *testing.T) {
 
 	// Track metrics
 	var (
-		totalCalls     atomic.Int64
-		failedCalls    atomic.Int64
-		recoveries     atomic.Int64
-		maxDowntime    atomic.Int64
-		lastFailTime   atomic.Int64
+		totalCalls   atomic.Int64
+		failedCalls  atomic.Int64
+		recoveries   atomic.Int64
+		maxDowntime  atomic.Int64
+		lastFailTime atomic.Int64
 	)
 
 	// Create a flaky instance
@@ -281,7 +281,7 @@ func TestHubStabilityMetrics(t *testing.T) {
 
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		resp := JSONRPCMessage{
 			Jsonrpc: "2.0",
 			ID:      req.ID,
@@ -336,7 +336,7 @@ func TestHubStabilityMetrics(t *testing.T) {
 
 		case <-ticker.C:
 			totalCalls.Add(1)
-			
+
 			_, err := callInstanceTool(context.Background(), connMgr, "flaky-instance", "test", nil)
 			if err != nil {
 				failedCalls.Add(1)
@@ -348,7 +348,7 @@ func TestHubStabilityMetrics(t *testing.T) {
 				if lastFail > 0 {
 					recoveries.Add(1)
 					downtime := time.Now().UnixNano() - lastFail
-					
+
 					// Update max downtime
 					for {
 						current := maxDowntime.Load()
@@ -356,11 +356,10 @@ func TestHubStabilityMetrics(t *testing.T) {
 							break
 						}
 					}
-					
+
 					lastFailTime.Store(0)
 				}
 			}
 		}
 	}
 }
-

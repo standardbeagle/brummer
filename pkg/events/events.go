@@ -68,7 +68,7 @@ func NewEventBus() *EventBus {
 
 func NewEventBusWithConfig(config WorkerPoolConfig) *EventBus {
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	eb := &EventBus{
 		handlers:   make(map[EventType][]Handler),
 		workerPool: make(chan eventTask, config.BufferSize),
@@ -76,20 +76,20 @@ func NewEventBusWithConfig(config WorkerPoolConfig) *EventBus {
 		cancel:     cancel,
 		config:     config,
 	}
-	
+
 	// Start worker goroutines
 	for i := 0; i < config.WorkerCount; i++ {
 		eb.wg.Add(1)
 		go eb.worker()
 	}
-	
+
 	return eb
 }
 
 // worker processes events from the worker pool
 func (eb *EventBus) worker() {
 	defer eb.wg.Done()
-	
+
 	for {
 		select {
 		case task := <-eb.workerPool:
@@ -129,7 +129,7 @@ func (eb *EventBus) Publish(event Event) {
 			event:   event,
 			handler: handler,
 		}
-		
+
 		// Non-blocking send to worker pool
 		select {
 		case eb.workerPool <- task:

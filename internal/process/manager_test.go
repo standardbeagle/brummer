@@ -35,7 +35,7 @@ func TestManagerInitialization(t *testing.T) {
 			"dev":   "echo 'starting dev server'",
 		},
 	}
-	
+
 	packageFile := filepath.Join(tempDir, "package.json")
 	data, err := json.Marshal(packageJSON)
 	require.NoError(t, err)
@@ -44,7 +44,7 @@ func TestManagerInitialization(t *testing.T) {
 	mgr2, err := NewManager(tempDir, eventBus, true)
 	require.NoError(t, err)
 	assert.NotNil(t, mgr2)
-	
+
 	scripts := mgr2.GetScripts()
 	assert.Contains(t, scripts, "test")
 	assert.Contains(t, scripts, "build")
@@ -56,7 +56,7 @@ func TestManagerInitialization(t *testing.T) {
 func TestProcessStartStop(t *testing.T) {
 	tempDir := t.TempDir()
 	eventBus := events.NewEventBus()
-	
+
 	// Track events
 	var receivedEvents []events.Event
 	var eventsMu sync.Mutex
@@ -88,7 +88,7 @@ func TestProcessStartStop(t *testing.T) {
 	proc, exists := mgr.GetProcess(proc.ID)
 	require.True(t, exists)
 	assert.Equal(t, StatusSuccess, proc.GetStatus())
-	
+
 	// Verify events were published
 	eventsMu.Lock()
 	defer eventsMu.Unlock()
@@ -105,14 +105,14 @@ func TestProcessManagement(t *testing.T) {
 	// Start multiple processes
 	proc1, err := mgr.StartCommand("sleep1", "sleep", []string{"0.2"})
 	require.NoError(t, err)
-	
+
 	proc2, err := mgr.StartCommand("sleep2", "sleep", []string{"0.2"})
 	require.NoError(t, err)
 
 	// Test GetAllProcesses
 	allProcs := mgr.GetAllProcesses()
 	assert.Len(t, allProcs, 2)
-	
+
 	// Find our processes in the list
 	var foundProc1, foundProc2 bool
 	for _, p := range allProcs {
@@ -135,7 +135,7 @@ func TestProcessManagement(t *testing.T) {
 	// Test stopping a specific process
 	err = mgr.StopProcess(proc1.ID)
 	assert.NoError(t, err)
-	
+
 	// Wait a moment and check status
 	time.Sleep(50 * time.Millisecond)
 	stoppedProc, exists := mgr.GetProcess(proc1.ID)
@@ -152,7 +152,7 @@ func TestProcessManagement(t *testing.T) {
 func TestScriptExecution(t *testing.T) {
 	tempDir := t.TempDir()
 	eventBus := events.NewEventBus()
-	
+
 	// Create package.json with test scripts
 	packageJSON := map[string]interface{}{
 		"name": "test-project",
@@ -161,7 +161,7 @@ func TestScriptExecution(t *testing.T) {
 			"fail":  "exit 1",
 		},
 	}
-	
+
 	packageFile := filepath.Join(tempDir, "package.json")
 	data, err := json.Marshal(packageJSON)
 	require.NoError(t, err)
@@ -175,7 +175,7 @@ func TestScriptExecution(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, proc)
 	assert.Equal(t, "hello", proc.Name)
-	
+
 	// Wait for completion and check multiple times
 	var finalStatus ProcessStatus
 	for i := 0; i < 10; i++ {
@@ -187,7 +187,7 @@ func TestScriptExecution(t *testing.T) {
 			break
 		}
 	}
-	
+
 	// Process should have completed (either success or failed, not running)
 	assert.True(t, finalStatus == StatusSuccess || finalStatus == StatusFailed,
 		"Process should have completed, got status: %s", finalStatus)
@@ -195,7 +195,7 @@ func TestScriptExecution(t *testing.T) {
 	// Test failing script
 	procFail, err := mgr.StartScript("fail")
 	require.NoError(t, err)
-	
+
 	// Wait for completion and check multiple times
 	var failStatus ProcessStatus
 	for i := 0; i < 10; i++ {
@@ -207,7 +207,7 @@ func TestScriptExecution(t *testing.T) {
 			break
 		}
 	}
-	
+
 	// This process should have failed (exit 1)
 	assert.Equal(t, StatusFailed, failStatus)
 
@@ -243,7 +243,7 @@ func TestLogCallbacks(t *testing.T) {
 	logMu.Lock()
 	defer logMu.Unlock()
 	assert.Greater(t, len(logLines), 0)
-	
+
 	// Should have output from our echo command
 	found := false
 	for _, line := range logLines {
@@ -286,7 +286,7 @@ func TestCleanup(t *testing.T) {
 	// Start some long-running processes
 	proc1, err := mgr.StartCommand("sleep1", "sleep", []string{"10"}) // Long sleep
 	require.NoError(t, err)
-	
+
 	proc2, err := mgr.StartCommand("sleep2", "sleep", []string{"10"}) // Long sleep
 	require.NoError(t, err)
 

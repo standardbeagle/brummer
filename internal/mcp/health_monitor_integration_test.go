@@ -21,7 +21,7 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 	// Track callback invocations
 	var unhealthyCalls, recoveryCalls, deadCalls int32
 	var mu sync.Mutex
-	
+
 	// Create connection manager
 	connMgr := NewConnectionManager()
 	defer connMgr.Stop()
@@ -29,14 +29,14 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 	// Create controllable mock server
 	var serverHealthy atomic.Bool
 	serverHealthy.Store(true)
-	
+
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !serverHealthy.Load() {
 			// Simulate unhealthy instance
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		
+
 		// Healthy response
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -65,7 +65,7 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 
 	err := connMgr.RegisterInstance(instance)
 	require.NoError(t, err)
-	
+
 	// Wait for connection to be established
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		connections := connMgr.ListInstances()
@@ -78,9 +78,9 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 		PingTimeout:  25 * time.Millisecond,
 		MaxFailures:  2, // Fail fast for testing
 	}
-	
+
 	healthMon := NewHealthMonitor(connMgr, config)
-	
+
 	// Set callbacks
 	healthMon.SetCallbacks(
 		func(instanceID string, status *HealthStatus) {
@@ -113,12 +113,12 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 
 	// Test 2: Instance becomes unhealthy
 	serverHealthy.Store(false)
-	
+
 	// Wait for unhealthy callback to be triggered
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		return atomic.LoadInt32(&unhealthyCalls) >= 1
 	}, "Instance should be marked unhealthy")
-	
+
 	// Check connection state
 	connections := connMgr.ListInstances()
 	require.Len(t, connections, 1)
@@ -126,7 +126,7 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 
 	// Test 3: Instance recovers
 	serverHealthy.Store(true)
-	
+
 	// Wait for recovery callback
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		return atomic.LoadInt32(&recoveryCalls) >= 1
@@ -134,7 +134,7 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 
 	// Test 4: Instance fails completely
 	serverHealthy.Store(false)
-	
+
 	// Wait for dead callback after multiple failures
 	testutil.RequireEventually(t, 3*time.Second, func() bool {
 		return atomic.LoadInt32(&deadCalls) > 0
@@ -145,7 +145,7 @@ func TestHealthMonitorFailureDetection(t *testing.T) {
 func TestHealthMonitorConcurrentPings(t *testing.T) {
 	var activePings int32
 	var maxConcurrent int32
-	
+
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Track concurrent pings
 		current := atomic.AddInt32(&activePings, 1)
@@ -155,17 +155,17 @@ func TestHealthMonitorConcurrentPings(t *testing.T) {
 				break
 			}
 		}
-		
+
 		// Simulate slow response
 		time.Sleep(100 * time.Millisecond)
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(JSONRPCMessage{
 			Jsonrpc: "2.0",
 			ID:      json.RawMessage("1"),
 			Result:  map[string]interface{}{},
 		})
-		
+
 		atomic.AddInt32(&activePings, -1)
 	}))
 	defer mockServer.Close()
@@ -205,20 +205,20 @@ func TestHealthMonitorConcurrentPings(t *testing.T) {
 		PingTimeout:  200 * time.Millisecond,
 		MaxFailures:  3,
 	}
-	
+
 	healthMon := NewHealthMonitor(connMgr, config)
 	healthMon.Start()
-	
+
 	// Let it run for a while and wait for some pings to occur
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		return atomic.LoadInt32(&maxConcurrent) > 0
 	}, "Some pings should have occurred")
-	
+
 	healthMon.Stop()
 
 	maxSeen := atomic.LoadInt32(&maxConcurrent)
 	t.Logf("Maximum concurrent pings: %d", maxSeen)
-	
+
 	// Should handle multiple instances without excessive concurrency
 	assert.LessOrEqual(t, maxSeen, int32(6), "Too many concurrent pings")
 }
@@ -231,20 +231,20 @@ func TestHealthMonitorStateTransitions(t *testing.T) {
 	// Track state changes
 	var stateChanges []string
 	var mu sync.Mutex
-	
+
 	// Controllable server
 	var responseDelay atomic.Int64
 	var shouldFail atomic.Bool
-	
+
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		delay := time.Duration(responseDelay.Load()) * time.Millisecond
 		time.Sleep(delay)
-		
+
 		if shouldFail.Load() {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(JSONRPCMessage{
 			Jsonrpc: "2.0",
@@ -270,7 +270,7 @@ func TestHealthMonitorStateTransitions(t *testing.T) {
 
 	err := connMgr.RegisterInstance(instance)
 	require.NoError(t, err)
-	
+
 	// Wait for instance to be connected
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		connections := connMgr.ListInstances()
@@ -281,7 +281,7 @@ func TestHealthMonitorStateTransitions(t *testing.T) {
 	go func() {
 		ticker := time.NewTicker(25 * time.Millisecond)
 		defer ticker.Stop()
-		
+
 		var lastState ConnectionState
 		for range ticker.C {
 			connections := connMgr.ListInstances()
@@ -289,7 +289,7 @@ func TestHealthMonitorStateTransitions(t *testing.T) {
 				currentState := connections[0].State
 				if currentState != lastState {
 					mu.Lock()
-					stateChanges = append(stateChanges, 
+					stateChanges = append(stateChanges,
 						fmt.Sprintf("%s->%s", lastState, currentState))
 					mu.Unlock()
 					lastState = currentState
@@ -303,7 +303,7 @@ func TestHealthMonitorStateTransitions(t *testing.T) {
 		PingTimeout:  30 * time.Millisecond,
 		MaxFailures:  2,
 	}
-	
+
 	healthMon := NewHealthMonitor(connMgr, config)
 	healthMon.Start()
 
@@ -391,12 +391,12 @@ func TestHealthMonitorMemoryUsage(t *testing.T) {
 		PingTimeout:  5 * time.Millisecond,
 		MaxFailures:  3,
 	}
-	
+
 	healthMon := NewHealthMonitor(connMgr, config)
-	
+
 	// Track status count
 	initialStatuses := len(healthMon.healthStatuses)
-	
+
 	healthMon.Start()
 
 	// Run for a while and wait for health monitoring to occur
@@ -420,7 +420,7 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 	// Simulate intermittent network issues
 	var failureRate atomic.Int32
 	failureRate.Store(0)
-	
+
 	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Randomly fail based on rate
 		if time.Now().UnixNano()%100 < int64(failureRate.Load()) {
@@ -435,7 +435,7 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 			}
 			return
 		}
-		
+
 		// Success
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(JSONRPCMessage{
@@ -462,7 +462,7 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 
 	err := connMgr.RegisterInstance(instance)
 	require.NoError(t, err)
-	
+
 	// Wait for instance to be connected
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		connections := connMgr.ListInstances()
@@ -474,10 +474,10 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 		PingTimeout:  40 * time.Millisecond,
 		MaxFailures:  3,
 	}
-	
+
 	var stateHistory []ConnectionState
 	var mu sync.Mutex
-	
+
 	healthMon := NewHealthMonitor(connMgr, config)
 	healthMon.Start()
 
@@ -485,7 +485,7 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 	go func() {
 		ticker := time.NewTicker(25 * time.Millisecond)
 		defer ticker.Stop()
-		
+
 		for range ticker.C {
 			connections := connMgr.ListInstances()
 			if len(connections) > 0 {
@@ -511,7 +511,7 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 	for _, scenario := range scenarios {
 		t.Logf("Testing: %s", scenario.description)
 		failureRate.Store(scenario.failureRate)
-		
+
 		// Wait for the health monitor to process this failure rate
 		testutil.RequireEventually(t, scenario.duration*3, func() bool {
 			// Check that we have some state history for this scenario
@@ -519,7 +519,7 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 			defer mu.Unlock()
 			return len(stateHistory) > 0
 		}, fmt.Sprintf("Should collect state history for %s", scenario.description))
-		
+
 		// Allow some processing time for the scenario
 		time.Sleep(scenario.duration / 2)
 	}
@@ -529,7 +529,7 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 	// Analyze behavior
 	mu.Lock()
 	defer mu.Unlock()
-	
+
 	activeCount := 0
 	retryingCount := 0
 	for _, state := range stateHistory {
@@ -541,7 +541,7 @@ func TestHealthMonitorIntermittentAvailability(t *testing.T) {
 		}
 	}
 
-	t.Logf("State distribution: Active=%d, Retrying=%d, Total=%d", 
+	t.Logf("State distribution: Active=%d, Retrying=%d, Total=%d",
 		activeCount, retryingCount, len(stateHistory))
 
 	// Should have experienced both states

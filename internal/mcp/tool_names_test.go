@@ -3,7 +3,7 @@ package mcp
 import (
 	"regexp"
 	"testing"
-	
+
 	"github.com/standardbeagle/brummer/pkg/events"
 	"github.com/stretchr/testify/assert"
 )
@@ -12,11 +12,11 @@ import (
 func TestToolNamesCompliance(t *testing.T) {
 	// Claude Code tool name format: ^[a-zA-Z0-9_-]{1,128}$
 	toolNameRegex := regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
-	
+
 	// Create minimal dependencies
 	eventBus := events.NewEventBus()
 	server := NewStreamableServer(0, nil, nil, nil, eventBus)
-	
+
 	// Check each tool name
 	invalidTools := []string{}
 	for name := range server.tools {
@@ -24,7 +24,7 @@ func TestToolNamesCompliance(t *testing.T) {
 			invalidTools = append(invalidTools, name)
 		}
 	}
-	
+
 	// Report any invalid tool names
 	if len(invalidTools) > 0 {
 		t.Errorf("The following tool names do not comply with Claude Code's regex ^[a-zA-Z0-9_-]{1,128}$:")
@@ -32,11 +32,11 @@ func TestToolNamesCompliance(t *testing.T) {
 			t.Errorf("  - %s", name)
 		}
 	}
-	
+
 	// Also check specific known tools to ensure they're using underscores
 	expectedTools := []string{
 		"scripts_list",
-		"scripts_run", 
+		"scripts_run",
 		"scripts_stop",
 		"scripts_status",
 		"logs_stream",
@@ -50,7 +50,7 @@ func TestToolNamesCompliance(t *testing.T) {
 		"browser_screenshot",
 		"repl_execute",
 	}
-	
+
 	for _, expectedName := range expectedTools {
 		_, exists := server.tools[expectedName]
 		assert.True(t, exists, "Expected tool %s to exist", expectedName)
@@ -62,7 +62,7 @@ func TestToolNamesCompliance(t *testing.T) {
 func TestHubToolNamesCompliance(t *testing.T) {
 	// Claude Code tool name format: ^[a-zA-Z0-9_-]{1,128}$
 	toolNameRegex := regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
-	
+
 	// Hub tool names that should exist
 	hubTools := []string{
 		"instances_list",
@@ -84,9 +84,9 @@ func TestHubToolNamesCompliance(t *testing.T) {
 		"hub_browser_screenshot",
 		"hub_repl_execute",
 	}
-	
+
 	for _, toolName := range hubTools {
-		assert.True(t, toolNameRegex.MatchString(toolName), 
+		assert.True(t, toolNameRegex.MatchString(toolName),
 			"Hub tool %s does not comply with Claude Code's regex", toolName)
 	}
 }
@@ -95,7 +95,7 @@ func TestHubToolNamesCompliance(t *testing.T) {
 func TestProxyToolNamesCompliance(t *testing.T) {
 	// Claude Code tool name format: ^[a-zA-Z0-9_-]{1,128}$
 	toolNameRegex := regexp.MustCompile(`^[a-zA-Z0-9_-]{1,128}$`)
-	
+
 	// Test various instance ID and tool name combinations
 	testCases := []struct {
 		instanceID string
@@ -109,19 +109,19 @@ func TestProxyToolNamesCompliance(t *testing.T) {
 		// Test max length (128 chars total)
 		{"instance", "very_long_tool_name_that_is_still_valid_but_getting_close_to_the_limit_of_characters_allowed_in_tool_names_128", true},
 		// Invalid cases
-		{"instance/bad", "tool", false},  // slash in instance ID
-		{"instance", "bad/tool", false},   // slash in tool name
-		{"instance.bad", "tool", false},   // dot in instance ID
-		{"instance", "bad.tool", false},   // dot in tool name
+		{"instance/bad", "tool", false}, // slash in instance ID
+		{"instance", "bad/tool", false}, // slash in tool name
+		{"instance.bad", "tool", false}, // dot in instance ID
+		{"instance", "bad.tool", false}, // dot in tool name
 	}
-	
+
 	for _, tc := range testCases {
 		// This is how proxy tools are named
 		proxyToolName := tc.instanceID + "_" + tc.toolName
-		
+
 		isValid := toolNameRegex.MatchString(proxyToolName)
 		if tc.valid {
-			assert.True(t, isValid, 
+			assert.True(t, isValid,
 				"Expected proxy tool name '%s' to be valid", proxyToolName)
 			assert.LessOrEqual(t, len(proxyToolName), 128,
 				"Proxy tool name '%s' exceeds 128 character limit", proxyToolName)
@@ -131,4 +131,3 @@ func TestProxyToolNamesCompliance(t *testing.T) {
 		}
 	}
 }
-

@@ -115,10 +115,10 @@ func main() {
 
 	// Run all test suites
 	results := runAllTests(args)
-	
+
 	// Print summary
 	printSummary(results)
-	
+
 	// Exit with error if any critical tests failed
 	for _, result := range results {
 		if result.Suite.Critical && !result.Passed {
@@ -126,7 +126,7 @@ func main() {
 			os.Exit(1)
 		}
 	}
-	
+
 	fmt.Println("\n✅ All tests completed successfully")
 }
 
@@ -158,15 +158,15 @@ type TestResult struct {
 
 func runAllTests(args []string) []TestResult {
 	var results []TestResult
-	
+
 	for i, suite := range testSuites {
 		fmt.Printf("[%d/%d] Running %s tests...\n", i+1, len(testSuites), suite.Name)
 		fmt.Printf("  Package: %s\n", suite.Package)
 		fmt.Printf("  Description: %s\n", suite.Description)
-		
+
 		result := runTestSuite(suite, args)
 		results = append(results, result)
-		
+
 		if result.Passed {
 			fmt.Printf("  ✅ PASSED (%v)\n", result.Duration)
 		} else {
@@ -180,27 +180,27 @@ func runAllTests(args []string) []TestResult {
 		}
 		fmt.Println()
 	}
-	
+
 	return results
 }
 
 func runCriticalTests() {
 	fmt.Println("Running critical tests only...")
 	fmt.Println()
-	
+
 	var criticalSuites []TestSuite
 	for _, suite := range testSuites {
 		if suite.Critical {
 			criticalSuites = append(criticalSuites, suite)
 		}
 	}
-	
+
 	var failed []string
 	for i, suite := range criticalSuites {
 		fmt.Printf("[%d/%d] Running %s tests...\n", i+1, len(criticalSuites), suite.Name)
-		
+
 		result := runTestSuite(suite, []string{"-short"})
-		
+
 		if result.Passed {
 			fmt.Printf("  ✅ PASSED (%v)\n", result.Duration)
 		} else {
@@ -209,7 +209,7 @@ func runCriticalTests() {
 		}
 		fmt.Println()
 	}
-	
+
 	if len(failed) > 0 {
 		fmt.Printf("❌ Failed critical tests: %s\n", strings.Join(failed, ", "))
 		os.Exit(1)
@@ -220,7 +220,7 @@ func runCriticalTests() {
 
 func runTestSuite(suite TestSuite, args []string) TestResult {
 	start := time.Now()
-	
+
 	// Check if package has tests
 	if !hasTestFiles(suite.Package) {
 		return TestResult{
@@ -230,17 +230,17 @@ func runTestSuite(suite TestSuite, args []string) TestResult {
 			Output:   "No test files found",
 		}
 	}
-	
+
 	// Build command
 	cmdArgs := []string{"test"}
 	cmdArgs = append(cmdArgs, args...)
 	cmdArgs = append(cmdArgs, suite.Package)
-	
+
 	cmd := exec.Command("go", cmdArgs...)
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=1") // Enable for race detection
-	
+
 	output, err := cmd.CombinedOutput()
-	
+
 	return TestResult{
 		Suite:    suite,
 		Passed:   err == nil,
@@ -255,7 +255,7 @@ func hasTestFiles(packagePath string) bool {
 	if strings.HasPrefix(packagePath, "./") {
 		packagePath = packagePath[2:]
 	}
-	
+
 	files, err := filepath.Glob(filepath.Join(packagePath, "*_test.go"))
 	if err != nil {
 		return false
@@ -266,13 +266,13 @@ func hasTestFiles(packagePath string) bool {
 func printSummary(results []TestResult) {
 	fmt.Println("=== Test Summary ===")
 	fmt.Println()
-	
+
 	var passed, failed, skipped int
 	var totalDuration time.Duration
-	
+
 	for _, result := range results {
 		totalDuration += result.Duration
-		
+
 		status := ""
 		if result.Output == "No test files found" {
 			status = "⏭️  SKIPPED"
@@ -284,25 +284,25 @@ func printSummary(results []TestResult) {
 			status = "❌ FAILED"
 			failed++
 		}
-		
+
 		critical := ""
 		if result.Suite.Critical {
 			critical = " (critical)"
 		}
-		
-		fmt.Printf("%-20s %s %8v%s\n", 
-			result.Suite.Name, 
-			status, 
+
+		fmt.Printf("%-20s %s %8v%s\n",
+			result.Suite.Name,
+			status,
 			result.Duration,
 			critical,
 		)
 	}
-	
+
 	fmt.Println()
-	fmt.Printf("Total: %d tests, %d passed, %d failed, %d skipped\n", 
+	fmt.Printf("Total: %d tests, %d passed, %d failed, %d skipped\n",
 		len(results), passed, failed, skipped)
 	fmt.Printf("Total time: %v\n", totalDuration)
-	
+
 	if failed > 0 {
 		fmt.Printf("\n❌ %d test suite(s) failed\n", failed)
 	}

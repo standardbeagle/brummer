@@ -20,10 +20,10 @@ func TestProcessFailureScenarios(t *testing.T) {
 				eventBus := events.NewEventBus()
 				manager, err := NewManager("/tmp", eventBus, false)
 				require.NoError(t, err)
-				
+
 				re := testutil.NewResourceExhauster()
 				re.SetFDLimit(1) // Very low FD limit
-				
+
 				return map[string]interface{}{
 					"manager": manager,
 					"re":      re,
@@ -33,7 +33,7 @@ func TestProcessFailureScenarios(t *testing.T) {
 				ctx := context.(map[string]interface{})
 				manager := ctx["manager"].(*Manager)
 				re := ctx["re"].(*testutil.ResourceExhauster)
-				
+
 				// Try to start multiple processes that should exhaust resources
 				var lastError error
 				for i := 0; i < 5; i++ {
@@ -41,7 +41,7 @@ func TestProcessFailureScenarios(t *testing.T) {
 					if err := re.CheckFDAllocation(); err != nil {
 						return err
 					}
-					
+
 					// Try to start a simple script
 					proc, err := manager.StartScript("test")
 					if err != nil {
@@ -52,7 +52,7 @@ func TestProcessFailureScenarios(t *testing.T) {
 						manager.StopProcess(proc.ID)
 					}
 				}
-				
+
 				return lastError
 			},
 			Verify: func(t *testing.T, context interface{}, err error) {
@@ -78,15 +78,15 @@ func TestProcessFailureScenarios(t *testing.T) {
 			},
 			Execute: func(t *testing.T, context interface{}) error {
 				manager := context.(*Manager)
-				
+
 				// Start multiple processes concurrently
 				twg := &testutil.TimedWaitGroup{}
-				
+
 				for i := 0; i < 5; i++ {
 					twg.Add(1)
 					go func() {
 						defer twg.Done()
-						
+
 						// Start a simple process
 						proc, err := manager.StartScript("test")
 						if err == nil && proc != nil {
@@ -96,13 +96,13 @@ func TestProcessFailureScenarios(t *testing.T) {
 						}
 					}()
 				}
-				
+
 				// Wait for all operations to complete
 				completed := twg.WaitWithTimeout(10 * time.Second)
 				if !completed {
 					return assert.AnError
 				}
-				
+
 				return nil
 			},
 			Verify: func(t *testing.T, context interface{}, err error) {
@@ -124,7 +124,7 @@ func TestProcessFailureScenarios(t *testing.T) {
 			},
 			Execute: func(t *testing.T, context interface{}) error {
 				manager := context.(*Manager)
-				
+
 				// Start many processes quickly
 				processes := make([]*Process, 0, 10)
 				for i := 0; i < 10; i++ {
@@ -133,18 +133,18 @@ func TestProcessFailureScenarios(t *testing.T) {
 						processes = append(processes, proc)
 					}
 				}
-				
+
 				// Wait for processes to start
 				testutil.RequireEventually(t, 2*time.Second, func() bool {
 					allProcs := manager.GetAllProcesses()
 					return len(allProcs) > 0
 				}, "Some processes should start")
-				
+
 				// Stop all processes
 				for _, proc := range processes {
 					manager.StopProcess(proc.ID)
 				}
-				
+
 				// Verify cleanup
 				testutil.RequireEventually(t, 5*time.Second, func() bool {
 					allProcs := manager.GetAllProcesses()
@@ -156,7 +156,7 @@ func TestProcessFailureScenarios(t *testing.T) {
 					}
 					return runningCount == 0
 				}, "All processes should be stopped")
-				
+
 				return nil
 			},
 			Verify: func(t *testing.T, context interface{}, err error) {
@@ -168,7 +168,7 @@ func TestProcessFailureScenarios(t *testing.T) {
 			},
 		},
 	}
-	
+
 	testutil.RunTestScenarios(t, scenarios)
 }
 
@@ -178,16 +178,16 @@ func TestProcessErrorInjection(t *testing.T) {
 	manager, err := NewManager("/tmp", eventBus, false)
 	require.NoError(t, err)
 	defer manager.Cleanup()
-	
+
 	ei := testutil.NewErrorInjector()
-	
+
 	// Configure error injection for process operations
 	ei.InjectFailure("process_start", &testutil.InjectionRule{
 		FailCount:    2,
 		FailureType:  "resource",
 		ErrorMessage: "process start failed",
 	})
-	
+
 	// Try to start processes
 	failureCount := 0
 	for i := 0; i < 5; i++ {
@@ -196,14 +196,14 @@ func TestProcessErrorInjection(t *testing.T) {
 			failureCount++
 			continue
 		}
-		
+
 		// Normal process start
 		proc, err := manager.StartScript("test")
 		if err == nil && proc != nil {
 			manager.StopProcess(proc.ID)
 		}
 	}
-	
+
 	// Should have 2 failures as configured
 	assert.Equal(t, 2, failureCount, "Should have exactly 2 failures")
 }
@@ -213,22 +213,22 @@ func TestNetworkPartitionSimulation(t *testing.T) {
 	// Create network partition simulator
 	nps := testutil.NewNetworkPartitionSimulator(t, "127.0.0.1:0")
 	nps.Start()
-	
+
 	// Test normal operation
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		// In a real test, we would check if we can connect
 		return true
 	}, "Network should be available initially")
-	
+
 	// Simulate partition
 	nps.Partition()
-	
+
 	// Test partition detection
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Repair partition
 	nps.Repair()
-	
+
 	// Test recovery
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		// In a real test, we would check if connection is restored
@@ -239,38 +239,38 @@ func TestNetworkPartitionSimulation(t *testing.T) {
 // TestErrorInjectionFramework tests the error injection framework itself
 func TestErrorInjectionFramework(t *testing.T) {
 	ei := testutil.NewErrorInjector()
-	
+
 	// Test basic error injection
 	ei.InjectFailure("test_op", &testutil.InjectionRule{
 		FailCount:    3,
 		FailureType:  "network",
 		ErrorMessage: "test failure",
 	})
-	
+
 	// Should fail 3 times
 	for i := 0; i < 3; i++ {
 		err := ei.ShouldFail("test_op")
 		assert.Error(t, err, "Should fail %d times", i+1)
 		assert.Contains(t, err.Error(), "network error", "Should be network error")
 	}
-	
+
 	// Should not fail anymore
 	err := ei.ShouldFail("test_op")
 	assert.NoError(t, err, "Should not fail after limit reached")
-	
+
 	// Test unlimited failures
 	ei.InjectFailure("unlimited", &testutil.InjectionRule{
 		FailCount:    -1, // Unlimited
 		FailureType:  "timeout",
 		ErrorMessage: "always fail",
 	})
-	
+
 	// Should always fail
 	for i := 0; i < 10; i++ {
 		err := ei.ShouldFail("unlimited")
 		assert.Error(t, err, "Should always fail")
 	}
-	
+
 	// Test reset
 	ei.Reset()
 	err = ei.ShouldFail("unlimited")

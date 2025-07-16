@@ -57,3 +57,6 @@ bin/brum.exe
 package-lock.json
 yarn.lock
 pnpm-lock.yaml
+
+# Marketing materials
+marketing/

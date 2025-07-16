@@ -81,7 +81,7 @@ type StreamableServer struct {
 
 	// Session tracking for connection events
 	seenSessions map[string]bool // Track which sessions we've seen to avoid duplicate connection events
-	
+
 	// Connection manager for hub mode
 	connectionManager *ConnectionManager
 }
@@ -739,7 +739,10 @@ func (s *StreamableServer) Start() error {
 // Stop stops the MCP server
 func (s *StreamableServer) Stop() error {
 	if s.server != nil {
-		return s.server.Shutdown(context.Background())
+		// Use a timeout context to prevent shutdown from hanging indefinitely
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return s.server.Shutdown(ctx)
 	}
 	return nil
 }
@@ -905,22 +908,22 @@ func (s *StreamableServer) setupResourceUpdateHandlers() {
 func (s *StreamableServer) RegisterTool(name string, tool MCPTool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Check if tool already exists
 	if _, exists := s.tools[name]; exists {
 		return fmt.Errorf("tool %s already exists", name)
 	}
-	
+
 	s.tools[name] = tool
-	
+
 	// Notify connected clients about tool list change
 	s.BroadcastNotification("notifications/tools/list_changed", nil)
-	
+
 	// Log the registration
 	if s.logStore != nil {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🔧 Registered tool: %s", name), false)
 	}
-	
+
 	return nil
 }
 
@@ -928,22 +931,22 @@ func (s *StreamableServer) RegisterTool(name string, tool MCPTool) error {
 func (s *StreamableServer) UnregisterTool(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Check if tool exists
 	if _, exists := s.tools[name]; !exists {
 		return fmt.Errorf("tool %s not found", name)
 	}
-	
+
 	delete(s.tools, name)
-	
+
 	// Notify connected clients about tool list change
 	s.BroadcastNotification("notifications/tools/list_changed", nil)
-	
+
 	// Log the unregistration
 	if s.logStore != nil {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🔧 Unregistered tool: %s", name), false)
 	}
-	
+
 	return nil
 }
 
@@ -966,32 +969,32 @@ func (s *StreamableServer) RegisterToolsFromInstance(instanceID string, tools []
 func (s *StreamableServer) UnregisterToolsFromInstance(instanceID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	prefix := instanceID + "_"
 	var toRemove []string
-	
+
 	// Find all tools with the instance prefix
 	for name := range s.tools {
 		if strings.HasPrefix(name, prefix) {
 			toRemove = append(toRemove, name)
 		}
 	}
-	
+
 	// Remove the tools
 	for _, name := range toRemove {
 		delete(s.tools, name)
 	}
-	
+
 	if len(toRemove) > 0 {
 		// Notify connected clients about tool list change
 		s.BroadcastNotification("notifications/tools/list_changed", nil)
-		
+
 		// Log the unregistration
 		if s.logStore != nil {
 			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🔧 Unregistered %d tools from instance %s", len(toRemove), instanceID), false)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1006,22 +1009,22 @@ func (s *StreamableServer) SetConnectionManager(cm *ConnectionManager) {
 func (s *StreamableServer) RegisterResource(uri string, resource Resource) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Check if resource already exists
 	if _, exists := s.resources[uri]; exists {
 		return fmt.Errorf("resource %s already exists", uri)
 	}
-	
+
 	s.resources[uri] = resource
-	
+
 	// Notify connected clients about resource list change
 	s.BroadcastNotification("notifications/resources/list_changed", nil)
-	
+
 	// Log the registration
 	if s.logStore != nil {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📚 Registered resource: %s", uri), false)
 	}
-	
+
 	return nil
 }
 
@@ -1029,22 +1032,22 @@ func (s *StreamableServer) RegisterResource(uri string, resource Resource) error
 func (s *StreamableServer) UnregisterResource(uri string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Check if resource exists
 	if _, exists := s.resources[uri]; !exists {
 		return fmt.Errorf("resource %s not found", uri)
 	}
-	
+
 	delete(s.resources, uri)
-	
+
 	// Notify connected clients about resource list change
 	s.BroadcastNotification("notifications/resources/list_changed", nil)
-	
+
 	// Log the unregistration
 	if s.logStore != nil {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📚 Unregistered resource: %s", uri), false)
 	}
-	
+
 	return nil
 }
 
@@ -1065,32 +1068,32 @@ func (s *StreamableServer) RegisterResourcesFromInstance(instanceID string, reso
 func (s *StreamableServer) UnregisterResourcesFromInstance(instanceID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	prefix := instanceID + "_"
 	var toRemove []string
-	
+
 	// Find all resources with the instance prefix
 	for uri := range s.resources {
 		if strings.HasPrefix(uri, prefix) {
 			toRemove = append(toRemove, uri)
 		}
 	}
-	
+
 	// Remove the resources
 	for _, uri := range toRemove {
 		delete(s.resources, uri)
 	}
-	
+
 	if len(toRemove) > 0 {
 		// Notify connected clients about resource list change
 		s.BroadcastNotification("notifications/resources/list_changed", nil)
-		
+
 		// Log the unregistration
 		if s.logStore != nil {
 			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📚 Unregistered %d resources from instance %s", len(toRemove), instanceID), false)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -1098,22 +1101,22 @@ func (s *StreamableServer) UnregisterResourcesFromInstance(instanceID string) er
 func (s *StreamableServer) RegisterPrompt(name string, prompt Prompt) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Check if prompt already exists
 	if _, exists := s.prompts[name]; exists {
 		return fmt.Errorf("prompt %s already exists", name)
 	}
-	
+
 	s.prompts[name] = prompt
-	
+
 	// Notify connected clients about prompt list change
 	s.BroadcastNotification("notifications/prompts/list_changed", nil)
-	
+
 	// Log the registration
 	if s.logStore != nil {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("💭 Registered prompt: %s", name), false)
 	}
-	
+
 	return nil
 }
 
@@ -1121,22 +1124,22 @@ func (s *StreamableServer) RegisterPrompt(name string, prompt Prompt) error {
 func (s *StreamableServer) UnregisterPrompt(name string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	// Check if prompt exists
 	if _, exists := s.prompts[name]; !exists {
 		return fmt.Errorf("prompt %s not found", name)
 	}
-	
+
 	delete(s.prompts, name)
-	
+
 	// Notify connected clients about prompt list change
 	s.BroadcastNotification("notifications/prompts/list_changed", nil)
-	
+
 	// Log the unregistration
 	if s.logStore != nil {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("💭 Unregistered prompt: %s", name), false)
 	}
-	
+
 	return nil
 }
 
@@ -1157,31 +1160,31 @@ func (s *StreamableServer) RegisterPromptsFromInstance(instanceID string, prompt
 func (s *StreamableServer) UnregisterPromptsFromInstance(instanceID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	
+
 	prefix := instanceID + "_"
 	var toRemove []string
-	
+
 	// Find all prompts with the instance prefix
 	for name := range s.prompts {
 		if strings.HasPrefix(name, prefix) {
 			toRemove = append(toRemove, name)
 		}
 	}
-	
+
 	// Remove the prompts
 	for _, name := range toRemove {
 		delete(s.prompts, name)
 	}
-	
+
 	if len(toRemove) > 0 {
 		// Notify connected clients about prompt list change
 		s.BroadcastNotification("notifications/prompts/list_changed", nil)
-		
+
 		// Log the unregistration
 		if s.logStore != nil {
 			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("💭 Unregistered %d prompts from instance %s", len(toRemove), instanceID), false)
 		}
 	}
-	
+
 	return nil
 }

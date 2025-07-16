@@ -144,9 +144,12 @@ const client = new Client({
 
 await client.connect(transport);
 
-// Make requests
+// Make requests using tools/call
 const result = await client.request({
-  method: 'brummer.getProcesses'
+  method: 'tools/call',
+  params: {
+    name: 'scripts_status'
+  }
 }, {});
 
 console.log(result);
@@ -183,32 +186,36 @@ class BrummerClient {
 
     await this.client.connect(this.transport);
     
-    // Set up event listeners
-    this.client.notification(({ method, params }) => {
-      if (method === 'brummer.event') {
-        this.handleEvent(params);
-      }
-    });
+    // Client is now ready for tool calls
   }
 
   async getProcesses() {
     const response = await this.client.request({
-      method: 'brummer.getProcesses'
+      method: 'tools/call',
+      params: {
+        name: 'scripts_status'
+      }
     }, {});
-    return response.processes;
+    return response.result;
   }
 
   async startProcess(name, options = {}) {
     return await this.client.request({
-      method: 'brummer.startProcess',
-      params: { name, ...options }
+      method: 'tools/call',
+      params: {
+        name: 'scripts_run',
+        arguments: { name, ...options }
+      }
     }, {});
   }
 
   async getLogs(options = {}) {
     return await this.client.request({
-      method: 'brummer.getLogs',
-      params: options
+      method: 'tools/call',
+      params: {
+        name: 'logs_stream',
+        arguments: options
+      }
     }, {});
   }
 
@@ -264,28 +271,41 @@ class BrummerClient:
     
     async def get_processes(self):
         response = await self.client.request(
-            method="brummer.getProcesses"
+            method="tools/call",
+            params={
+                "name": "scripts_status"
+            }
         )
-        return response["processes"]
+        return response["result"]
     
     async def start_process(self, name, **kwargs):
         return await self.client.request(
-            method="brummer.startProcess",
-            params={"name": name, **kwargs}
+            method="tools/call",
+            params={
+                "name": "scripts_run",
+                "arguments": {"name": name, **kwargs}
+            }
         )
     
     async def get_logs(self, **filters):
         return await self.client.request(
-            method="brummer.getLogs",
-            params=filters
+            method="tools/call",
+            params={
+                "name": "logs_stream",
+                "arguments": filters
+            }
         )
     
     async def stream_logs(self, process_name=None):
-        async for log in self.client.stream(
-            method="brummer.streamLogs",
-            params={"processName": process_name, "follow": True}
-        ):
-            yield log
+        # Note: Streaming requires HTTP transport
+        response = await self.client.request(
+            method="tools/call",
+            params={
+                "name": "logs_stream",
+                "arguments": {"processId": process_name, "follow": True}
+            }
+        )
+        return response["result"]
     
     async def disconnect(self):
         await self.client.close()
@@ -314,110 +334,99 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## Browser Client (WebSocket)
+## Browser Client (HTTP)
 
 ### Vanilla JavaScript
 
 ```javascript
-class BrummerWebSocketClient {
-  constructor(url = 'ws://localhost:3280') {
-    this.url = url;
-    this.ws = null;
+class BrummerHTTPClient {
+  constructor(baseUrl = 'http://localhost:7777') {
+    this.baseUrl = baseUrl;
     this.requestId = 0;
-    this.pending = new Map();
-  }
-
-  connect() {
-    return new Promise((resolve, reject) => {
-      this.ws = new WebSocket(this.url);
-      
-      this.ws.onopen = () => {
-        console.log('Connected to Brummer');
-        resolve();
-      };
-      
-      this.ws.onerror = (error) => {
-        reject(error);
-      };
-      
-      this.ws.onmessage = (event) => {
-        const response = JSON.parse(event.data);
-        
-        if (response.id && this.pending.has(response.id)) {
-          const { resolve, reject } = this.pending.get(response.id);
-          this.pending.delete(response.id);
-          
-          if (response.error) {
-            reject(response.error);
-          } else {
-            resolve(response.result);
-          }
-        } else if (response.method === 'notification') {
-          this.handleNotification(response.params);
-        }
-      };
-    });
   }
 
   async request(method, params = {}) {
     const id = ++this.requestId;
     
-    return new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-      
-      this.ws.send(JSON.stringify({
+    const response = await fetch(`${this.baseUrl}/mcp`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
         jsonrpc: '2.0',
         id,
         method,
         params
-      }));
-      
-      // Timeout after 30 seconds
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id);
-          reject(new Error('Request timeout'));
-        }
-      }, 30000);
+      })
     });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const result = await response.json();
+    
+    if (result.error) {
+      throw new Error(result.error.message);
+    }
+    
+    return result.result;
   }
 
   async getProcesses() {
-    return this.request('brummer.getProcesses');
+    return this.request('tools/call', {
+      name: 'scripts_status'
+    });
   }
 
   async startProcess(name, options = {}) {
-    return this.request('brummer.startProcess', { name, ...options });
+    return this.request('tools/call', {
+      name: 'scripts_run',
+      arguments: { name, ...options }
+    });
   }
 
   async getLogs(filters = {}) {
-    return this.request('brummer.getLogs', filters);
+    return this.request('tools/call', {
+      name: 'logs_stream',
+      arguments: filters
+    });
   }
 
-  handleNotification(params) {
-    console.log('Notification:', params);
-    // Handle real-time events
-  }
-
-  close() {
-    if (this.ws) {
-      this.ws.close();
-    }
+  async streamLogs(filters = {}) {
+    // Server-Sent Events for streaming
+    const eventSource = new EventSource(`${this.baseUrl}/mcp`);
+    
+    return new Promise((resolve, reject) => {
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === 'log') {
+            // Handle log entry
+            console.log('Log:', data.data);
+          }
+        } catch (error) {
+          reject(error);
+        }
+      };
+      
+      eventSource.onerror = (error) => {
+        reject(error);
+      };
+    });
   }
 }
 
 // Usage
-const client = new BrummerWebSocketClient();
-
-await client.connect();
+const client = new BrummerHTTPClient();
 
 const processes = await client.getProcesses();
 console.log('Processes:', processes);
 
-// Subscribe to events
-await client.request('brummer.subscribe', {
-  events: ['process.error', 'log.error']
-});
+// Start streaming logs
+client.streamLogs({ follow: true });
 ```
 
 ### React Hook
@@ -425,61 +434,67 @@ await client.request('brummer.subscribe', {
 ```jsx
 import { useState, useEffect, useCallback } from 'react';
 
-function useBrummer(url = 'ws://localhost:3280') {
+function useBrummer(baseUrl = 'http://localhost:7777') {
   const [client, setClient] = useState(null);
   const [connected, setConnected] = useState(false);
   const [processes, setProcesses] = useState([]);
   const [logs, setLogs] = useState([]);
 
   useEffect(() => {
-    const brummerClient = new BrummerWebSocketClient(url);
+    const brummerClient = new BrummerHTTPClient(baseUrl);
+    setClient(brummerClient);
+    setConnected(true);
     
-    brummerClient.connect().then(() => {
-      setClient(brummerClient);
-      setConnected(true);
-      
-      // Subscribe to updates
-      brummerClient.request('brummer.subscribe', {
-        events: ['process.start', 'process.stop', 'log.error']
-      });
-      
-      // Initial data fetch
-      brummerClient.getProcesses().then(setProcesses);
-    });
-
-    return () => {
-      brummerClient.close();
-    };
-  }, [url]);
+    // Initial data fetch
+    brummerClient.getProcesses().then((result) => {
+      setProcesses(Array.isArray(result) ? result : [result]);
+    }).catch(console.error);
+  }, [baseUrl]);
 
   const startProcess = useCallback(async (name) => {
     if (!client) return;
     
-    const result = await client.startProcess(name);
-    if (result.success) {
+    try {
+      const result = await client.startProcess(name);
+      // Refresh processes list
       const updatedProcesses = await client.getProcesses();
-      setProcesses(updatedProcesses.processes);
+      setProcesses(Array.isArray(updatedProcesses) ? updatedProcesses : [updatedProcesses]);
+      return result;
+    } catch (error) {
+      console.error('Failed to start process:', error);
+      throw error;
     }
-    return result;
   }, [client]);
 
-  const stopProcess = useCallback(async (name) => {
+  const stopProcess = useCallback(async (processId) => {
     if (!client) return;
     
-    const result = await client.request('brummer.stopProcess', { name });
-    if (result.success) {
+    try {
+      const result = await client.request('tools/call', {
+        name: 'scripts_stop',
+        arguments: { processId }
+      });
+      // Refresh processes list
       const updatedProcesses = await client.getProcesses();
-      setProcesses(updatedProcesses.processes);
+      setProcesses(Array.isArray(updatedProcesses) ? updatedProcesses : [updatedProcesses]);
+      return result;
+    } catch (error) {
+      console.error('Failed to stop process:', error);
+      throw error;
     }
-    return result;
   }, [client]);
 
   const fetchLogs = useCallback(async (filters = {}) => {
     if (!client) return;
     
-    const result = await client.getLogs(filters);
-    setLogs(result.logs);
-    return result;
+    try {
+      const result = await client.getLogs(filters);
+      setLogs(result);
+      return result;
+    } catch (error) {
+      console.error('Failed to fetch logs:', error);
+      throw error;
+    }
   }, [client]);
 
   return {
@@ -504,11 +519,11 @@ function ProcessManager() {
     <div>
       <h2>Processes</h2>
       {processes.map(process => (
-        <div key={process.id}>
+        <div key={process.processId || process.name}>
           <span>{process.name}</span>
           <span>{process.status}</span>
           {process.status === 'running' ? (
-            <button onClick={() => stopProcess(process.name)}>Stop</button>
+            <button onClick={() => stopProcess(process.processId)}>Stop</button>
           ) : (
             <button onClick={() => startProcess(process.name)}>Start</button>
           )}
@@ -524,14 +539,20 @@ function ProcessManager() {
 ### Direct Commands
 
 ```bash
-# Send MCP request via CLI
-brum mcp-request brummer.getProcesses
+# Send MCP request via curl
+curl -X POST http://localhost:7777/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"scripts_status"}}'
 
-# With parameters
-brum mcp-request brummer.startProcess '{"name": "dev"}'
+# Start a process
+curl -X POST http://localhost:7777/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"scripts_run","arguments":{"name":"dev"}}}'
 
-# Pretty print response
-brum mcp-request brummer.getLogs '{"limit": 10}' | jq
+# Get logs with pretty print
+curl -X POST http://localhost:7777/mcp \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"logs_search","arguments":{"query":".*","limit":10}}}' | jq
 ```
 
 ### Shell Script Client
@@ -541,24 +562,25 @@ brum mcp-request brummer.getLogs '{"limit": 10}' | jq
 
 # brummer-client.sh
 brummer_request() {
-  local method=$1
-  local params=${2:-'{}'}
+  local tool_name=$1
+  local args=${2:-'{}'}
   
-  echo "{\"jsonrpc\": \"2.0\", \"method\": \"$method\", \"params\": $params, \"id\": 1}" | \
-    brum --mcp | \
+  curl -s -X POST http://localhost:7777/mcp \
+    -H "Content-Type: application/json" \
+    -d "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$tool_name\",\"arguments\":$args}}" | \
     jq -r '.result'
 }
 
 # Get all processes
-processes=$(brummer_request "brummer.getProcesses")
+processes=$(brummer_request "scripts_status")
 echo "Processes: $processes"
 
 # Start a process
-result=$(brummer_request "brummer.startProcess" '{"name": "dev"}')
+result=$(brummer_request "scripts_run" '{"name": "dev"}')
 echo "Start result: $result"
 
 # Get recent errors
-errors=$(brummer_request "brummer.getErrors" '{"limit": 5}')
+errors=$(brummer_request "logs_search" '{"query": "error", "level": "error", "limit": 5}')
 echo "Recent errors: $errors"
 ```
 
@@ -579,25 +601,26 @@ async function testMCPIntegration() {
     console.log('✅ Connected');
     
     // Test getting processes
-    console.log('\nTesting getProcesses...');
+    console.log('\nTesting scripts_status...');
     const processes = await client.getProcesses();
     console.log('✅ Processes:', processes);
     
     // Test starting a process
-    console.log('\nTesting startProcess...');
+    console.log('\nTesting scripts_run...');
     const startResult = await client.startProcess('dev');
     console.log('✅ Start result:', startResult);
     
     // Test getting logs
-    console.log('\nTesting getLogs...');
+    console.log('\nTesting logs_stream...');
     const logs = await client.getLogs({ limit: 5 });
     console.log('✅ Logs:', logs);
     
-    // Test error detection
-    console.log('\nTesting getErrors...');
-    const errors = await client.request({
-      method: 'brummer.getErrors'
-    }, {});
+    // Test log search
+    console.log('\nTesting logs_search...');
+    const errors = await client.request('tools/call', {
+      name: 'logs_search',
+      arguments: { query: 'error', level: 'error', limit: 5 }
+    });
     console.log('✅ Errors:', errors);
     
     console.log('\n✅ All tests passed!');
@@ -622,7 +645,9 @@ testMCPIntegration();
 
 2. **Check if MCP server is responding**:
    ```bash
-   echo '{"jsonrpc":"2.0","method":"brummer.ping","id":1}' | brum --mcp
+   curl -X POST http://localhost:7777/mcp \
+     -H "Content-Type: application/json" \
+     -d '{"jsonrpc":"2.0","method":"tools/list","id":1}'
    ```
 
 3. **Enable debug logging**:

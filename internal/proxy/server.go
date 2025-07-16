@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/elazarl/goproxy"
@@ -86,7 +87,10 @@ type Server struct {
 	server   *http.Server
 	eventBus *events.EventBus
 
-	mu       sync.RWMutex
+	// Separate locks for different concerns to prevent deadlocks
+	dataMu   sync.RWMutex // Protects data structures (requests, urlMap, etc.)
+	serverMu sync.Mutex   // Protects server start/stop operations only
+	
 	requests []Request
 	urlMap   map[string]string // Maps URL to process name
 
@@ -102,9 +106,9 @@ type Server struct {
 	// WebSocket connections for real-time telemetry
 	wsUpgrader websocket.Upgrader
 	wsClients  map[*websocket.Conn]bool
-	// Note: wsClients now protected by main mu mutex to prevent deadlocks
 
-	running bool
+	// Lock-free atomic state for running status
+	running int64 // 0 = stopped, 1 = running (use atomic operations)
 }
 
 // createSilentLogger creates a logger that discards all output to prevent
@@ -606,8 +610,8 @@ func (s *Server) rewriteURLsInResponse(resp *http.Response, mapping *URLMapping)
 
 // getProcessForURL returns the process name associated with a URL
 func (s *Server) getProcessForURL(urlStr string) string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	normalized := normalizeURL(urlStr)
 
@@ -650,8 +654,8 @@ func normalizeURL(urlStr string) string {
 
 // addRequest stores a request in the history
 func (s *Server) addRequest(req Request) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.Lock()
+	defer s.dataMu.Unlock()
 
 	// Try to find telemetry session for this URL
 	if s.telemetry != nil {
@@ -674,8 +678,8 @@ func (s *Server) addRequest(req Request) {
 
 // linkTelemetryToRequests links telemetry data to existing requests
 func (s *Server) linkTelemetryToRequests(sessionID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.Lock()
+	defer s.dataMu.Unlock()
 
 	session, exists := s.telemetry.GetSession(sessionID)
 	if !exists || session == nil {
@@ -712,8 +716,8 @@ func (s *Server) linkTelemetryToRequests(sessionID string) {
 
 // GetRequests returns all stored requests
 func (s *Server) GetRequests() []Request {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	// Return a copy to avoid race conditions
 	requests := make([]Request, len(s.requests))
@@ -723,8 +727,8 @@ func (s *Server) GetRequests() []Request {
 
 // GetRequestsForProcess returns requests for a specific process
 func (s *Server) GetRequestsForProcess(processName string) []Request {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	var filtered []Request
 	for _, req := range s.requests {
@@ -737,10 +741,12 @@ func (s *Server) GetRequestsForProcess(processName string) []Request {
 
 // Start starts the proxy server
 func (s *Server) Start() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Use separate mutex for server operations to prevent deadlock
+	s.serverMu.Lock()
+	defer s.serverMu.Unlock()
 
-	if s.running {
+	// Check if already running using atomic operation (lock-free)
+	if atomic.LoadInt64(&s.running) == 1 {
 		return fmt.Errorf("proxy server already running")
 	}
 
@@ -766,7 +772,7 @@ func (s *Server) Start() error {
 
 	// Create a custom handler that serves PAC file and proxies everything else
 	addr := fmt.Sprintf(":%d", s.port)
-	s.server = &http.Server{
+	server := &http.Server{
 		Addr:     addr,
 		ErrorLog: s.createSilentLogger(),
 		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -813,22 +819,20 @@ func (s *Server) Start() error {
 		}),
 	}
 
-	s.mu.Lock()
-	s.running = true
-	s.mu.Unlock()
+	// Assign server safely under lock
+	s.dataMu.Lock()
+	s.server = server
+	s.dataMu.Unlock()
 
+	// Set running state atomically (lock-free)
+	atomic.StoreInt64(&s.running, 1)
+
+	// Start server in goroutine without holding any locks
 	go func() {
-		// Get server reference safely
-		s.mu.RLock()
-		server := s.server
-		s.mu.RUnlock()
-		
 		// Proxy server starting (logs disabled for TUI compatibility)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// Proxy server error (logged internally)
-			s.mu.Lock()
-			s.running = false
-			s.mu.Unlock()
+			// Proxy server error - set state atomically (logged internally)
+			atomic.StoreInt64(&s.running, 0)
 		}
 	}()
 
@@ -837,18 +841,29 @@ func (s *Server) Start() error {
 
 // Stop stops the proxy server
 func (s *Server) Stop() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	// Use separate mutex for server operations to prevent deadlock
+	s.serverMu.Lock()
+	defer s.serverMu.Unlock()
 
-	if !s.running {
+	// Check if already stopped using atomic operation (lock-free)
+	if atomic.LoadInt64(&s.running) == 0 {
 		return nil
 	}
 
-	s.running = false
+	// Set stopped state atomically (lock-free)
+	atomic.StoreInt64(&s.running, 0)
 
-	// In reverse proxy mode, stop all individual servers
+	// In reverse proxy mode, stop all individual servers (need data lock for urlMappings)
 	if s.mode == ProxyModeReverse {
+		s.dataMu.RLock()
+		mappings := make([]*URLMapping, 0, len(s.urlMappings))
 		for _, mapping := range s.urlMappings {
+			mappings = append(mappings, mapping)
+		}
+		s.dataMu.RUnlock()
+
+		// Close servers outside the data lock to prevent blocking
+		for _, mapping := range mappings {
 			if mapping.Server != nil {
 				// Stopping reverse proxy (logged internally)
 				mapping.Server.Close()
@@ -856,8 +871,13 @@ func (s *Server) Stop() error {
 		}
 	}
 
-	if s.server != nil {
-		return s.server.Close()
+	// Get server safely under lock
+	s.dataMu.RLock()
+	server := s.server
+	s.dataMu.RUnlock()
+
+	if server != nil {
+		return server.Close()
 	}
 
 	return nil
@@ -865,15 +885,13 @@ func (s *Server) Stop() error {
 
 // IsRunning returns whether the proxy server is running
 func (s *Server) IsRunning() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return s.running
+	return atomic.LoadInt64(&s.running) == 1
 }
 
 // ClearRequests clears all stored requests
 func (s *Server) ClearRequests() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.Lock()
+	defer s.dataMu.Unlock()
 	s.requests = make([]Request, 0, 1000)
 
 	// Note: We don't stop the proxy servers, just clear the request history
@@ -881,8 +899,8 @@ func (s *Server) ClearRequests() {
 
 // ClearRequestsForProcess clears requests for a specific process
 func (s *Server) ClearRequestsForProcess(processName string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.Lock()
+	defer s.dataMu.Unlock()
 
 	var filtered []Request
 	for _, req := range s.requests {
@@ -905,21 +923,27 @@ func (s *Server) GetMode() ProxyMode {
 
 // SwitchMode switches the proxy server between full and reverse mode
 func (s *Server) SwitchMode(newMode ProxyMode) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.Lock()
+	defer s.dataMu.Unlock()
 
 	if s.mode == newMode {
 		return nil // Already in the requested mode
 	}
 
 	oldMode := s.mode
-	wasRunning := s.running
+	wasRunning := atomic.LoadInt64(&s.running) == 1
 
 	// Stop the server first
 	if wasRunning {
-		s.running = false
-		if s.server != nil {
-			s.server.Close()
+		atomic.StoreInt64(&s.running, 0)
+		
+		// Get server safely under lock
+		s.dataMu.RLock()
+		server := s.server
+		s.dataMu.RUnlock()
+		
+		if server != nil {
+			server.Close()
 		}
 
 		// In reverse proxy mode, stop all individual servers
@@ -959,7 +983,7 @@ func (s *Server) SwitchMode(newMode ProxyMode) error {
 	// Restart if it was running
 	if wasRunning {
 		// Create new server with updated handler
-		s.server = &http.Server{
+		newServer := &http.Server{
 			Addr:     fmt.Sprintf(":%d", s.port),
 			ErrorLog: s.createSilentLogger(),
 			Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -1006,20 +1030,18 @@ func (s *Server) SwitchMode(newMode ProxyMode) error {
 			}),
 		}
 
-		s.running = true
+		// Assign server safely under lock
+		s.dataMu.Lock()
+		s.server = newServer
+		s.dataMu.Unlock()
+
+		atomic.StoreInt64(&s.running, 1)
 
 		go func() {
-			// Get server reference safely
-			s.mu.RLock()
-			server := s.server
-			s.mu.RUnlock()
-			
 			// Restarting proxy server (logs disabled for TUI compatibility)
-			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-				// Proxy server error (logged internally)
-				s.mu.Lock()
-				s.running = false
-				s.mu.Unlock()
+			if err := newServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+				// Proxy server error - set state atomically (logged internally)
+				atomic.StoreInt64(&s.running, 0)
 			}
 		}()
 
@@ -1168,8 +1190,8 @@ func (s *Server) RegisterURL(urlStr, processName string) string {
 
 // RegisterURLWithLabel associates a URL with a process name and label, and returns the proxy URL
 func (s *Server) RegisterURLWithLabel(urlStr, processName, label string) string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.dataMu.Lock()
+	defer s.dataMu.Unlock()
 
 	// Normalize URL
 	normalized := normalizeURL(urlStr)
@@ -1261,8 +1283,8 @@ func (s *Server) GetProxyURL(targetURL string) string {
 		return targetURL
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	normalized := normalizeURL(targetURL)
 	if mapping, exists := s.urlMappings[normalized]; exists {
@@ -1274,8 +1296,8 @@ func (s *Server) GetProxyURL(targetURL string) string {
 
 // GetURLMappings returns all URL mappings (reverse proxy mode only)
 func (s *Server) GetURLMappings() []URLMapping {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	mappings := make([]URLMapping, 0, len(s.urlMappings))
 	for _, mapping := range s.urlMappings {
@@ -1469,10 +1491,10 @@ func (s *Server) handleWebSocketTelemetry(w http.ResponseWriter, r *http.Request
 	defer conn.Close()
 
 	// Register client
-	s.mu.Lock()
+	s.dataMu.Lock()
 	s.wsClients[conn] = true
 	clientCount := len(s.wsClients)
-	s.mu.Unlock()
+	s.dataMu.Unlock()
 
 	// WebSocket connection events are only for internal tracking, no need to log to stdout
 
@@ -1502,10 +1524,10 @@ func (s *Server) handleWebSocketTelemetry(w http.ResponseWriter, r *http.Request
 	}
 
 	// Unregister client
-	s.mu.Lock()
+	s.dataMu.Lock()
 	delete(s.wsClients, conn)
 	clientCount = len(s.wsClients)
-	s.mu.Unlock()
+	s.dataMu.Unlock()
 
 	// WebSocket disconnection events are only for internal tracking, no need to log to stdout
 }
@@ -1702,8 +1724,8 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 
 // BroadcastToWebSockets sends a message to all connected WebSocket clients
 func (s *Server) BroadcastToWebSockets(msgType string, data interface{}) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+	s.dataMu.RLock()
+	defer s.dataMu.RUnlock()
 
 	if len(s.wsClients) == 0 {
 		return

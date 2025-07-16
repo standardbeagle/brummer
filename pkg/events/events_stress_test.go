@@ -13,9 +13,9 @@ func TestEventBusStressTest(t *testing.T) {
 	defer eb.Shutdown()
 
 	const (
-		numPublishers = 100
+		numPublishers      = 100
 		eventsPerPublisher = 100
-		totalEvents = numPublishers * eventsPerPublisher
+		totalEvents        = numPublishers * eventsPerPublisher
 	)
 
 	// Track processed events
@@ -52,7 +52,7 @@ func TestEventBusStressTest(t *testing.T) {
 				if j%2 == 0 {
 					eventType = ProcessStarted
 				}
-				
+
 				eb.Publish(Event{
 					Type:      eventType,
 					ProcessID: "stress-test",
@@ -111,11 +111,11 @@ func TestEventBusStressTest(t *testing.T) {
 
 func TestEventBusGoroutineCount(t *testing.T) {
 	initialGoroutines := runtime.NumGoroutine()
-	
+
 	// Create and destroy multiple EventBus instances
 	for i := 0; i < 10; i++ {
 		eb := NewEventBus()
-		
+
 		// Publish some events
 		for j := 0; j < 50; j++ {
 			eb.Publish(Event{
@@ -124,18 +124,18 @@ func TestEventBusGoroutineCount(t *testing.T) {
 				Data:      map[string]interface{}{"iteration": i, "event": j},
 			})
 		}
-		
+
 		// Shutdown and verify cleanup
 		eb.Shutdown()
 	}
-	
+
 	// Force garbage collection and give time for cleanup
 	runtime.GC()
 	time.Sleep(10 * time.Millisecond)
-	
+
 	finalGoroutines := runtime.NumGoroutine()
 	t.Logf("Goroutines before: %d, after: %d", initialGoroutines, finalGoroutines)
-	
+
 	// Should not leak goroutines
 	if finalGoroutines > initialGoroutines+5 { // Allow small variance
 		t.Errorf("Goroutine leak detected: %d -> %d", initialGoroutines, finalGoroutines)

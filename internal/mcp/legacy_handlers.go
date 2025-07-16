@@ -27,12 +27,12 @@ func (s *StreamableServer) handleLegacyConnect(w http.ResponseWriter, r *http.Re
 	}
 
 	clientID := fmt.Sprintf("%d", time.Now().UnixNano())
-	
+
 	response := map[string]interface{}{
 		"clientId": clientID,
 		"capabilities": []string{
 			"logs",
-			"processes", 
+			"processes",
 			"scripts",
 			"execute",
 			"search",
@@ -40,12 +40,12 @@ func (s *StreamableServer) handleLegacyConnect(w http.ResponseWriter, r *http.Re
 			"events",
 		},
 		"endpoints": map[string]string{
-			"events":     "/legacy/events",
-			"logs":       "/legacy/logs",
-			"processes":  "/legacy/processes",
-			"scripts":    "/legacy/scripts",
-			"execute":    "/legacy/execute",
-			"stop":       "/legacy/stop",
+			"events":    "/legacy/events",
+			"logs":      "/legacy/logs",
+			"processes": "/legacy/processes",
+			"scripts":   "/legacy/scripts",
+			"execute":   "/legacy/execute",
+			"stop":      "/legacy/stop",
 		},
 	}
 

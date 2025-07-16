@@ -40,7 +40,7 @@ func TestServerLifecycle(t *testing.T) {
 	err := server.Start()
 	require.NoError(t, err)
 	assert.True(t, server.IsRunning())
-	
+
 	// Give server a moment to fully start
 	time.Sleep(50 * time.Millisecond)
 	assert.Greater(t, server.GetPort(), 0)
@@ -145,7 +145,7 @@ func TestURLMappings(t *testing.T) {
 
 	// Verify mappings are sorted by creation time
 	for i := 1; i < len(mappings); i++ {
-		assert.True(t, mappings[i].CreatedAt.After(mappings[i-1].CreatedAt) || 
+		assert.True(t, mappings[i].CreatedAt.After(mappings[i-1].CreatedAt) ||
 			mappings[i].CreatedAt.Equal(mappings[i-1].CreatedAt))
 	}
 
@@ -263,17 +263,17 @@ func TestConcurrentOperations(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func(index int) {
 			defer func() { done <- true }()
-			
+
 			targetURL := fmt.Sprintf("http://localhost:%d", 3000+index)
 			processName := fmt.Sprintf("process-%d", index)
-			
+
 			proxyURL := server.RegisterURL(targetURL, processName)
 			assert.NotEmpty(t, proxyURL)
-			
+
 			// Test concurrent reads
 			mappings := server.GetURLMappings()
 			assert.NotNil(t, mappings)
-			
+
 			requests := server.GetRequests()
 			assert.NotNil(t, requests)
 		}(i)
@@ -317,7 +317,7 @@ func TestServerPortConflict(t *testing.T) {
 func TestProxyModeConstants(t *testing.T) {
 	assert.Equal(t, ProxyMode("full"), ProxyModeFull)
 	assert.Equal(t, ProxyMode("reverse"), ProxyModeReverse)
-	
+
 	// Test that the constants are not empty
 	assert.NotEmpty(t, string(ProxyModeFull))
 	assert.NotEmpty(t, string(ProxyModeReverse))
@@ -326,10 +326,10 @@ func TestProxyModeConstants(t *testing.T) {
 // TestEventBusIntegration tests integration with the event bus
 func TestEventBusIntegration(t *testing.T) {
 	eventBus := events.NewEventBus()
-	
+
 	var receivedEvents []events.Event
 	var mu sync.Mutex
-	
+
 	// Subscribe to any events that might be published
 	eventTypes := []events.EventType{
 		events.ProcessStarted,
@@ -337,7 +337,7 @@ func TestEventBusIntegration(t *testing.T) {
 		events.LogLine,
 		events.ErrorDetected,
 	}
-	
+
 	for _, eventType := range eventTypes {
 		eventBus.Subscribe(eventType, func(event events.Event) {
 			mu.Lock()
@@ -345,23 +345,23 @@ func TestEventBusIntegration(t *testing.T) {
 			mu.Unlock()
 		})
 	}
-	
+
 	server := NewServerWithMode(0, ProxyModeReverse, eventBus)
-	
+
 	err := server.Start()
 	require.NoError(t, err)
 	defer server.Stop()
-	
+
 	// Register a URL and see if any events are published
 	server.RegisterURL("http://localhost:3000", "test-process")
-	
+
 	// Wait briefly for any potential async events
 	time.Sleep(50 * time.Millisecond)
-	
+
 	// Check if any events were received (this might be zero, which is fine)
 	mu.Lock()
 	defer mu.Unlock()
-	
+
 	// Just verify the events slice is properly initialized
 	assert.NotNil(t, receivedEvents)
 }

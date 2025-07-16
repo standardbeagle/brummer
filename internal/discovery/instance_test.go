@@ -38,6 +38,13 @@ func TestInstanceDiscovery(t *testing.T) {
 		Port:      7777,
 		StartedAt: time.Now(),
 		LastPing:  time.Now(),
+		ProcessInfo: struct {
+			PID        int    `json:"pid"`
+			Executable string `json:"executable"`
+		}{
+			PID:        12345,
+			Executable: "brum",
+		},
 	}
 
 	if err := RegisterInstance(instancesDir, instance1); err != nil {
@@ -71,6 +78,13 @@ func TestInstanceDiscovery(t *testing.T) {
 		Port:      7778,
 		StartedAt: time.Now(),
 		LastPing:  time.Now(),
+		ProcessInfo: struct {
+			PID        int    `json:"pid"`
+			Executable string `json:"executable"`
+		}{
+			PID:        12346,
+			Executable: "brum",
+		},
 	}
 
 	if err := RegisterInstance(instancesDir, instance2); err != nil {
@@ -137,6 +151,13 @@ func TestInstanceUpdateCallback(t *testing.T) {
 		Port:      9999,
 		StartedAt: time.Now(),
 		LastPing:  time.Now(),
+		ProcessInfo: struct {
+			PID        int    `json:"pid"`
+			Executable string `json:"executable"`
+		}{
+			PID:        12347,
+			Executable: "brum",
+		},
 	}
 
 	if err := RegisterInstance(instancesDir, instance); err != nil {
@@ -158,13 +179,14 @@ func TestInstanceUpdateCallback(t *testing.T) {
 
 func TestAtomicFileOperations(t *testing.T) {
 	tempDir := t.TempDir()
+	afo := NewAtomicFileOperations(tempDir)
 
-	// Test AtomicWriteFile
-	testFile := filepath.Join(tempDir, "test.txt")
+	// Test basic atomic file operations through AtomicFileOperations
 	testData := []byte("Hello, World!")
+	testFile := filepath.Join(tempDir, "test.txt")
 
-	if err := AtomicWriteFile(testFile, testData, 0644); err != nil {
-		t.Fatalf("AtomicWriteFile failed: %v", err)
+	if err := afo.atomicWriteFile(testFile, testData, 0644); err != nil {
+		t.Fatalf("atomicWriteFile failed: %v", err)
 	}
 
 	// Verify file contents
@@ -175,22 +197,6 @@ func TestAtomicFileOperations(t *testing.T) {
 
 	if string(data) != string(testData) {
 		t.Errorf("Expected '%s', got '%s'", testData, data)
-	}
-
-	// Test AtomicCopyFile
-	copyFile := filepath.Join(tempDir, "copy.txt")
-	if err := AtomicCopyFile(testFile, copyFile, 0644); err != nil {
-		t.Fatalf("AtomicCopyFile failed: %v", err)
-	}
-
-	// Verify copy contents
-	copyData, err := os.ReadFile(copyFile)
-	if err != nil {
-		t.Fatalf("Failed to read copy: %v", err)
-	}
-
-	if string(copyData) != string(testData) {
-		t.Errorf("Copy expected '%s', got '%s'", testData, copyData)
 	}
 }
 
@@ -206,6 +212,13 @@ func TestInstancePingUpdate(t *testing.T) {
 		Port:      8888,
 		StartedAt: time.Now(),
 		LastPing:  time.Now().Add(-1 * time.Hour), // Old ping time
+		ProcessInfo: struct {
+			PID        int    `json:"pid"`
+			Executable string `json:"executable"`
+		}{
+			PID:        12348,
+			Executable: "brum",
+		},
 	}
 
 	if err := RegisterInstance(instancesDir, instance); err != nil {

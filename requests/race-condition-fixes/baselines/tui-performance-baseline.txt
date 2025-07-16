@@ -1,0 +1,198 @@
+TUI Performance Baseline Report
+===============================
+
+Date: 2025-07-07 19:30:00 CDT
+Git Commit: 16bc754
+Go Version: go1.24.2 linux/amd64
+Platform: Linux 6.6.87.2-microsoft-standard-WSL2
+
+Test Execution Times
+===================
+
+Normal Test Execution:
+- Total Time: 10.160s
+- Package: github.com/standardbeagle/brummer/internal/tui
+
+Race Detector Test Execution:
+- Total Time: 14.0s (cached result shown)
+- Overhead: +37.8% due to race detection instrumentation
+
+Individual Test Performance:
+- TestViewConstants: 0.00s (instant)
+- TestModelCreation: 7.15s (normal), 10.51s (race) - SLOW
+- TestModelViewSwitching: 2.82s (normal), 3.47s (race) - MODERATE
+- TestFilterValidation: 0.00s (instant)
+- TestKeyMappings: 0.00s (instant)
+- TestSlashCommands: 0.00s (instant)
+- TestErrorMessageFormatting: 0.00s (instant)
+- TestLogPriorityFiltering: 0.00s (instant)
+- TestProcessStatusFormatting: 0.00s (instant)
+- TestURLValidation: 0.00s (instant)
+- TestConfigurationDisplay: 0.00s (instant)
+- TestHelpContent: 0.00s (instant)
+- TestColorTheme: 0.00s (instant)
+- TestSystemMessages: 0.05s (fast)
+- TestSystemMessageLimit: 0.00s (instant)
+
+Performance Hotspots:
+- ModelCreation: 7.15s (70% of total time)
+- ModelViewSwitching: 2.82s (28% of total time)
+- All other tests: <0.1s (2% of total time)
+
+Memory Profile Analysis
+======================
+
+Total Memory Allocated: 4,115.38kB
+Top Memory Consumers:
+
+1. I/O Operations (25.28% - 1,040.17kB):
+   - io.copyBuffer: 528.17kB (12.83%)
+   - os.(*File).WriteTo: 1,040.17kB (25.28%)
+   - Command execution I/O overhead
+
+2. Model Creation (25.28% - 1,024.13kB):
+   - NewModel/NewModelWithView: 1,024.13kB (24.89%)
+   - TestModelCreation: 1,024.13kB (24.89%)
+   - Large Model struct allocation
+
+3. System Messages (12.49% - 514kB):
+   - addSystemMessage: 514kB (12.49%)
+   - TestSystemMessageLimit: 514kB (12.49%)
+   - Message buffer management
+
+4. Lipgloss Styling (12.44% - 512.10kB):
+   - Style.Copy: 512.10kB (12.44%)
+   - Style operations during rendering
+
+5. Runtime Overhead (12.44% - 513kB):
+   - allocm: 513kB (12.47%)
+   - Go runtime allocation management
+
+Memory Allocation Patterns:
+- Large upfront allocations for Model creation
+- Moderate ongoing allocations for styling
+- I/O buffers for command execution
+- No obvious memory leaks in test scenarios
+
+Performance Characteristics
+==========================
+
+Model Creation Performance:
+- Time: 7.15s (slow)
+- Memory: 1,024.13kB (large struct)
+- Likely includes I/O setup and dependency initialization
+
+View Switching Performance:
+- Time: 2.82s (moderate)
+- Suggests complex rendering or state updates
+
+Test Coverage Impact:
+- Coverage: 3.8% (very low)
+- Most performance-critical paths untested
+- Limited insight into production performance
+
+Benchmark Results
+================
+
+No benchmarks defined in test suite.
+Recommendation: Add benchmarks for:
+- Model creation
+- View switching
+- Rendering operations
+- Event processing
+- Memory usage patterns
+
+Concurrency Performance
+======================
+
+Race Detector Overhead:
+- Normal: 10.160s
+- Race Detection: 14.0s
+- Overhead: +37.8% (acceptable for race detection)
+
+No concurrent performance tests defined.
+Cannot assess:
+- Lock contention
+- Goroutine scaling
+- Channel performance
+- Event bus throughput
+
+Performance Bottlenecks Identified
+==================================
+
+1. Model Creation (70% of test time):
+   - Large struct allocation
+   - Complex initialization
+   - I/O setup overhead
+
+2. Value Receiver Copying:
+   - 39 methods create Model copies
+   - RWMutex copied with each call
+   - Potential performance impact from copying
+
+3. Limited Performance Testing:
+   - No benchmarks for core operations
+   - No concurrent performance tests
+   - No production-like scenarios
+
+Performance Baseline Metrics
+============================
+
+CPU Usage:
+- Test execution: Single-threaded during tests
+- Model creation: CPU-intensive
+- Rendering: Not measured in tests
+
+Memory Usage:
+- Peak allocation: 4,115.38kB during tests
+- Model size: ~1MB for full initialization
+- No memory leaks detected in test scenarios
+
+Goroutine Usage:
+- Test scenarios: Minimal goroutine creation
+- Production usage: Unknown (not tested)
+
+Performance Recommendations
+===========================
+
+1. Add comprehensive benchmarks:
+   - Model creation/destruction
+   - View switching
+   - Rendering operations
+   - Event processing
+
+2. Optimize Model creation:
+   - Lazy initialization where possible
+   - Reduce struct size
+   - Optimize dependency setup
+
+3. Measure concurrent performance:
+   - Add concurrent access benchmarks
+   - Test lock contention
+   - Measure goroutine scaling
+
+4. Profile production scenarios:
+   - Real TUI usage patterns
+   - Event processing throughput
+   - Memory usage over time
+
+Baseline Validation
+==================
+
+Performance baseline successfully established:
+✅ Test execution times recorded
+✅ Memory allocation patterns documented
+✅ Performance hotspots identified
+✅ Race detector overhead measured
+✅ Optimization opportunities noted
+
+Current State Assessment:
+- Functional but not performance-optimized
+- Significant opportunity for improvement
+- No critical performance issues blocking development
+- Need for comprehensive performance testing
+
+---
+Performance Baseline Complete
+Generated: 2025-07-07 19:30:00 CDT
+Ready for TUI Model Pointer Receiver Conversion

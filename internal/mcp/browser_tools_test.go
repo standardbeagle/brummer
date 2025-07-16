@@ -25,7 +25,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			},
 			Execute: func(t *testing.T, context interface{}) error {
 				server := context.(*StreamableServer)
-				
+
 				args := json.RawMessage(`{"format": "png"}`)
 				_, err := server.tools["browser_screenshot"].Handler(args)
 				return err
@@ -50,7 +50,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			},
 			Execute: func(t *testing.T, context interface{}) error {
 				server := context.(*StreamableServer)
-				
+
 				args := json.RawMessage(`{
 					"format": "png",
 					"fullPage": true,
@@ -79,7 +79,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			},
 			Execute: func(t *testing.T, context interface{}) error {
 				server := context.(*StreamableServer)
-				
+
 				args := json.RawMessage(`{
 					"format": "jpeg",
 					"quality": 85,
@@ -100,7 +100,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			},
 		},
 	}
-	
+
 	testutil.RunTestScenarios(t, scenarios)
 }
 
@@ -116,7 +116,7 @@ func TestREPLExecuteTool(t *testing.T) {
 			},
 			Execute: func(t *testing.T, context interface{}) error {
 				server := context.(*StreamableServer)
-				
+
 				args := json.RawMessage(`{
 					"code": "console.log('Hello, World!'); return 'test result';"
 				}`)
@@ -143,7 +143,7 @@ func TestREPLExecuteTool(t *testing.T) {
 			},
 			Execute: func(t *testing.T, context interface{}) error {
 				server := context.(*StreamableServer)
-				
+
 				args := json.RawMessage(`{
 					"code": "document.body.style.backgroundColor = 'red'; return document.body.style.backgroundColor;"
 				}`)
@@ -170,7 +170,7 @@ func TestREPLExecuteTool(t *testing.T) {
 			},
 			Execute: func(t *testing.T, context interface{}) error {
 				server := context.(*StreamableServer)
-				
+
 				args := json.RawMessage(`{
 					"code": "return new Promise(resolve => setTimeout(() => resolve('async result'), 100));"
 				}`)
@@ -197,7 +197,7 @@ func TestREPLExecuteTool(t *testing.T) {
 			},
 			Execute: func(t *testing.T, context interface{}) error {
 				server := context.(*StreamableServer)
-				
+
 				args := json.RawMessage(`{
 					"code": "return window.location.href;",
 					"sessionId": "test-session-123"
@@ -217,7 +217,7 @@ func TestREPLExecuteTool(t *testing.T) {
 			},
 		},
 	}
-	
+
 	testutil.RunTestScenarios(t, scenarios)
 }
 
@@ -225,29 +225,29 @@ func TestREPLExecuteTool(t *testing.T) {
 func TestBrowserToolsIntegration(t *testing.T) {
 	server := createTestStreamableServer(t)
 	defer server.Stop()
-	
+
 	// Test tool registration
 	assert.Contains(t, server.tools, "browser_screenshot", "Screenshot tool should be registered")
 	assert.Contains(t, server.tools, "repl_execute", "REPL tool should be registered")
 	assert.Contains(t, server.tools, "browser_open", "Browser open tool should be registered")
 	assert.Contains(t, server.tools, "browser_refresh", "Browser refresh tool should be registered")
-	
+
 	// Test tool schemas
 	screenshotTool := server.tools["browser_screenshot"]
 	assert.NotNil(t, screenshotTool.InputSchema, "Screenshot tool should have input schema")
 	assert.Contains(t, screenshotTool.Description, "screenshot", "Description should mention screenshot")
-	
+
 	replTool := server.tools["repl_execute"]
 	assert.NotNil(t, replTool.InputSchema, "REPL tool should have input schema")
 	assert.Contains(t, replTool.Description, "JavaScript", "Description should mention JavaScript")
-	
+
 	// Test that tools handle invalid JSON gracefully
 	t.Run("InvalidJSON", func(t *testing.T) {
 		invalidJSON := json.RawMessage(`{invalid json}`)
-		
+
 		_, err := screenshotTool.Handler(invalidJSON)
 		assert.Error(t, err, "Should handle invalid JSON")
-		
+
 		_, err = replTool.Handler(invalidJSON)
 		assert.Error(t, err, "Should handle invalid JSON")
 	})
@@ -258,16 +258,16 @@ func TestBrowserToolsWithProxyServer(t *testing.T) {
 	// Create server with proxy enabled
 	server := createTestStreamableServer(t)
 	defer server.Stop()
-	
+
 	// Test browser_open with proxy
 	t.Run("BrowserOpenWithProxy", func(t *testing.T) {
 		args := json.RawMessage(`{
 			"url": "http://localhost:3000",
 			"processName": "dev"
 		}`)
-		
+
 		result, err := server.tools["browser_open"].Handler(args)
-		
+
 		// Should succeed (will try to open browser)
 		// In a real test environment, this might fail, but the logic should work
 		if err != nil {
@@ -277,13 +277,13 @@ func TestBrowserToolsWithProxyServer(t *testing.T) {
 			assert.Contains(t, resultMap, "opened", "Result should indicate if browser was opened")
 		}
 	})
-	
+
 	// Test browser_refresh
 	t.Run("BrowserRefresh", func(t *testing.T) {
 		args := json.RawMessage(`{}`)
-		
+
 		result, err := server.tools["browser_refresh"].Handler(args)
-		
+
 		// Should succeed
 		assert.NoError(t, err, "Browser refresh should not error")
 		resultMap := result.(map[string]interface{})
@@ -295,15 +295,15 @@ func TestBrowserToolsWithProxyServer(t *testing.T) {
 func TestBrowserToolResponseHandling(t *testing.T) {
 	server := createTestStreamableServer(t)
 	defer server.Stop()
-	
+
 	// Test REPL response registration and cleanup
 	t.Run("REPLResponseHandling", func(t *testing.T) {
 		responseID := "test-response-123"
-		
+
 		// Register response channel
 		responseChan := server.registerREPLResponse(responseID)
 		assert.NotNil(t, responseChan, "Response channel should be created")
-		
+
 		// Simulate response
 		go func() {
 			time.Sleep(50 * time.Millisecond)
@@ -311,7 +311,7 @@ func TestBrowserToolResponseHandling(t *testing.T) {
 				"result": "test response",
 			})
 		}()
-		
+
 		// Wait for response
 		select {
 		case response := <-responseChan:
@@ -321,7 +321,7 @@ func TestBrowserToolResponseHandling(t *testing.T) {
 		case <-time.After(200 * time.Millisecond):
 			t.Fatal("Should have received response")
 		}
-		
+
 		// Cleanup
 		server.unregisterREPLResponse(responseID)
 	})
@@ -331,7 +331,7 @@ func TestBrowserToolResponseHandling(t *testing.T) {
 func TestBrowserToolParameterValidation(t *testing.T) {
 	server := createTestStreamableServer(t)
 	defer server.Stop()
-	
+
 	// Test screenshot parameter validation
 	t.Run("ScreenshotParameters", func(t *testing.T) {
 		testCases := []struct {
@@ -360,12 +360,12 @@ func TestBrowserToolParameterValidation(t *testing.T) {
 				expectOK: true, // Should use defaults
 			},
 		}
-		
+
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
 				args := json.RawMessage(tc.args)
 				_, err := server.tools["browser_screenshot"].Handler(args)
-				
+
 				// We expect timeout errors in test environment, not parameter errors
 				if err != nil {
 					assert.Contains(t, err.Error(), "timeout", "Should timeout, not parameter error")
@@ -373,7 +373,7 @@ func TestBrowserToolParameterValidation(t *testing.T) {
 			})
 		}
 	})
-	
+
 	// Test REPL parameter validation
 	t.Run("REPLParameters", func(t *testing.T) {
 		testCases := []struct {
@@ -397,12 +397,12 @@ func TestBrowserToolParameterValidation(t *testing.T) {
 				expectOK: true, // Should handle empty code
 			},
 		}
-		
+
 		for _, tc := range testCases {
 			t.Run(tc.name, func(t *testing.T) {
 				args := json.RawMessage(tc.args)
 				_, err := server.tools["repl_execute"].Handler(args)
-				
+
 				// We expect timeout errors in test environment, not parameter errors
 				if err != nil {
 					assert.Contains(t, err.Error(), "timeout", "Should timeout, not parameter error")
@@ -416,7 +416,7 @@ func TestBrowserToolParameterValidation(t *testing.T) {
 func TestJavaScriptCodeGeneration(t *testing.T) {
 	server := createTestStreamableServer(t)
 	defer server.Stop()
-	
+
 	// Test screenshot code generation (we can verify the parameters are processed correctly)
 	t.Run("ScreenshotCodeGeneration", func(t *testing.T) {
 		// Test with selector
@@ -424,26 +424,26 @@ func TestJavaScriptCodeGeneration(t *testing.T) {
 			"selector": "#test-element",
 			"format": "png"
 		}`)
-		
+
 		// The handler will generate JavaScript code and try to execute it
 		// In our test environment, it will timeout, but we can verify the parameters are parsed
 		_, err := server.tools["browser_screenshot"].Handler(args)
-		
+
 		// Should timeout (expected behavior in test environment)
 		if err != nil {
 			assert.Contains(t, err.Error(), "timeout", "Expected timeout")
 		}
 	})
-	
+
 	// Test REPL code execution
 	t.Run("REPLCodeExecution", func(t *testing.T) {
 		args := json.RawMessage(`{
 			"code": "return document.title;"
 		}`)
-		
+
 		// The handler will try to execute the JavaScript
 		_, err := server.tools["repl_execute"].Handler(args)
-		
+
 		// Should timeout (expected behavior in test environment)
 		if err != nil {
 			assert.Contains(t, err.Error(), "timeout", "Expected timeout")
@@ -458,17 +458,17 @@ func createTestStreamableServer(t *testing.T) *StreamableServer {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("mock response"))
 	}))
-	
+
 	t.Cleanup(func() {
 		mockProxy.Close()
 	})
-	
+
 	// Create server with minimal configuration for testing
 	eventBus := events.NewEventBus()
 	server := NewStreamableServer(7778, nil, nil, nil, eventBus)
-	
+
 	// Make sure browser tools are registered
 	server.registerBrowserTools()
-	
+
 	return server
 }

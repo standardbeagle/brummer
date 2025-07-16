@@ -32,7 +32,7 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 
 	// Create MCP server
 	server := mcp.NewStreamableServer(0, processMgr, logStore, proxyServer, eventBus)
-	
+
 	// Start server in background
 	go func() {
 		if err := server.Start(); err != nil {
@@ -49,9 +49,9 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 	t.Run("Initialize", func(t *testing.T) {
 		resp := callMCPMethod(t, port, "initialize", map[string]interface{}{
 			"protocolVersion": "1.0",
-			"capabilities": map[string]interface{}{},
+			"capabilities":    map[string]interface{}{},
 			"clientInfo": map[string]string{
-				"name": "test-client",
+				"name":    "test-client",
 				"version": "1.0",
 			},
 		})
@@ -60,12 +60,12 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 		if resp["protocolVersion"] != "1.0" {
 			t.Errorf("Expected protocol version 1.0, got %v", resp["protocolVersion"])
 		}
-		
+
 		capabilities, ok := resp["capabilities"].(map[string]interface{})
 		if !ok {
 			t.Fatal("Missing capabilities in response")
 		}
-		
+
 		if capabilities["tools"] == nil {
 			t.Error("Missing tools capability")
 		}
@@ -74,12 +74,12 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 	// Test 2: List Tools
 	t.Run("ListTools", func(t *testing.T) {
 		resp := callMCPMethod(t, port, "tools/list", map[string]interface{}{})
-		
+
 		tools, ok := resp["tools"].([]interface{})
 		if !ok {
 			t.Fatal("Expected tools array in response")
 		}
-		
+
 		// Verify essential tools exist
 		toolNames := make(map[string]bool)
 		for _, tool := range tools {
@@ -87,7 +87,7 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 			name := toolMap["name"].(string)
 			toolNames[name] = true
 		}
-		
+
 		expectedTools := []string{
 			"scripts/list",
 			"scripts/run",
@@ -95,7 +95,7 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 			"logs/search",
 			"processes/list",
 		}
-		
+
 		for _, expected := range expectedTools {
 			if !toolNames[expected] {
 				t.Errorf("Missing expected tool: %s", expected)
@@ -106,12 +106,12 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 	// Test 3: List Resources
 	t.Run("ListResources", func(t *testing.T) {
 		resp := callMCPMethod(t, port, "resources/list", map[string]interface{}{})
-		
+
 		resources, ok := resp["resources"].([]interface{})
 		if !ok {
 			t.Fatal("Expected resources array in response")
 		}
-		
+
 		// Verify essential resources exist
 		resourceURIs := make(map[string]bool)
 		for _, resource := range resources {
@@ -119,14 +119,14 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 			uri := resMap["uri"].(string)
 			resourceURIs[uri] = true
 		}
-		
+
 		expectedResources := []string{
 			"logs://recent",
 			"logs://errors",
 			"processes://active",
 			"scripts://available",
 		}
-		
+
 		for _, expected := range expectedResources {
 			if !resourceURIs[expected] {
 				t.Errorf("Missing expected resource: %s", expected)
@@ -137,16 +137,16 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 	// Test 4: Call Tool - processes/list
 	t.Run("CallTool_ProcessesList", func(t *testing.T) {
 		resp := callMCPMethod(t, port, "tools/call", map[string]interface{}{
-			"name": "processes/list",
+			"name":      "processes/list",
 			"arguments": map[string]interface{}{},
 		})
-		
+
 		// Should return content array
 		content, ok := resp["content"].([]interface{})
 		if !ok {
 			t.Fatal("Expected content array in response")
 		}
-		
+
 		if len(content) == 0 {
 			t.Error("Expected at least one content item")
 		}
@@ -157,13 +157,13 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 		resp := callMCPMethod(t, port, "resources/read", map[string]interface{}{
 			"uri": "logs://recent",
 		})
-		
+
 		// Should return contents
 		contents, ok := resp["contents"].([]interface{})
 		if !ok {
 			t.Fatal("Expected contents array in response")
 		}
-		
+
 		// Even empty logs should return valid structure
 		if len(contents) > 0 {
 			firstItem := contents[0].(map[string]interface{})
@@ -193,18 +193,18 @@ func TestPhase2InstanceDiscovery(t *testing.T) {
 		}
 		instance.ProcessInfo.PID = 12345
 		instance.ProcessInfo.Executable = "/usr/bin/brum"
-		
+
 		err := discovery.RegisterInstance(instancesDir, instance)
 		if err != nil {
 			t.Fatalf("Failed to register instance: %v", err)
 		}
-		
+
 		// Verify file was created
 		instanceFile := filepath.Join(instancesDir, "test-instance-1.json")
 		if _, err := os.Stat(instanceFile); os.IsNotExist(err) {
 			t.Error("Instance file was not created")
 		}
-		
+
 		// Verify permissions
 		info, _ := os.Stat(instanceFile)
 		mode := info.Mode()
@@ -246,7 +246,7 @@ func TestPhase2InstanceDiscovery(t *testing.T) {
 			LastPing:  time.Now(),
 		}
 		instance.ProcessInfo.PID = 12346
-		
+
 		err = discovery.RegisterInstance(instancesDir, instance)
 		if err != nil {
 			t.Fatalf("Failed to register instance: %v", err)
@@ -275,7 +275,7 @@ func TestPhase2InstanceDiscovery(t *testing.T) {
 			LastPing:  time.Now().Add(-2 * time.Hour), // Very old
 		}
 		staleInstance.ProcessInfo.PID = 99999 // Non-existent PID
-		
+
 		err := discovery.RegisterInstance(instancesDir, staleInstance)
 		if err != nil {
 			t.Fatalf("Failed to register stale instance: %v", err)
@@ -305,11 +305,11 @@ func TestPhase2InstanceDiscovery(t *testing.T) {
 func TestPhase3ConnectionManagement(t *testing.T) {
 	// This is already covered by connection_manager_test.go
 	// Just verify the integration works
-	
+
 	t.Run("ConnectionManagerIntegration", func(t *testing.T) {
 		connMgr := mcp.NewConnectionManager()
 		defer connMgr.Stop()
-		
+
 		// Register a test instance
 		instance := &discovery.Instance{
 			ID:        "conn-test",
@@ -320,18 +320,18 @@ func TestPhase3ConnectionManagement(t *testing.T) {
 			LastPing:  time.Now(),
 		}
 		instance.ProcessInfo.PID = 12347
-		
+
 		err := connMgr.RegisterInstance(instance)
 		if err != nil {
 			t.Fatalf("Failed to register instance: %v", err)
 		}
-		
+
 		// List instances
 		instances := connMgr.ListInstances()
 		if len(instances) != 1 {
 			t.Errorf("Expected 1 instance, got %d", len(instances))
 		}
-		
+
 		// Verify state
 		if instances[0].State.String() != "connecting" && instances[0].State.String() != "retrying" {
 			t.Errorf("Expected connecting or retrying state, got %s", instances[0].State)
@@ -389,17 +389,17 @@ func TestEndToEndScenario(t *testing.T) {
 	// Test 1: List available scripts
 	t.Run("ListScripts", func(t *testing.T) {
 		resp := callMCPMethod(t, port, "tools/call", map[string]interface{}{
-			"name": "scripts/list",
+			"name":      "scripts/list",
 			"arguments": map[string]interface{}{},
 		})
-		
+
 		content := resp["content"].([]interface{})
 		textContent := content[0].(map[string]interface{})["text"].(string)
-		
+
 		// Parse JSON response
 		var scripts map[string]interface{}
 		json.Unmarshal([]byte(textContent), &scripts)
-		
+
 		if scripts["dev"] == nil || scripts["test"] == nil {
 			t.Error("Expected dev and test scripts to be listed")
 		}
@@ -413,15 +413,15 @@ func TestEndToEndScenario(t *testing.T) {
 				"script": "test",
 			},
 		})
-		
+
 		// Should start successfully
 		content := resp["content"].([]interface{})
 		textContent := content[0].(map[string]interface{})["text"].(string)
-		
+
 		if textContent == "" {
 			t.Error("Expected process ID in response")
 		}
-		
+
 		// Wait for process to complete
 		time.Sleep(2 * time.Second)
 	})
@@ -431,12 +431,12 @@ func TestEndToEndScenario(t *testing.T) {
 		resp := callMCPMethod(t, port, "resources/read", map[string]interface{}{
 			"uri": "logs://recent",
 		})
-		
+
 		contents := resp["contents"].([]interface{})
 		if len(contents) == 0 {
 			t.Error("Expected log entries")
 		}
-		
+
 		// Verify we captured the output
 		found := false
 		for _, item := range contents {
@@ -447,7 +447,7 @@ func TestEndToEndScenario(t *testing.T) {
 				break
 			}
 		}
-		
+
 		if !found {
 			t.Error("Did not find expected log output")
 		}
@@ -462,12 +462,12 @@ func callMCPMethod(t *testing.T, port int, method string, params interface{}) ma
 		"method":  method,
 		"params":  params,
 	}
-	
+
 	body, err := json.Marshal(request)
 	if err != nil {
 		t.Fatalf("Failed to marshal request: %v", err)
 	}
-	
+
 	resp, err := http.Post(
 		fmt.Sprintf("http://localhost:%d/mcp", port),
 		"application/json",
@@ -477,21 +477,21 @@ func callMCPMethod(t *testing.T, port int, method string, params interface{}) ma
 		t.Fatalf("Failed to send request: %v", err)
 	}
 	defer resp.Body.Close()
-	
+
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		t.Fatalf("Failed to read response: %v", err)
 	}
-	
+
 	var result map[string]interface{}
 	err = json.Unmarshal(respBody, &result)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal response: %v", err)
 	}
-	
+
 	if result["error"] != nil {
 		t.Fatalf("RPC error: %v", result["error"])
 	}
-	
+
 	return result["result"].(map[string]interface{})
 }

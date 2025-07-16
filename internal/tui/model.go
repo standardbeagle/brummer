@@ -558,6 +558,17 @@ func (i processItem) Description() string {
 	parts = append(parts, fmt.Sprintf("PID: %s", i.process.ID))
 	parts = append(parts, fmt.Sprintf("Started: %s", i.process.StartTime.Format("15:04:05")))
 
+	// Add exit code for failed/stopped processes
+	if (i.process.Status == process.StatusFailed || i.process.Status == process.StatusSuccess || i.process.Status == process.StatusStopped) && i.process.ExitCode != nil {
+		parts = append(parts, fmt.Sprintf("Exit: %d", *i.process.ExitCode))
+	}
+
+	// Add runtime if process has ended
+	if i.process.EndTime != nil {
+		runtime := i.process.EndTime.Sub(i.process.StartTime)
+		parts = append(parts, fmt.Sprintf("Runtime: %s", runtime.Round(time.Millisecond).String()))
+	}
+
 	// Add actions
 	var actions string
 	if i.process.Status == process.StatusRunning {
@@ -1696,7 +1707,7 @@ func (m *Model) updateSizes() {
 }
 
 func (m *Model) cycleView() {
-	views := []View{ViewProcesses, ViewURLs, ViewLogs, ViewWeb, ViewErrors, ViewSettings}
+	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
 	if m.debugMode {
 		views = append(views, ViewMCPConnections)
 	}
@@ -1713,7 +1724,7 @@ func (m *Model) cycleView() {
 }
 
 func (m *Model) cyclePrevView() {
-	views := []View{ViewProcesses, ViewURLs, ViewLogs, ViewWeb, ViewErrors, ViewSettings}
+	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
 	if m.debugMode {
 		views = append(views, ViewMCPConnections)
 	}
@@ -3514,17 +3525,33 @@ func (m *Model) installMCPToFile(filePath string) {
 
 func (m *Model) handleRestartProcess(proc *process.Process) tea.Cmd {
 	return func() tea.Msg {
-		// Stop the process first
-		if err := m.processMgr.StopProcess(proc.ID); err != nil {
-			return restartProcessMsg{
-				processName: proc.Name,
-				message:     fmt.Sprintf("Error stopping process %s: %v", proc.Name, err),
-				isError:     true,
-				clearLogs:   false,
+		// Check if process is still running before trying to stop it
+		if proc.Status == process.StatusRunning {
+			// Stop the process and wait for it to terminate completely
+			timeout := 5 * time.Second // 5 second timeout for process termination
+			if err := m.processMgr.StopProcessAndWait(proc.ID, timeout); err != nil {
+				return restartProcessMsg{
+					processName: proc.Name,
+					message:     fmt.Sprintf("Error stopping process %s: %v", proc.Name, err),
+					isError:     true,
+					clearLogs:   false,
+				}
 			}
 		}
+		// If process is already stopped/failed, we can skip the stop step
 
-		// Start it again
+		// Clean up any finished processes before starting new one
+		m.processMgr.CleanupFinishedProcesses()
+
+		// Also clean up any processes that might be using development ports
+		// This prevents port conflicts when restarting servers
+		if proc.Name == "server" || proc.Name == "dev" || proc.Name == "start" {
+			m.processMgr.KillProcessesByPort()
+			// Give a moment for ports to be freed
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		// Now start it again
 		_, err := m.processMgr.StartScript(proc.Name)
 		if err != nil {
 			return restartProcessMsg{
@@ -4181,8 +4208,9 @@ func (m *Model) handleSlashCommand(input string) {
 				restarted := 0
 				for _, proc := range processes {
 					if proc.Status == process.StatusRunning {
-						// Stop the process
-						if err := m.processMgr.StopProcess(proc.ID); err != nil {
+						// Stop the process and wait for termination
+						timeout := 5 * time.Second
+						if err := m.processMgr.StopProcessAndWait(proc.ID, timeout); err != nil {
 							m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", proc.Name, err), true)
 							continue
 						}
@@ -4216,8 +4244,9 @@ func (m *Model) handleSlashCommand(input string) {
 					return
 				}
 
-				// Stop and restart the process
-				if err := m.processMgr.StopProcess(targetProc.ID); err != nil {
+				// Stop and restart the process (wait for termination)
+				timeout := 5 * time.Second
+				if err := m.processMgr.StopProcessAndWait(targetProc.ID, timeout); err != nil {
 					m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", processName, err), true)
 					m.updateChan <- logUpdateMsg{}
 					return

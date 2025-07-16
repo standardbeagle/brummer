@@ -22,9 +22,9 @@ type ErrorInjector struct {
 
 // InjectionRule defines when and how to inject errors
 type InjectionRule struct {
-	FailCount    int32  // Number of times to fail (-1 for unlimited)
-	FailureType  string // Type of failure to inject
-	ErrorMessage string // Custom error message
+	FailCount    int32         // Number of times to fail (-1 for unlimited)
+	FailureType  string        // Type of failure to inject
+	ErrorMessage string        // Custom error message
 	Delay        time.Duration // Delay before failure
 }
 
@@ -47,26 +47,26 @@ func (ei *ErrorInjector) ShouldFail(operation string) error {
 	ei.mu.RLock()
 	rule, exists := ei.failures[operation]
 	ei.mu.RUnlock()
-	
+
 	if !exists {
 		return nil
 	}
-	
+
 	// Check if we should still fail
 	if rule.FailCount == 0 {
 		return nil
 	}
-	
+
 	// Apply delay if specified
 	if rule.Delay > 0 {
 		time.Sleep(rule.Delay)
 	}
-	
+
 	// Decrement failure count (if not unlimited)
 	if rule.FailCount > 0 {
 		atomic.AddInt32(&rule.FailCount, -1)
 	}
-	
+
 	// Return appropriate error based on failure type
 	switch rule.FailureType {
 	case "network":
@@ -105,14 +105,14 @@ func NewNetworkErrorInjector(t *testing.T) *NetworkErrorInjector {
 	nei := &NetworkErrorInjector{
 		responses: make(map[string]func(w http.ResponseWriter, r *http.Request)),
 	}
-	
+
 	nei.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if nei.shouldFail.Load() {
 			errorType := nei.errorType.Load()
 			if errorType == nil {
 				errorType = "generic"
 			}
-			
+
 			switch errorType.(string) {
 			case "timeout":
 				// Simulate timeout by delaying response
@@ -139,12 +139,12 @@ func NewNetworkErrorInjector(t *testing.T) *NetworkErrorInjector {
 				return
 			}
 		}
-		
+
 		// Normal response
 		nei.mu.RLock()
 		handler, exists := nei.responses[r.URL.Path]
 		nei.mu.RUnlock()
-		
+
 		if exists {
 			handler(w, r)
 		} else {
@@ -152,11 +152,11 @@ func NewNetworkErrorInjector(t *testing.T) *NetworkErrorInjector {
 			w.Write([]byte("OK"))
 		}
 	}))
-	
+
 	t.Cleanup(func() {
 		nei.server.Close()
 	})
-	
+
 	return nei
 }
 
@@ -208,11 +208,11 @@ func (pk *ProcessKiller) Kill(pid int) error {
 	pk.mu.RLock()
 	cancel, exists := pk.processes[pid]
 	pk.mu.RUnlock()
-	
+
 	if !exists {
 		return fmt.Errorf("process %d not registered", pid)
 	}
-	
+
 	cancel()
 	return nil
 }
@@ -221,7 +221,7 @@ func (pk *ProcessKiller) Kill(pid int) error {
 func (pk *ProcessKiller) KillAll() {
 	pk.mu.RLock()
 	defer pk.mu.RUnlock()
-	
+
 	for _, cancel := range pk.processes {
 		cancel()
 	}
@@ -260,7 +260,7 @@ func (re *ResourceExhauster) SetFDLimit(count int) {
 func (re *ResourceExhauster) CheckMemoryAllocation(bytes int64) error {
 	re.mu.RLock()
 	defer re.mu.RUnlock()
-	
+
 	if re.memoryLimit >= 0 && bytes > re.memoryLimit {
 		return errors.New("memory allocation failed: limit exceeded")
 	}
@@ -271,7 +271,7 @@ func (re *ResourceExhauster) CheckMemoryAllocation(bytes int64) error {
 func (re *ResourceExhauster) CheckFDAllocation() error {
 	re.mu.RLock()
 	defer re.mu.RUnlock()
-	
+
 	if re.fdLimit >= 0 && re.fdLimit <= 0 {
 		return errors.New("file descriptor allocation failed: limit exceeded")
 	}
@@ -295,16 +295,16 @@ func NewNetworkPartitionSimulator(t *testing.T, addr string) *NetworkPartitionSi
 	if err != nil {
 		t.Fatalf("Failed to create listener: %v", err)
 	}
-	
+
 	nps := &NetworkPartitionSimulator{
 		listener:    listener,
 		connections: make([]net.Conn, 0),
 	}
-	
+
 	t.Cleanup(func() {
 		nps.Stop()
 	})
-	
+
 	return nps
 }
 
@@ -316,11 +316,11 @@ func (nps *NetworkPartitionSimulator) Start() {
 			if err != nil {
 				return // Listener closed
 			}
-			
+
 			nps.mu.Lock()
 			nps.connections = append(nps.connections, conn)
 			nps.mu.Unlock()
-			
+
 			go nps.handleConnection(conn)
 		}
 	}()
@@ -329,10 +329,10 @@ func (nps *NetworkPartitionSimulator) Start() {
 // Partition simulates a network partition by closing all connections
 func (nps *NetworkPartitionSimulator) Partition() {
 	nps.partitioned.Store(true)
-	
+
 	nps.mu.Lock()
 	defer nps.mu.Unlock()
-	
+
 	for _, conn := range nps.connections {
 		conn.Close()
 	}
@@ -352,24 +352,24 @@ func (nps *NetworkPartitionSimulator) Stop() {
 
 func (nps *NetworkPartitionSimulator) handleConnection(conn net.Conn) {
 	defer conn.Close()
-	
+
 	// If partitioned, close immediately
 	if nps.partitioned.Load() {
 		return
 	}
-	
+
 	// Echo server for testing
 	buffer := make([]byte, 1024)
 	for {
 		if nps.partitioned.Load() {
 			return
 		}
-		
+
 		n, err := conn.Read(buffer)
 		if err != nil {
 			return
 		}
-		
+
 		_, err = conn.Write(buffer[:n])
 		if err != nil {
 			return
@@ -395,11 +395,11 @@ func RunTestScenarios(t *testing.T, scenarios []TestScenario) {
 			if scenario.Setup != nil {
 				context = scenario.Setup(t)
 			}
-			
+
 			if scenario.Cleanup != nil {
 				defer scenario.Cleanup(t, context)
 			}
-			
+
 			err := scenario.Execute(t, context)
 			scenario.Verify(t, context, err)
 		})

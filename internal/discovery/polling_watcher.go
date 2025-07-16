@@ -14,14 +14,14 @@ import (
 // PollingWatcher provides file watching through periodic polling
 // This is more reliable than fsnotify for network filesystems
 type PollingWatcher struct {
-	mu          sync.RWMutex
-	interval    time.Duration
-	paths       map[string]bool
-	fileStates  map[string]fileState
-	events      chan FileEvent
-	errors      chan error
-	stop        chan struct{}
-	wg          sync.WaitGroup
+	mu         sync.RWMutex
+	interval   time.Duration
+	paths      map[string]bool
+	fileStates map[string]fileState
+	events     chan FileEvent
+	errors     chan error
+	stop       chan struct{}
+	wg         sync.WaitGroup
 }
 
 type fileState struct {
@@ -61,7 +61,7 @@ func NewPollingWatcher(interval time.Duration) *PollingWatcher {
 	if interval < 100*time.Millisecond {
 		interval = 100 * time.Millisecond // Minimum interval
 	}
-	
+
 	return &PollingWatcher{
 		interval:   interval,
 		paths:      make(map[string]bool),
@@ -76,15 +76,15 @@ func NewPollingWatcher(interval time.Duration) *PollingWatcher {
 func (pw *PollingWatcher) Add(path string) error {
 	pw.mu.Lock()
 	defer pw.mu.Unlock()
-	
+
 	// Verify path exists
 	info, err := os.Stat(path)
 	if err != nil {
 		return fmt.Errorf("stat path: %w", err)
 	}
-	
+
 	pw.paths[path] = info.IsDir()
-	
+
 	// If it's a directory, scan existing files
 	if info.IsDir() {
 		if err := pw.scanDirectoryLocked(path); err != nil {
@@ -98,7 +98,7 @@ func (pw *PollingWatcher) Add(path string) error {
 		}
 		pw.fileStates[path] = state
 	}
-	
+
 	return nil
 }
 
@@ -106,9 +106,9 @@ func (pw *PollingWatcher) Add(path string) error {
 func (pw *PollingWatcher) Remove(path string) error {
 	pw.mu.Lock()
 	defer pw.mu.Unlock()
-	
+
 	delete(pw.paths, path)
-	
+
 	// Remove file states for this path
 	if pw.paths[path] { // It was a directory
 		prefix := path + string(filepath.Separator)
@@ -120,7 +120,7 @@ func (pw *PollingWatcher) Remove(path string) error {
 	} else {
 		delete(pw.fileStates, path)
 	}
-	
+
 	return nil
 }
 
@@ -151,10 +151,10 @@ func (pw *PollingWatcher) Errors() <-chan error {
 
 func (pw *PollingWatcher) pollLoop() {
 	defer pw.wg.Done()
-	
+
 	ticker := time.NewTicker(pw.interval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-pw.stop:
@@ -168,10 +168,10 @@ func (pw *PollingWatcher) pollLoop() {
 func (pw *PollingWatcher) poll() {
 	pw.mu.Lock()
 	defer pw.mu.Unlock()
-	
+
 	// Track seen files in this poll
 	seenFiles := make(map[string]bool)
-	
+
 	// Check each watched path
 	for path, isDir := range pw.paths {
 		if isDir {
@@ -184,15 +184,15 @@ func (pw *PollingWatcher) poll() {
 				}
 				continue
 			}
-			
+
 			for _, entry := range entries {
 				if entry.IsDir() {
 					continue // Skip subdirectories
 				}
-				
+
 				filePath := filepath.Join(path, entry.Name())
 				seenFiles[filePath] = true
-				
+
 				pw.checkFile(filePath)
 			}
 		} else {
@@ -201,7 +201,7 @@ func (pw *PollingWatcher) poll() {
 			pw.checkFile(path)
 		}
 	}
-	
+
 	// Check for removed files
 	for filePath := range pw.fileStates {
 		if !seenFiles[filePath] {
@@ -230,7 +230,7 @@ func (pw *PollingWatcher) checkFile(path string) {
 		}
 		return
 	}
-	
+
 	oldState, exists := pw.fileStates[path]
 	if !exists {
 		// New file
@@ -241,11 +241,11 @@ func (pw *PollingWatcher) checkFile(path string) {
 		}
 		return
 	}
-	
+
 	// Check for modifications
-	if oldState.modTime != newState.modTime || 
-	   oldState.size != newState.size ||
-	   oldState.hash != newState.hash {
+	if oldState.modTime != newState.modTime ||
+		oldState.size != newState.size ||
+		oldState.hash != newState.hash {
 		pw.fileStates[path] = newState
 		select {
 		case pw.events <- FileEvent{Path: path, Op: Write}:
@@ -259,12 +259,12 @@ func (pw *PollingWatcher) getFileState(path string) (fileState, error) {
 	if err != nil {
 		return fileState{}, err
 	}
-	
+
 	state := fileState{
 		modTime: info.ModTime(),
 		size:    info.Size(),
 	}
-	
+
 	// For small files, compute hash for better change detection
 	if info.Size() < 1024*1024 { // 1MB
 		hash, err := pw.hashFile(path)
@@ -272,7 +272,7 @@ func (pw *PollingWatcher) getFileState(path string) (fileState, error) {
 			state.hash = hash
 		}
 	}
-	
+
 	return state, nil
 }
 
@@ -282,12 +282,12 @@ func (pw *PollingWatcher) hashFile(path string) (string, error) {
 		return "", err
 	}
 	defer file.Close()
-	
+
 	hash := md5.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", err
 	}
-	
+
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
@@ -296,12 +296,12 @@ func (pw *PollingWatcher) scanDirectoryLocked(dir string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	for _, entry := range entries {
 		if entry.IsDir() {
 			continue
 		}
-		
+
 		filePath := filepath.Join(dir, entry.Name())
 		state, err := pw.getFileState(filePath)
 		if err != nil {
@@ -309,6 +309,6 @@ func (pw *PollingWatcher) scanDirectoryLocked(dir string) error {
 		}
 		pw.fileStates[filePath] = state
 	}
-	
+
 	return nil
 }

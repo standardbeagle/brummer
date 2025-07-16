@@ -24,7 +24,7 @@ func TestMCPHubInitialization(t *testing.T) {
 	}()
 
 	getStdin = func() io.Reader { return reader }
-	
+
 	var output bytes.Buffer
 	getStdout = func() io.Writer { return &output }
 
@@ -71,7 +71,7 @@ func TestMCPHubInitialization(t *testing.T) {
 // TestMCPHubTools tests that the hub exposes the correct tools
 func TestMCPHubTools(t *testing.T) {
 	expectedTools := []string{"instances/list", "instances/connect"}
-	
+
 	// This is a placeholder for now since we need to refactor
 	// the hub code to be more testable
 	t.Logf("Hub should expose tools: %v", expectedTools)

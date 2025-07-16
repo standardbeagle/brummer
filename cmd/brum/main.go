@@ -799,7 +799,7 @@ func runMCPHub() {
 
 	// Start discovery
 	discoverySystem.Start()
-	
+
 	// Process any instances that were already present during initial scan
 	existingInstances := discoverySystem.GetInstances()
 	for _, inst := range existingInstances {
@@ -1091,7 +1091,7 @@ func handleInstancesList(ctx context.Context, request mcplib.CallToolRequest) (*
 		// Calculate time in current state
 		timeInState := now.Sub(conn.StateChangedAt)
 		totalTime := now.Sub(conn.DiscoveredAt)
-		
+
 		// Calculate state statistics
 		stateStats := make(map[string]interface{})
 		if len(conn.StateHistory) > 0 {
@@ -1104,7 +1104,7 @@ func handleInstancesList(ctx context.Context, request mcplib.CallToolRequest) (*
 			stateStats["transitions"] = transitions
 			stateStats["total_transitions"] = len(conn.StateHistory)
 		}
-		
+
 		instanceList = append(instanceList, map[string]interface{}{
 			"id":               conn.InstanceID,
 			"name":             conn.Name,
@@ -1136,7 +1136,6 @@ func handleInstancesList(ctx context.Context, request mcplib.CallToolRequest) (*
 		},
 	}, nil
 }
-
 
 // handleInstancesConnect connects to a specific brummer instance
 func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
@@ -1192,12 +1191,10 @@ func handleInstancesConnect(ctx context.Context, request mcplib.CallToolRequest)
 	}, nil
 }
 
-
 // handleInstancesDisconnect disconnects from the current instance
 func handleInstancesDisconnect(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 	// For stdio transport, we use a single global session
 	sessionID := "stdio-session"
-
 
 	// Disconnect session
 	if err := connectionMgr.DisconnectSession(sessionID); err != nil {
@@ -1210,7 +1207,6 @@ func handleInstancesDisconnect(ctx context.Context, request mcplib.CallToolReque
 			},
 		}, nil
 	}
-
 
 	return &mcplib.CallToolResult{
 		Content: []mcplib.Content{

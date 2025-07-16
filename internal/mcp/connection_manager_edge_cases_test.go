@@ -35,7 +35,7 @@ func TestStateTransitionValidation(t *testing.T) {
 
 	err := cm.RegisterInstance(instance)
 	require.NoError(t, err)
-	
+
 	// Wait for instance to be registered and in a stable state
 	testutil.RequireEventually(t, 2*time.Second, func() bool {
 		instances := cm.ListInstances()
@@ -44,11 +44,11 @@ func TestStateTransitionValidation(t *testing.T) {
 
 	// Test invalid transitions
 	tests := []struct {
-		name         string
-		setupState   ConnectionState
-		targetState  ConnectionState
-		shouldAllow  bool
-		description  string
+		name        string
+		setupState  ConnectionState
+		targetState ConnectionState
+		shouldAllow bool
+		description string
 	}{
 		{
 			name:        "dead_to_active",
@@ -84,7 +84,7 @@ func TestStateTransitionValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Set initial state
 			cm.updateState("state-validation", tt.setupState)
-			
+
 			// Get current state
 			instances := cm.ListInstances()
 			if len(instances) == 0 {
@@ -94,10 +94,10 @@ func TestStateTransitionValidation(t *testing.T) {
 			}
 			require.Len(t, instances, 1)
 			initialState := instances[0].State
-			
+
 			// Try to transition
 			cm.updateState("state-validation", tt.targetState)
-			
+
 			// Check result
 			instances = cm.ListInstances()
 			if len(instances) == 0 {
@@ -107,13 +107,13 @@ func TestStateTransitionValidation(t *testing.T) {
 			}
 			require.Len(t, instances, 1)
 			finalState := instances[0].State
-			
+
 			if tt.shouldAllow {
 				assert.Equal(t, tt.targetState, finalState, tt.description)
 			} else {
 				// For now, the system doesn't enforce state transition rules
 				// This test documents the expected behavior when implemented
-				t.Logf("State transition %s -> %s occurred (validation not implemented)", 
+				t.Logf("State transition %s -> %s occurred (validation not implemented)",
 					initialState, finalState)
 			}
 		})
@@ -128,17 +128,17 @@ func TestRapidConnectDisconnect(t *testing.T) {
 	// Create a mock instance that toggles availability
 	var serverRunning atomic.Bool
 	serverRunning.Store(true)
-	
+
 	mockInstance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !serverRunning.Load() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		
+
 		// Handle initialize
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		resp := JSONRPCMessage{
 			Jsonrpc: "2.0",
 			ID:      req.ID,
@@ -176,16 +176,16 @@ func TestRapidConnectDisconnect(t *testing.T) {
 		// Let it connect
 		serverRunning.Store(true)
 		time.Sleep(150 * time.Millisecond)
-		
+
 		// Check state
 		instances := cm.ListInstances()
 		require.Len(t, instances, 1)
 		t.Logf("Cycle %d UP: State = %v", i, instances[0].State)
-		
+
 		// Disconnect
 		serverRunning.Store(false)
 		time.Sleep(150 * time.Millisecond)
-		
+
 		// Check state
 		instances = cm.ListInstances()
 		require.Len(t, instances, 1)
@@ -207,7 +207,7 @@ func TestSessionLimitEnforcement(t *testing.T) {
 	mockInstance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		resp := JSONRPCMessage{
 			Jsonrpc: "2.0",
 			ID:      req.ID,
@@ -242,7 +242,7 @@ func TestSessionLimitEnforcement(t *testing.T) {
 
 	// Connect multiple sessions
 	const maxSessions = 10 // Reasonable limit for testing
-	
+
 	for i := 0; i < maxSessions; i++ {
 		sessionID := fmt.Sprintf("session-%d", i)
 		err := cm.ConnectSession(sessionID, "session-instance")
@@ -268,16 +268,16 @@ func TestOrphanedSessionCleanup(t *testing.T) {
 	// Create controllable mock instance
 	var serverRunning atomic.Bool
 	serverRunning.Store(true)
-	
+
 	mockInstance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !serverRunning.Load() {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		
+
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		resp := JSONRPCMessage{
 			Jsonrpc: "2.0",
 			ID:      req.ID,
@@ -325,7 +325,7 @@ func TestOrphanedSessionCleanup(t *testing.T) {
 
 	// Kill the instance
 	serverRunning.Store(false)
-	
+
 	// Mark instance as dead
 	cm.updateState("orphan-instance", StateDead)
 
@@ -364,14 +364,14 @@ func TestConcurrentStateUpdates(t *testing.T) {
 	// Launch concurrent state updates
 	var wg sync.WaitGroup
 	states := []ConnectionState{StateConnecting, StateActive, StateRetrying, StateActive}
-	
+
 	for i := 0; i < 100; i++ {
 		wg.Add(1)
 		go func(iteration int) {
 			defer wg.Done()
 			state := states[iteration%len(states)]
 			cm.updateState("concurrent-state", state)
-			
+
 			// Also update activity
 			if iteration%2 == 0 {
 				cm.UpdateActivity("concurrent-state")
@@ -407,7 +407,7 @@ func TestMemoryLeakPrevention(t *testing.T) {
 
 		err := cm.RegisterInstance(instance)
 		require.NoError(t, err)
-		
+
 		// Connect some sessions
 		for j := 0; j < 3; j++ {
 			sessionID := fmt.Sprintf("leak-session-%d-%d", i, j)
@@ -452,14 +452,14 @@ func TestUpdateActivityRaceCondition(t *testing.T) {
 	err := cm.RegisterInstance(instance)
 	require.NoError(t, err)
 	time.Sleep(50 * time.Millisecond)
-	
+
 	// Set instance to active so activity updates work
 	cm.updateState("activity-race", StateActive)
 
 	// Concurrent activity updates
 	var wg sync.WaitGroup
 	updateCount := int32(0)
-	
+
 	for i := 0; i < 50; i++ {
 		wg.Add(1)
 		go func() {
@@ -474,7 +474,7 @@ func TestUpdateActivityRaceCondition(t *testing.T) {
 
 	// Should have processed updates without crashing
 	assert.Greater(t, updateCount, int32(0), "At least some updates should succeed")
-	
+
 	// Verify instance still exists and has recent activity
 	instances := cm.ListInstances()
 	require.Len(t, instances, 1)
@@ -511,7 +511,7 @@ func TestConnectionRetryBackoff(t *testing.T) {
 
 	// Monitor retry attempts
 	retryStates := []struct {
-		checkTime time.Duration
+		checkTime     time.Duration
 		expectRetries int
 	}{
 		{100 * time.Millisecond, 1},
@@ -521,13 +521,13 @@ func TestConnectionRetryBackoff(t *testing.T) {
 
 	for _, check := range retryStates {
 		time.Sleep(check.checkTime - time.Since(startTime))
-		
+
 		instances := cm.ListInstances()
 		require.Len(t, instances, 1)
-		
+
 		// Note: Current implementation doesn't track retry count in ConnectionInfo
 		// This documents expected behavior
-		t.Logf("After %v: State=%v, RetryCount=%d", 
+		t.Logf("After %v: State=%v, RetryCount=%d",
 			check.checkTime, instances[0].State, instances[0].RetryCount)
 	}
 }
@@ -562,7 +562,7 @@ func TestInstanceReregistration(t *testing.T) {
 		ID:        "reregister-test", // Same ID
 		Name:      "Reregister Test",
 		Directory: "/reregister",
-		Port:      9008, // Different port
+		Port:      9008,                            // Different port
 		StartedAt: time.Now().Add(1 * time.Minute), // Later start time
 		LastPing:  time.Now(),
 	}
@@ -575,10 +575,10 @@ func TestInstanceReregistration(t *testing.T) {
 	// Should still have only one instance
 	instances = cm.ListInstances()
 	assert.Len(t, instances, 1)
-	
+
 	// Should have updated port
 	assert.Equal(t, 9008, instances[0].Port)
-	
+
 	// State might have changed
 	t.Logf("State transition on re-registration: %v -> %v", initialState, instances[0].State)
 }
@@ -592,10 +592,10 @@ func TestContextCancellation(t *testing.T) {
 	mockInstance := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Simulate slow response
 		time.Sleep(500 * time.Millisecond)
-		
+
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		resp := JSONRPCMessage{
 			Jsonrpc: "2.0",
 			ID:      req.ID,
@@ -622,7 +622,7 @@ func TestContextCancellation(t *testing.T) {
 
 	// Create a context that we'll cancel
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	// Register instance
 	err := cm.RegisterInstance(instance)
 	require.NoError(t, err)
@@ -639,7 +639,7 @@ func TestContextCancellation(t *testing.T) {
 	// System should still be stable
 	instances := cm.ListInstances()
 	assert.Len(t, instances, 1)
-	
+
 	// Use context to show it would be used in real implementation
 	_ = ctx
 }

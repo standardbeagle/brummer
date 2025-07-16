@@ -251,9 +251,9 @@ func TestProcessStatusFormatting(t *testing.T) {
 // TestURLValidation tests URL parsing and validation
 func TestURLValidation(t *testing.T) {
 	testURLs := []struct {
-		url     string
-		valid   bool
-		name    string
+		url   string
+		valid bool
+		name  string
 	}{
 		{"http://localhost:3000", true, "local HTTP"},
 		{"https://localhost:3000", true, "local HTTPS"},
@@ -268,7 +268,7 @@ func TestURLValidation(t *testing.T) {
 	for _, tc := range testURLs {
 		t.Run(tc.name, func(t *testing.T) {
 			// Simple URL validation
-			isValidHTTP := strings.HasPrefix(tc.url, "http://") || 
+			isValidHTTP := strings.HasPrefix(tc.url, "http://") ||
 				strings.HasPrefix(tc.url, "https://")
 			assert.Equal(t, tc.valid, isValidHTTP)
 		})
@@ -293,7 +293,7 @@ func TestConfigurationDisplay(t *testing.T) {
 			// Test that we can format configuration values
 			assert.NotEmpty(t, config.setting)
 			assert.NotNil(t, config.value)
-			
+
 			// Test value conversion to string for display
 			switch v := config.value.(type) {
 			case int:
@@ -331,14 +331,14 @@ func TestHelpContent(t *testing.T) {
 func TestColorTheme(t *testing.T) {
 	// Test that color-related functionality works
 	colors := []string{
-		"running",    // green
-		"stopped",    // red  
-		"failed",     // red
-		"success",    // green
-		"pending",    // yellow
-		"error",      // red
-		"warning",    // yellow
-		"info",       // blue
+		"running", // green
+		"stopped", // red
+		"failed",  // red
+		"success", // green
+		"pending", // yellow
+		"error",   // red
+		"warning", // yellow
+		"info",    // blue
 	}
 
 	for _, color := range colors {

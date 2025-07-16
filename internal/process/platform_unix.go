@@ -131,16 +131,16 @@ func killAllChildrenForce(parentPID int) {
 // verifyProcessDead checks if a process is actually dead and force kills if needed
 func verifyProcessDead(pid int) {
 	time.Sleep(100 * time.Millisecond)
-	
+
 	if proc, err := os.FindProcess(pid); err == nil {
 		// Check if process still exists by sending signal 0
 		if err := proc.Signal(syscall.Signal(0)); err == nil {
 			// Process still exists, force kill it one more time
 			_ = proc.Kill()
-			
+
 			// Also try to kill the process group
 			_ = syscall.Kill(-pid, syscall.SIGKILL)
-			
+
 			// Give it one final moment
 			time.Sleep(50 * time.Millisecond)
 		}

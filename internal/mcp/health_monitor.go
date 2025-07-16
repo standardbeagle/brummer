@@ -10,31 +10,31 @@ import (
 
 // HealthStatus represents the health status of an instance
 type HealthStatus struct {
-	InstanceID       string
-	LastPing         time.Time
-	LastSuccessfulPing time.Time
+	InstanceID          string
+	LastPing            time.Time
+	LastSuccessfulPing  time.Time
 	ConsecutiveFailures int
-	ResponseTime     time.Duration
-	IsHealthy        bool
-	LastError        error
+	ResponseTime        time.Duration
+	IsHealthy           bool
+	LastError           error
 }
 
 // HealthMonitor monitors the health of connected instances using MCP ping
 type HealthMonitor struct {
-	connMgr         *ConnectionManager
-	healthStatuses  map[string]*HealthStatus
-	mu              sync.RWMutex
-	
+	connMgr        *ConnectionManager
+	healthStatuses map[string]*HealthStatus
+	mu             sync.RWMutex
+
 	// Configuration
-	pingInterval    time.Duration
-	pingTimeout     time.Duration
-	maxFailures     int
-	
+	pingInterval time.Duration
+	pingTimeout  time.Duration
+	maxFailures  int
+
 	// Lifecycle
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
-	
+
 	// Callbacks
 	onUnhealthy func(instanceID string, status *HealthStatus)
 	onRecovered func(instanceID string, status *HealthStatus)
@@ -60,9 +60,9 @@ func NewHealthMonitor(connMgr *ConnectionManager, config *HealthMonitorConfig) *
 	if config == nil {
 		config = &DefaultHealthMonitorConfig
 	}
-	
+
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	return &HealthMonitor{
 		connMgr:        connMgr,
 		healthStatuses: make(map[string]*HealthStatus),
@@ -89,18 +89,18 @@ func (hm *HealthMonitor) Stop() {
 // monitorLoop is the main monitoring loop
 func (hm *HealthMonitor) monitorLoop() {
 	defer hm.wg.Done()
-	
+
 	ticker := time.NewTicker(hm.pingInterval)
 	defer ticker.Stop()
-	
+
 	// Initial check
 	hm.checkAllInstances()
-	
+
 	for {
 		select {
 		case <-hm.ctx.Done():
 			return
-			
+
 		case <-ticker.C:
 			hm.checkAllInstances()
 		}
@@ -110,13 +110,13 @@ func (hm *HealthMonitor) monitorLoop() {
 // checkAllInstances checks the health of all active instances
 func (hm *HealthMonitor) checkAllInstances() {
 	instances := hm.connMgr.ListInstances()
-	
+
 	for _, info := range instances {
 		// Only check active instances
 		if info.State != StateActive {
 			continue
 		}
-		
+
 		hm.wg.Add(1)
 		go func(instanceID string) {
 			defer hm.wg.Done()
@@ -138,30 +138,30 @@ func (hm *HealthMonitor) checkInstance(instanceID string) {
 		hm.healthStatuses[instanceID] = status
 	}
 	hm.mu.Unlock()
-	
+
 	// Get the client
 	connections := hm.connMgr.ListInstances()
-	var client *HubClient
+	var client HubClientInterface
 	for _, conn := range connections {
 		if conn.InstanceID == instanceID && conn.Client != nil {
 			client = conn.Client
 			break
 		}
 	}
-	
+
 	if client == nil {
 		hm.recordFailure(status, fmt.Errorf("no client available"))
 		return
 	}
-	
+
 	// Perform ping with timeout
 	ctx, cancel := context.WithTimeout(hm.ctx, hm.pingTimeout)
 	defer cancel()
-	
+
 	startTime := time.Now()
 	err := client.Ping(ctx)
 	responseTime := time.Since(startTime)
-	
+
 	if err != nil {
 		hm.recordFailure(status, err)
 	} else {
@@ -173,21 +173,21 @@ func (hm *HealthMonitor) checkInstance(instanceID string) {
 func (hm *HealthMonitor) recordSuccess(status *HealthStatus, responseTime time.Duration) {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
-	
+
 	wasUnhealthy := !status.IsHealthy
-	
+
 	status.LastPing = time.Now()
 	status.LastSuccessfulPing = time.Now()
 	status.ConsecutiveFailures = 0
 	status.ResponseTime = responseTime
 	status.IsHealthy = true
 	status.LastError = nil
-	
+
 	// Update connection activity time
 	if hm.connMgr.UpdateActivity(status.InstanceID) {
 		log.Printf("Updated activity for instance %s (response time: %v)", status.InstanceID, responseTime)
 	}
-	
+
 	// Trigger recovery callback if instance recovered
 	if wasUnhealthy && hm.onRecovered != nil {
 		hm.onRecovered(status.InstanceID, status)
@@ -198,24 +198,24 @@ func (hm *HealthMonitor) recordSuccess(status *HealthStatus, responseTime time.D
 func (hm *HealthMonitor) recordFailure(status *HealthStatus, err error) {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
-	
+
 	wasHealthy := status.IsHealthy
-	
+
 	status.LastPing = time.Now()
 	status.ConsecutiveFailures++
 	status.LastError = err
-	
+
 	// Check if instance should be marked unhealthy
 	if status.ConsecutiveFailures >= hm.maxFailures {
 		status.IsHealthy = false
-		
+
 		// Update connection manager state
 		if status.ConsecutiveFailures == hm.maxFailures {
 			// First time becoming unhealthy
 			hm.connMgr.updateStateWithReason(status.InstanceID, StateRetrying,
-				fmt.Sprintf("Health check failed %d times: %v", 
+				fmt.Sprintf("Health check failed %d times: %v",
 					status.ConsecutiveFailures, err))
-			
+
 			// Trigger unhealthy callback
 			if wasHealthy && hm.onUnhealthy != nil {
 				hm.onUnhealthy(status.InstanceID, status)
@@ -223,17 +223,17 @@ func (hm *HealthMonitor) recordFailure(status *HealthStatus, err error) {
 		} else if status.ConsecutiveFailures > hm.maxFailures*2 {
 			// Mark as dead after too many failures
 			hm.connMgr.updateStateWithReason(status.InstanceID, StateDead,
-				fmt.Sprintf("Failed %d consecutive health checks: %v", 
+				fmt.Sprintf("Failed %d consecutive health checks: %v",
 					status.ConsecutiveFailures, status.LastError))
-			
+
 			// Trigger dead callback
 			if hm.onDead != nil {
 				hm.onDead(status.InstanceID, status)
 			}
 		}
 	}
-	
-	log.Printf("Health check failed for %s: %v (failures: %d)", 
+
+	log.Printf("Health check failed for %s: %v (failures: %d)",
 		status.InstanceID, err, status.ConsecutiveFailures)
 }
 
@@ -241,12 +241,12 @@ func (hm *HealthMonitor) recordFailure(status *HealthStatus, err error) {
 func (hm *HealthMonitor) GetHealthStatus(instanceID string) (*HealthStatus, error) {
 	hm.mu.RLock()
 	defer hm.mu.RUnlock()
-	
+
 	status, exists := hm.healthStatuses[instanceID]
 	if !exists {
 		return nil, fmt.Errorf("no health status for instance %s", instanceID)
 	}
-	
+
 	// Return a copy to avoid races
 	statusCopy := *status
 	return &statusCopy, nil
@@ -256,13 +256,13 @@ func (hm *HealthMonitor) GetHealthStatus(instanceID string) (*HealthStatus, erro
 func (hm *HealthMonitor) GetAllHealthStatuses() map[string]*HealthStatus {
 	hm.mu.RLock()
 	defer hm.mu.RUnlock()
-	
+
 	statuses := make(map[string]*HealthStatus)
 	for id, status := range hm.healthStatuses {
 		statusCopy := *status
 		statuses[id] = &statusCopy
 	}
-	
+
 	return statuses
 }
 
@@ -274,7 +274,7 @@ func (hm *HealthMonitor) SetCallbacks(
 ) {
 	hm.mu.Lock()
 	defer hm.mu.Unlock()
-	
+
 	hm.onUnhealthy = onUnhealthy
 	hm.onRecovered = onRecovered
 	hm.onDead = onDead
@@ -291,14 +291,14 @@ func (hm *HealthMonitor) ForceCheck(instanceID string) error {
 			break
 		}
 	}
-	
+
 	if !found {
 		return fmt.Errorf("instance %s not found", instanceID)
 	}
-	
+
 	// Perform check asynchronously
 	go hm.checkInstance(instanceID)
-	
+
 	return nil
 }
 
@@ -306,12 +306,12 @@ func (hm *HealthMonitor) ForceCheck(instanceID string) error {
 func (hm *HealthMonitor) GetMetrics() map[string]interface{} {
 	hm.mu.RLock()
 	defer hm.mu.RUnlock()
-	
+
 	healthy := 0
 	unhealthy := 0
 	totalResponseTime := time.Duration(0)
 	count := 0
-	
+
 	for _, status := range hm.healthStatuses {
 		if status.IsHealthy {
 			healthy++
@@ -323,12 +323,12 @@ func (hm *HealthMonitor) GetMetrics() map[string]interface{} {
 			unhealthy++
 		}
 	}
-	
+
 	avgResponseTime := time.Duration(0)
 	if count > 0 {
 		avgResponseTime = totalResponseTime / time.Duration(count)
 	}
-	
+
 	return map[string]interface{}{
 		"healthy_instances":   healthy,
 		"unhealthy_instances": unhealthy,

@@ -17,6 +17,9 @@ type Config struct {
 	MCPPort *int  `toml:"mcp_port,omitempty"`
 	NoMCP   *bool `toml:"no_mcp,omitempty"`
 
+	// Network Robustness Settings
+	UseRobustNetworking *bool `toml:"use_robust_networking,omitempty"`
+
 	// Proxy Settings
 	ProxyPort     *int    `toml:"proxy_port,omitempty"`
 	ProxyMode     *string `toml:"proxy_mode,omitempty"`
@@ -98,6 +101,9 @@ func Load() (*Config, error) {
 		if fileCfg.NoMCP != nil {
 			cfg.NoMCP = fileCfg.NoMCP
 		}
+		if fileCfg.UseRobustNetworking != nil {
+			cfg.UseRobustNetworking = fileCfg.UseRobustNetworking
+		}
 		if fileCfg.ProxyPort != nil {
 			cfg.ProxyPort = fileCfg.ProxyPort
 		}
@@ -155,6 +161,10 @@ func LoadWithSources() (*ConfigWithSources, error) {
 		if fileCfg.NoMCP != nil {
 			cfg.NoMCP = fileCfg.NoMCP
 			cfg.Sources["no_mcp"] = path
+		}
+		if fileCfg.UseRobustNetworking != nil {
+			cfg.UseRobustNetworking = fileCfg.UseRobustNetworking
+			cfg.Sources["use_robust_networking"] = path
 		}
 		if fileCfg.ProxyPort != nil {
 			cfg.ProxyPort = fileCfg.ProxyPort
@@ -231,6 +241,13 @@ func (c *Config) GetNoMCP() bool {
 		return *c.NoMCP
 	}
 	return false // default
+}
+
+func (c *Config) GetUseRobustNetworking() bool {
+	if c.UseRobustNetworking != nil {
+		return *c.UseRobustNetworking
+	}
+	return false // default - disabled for safety
 }
 
 func (c *Config) GetProxyPort() int {

@@ -46,7 +46,7 @@ func (c *HubClient) Initialize(ctx context.Context) error {
 			},
 		},
 	}
-	
+
 	_, err := c.sendRequest(ctx, request)
 	return err
 }
@@ -62,7 +62,7 @@ func (c *HubClient) CallTool(ctx context.Context, toolName string, args map[stri
 			"arguments": args,
 		},
 	}
-	
+
 	return c.sendRequest(ctx, request)
 }
 
@@ -74,7 +74,7 @@ func (c *HubClient) ListTools(ctx context.Context) (json.RawMessage, error) {
 		"method":  "tools/list",
 		"params":  map[string]interface{}{},
 	}
-	
+
 	return c.sendRequest(ctx, request)
 }
 
@@ -86,7 +86,7 @@ func (c *HubClient) ListResources(ctx context.Context) (json.RawMessage, error) 
 		"method":  "resources/list",
 		"params":  map[string]interface{}{},
 	}
-	
+
 	return c.sendRequest(ctx, request)
 }
 
@@ -100,7 +100,7 @@ func (c *HubClient) ReadResource(ctx context.Context, uri string) (json.RawMessa
 			"uri": uri,
 		},
 	}
-	
+
 	return c.sendRequest(ctx, request)
 }
 
@@ -112,7 +112,7 @@ func (c *HubClient) ListPrompts(ctx context.Context) (json.RawMessage, error) {
 		"method":  "prompts/list",
 		"params":  map[string]interface{}{},
 	}
-	
+
 	return c.sendRequest(ctx, request)
 }
 
@@ -127,7 +127,7 @@ func (c *HubClient) GetPrompt(ctx context.Context, name string, args map[string]
 			"arguments": args,
 		},
 	}
-	
+
 	return c.sendRequest(ctx, request)
 }
 
@@ -139,7 +139,7 @@ func (c *HubClient) Ping(ctx context.Context) error {
 		"method":  "ping",
 		"params":  map[string]interface{}{},
 	}
-	
+
 	_, err := c.sendRequest(ctx, request)
 	return err
 }
@@ -150,45 +150,45 @@ func (c *HubClient) sendRequest(ctx context.Context, request interface{}) (json.
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
-	
+
 	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("create request: %w", err)
 	}
-	
+
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	
+
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("send request: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, body)
 	}
-	
+
 	var result struct {
 		JSONRPC string          `json:"jsonrpc"`
 		ID      interface{}     `json:"id"`
 		Result  json.RawMessage `json:"result"`
 		Error   *struct {
-			Code    int    `json:"code"`
-			Message string `json:"message"`
+			Code    int         `json:"code"`
+			Message string      `json:"message"`
 			Data    interface{} `json:"data,omitempty"`
 		} `json:"error"`
 	}
-	
+
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return nil, fmt.Errorf("decode response: %w", err)
 	}
-	
+
 	if result.Error != nil {
 		return nil, fmt.Errorf("RPC error %d: %s", result.Error.Code, result.Error.Message)
 	}
-	
+
 	return result.Result, nil
 }
 

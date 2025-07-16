@@ -45,9 +45,9 @@ func TestHubClientInitialization(t *testing.T) {
 // TestHubClientInitialize tests the Initialize method with various server responses
 func TestHubClientInitialize(t *testing.T) {
 	tests := []struct {
-		name       string
-		handler    http.HandlerFunc
-		wantErr    bool
+		name        string
+		handler     http.HandlerFunc
+		wantErr     bool
 		errContains string
 	}{
 		{
@@ -55,11 +55,11 @@ func TestHubClientInitialize(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				assert.Equal(t, "POST", r.Method)
 				assert.Equal(t, "/mcp", r.URL.Path)
-				
+
 				var req JSONRPCMessage
 				json.NewDecoder(r.Body).Decode(&req)
 				assert.Equal(t, "initialize", req.Method)
-				
+
 				resp := JSONRPCMessage{
 					Jsonrpc: "2.0",
 					ID:      req.ID,
@@ -80,7 +80,7 @@ func TestHubClientInitialize(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				var req JSONRPCMessage
 				json.NewDecoder(r.Body).Decode(&req)
-				
+
 				resp := JSONRPCMessage{
 					Jsonrpc: "2.0",
 					ID:      req.ID,
@@ -170,11 +170,11 @@ func TestHubClientCallTool(t *testing.T) {
 				var req JSONRPCMessage
 				json.NewDecoder(r.Body).Decode(&req)
 				assert.Equal(t, "tools/call", req.Method)
-				
+
 				var params map[string]interface{}
 				json.Unmarshal(req.Params, &params)
 				assert.Equal(t, "test_tool", params["name"])
-				
+
 				resp := JSONRPCMessage{
 					Jsonrpc: "2.0",
 					ID:      req.ID,
@@ -196,7 +196,7 @@ func TestHubClientCallTool(t *testing.T) {
 			handler: func(w http.ResponseWriter, r *http.Request) {
 				var req JSONRPCMessage
 				json.NewDecoder(r.Body).Decode(&req)
-				
+
 				resp := JSONRPCMessage{
 					Jsonrpc: "2.0",
 					ID:      req.ID,
@@ -229,7 +229,7 @@ func TestHubClientCallTool(t *testing.T) {
 			defer server.Close()
 
 			client := &HubClient{
-				baseURL: server.URL + "/mcp",
+				baseURL:    server.URL + "/mcp",
 				httpClient: &http.Client{Timeout: 200 * time.Millisecond},
 			}
 
@@ -261,10 +261,10 @@ func TestHubClientConcurrentRequests(t *testing.T) {
 		count := atomic.AddInt64(&requestCount, 1)
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		// Simulate some processing time
 		time.Sleep(10 * time.Millisecond)
-		
+
 		resp := JSONRPCMessage{
 			Jsonrpc: "2.0",
 			ID:      req.ID,
@@ -279,7 +279,7 @@ func TestHubClientConcurrentRequests(t *testing.T) {
 	defer server.Close()
 
 	client := &HubClient{
-		baseURL: server.URL + "/mcp",
+		baseURL:    server.URL + "/mcp",
 		httpClient: &http.Client{},
 	}
 
@@ -309,10 +309,10 @@ func TestHubClientReconnection(t *testing.T) {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			return
 		}
-		
+
 		var req JSONRPCMessage
 		json.NewDecoder(r.Body).Decode(&req)
-		
+
 		resp := JSONRPCMessage{
 			Jsonrpc: "2.0",
 			ID:      req.ID,
@@ -323,7 +323,7 @@ func TestHubClientReconnection(t *testing.T) {
 	defer server.Close()
 
 	client := &HubClient{
-		baseURL: server.URL + "/mcp",
+		baseURL:    server.URL + "/mcp",
 		httpClient: &http.Client{Timeout: 100 * time.Millisecond},
 	}
 
@@ -372,7 +372,7 @@ func TestHubClientListMethods(t *testing.T) {
 				var req JSONRPCMessage
 				json.NewDecoder(r.Body).Decode(&req)
 				assert.Equal(t, m.method, req.Method)
-				
+
 				resp := JSONRPCMessage{
 					Jsonrpc: "2.0",
 					ID:      req.ID,
@@ -383,7 +383,7 @@ func TestHubClientListMethods(t *testing.T) {
 			defer server.Close()
 
 			client := &HubClient{
-				baseURL: server.URL + "/mcp",
+				baseURL:    server.URL + "/mcp",
 				httpClient: &http.Client{},
 			}
 
@@ -414,7 +414,7 @@ func TestHubClientErrorPropagation(t *testing.T) {
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				var req JSONRPCMessage
 				json.NewDecoder(r.Body).Decode(&req)
-				
+
 				resp := JSONRPCMessage{
 					Jsonrpc: "2.0",
 					ID:      req.ID,
@@ -429,7 +429,7 @@ func TestHubClientErrorPropagation(t *testing.T) {
 			defer server.Close()
 
 			client := &HubClient{
-				baseURL: server.URL + "/mcp",
+				baseURL:    server.URL + "/mcp",
 				httpClient: &http.Client{},
 			}
 
