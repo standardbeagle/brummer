@@ -46,7 +46,8 @@ type Store struct {
 	byProcess     map[string][]int
 	errors        []LogEntry
 	errorContexts []ErrorContext
-	errorParser   *ErrorParser
+	errorParser     *ErrorParser
+	timeBasedParser *TimeBasedErrorParser
 	urls          []URLEntry
 	urlMap        map[string]*URLEntry // Map URL to its entry for deduplication
 	maxEntries    int
@@ -82,7 +83,8 @@ func NewStore(maxEntries int) *Store {
 		byProcess:     make(map[string][]int),
 		errors:        make([]LogEntry, 0, 100),
 		errorContexts: make([]ErrorContext, 0, 100),
-		errorParser:   NewErrorParser(),
+		errorParser:     NewErrorParser(),
+		timeBasedParser: NewTimeBasedErrorParser(),
 		urls:          make([]URLEntry, 0, 100),
 		urlMap:        make(map[string]*URLEntry),
 		maxEntries:    maxEntries,
@@ -197,9 +199,11 @@ func (s *Store) addSync(processID, processName, content string, isError bool) *L
 		}
 	}
 
-	// Process through error parser for better error context
-	if errorCtx := s.errorParser.ProcessLine(processID, processName, content, entry.Timestamp); errorCtx != nil {
-		s.errorContexts = append(s.errorContexts, *errorCtx)
+	// Process through time-based error parser for better error clustering
+	if cluster := s.timeBasedParser.ProcessLogEntry(entry, processName, isError); cluster != nil {
+		// Convert cluster to ErrorContext for compatibility
+		errorCtx := cluster.ToErrorContext()
+		s.errorContexts = append(s.errorContexts, errorCtx)
 		if len(s.errorContexts) > 100 {
 			s.errorContexts = s.errorContexts[1:]
 		}
@@ -502,6 +506,16 @@ func (s *Store) GetURLs() []URLEntry {
 
 // Close shuts down the async worker
 func (s *Store) Close() {
+	// Finalize any remaining error clusters before closing
+	s.mu.Lock()
+	if remainingClusters := s.timeBasedParser.ForceCompleteAll(); len(remainingClusters) > 0 {
+		for _, cluster := range remainingClusters {
+			errorCtx := cluster.ToErrorContext()
+			s.errorContexts = append(s.errorContexts, errorCtx)
+		}
+	}
+	s.mu.Unlock()
+	
 	close(s.closeChan)
 	s.wg.Wait()
 }

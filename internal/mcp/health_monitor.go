@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 )
@@ -185,7 +184,7 @@ func (hm *HealthMonitor) recordSuccess(status *HealthStatus, responseTime time.D
 
 	// Update connection activity time
 	if hm.connMgr.UpdateActivity(status.InstanceID) {
-		log.Printf("Updated activity for instance %s (response time: %v)", status.InstanceID, responseTime)
+		debugLog("Updated activity for instance %s (response time: %v)", status.InstanceID, responseTime)
 	}
 
 	// Trigger recovery callback if instance recovered
@@ -233,7 +232,7 @@ func (hm *HealthMonitor) recordFailure(status *HealthStatus, err error) {
 		}
 	}
 
-	log.Printf("Health check failed for %s: %v (failures: %d)",
+	debugLog("Health check failed for %s: %v (failures: %d)",
 		status.InstanceID, err, status.ConsecutiveFailures)
 }
 

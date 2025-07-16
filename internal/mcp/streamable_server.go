@@ -235,7 +235,7 @@ func (s *StreamableServer) setupRoutes() {
 
 func (s *StreamableServer) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Debug logging for incoming requests
-	if s.logStore != nil {
+	if s.logStore != nil && IsDebugEnabled() {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📥 MCP Request: %s %s (Accept: %s)", r.Method, r.URL.Path, r.Header.Get("Accept")), false)
 	}
 
@@ -543,7 +543,7 @@ func (s *StreamableServer) processMessage(msg *JSONRPCMessage, w http.ResponseWr
 	}()
 
 	// Log the method being called
-	if s.logStore != nil {
+	if s.logStore != nil && IsDebugEnabled() {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🔧 MCP Method: %s (ID: %v)", msg.Method, msg.ID), false)
 	}
 
@@ -990,7 +990,7 @@ func (s *StreamableServer) UnregisterToolsFromInstance(instanceID string) error 
 		s.BroadcastNotification("notifications/tools/list_changed", nil)
 
 		// Log the unregistration
-		if s.logStore != nil {
+		if s.logStore != nil && IsDebugEnabled() {
 			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("🔧 Unregistered %d tools from instance %s", len(toRemove), instanceID), false)
 		}
 	}
@@ -1021,7 +1021,7 @@ func (s *StreamableServer) RegisterResource(uri string, resource Resource) error
 	s.BroadcastNotification("notifications/resources/list_changed", nil)
 
 	// Log the registration
-	if s.logStore != nil {
+	if s.logStore != nil && IsDebugEnabled() {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📚 Registered resource: %s", uri), false)
 	}
 
@@ -1044,7 +1044,7 @@ func (s *StreamableServer) UnregisterResource(uri string) error {
 	s.BroadcastNotification("notifications/resources/list_changed", nil)
 
 	// Log the unregistration
-	if s.logStore != nil {
+	if s.logStore != nil && IsDebugEnabled() {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📚 Unregistered resource: %s", uri), false)
 	}
 
@@ -1089,7 +1089,7 @@ func (s *StreamableServer) UnregisterResourcesFromInstance(instanceID string) er
 		s.BroadcastNotification("notifications/resources/list_changed", nil)
 
 		// Log the unregistration
-		if s.logStore != nil {
+		if s.logStore != nil && IsDebugEnabled() {
 			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("📚 Unregistered %d resources from instance %s", len(toRemove), instanceID), false)
 		}
 	}
@@ -1113,7 +1113,7 @@ func (s *StreamableServer) RegisterPrompt(name string, prompt Prompt) error {
 	s.BroadcastNotification("notifications/prompts/list_changed", nil)
 
 	// Log the registration
-	if s.logStore != nil {
+	if s.logStore != nil && IsDebugEnabled() {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("💭 Registered prompt: %s", name), false)
 	}
 
@@ -1136,7 +1136,7 @@ func (s *StreamableServer) UnregisterPrompt(name string) error {
 	s.BroadcastNotification("notifications/prompts/list_changed", nil)
 
 	// Log the unregistration
-	if s.logStore != nil {
+	if s.logStore != nil && IsDebugEnabled() {
 		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("💭 Unregistered prompt: %s", name), false)
 	}
 
@@ -1181,7 +1181,7 @@ func (s *StreamableServer) UnregisterPromptsFromInstance(instanceID string) erro
 		s.BroadcastNotification("notifications/prompts/list_changed", nil)
 
 		// Log the unregistration
-		if s.logStore != nil {
+		if s.logStore != nil && IsDebugEnabled() {
 			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("💭 Unregistered %d prompts from instance %s", len(toRemove), instanceID), false)
 		}
 	}

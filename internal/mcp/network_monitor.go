@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"runtime"
 	"sync"
@@ -130,7 +129,7 @@ func (nm *NetworkMonitor) Start() error {
 	// Start sleep/wake detector if available
 	if nm.sleepWakeDetector != nil {
 		if err := nm.sleepWakeDetector.Start(nm.ctx, nm.sleepWakeEvents); err != nil {
-			log.Printf("Failed to start platform sleep/wake detector: %v", err)
+			debugLog("Failed to start platform sleep/wake detector: %v", err)
 		}
 	}
 
@@ -138,7 +137,7 @@ func (nm *NetworkMonitor) Start() error {
 	nm.wg.Add(1)
 	go nm.initialStateCheck()
 
-	log.Printf("Network monitor started with %d test endpoints", len(nm.testEndpoints))
+	debugLog("Network monitor started with %d test endpoints", len(nm.testEndpoints))
 	return nil
 }
 
@@ -157,7 +156,7 @@ func (nm *NetworkMonitor) Stop() error {
 	close(nm.networkEvents)
 	close(nm.sleepWakeEvents)
 
-	log.Printf("Network monitor stopped")
+	debugLog("Network monitor stopped")
 	return nil
 }
 
@@ -311,7 +310,7 @@ func (nm *NetworkMonitor) checkConnectivity() {
 			// Channel full, drop event
 		}
 
-		log.Printf("Network state changed: %s -> %s (%s)", 
+		debugLog("Network state changed: %s -> %s (%s)", 
 			previousState, newState, reason)
 	}
 
@@ -450,7 +449,7 @@ type macOSSleepWakeDetector struct{}
 func (d *macOSSleepWakeDetector) Start(ctx context.Context, events chan<- SleepWakeEvent) error {
 	// macOS implementation would use IOKit notifications
 	// For now, fall back to generic time-based detection
-	log.Printf("macOS sleep/wake detection not fully implemented, using generic detection")
+	debugLog("macOS sleep/wake detection not fully implemented, using generic detection")
 	return nil
 }
 
@@ -464,7 +463,7 @@ type windowsSleepWakeDetector struct{}
 func (d *windowsSleepWakeDetector) Start(ctx context.Context, events chan<- SleepWakeEvent) error {
 	// Windows implementation would use WM_POWERBROADCAST messages
 	// For now, fall back to generic time-based detection
-	log.Printf("Windows sleep/wake detection not fully implemented, using generic detection")
+	debugLog("Windows sleep/wake detection not fully implemented, using generic detection")
 	return nil
 }
 
@@ -478,7 +477,7 @@ type linuxSleepWakeDetector struct{}
 func (d *linuxSleepWakeDetector) Start(ctx context.Context, events chan<- SleepWakeEvent) error {
 	// Linux implementation would monitor D-Bus signals from systemd/logind
 	// For now, fall back to generic time-based detection
-	log.Printf("Linux sleep/wake detection not fully implemented, using generic detection")
+	debugLog("Linux sleep/wake detection not fully implemented, using generic detection")
 	return nil
 }
 

@@ -43,6 +43,7 @@ var (
 	showVersion   bool
 	showSettings  bool
 	debugMode     bool
+	mcpDebug      bool
 	mcpHub        bool
 )
 
@@ -111,6 +112,7 @@ func init() {
 	rootCmd.Flags().BoolVar(&noMCP, "no-mcp", false, "Disable MCP server")
 	rootCmd.Flags().BoolVar(&noTUI, "no-tui", false, "Run in headless mode (MCP server only)")
 	rootCmd.Flags().BoolVar(&debugMode, "debug", false, "Enable debug mode with MCP connections tab")
+	rootCmd.Flags().BoolVar(&mcpDebug, "mcp-debug", false, "Enable MCP debug logging")
 	rootCmd.Flags().BoolVar(&mcpHub, "mcp", false, "Run as MCP hub (stdio transport, no TUI)")
 
 	// Set version for cobra
@@ -412,6 +414,9 @@ func runApp(cmd *cobra.Command, args []string) {
 	// Track instance registration for cleanup
 	var registeredInstanceID string
 	var registeredInstancesDir string
+
+	// Set MCP debug logging based on flag
+	mcp.SetDebugEnabled(mcpDebug)
 
 	// Start MCP server if enabled
 	var mcpServerInterface interface {
@@ -751,6 +756,9 @@ func runMCPHub() {
 		os.Exit(0)
 	}
 
+	// Set MCP debug logging based on flag
+	mcp.SetDebugEnabled(mcpDebug)
+
 	// Initialize connection manager
 	connectionMgr = mcp.NewConnectionManager()
 	defer connectionMgr.Stop()
@@ -762,14 +770,20 @@ func runMCPHub() {
 	healthMonitor = mcp.NewHealthMonitor(connectionMgr, nil)
 	healthMonitor.SetCallbacks(
 		func(instanceID string, status *mcp.HealthStatus) {
-			fmt.Fprintf(os.Stderr, "Instance %s became unhealthy: %v\n", instanceID, status.LastError)
+			if mcpDebug {
+				fmt.Fprintf(os.Stderr, "Instance %s became unhealthy: %v\n", instanceID, status.LastError)
+			}
 		},
 		func(instanceID string, status *mcp.HealthStatus) {
-			fmt.Fprintf(os.Stderr, "Instance %s recovered (response time: %v)\n", instanceID, status.ResponseTime)
+			if mcpDebug {
+				fmt.Fprintf(os.Stderr, "Instance %s recovered (response time: %v)\n", instanceID, status.ResponseTime)
+			}
 		},
 		func(instanceID string, status *mcp.HealthStatus) {
-			fmt.Fprintf(os.Stderr, "Instance %s marked as dead after %d failures\n",
-				instanceID, status.ConsecutiveFailures)
+			if mcpDebug {
+				fmt.Fprintf(os.Stderr, "Instance %s marked as dead after %d failures\n",
+					instanceID, status.ConsecutiveFailures)
+			}
 			// Disconnect all sessions from dead instance
 			sessionManager.DisconnectAllFromInstance(instanceID)
 		},
@@ -792,7 +806,9 @@ func runMCPHub() {
 		// Register new instances with connection manager
 		for _, inst := range instances {
 			if err := connectionMgr.RegisterInstance(inst); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to register instance %s: %v\n", inst.ID, err)
+				if mcpDebug {
+					fmt.Fprintf(os.Stderr, "Failed to register instance %s: %v\n", inst.ID, err)
+				}
 			}
 		}
 	})
@@ -804,7 +820,9 @@ func runMCPHub() {
 	existingInstances := discoverySystem.GetInstances()
 	for _, inst := range existingInstances {
 		if err := connectionMgr.RegisterInstance(inst); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to register existing instance %s: %v\n", inst.ID, err)
+			if mcpDebug {
+				fmt.Fprintf(os.Stderr, "Failed to register existing instance %s: %v\n", inst.ID, err)
+			}
 		}
 	}
 
@@ -815,12 +833,14 @@ func runMCPHub() {
 		for range ticker.C {
 			// Cleanup stale instance files
 			if err := discoverySystem.CleanupStaleInstances(); err != nil {
-				fmt.Fprintf(os.Stderr, "Failed to cleanup stale instances: %v\n", err)
+				if mcpDebug {
+					fmt.Fprintf(os.Stderr, "Failed to cleanup stale instances: %v\n", err)
+				}
 			}
 
 			// Cleanup inactive sessions
 			removed := sessionManager.CleanupInactiveSessions(30 * time.Minute)
-			if removed > 0 {
+			if removed > 0 && mcpDebug {
 				fmt.Fprintf(os.Stderr, "Cleaned up %d inactive sessions\n", removed)
 			}
 
@@ -1074,7 +1094,9 @@ After disconnecting:
 	// Start stdio server
 	if err := server.ServeStdio(hubMCPServer); err != nil {
 		// Log to stderr to avoid corrupting stdio protocol
-		fmt.Fprintf(os.Stderr, "Hub server error: %v\n", err)
+		if mcpDebug {
+			fmt.Fprintf(os.Stderr, "Hub server error: %v\n", err)
+		}
 		os.Exit(1)
 	}
 }

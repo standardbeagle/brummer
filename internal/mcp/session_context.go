@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"time"
 )
@@ -635,7 +634,7 @@ func (sm *SessionManager) cleanupExpiredContexts() {
 	}
 
 	if len(expiredSessions) > 0 {
-		log.Printf("Cleaned up %d expired sessions", len(expiredSessions))
+		debugLog("Cleaned up %d expired sessions", len(expiredSessions))
 	}
 }
 

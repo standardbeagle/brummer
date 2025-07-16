@@ -3,7 +3,6 @@ package mcp
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/discovery"
@@ -168,7 +167,7 @@ func NewConnectionManager() *ConnectionManager {
 	
 	// Start network monitor
 	if err := cm.networkMonitor.Start(); err != nil {
-		log.Printf("Failed to start network monitor: %v", err)
+		debugLog("Failed to start network monitor: %v", err)
 	}
 	
 	go cm.run()
@@ -336,7 +335,7 @@ func (cm *ConnectionManager) handleStateChange(req stateChangeRequest) {
 		info.StateHistory = info.StateHistory[len(info.StateHistory)-50:]
 	}
 
-	log.Printf("Instance %s: %s -> %s", req.instanceID, oldState, req.newState)
+	debugLog("Instance %s: %s -> %s", req.instanceID, oldState, req.newState)
 
 	req.response <- nil
 }
@@ -454,14 +453,14 @@ func (cm *ConnectionManager) attemptConnectionWithContext(parentCtx context.Cont
 		// Check if this is a context cancellation
 		select {
 		case <-parentCtx.Done():
-			log.Printf("Connection attempt to %s cancelled: %v", instanceID, parentCtx.Err())
+			debugLog("Connection attempt to %s cancelled: %v", instanceID, parentCtx.Err())
 			cm.updateStateWithReason(instanceID, StateDiscovered, 
 				fmt.Sprintf("Connection cancelled: %v", parentCtx.Err()))
 			return
 		default:
 		}
 
-		log.Printf("Failed to establish connection to %s after retries: %v", instanceID, err)
+		debugLog("Failed to establish connection to %s after retries: %v", instanceID, err)
 		
 		// Check if this is a circuit breaker error
 		if IsCircuitBreakerError(err) {
@@ -507,7 +506,7 @@ func (cm *ConnectionManager) scheduleRetry(instanceID string, delay time.Duratio
 		}
 	}
 
-	log.Printf("Scheduled retry for instance %s in %v", instanceID, delay)
+	debugLog("Scheduled retry for instance %s in %v", instanceID, delay)
 }
 
 // Connection monitoring
@@ -537,7 +536,7 @@ func (cm *ConnectionManager) checkConnections() {
 		case StateActive:
 			// Check if still responsive
 			if time.Since(info.LastActivity) > 20*time.Second {
-				log.Printf("Instance %s not responsive, marking as retrying", info.InstanceID)
+				debugLog("Instance %s not responsive, marking as retrying", info.InstanceID)
 				cm.updateStateWithReason(info.InstanceID, StateRetrying,
 					fmt.Sprintf("No activity for %v", time.Since(info.LastActivity)))
 			}
@@ -545,7 +544,7 @@ func (cm *ConnectionManager) checkConnections() {
 		case StateRetrying:
 			// Check if it's time to retry based on exponential backoff
 			if !info.NextRetryAt.IsZero() && time.Now().After(info.NextRetryAt) {
-				log.Printf("Attempting retry for instance %s (attempt %d)", 
+				debugLog("Attempting retry for instance %s (attempt %d)", 
 					info.InstanceID, info.RetryPolicy.backoff.GetAttemptCount()+1)
 				
 				// Clear the retry time and attempt connection
@@ -711,7 +710,7 @@ func (cm *ConnectionManager) handleNetworkEvents() {
 
 // handleSleepWakeEvent processes system sleep/wake events
 func (cm *ConnectionManager) handleSleepWakeEvent(event SleepWakeEvent) {
-	log.Printf("Sleep/wake event: %s at %v (%s)", event.Type, event.Timestamp, event.Reason)
+	debugLog("Sleep/wake event: %s at %v (%s)", event.Type, event.Timestamp, event.Reason)
 
 	switch event.Type {
 	case "wake", "suspected_wake":
@@ -726,7 +725,7 @@ func (cm *ConnectionManager) handleSleepWakeEvent(event SleepWakeEvent) {
 
 // handleNetworkEvent processes network connectivity changes
 func (cm *ConnectionManager) handleNetworkEvent(event NetworkEvent) {
-	log.Printf("Network event: %s at %v (%s)", event.State, event.Timestamp, event.Reason)
+	debugLog("Network event: %s at %v (%s)", event.State, event.Timestamp, event.Reason)
 
 	switch event.State {
 	case NetworkStateConnected:
@@ -751,7 +750,7 @@ func (cm *ConnectionManager) reconnectAllInstances(reason string) {
 	case cm.listChan <- listRequest{response: listResp}:
 		connections := <-listResp
 		
-		log.Printf("Reconnecting %d instances due to: %s", len(connections), reason)
+		debugLog("Reconnecting %d instances due to: %s", len(connections), reason)
 		
 		for _, info := range connections {
 			// Force reconnection for all instances regardless of current state
@@ -769,7 +768,7 @@ func (cm *ConnectionManager) reconnectAllInstances(reason string) {
 			}
 		}
 	case <-time.After(1 * time.Second):
-		log.Printf("Timeout getting connections for reconnection")
+		debugLog("Timeout getting connections for reconnection")
 	}
 }
 
@@ -781,7 +780,7 @@ func (cm *ConnectionManager) markAllConnectionsSuspect(reason string) {
 	case cm.listChan <- listRequest{response: listResp}:
 		connections := <-listResp
 		
-		log.Printf("Marking %d connections as suspect due to: %s", len(connections), reason)
+		debugLog("Marking %d connections as suspect due to: %s", len(connections), reason)
 		
 		for _, info := range connections {
 			if info.State == StateActive {
@@ -790,7 +789,7 @@ func (cm *ConnectionManager) markAllConnectionsSuspect(reason string) {
 			}
 		}
 	case <-time.After(1 * time.Second):
-		log.Printf("Timeout getting connections for marking suspect")
+		debugLog("Timeout getting connections for marking suspect")
 	}
 }
 
@@ -802,7 +801,7 @@ func (cm *ConnectionManager) validateAllConnections(reason string) {
 	case cm.listChan <- listRequest{response: listResp}:
 		connections := <-listResp
 		
-		log.Printf("Validating %d connections due to: %s", len(connections), reason)
+		debugLog("Validating %d connections due to: %s", len(connections), reason)
 		
 		for _, info := range connections {
 			// Trigger immediate connection attempt for non-active instances
@@ -816,6 +815,6 @@ func (cm *ConnectionManager) validateAllConnections(reason string) {
 			}
 		}
 	case <-time.After(1 * time.Second):
-		log.Printf("Timeout getting connections for validation")
+		debugLog("Timeout getting connections for validation")
 	}
 }
