@@ -38,7 +38,7 @@ func TestRestartProcessIntegration(t *testing.T) {
 
 	// Wait for process to be running
 	time.Sleep(100 * time.Millisecond)
-	
+
 	// Verify initial process is running
 	allProcs := processMgr.GetAllProcesses()
 	require.Len(t, allProcs, 1)
@@ -50,7 +50,7 @@ func TestRestartProcessIntegration(t *testing.T) {
 	// Now simulate the restart operation that happens when 'r' is pressed
 	// This mimics handleRestartProcess function
 	timeout := 5 * time.Second
-	
+
 	// Step 1: Stop the process and wait
 	err = processMgr.StopProcessAndWait(proc.ID, timeout)
 	require.NoError(t, err, "StopProcessAndWait should succeed")
@@ -66,7 +66,7 @@ func TestRestartProcessIntegration(t *testing.T) {
 
 	// Check the final state
 	finalProcs := processMgr.GetAllProcesses()
-	
+
 	t.Logf("Final process count: %d", len(finalProcs))
 	for i, p := range finalProcs {
 		t.Logf("Process %d: %s (PID: %s, Status: %s)", i+1, p.Name, p.ID, p.Status)
@@ -80,7 +80,7 @@ func TestRestartProcessIntegration(t *testing.T) {
 	// What we expect:
 	// - Either 1 successful process (old one cleaned up)
 	// - Or 1 failed + 1 successful (if cleanup doesn't happen)
-	// 
+	//
 	// What the bug shows:
 	// - 2 failed processes
 
@@ -99,11 +99,11 @@ func TestRestartProcessIntegration(t *testing.T) {
 		}
 	}
 
-	t.Logf("Status counts - Running: %d, Failed: %d, Stopped: %d, Success: %d", 
+	t.Logf("Status counts - Running: %d, Failed: %d, Stopped: %d, Success: %d",
 		runningCount, failedCount, stoppedCount, successCount)
 
 	// The restart should result in exactly one process being in a good state
-	// Either the new process should be running, or if there was an error, 
+	// Either the new process should be running, or if there was an error,
 	// we should have a clear reason why
 	if err != nil {
 		// If StartScript failed, we should have 1 stopped/failed process (the original)
@@ -118,10 +118,10 @@ func TestRestartProcessIntegration(t *testing.T) {
 		// If StartScript succeeded, we should have a running process
 		require.NotNil(t, newProc, "New process should be created")
 		assert.Equal(t, process.StatusRunning, newProc.Status, "New process should be running")
-		
+
 		// The key assertion: we should not have 2 failed processes
 		assert.Less(t, failedCount, 2, "Should not have 2 failed processes after restart")
-		
+
 		// Ideally, we should have exactly 1 running process
 		assert.Equal(t, 1, runningCount, "Should have exactly 1 running process after successful restart")
 	}
@@ -133,7 +133,7 @@ func writeFile(path, content string) error {
 		return err
 	}
 	defer file.Close()
-	
+
 	_, err = file.WriteString(content)
 	return err
 }
@@ -166,7 +166,7 @@ func TestRestartProcessWithPortConflict(t *testing.T) {
 
 	// Wait for process to be running
 	time.Sleep(200 * time.Millisecond)
-	
+
 	// Verify initial process is running
 	allProcs := processMgr.GetAllProcesses()
 	require.Len(t, allProcs, 1)
@@ -175,7 +175,7 @@ func TestRestartProcessWithPortConflict(t *testing.T) {
 
 	// Simulate restart with short timeout (might cause issues)
 	timeout := 1 * time.Second // Shorter timeout
-	
+
 	// Step 1: Stop the process and wait
 	err = processMgr.StopProcessAndWait(proc.ID, timeout)
 	if err != nil {
@@ -193,7 +193,7 @@ func TestRestartProcessWithPortConflict(t *testing.T) {
 
 	// Check the final state
 	finalProcs := processMgr.GetAllProcesses()
-	
+
 	t.Logf("Final process count: %d", len(finalProcs))
 	for i, p := range finalProcs {
 		t.Logf("Process %d: %s (PID: %s, Status: %s)", i+1, p.Name, p.ID, p.Status)
@@ -210,7 +210,7 @@ func TestRestartProcessWithPortConflict(t *testing.T) {
 	// The bug: restart creates 2 failed processes instead of 1 working process
 	if failedCount >= 2 {
 		t.Errorf("BUG REPRODUCED: Found %d failed processes after restart (should be 0 or 1)", failedCount)
-		
+
 		// Additional debugging
 		for _, p := range finalProcs {
 			if p.Status == process.StatusFailed {

@@ -78,10 +78,10 @@ func TestNetworkErrorBasics(t *testing.T) {
 
 func TestNetworkErrorShouldRetry(t *testing.T) {
 	tests := []struct {
-		errorType    ErrorType
-		temporary    bool
-		shouldRetry  bool
-		description  string
+		errorType   ErrorType
+		temporary   bool
+		shouldRetry bool
+		description string
 	}{
 		{ErrorTypeConnRefused, true, true, "Connection refused should be retryable"},
 		{ErrorTypeTimeout, true, true, "Timeout should be retryable"},
@@ -219,7 +219,7 @@ func TestClassifyNetworkError(t *testing.T) {
 
 	for _, test := range tests {
 		result := ClassifyNetworkError(test.inputError)
-		
+
 		if result == nil {
 			t.Errorf("%s: ClassifyNetworkError should not return nil", test.description)
 			continue
@@ -251,7 +251,7 @@ func TestClassifyNetworkErrorWithNetError(t *testing.T) {
 	}
 
 	result := ClassifyNetworkError(mockNetErr)
-	
+
 	if result.Type != ErrorTypeTimeout {
 		t.Errorf("Expected timeout error type, got %v", result.Type)
 	}
@@ -283,7 +283,7 @@ func TestClassifyHTTPError(t *testing.T) {
 
 	for _, test := range tests {
 		result := ClassifyHTTPError(test.statusCode, test.inputError)
-		
+
 		if result.Type != test.expectedType {
 			t.Errorf("%s: expected type %v, got %v", test.description, test.expectedType, result.Type)
 		}
@@ -397,7 +397,7 @@ func TestErrorStats(t *testing.T) {
 		t.Error("Should have recorded HTTP 500 error")
 	}
 
-	// Test error rates  
+	// Test error rates
 	tempRate, permRate := stats.GetErrorRate()
 	expectedTempRate := float64(2) / float64(3) * 100 // 2 temporary errors
 	expectedPermRate := float64(1) / float64(3) * 100 // 1 permanent error
@@ -419,7 +419,7 @@ func TestErrorStats(t *testing.T) {
 
 func TestErrorStatsWithEmptyStats(t *testing.T) {
 	stats := NewErrorStats()
-	
+
 	tempRate, permRate := stats.GetErrorRate()
 	if tempRate != 0 || permRate != 0 {
 		t.Error("Empty stats should return zero rates")
@@ -437,10 +437,10 @@ func TestContextCancellationErrors(t *testing.T) {
 	// Test context cancellation
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	
+
 	err := ctx.Err()
 	result := ClassifyNetworkError(err)
-	
+
 	if result.Type != ErrorTypeContextCancelled {
 		t.Errorf("Expected context cancelled error, got %v", result.Type)
 	}
@@ -453,10 +453,10 @@ func TestContextCancellationErrors(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 1*time.Nanosecond)
 	defer cancel()
 	time.Sleep(1 * time.Millisecond) // Ensure timeout
-	
+
 	err = ctx.Err()
 	result = ClassifyNetworkError(err)
-	
+
 	if result.Type != ErrorTypeContextDeadline {
 		t.Errorf("Expected context deadline error, got %v", result.Type)
 	}
@@ -495,7 +495,7 @@ func TestNetworkErrorJSONSerialization(t *testing.T) {
 	if netErr.Type != ErrorTypeConnRefused {
 		t.Error("Type should be preserved")
 	}
-	
+
 	if !netErr.Temporary {
 		t.Error("Temporary flag should be preserved")
 	}

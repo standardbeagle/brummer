@@ -284,7 +284,13 @@ func (p *ErrorParser) detectErrorStart(content string) (string, map[string]strin
 					}
 				} else if (patternName == "js_error_type" || patternName == "js_fetch_error") && len(matches) > 1 {
 					// Handle specific error types like TypeError, ReferenceError, FetchError, etc.
-					info["type"] = matches[1]
+					errorType := matches[1]
+					// Map FetchError to NetworkError for better categorization
+					if errorType == "FetchError" {
+						info["type"] = "NetworkError"
+					} else {
+						info["type"] = errorType
+					}
 					if len(matches) > 2 {
 						info["message"] = strings.TrimSpace(matches[2])
 					}

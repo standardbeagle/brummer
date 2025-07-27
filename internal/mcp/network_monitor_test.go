@@ -209,7 +209,7 @@ func TestNetworkConnectivityTesting(t *testing.T) {
 	// Test individual endpoint connectivity
 	// Use a reliable endpoint that should be reachable
 	connected := nm.testSingleEndpoint("1.1.1.1:53")
-	
+
 	// This test might fail in environments without internet access
 	// so we'll just log the result rather than failing
 	t.Logf("Connectivity test to 1.1.1.1:53 result: %v", connected)
@@ -316,7 +316,7 @@ func TestConcurrentNetworkMonitoring(t *testing.T) {
 			for j := 0; j < 100; j++ {
 				state := nm.GetCurrentState()
 				stats := nm.GetStats()
-				
+
 				// Just verify we can access these without panicking
 				_ = state
 				_ = stats

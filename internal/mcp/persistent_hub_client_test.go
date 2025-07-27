@@ -91,7 +91,7 @@ func TestPersistentClientFeatureFlag(t *testing.T) {
 
 	// Test without feature flag
 	os.Unsetenv("BRUMMER_USE_ROBUST_NETWORKING")
-	
+
 	client2, err := NewHubClientInterface(7777)
 	if err != nil {
 		t.Fatalf("Failed to create client without feature flag: %v", err)
@@ -107,7 +107,7 @@ func TestPersistentClientBasicFunctionality(t *testing.T) {
 	// Create a mock MCP server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		// Simple mock response
 		if r.URL.Path == "/mcp" {
 			w.WriteHeader(http.StatusOK)
@@ -152,7 +152,7 @@ func TestPersistentClientBasicFunctionality(t *testing.T) {
 func TestInvalidPortHandling(t *testing.T) {
 	// Test invalid ports
 	invalidPorts := []int{-1, 0, 65536, 99999}
-	
+
 	for _, port := range invalidPorts {
 		_, err := NewPersistentHubClient(port)
 		if err == nil {
@@ -162,7 +162,7 @@ func TestInvalidPortHandling(t *testing.T) {
 
 	// Test valid ports
 	validPorts := []int{1, 1024, 7777, 65535}
-	
+
 	for _, port := range validPorts {
 		client, err := NewPersistentHubClient(port)
 		if err != nil {

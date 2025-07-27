@@ -325,7 +325,7 @@ func (d *Discovery) CleanupStaleInstances() error {
 	// Find stale instances
 	for id, inst := range d.instances {
 		isStale := now.Sub(inst.LastPing) > StaleInstanceTimeout
-		
+
 		// Also check if the process is actually running
 		if isStale || !d.isProcessRunning(inst.ProcessInfo.PID) {
 			staleIDs = append(staleIDs, id)

@@ -69,8 +69,8 @@ type ConnectionInfo struct {
 	StateHistory   []StateTransition
 
 	// Retry policy for robust connections
-	RetryPolicy    *RetryPolicy
-	NextRetryAt    time.Time
+	RetryPolicy *RetryPolicy
+	NextRetryAt time.Time
 }
 
 // Request types for channel operations
@@ -164,12 +164,12 @@ func NewConnectionManager() *ConnectionManager {
 
 	// Start session manager
 	cm.sessionManager.Start()
-	
+
 	// Start network monitor
 	if err := cm.networkMonitor.Start(); err != nil {
 		debugLog("Failed to start network monitor: %v", err)
 	}
-	
+
 	go cm.run()
 	go cm.handleNetworkEvents()
 
@@ -454,17 +454,17 @@ func (cm *ConnectionManager) attemptConnectionWithContext(parentCtx context.Cont
 		select {
 		case <-parentCtx.Done():
 			debugLog("Connection attempt to %s cancelled: %v", instanceID, parentCtx.Err())
-			cm.updateStateWithReason(instanceID, StateDiscovered, 
+			cm.updateStateWithReason(instanceID, StateDiscovered,
 				fmt.Sprintf("Connection cancelled: %v", parentCtx.Err()))
 			return
 		default:
 		}
 
 		debugLog("Failed to establish connection to %s after retries: %v", instanceID, err)
-		
+
 		// Check if this is a circuit breaker error
 		if IsCircuitBreakerError(err) {
-			cm.updateStateWithReason(instanceID, StateDead, 
+			cm.updateStateWithReason(instanceID, StateDead,
 				fmt.Sprintf("Circuit breaker open: %v", err))
 		} else {
 			// Calculate next retry time with exponential backoff
@@ -483,7 +483,7 @@ func (cm *ConnectionManager) attemptConnectionWithContext(parentCtx context.Cont
 func (cm *ConnectionManager) scheduleRetry(instanceID string, delay time.Duration) {
 	// Update the next retry time
 	nextRetryTime := time.Now().Add(delay)
-	
+
 	// Update state to retrying with next retry time
 	req := stateChangeRequest{
 		instanceID: instanceID,
@@ -544,9 +544,9 @@ func (cm *ConnectionManager) checkConnections() {
 		case StateRetrying:
 			// Check if it's time to retry based on exponential backoff
 			if !info.NextRetryAt.IsZero() && time.Now().After(info.NextRetryAt) {
-				debugLog("Attempting retry for instance %s (attempt %d)", 
+				debugLog("Attempting retry for instance %s (attempt %d)",
 					info.InstanceID, info.RetryPolicy.backoff.GetAttemptCount()+1)
-				
+
 				// Clear the retry time and attempt connection
 				info.NextRetryAt = time.Time{}
 				go cm.attemptConnection(info.InstanceID)
@@ -646,10 +646,10 @@ func (cm *ConnectionManager) Stop() {
 	if cm.networkMonitor != nil {
 		cm.networkMonitor.Stop()
 	}
-	
+
 	// Stop session manager
 	cm.sessionManager.Stop()
-	
+
 	close(cm.stopCh)
 	<-cm.doneCh
 }
@@ -672,13 +672,13 @@ func (cm *ConnectionManager) ConnectSessionToInstance(sessionID, instanceID stri
 	} else {
 		session = cm.sessionManager.CreateSession(sessionID, nil)
 	}
-	
+
 	// Create connection context for this instance
 	connCtx := session.GetOrCreateConnectionContext(instanceID)
-	
+
 	// Attempt connection using the connection context
 	go cm.attemptConnectionWithContext(connCtx.Context(), instanceID)
-	
+
 	return nil
 }
 
@@ -749,20 +749,20 @@ func (cm *ConnectionManager) reconnectAllInstances(reason string) {
 	select {
 	case cm.listChan <- listRequest{response: listResp}:
 		connections := <-listResp
-		
+
 		debugLog("Reconnecting %d instances due to: %s", len(connections), reason)
-		
+
 		for _, info := range connections {
 			// Force reconnection for all instances regardless of current state
 			if info.State == StateActive || info.State == StateRetrying {
-				cm.updateStateWithReason(info.InstanceID, StateDiscovered, 
+				cm.updateStateWithReason(info.InstanceID, StateDiscovered,
 					fmt.Sprintf("Network reconnection: %s", reason))
-				
+
 				// Reset retry policy to start fresh
 				if info.RetryPolicy != nil {
 					info.RetryPolicy.Reset()
 				}
-				
+
 				// Trigger immediate reconnection attempt
 				go cm.attemptConnection(info.InstanceID)
 			}
@@ -779,9 +779,9 @@ func (cm *ConnectionManager) markAllConnectionsSuspect(reason string) {
 	select {
 	case cm.listChan <- listRequest{response: listResp}:
 		connections := <-listResp
-		
+
 		debugLog("Marking %d connections as suspect due to: %s", len(connections), reason)
-		
+
 		for _, info := range connections {
 			if info.State == StateActive {
 				cm.updateStateWithReason(info.InstanceID, StateRetrying,
@@ -800,9 +800,9 @@ func (cm *ConnectionManager) validateAllConnections(reason string) {
 	select {
 	case cm.listChan <- listRequest{response: listResp}:
 		connections := <-listResp
-		
+
 		debugLog("Validating %d connections due to: %s", len(connections), reason)
-		
+
 		for _, info := range connections {
 			// Trigger immediate connection attempt for non-active instances
 			if info.State != StateActive {
@@ -810,7 +810,7 @@ func (cm *ConnectionManager) validateAllConnections(reason string) {
 				if info.RetryPolicy != nil {
 					info.RetryPolicy.Reset()
 				}
-				
+
 				go cm.attemptConnection(info.InstanceID)
 			}
 		}

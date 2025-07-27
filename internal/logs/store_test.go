@@ -2,6 +2,7 @@ package logs
 
 import (
 	"testing"
+	"time"
 )
 
 func TestDetectURLsInContent(t *testing.T) {
@@ -87,6 +88,9 @@ func TestUpdateProxyURL(t *testing.T) {
 
 	// Add a URL through normal log processing
 	store.Add("test-process", "test", "Server at http://localhost:3000", false)
+
+	// Wait for async processing to complete
+	time.Sleep(10 * time.Millisecond)
 
 	// Get the URL entry
 	urls := store.GetURLs()

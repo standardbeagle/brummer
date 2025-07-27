@@ -34,4 +34,3 @@ func GetDefaultInstancesDir() string {
 	// Fall back to temp directory
 	return filepath.Join(os.TempDir(), "brummer", "instances")
 }
-

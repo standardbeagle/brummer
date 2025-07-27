@@ -42,17 +42,17 @@ type CollapsedLogEntry struct {
 }
 
 type Store struct {
-	entries       []LogEntry
-	byProcess     map[string][]int
-	errors        []LogEntry
-	errorContexts []ErrorContext
+	entries         []LogEntry
+	byProcess       map[string][]int
+	errors          []LogEntry
+	errorContexts   []ErrorContext
 	errorParser     *ErrorParser
 	timeBasedParser *TimeBasedErrorParser
-	urls          []URLEntry
-	urlMap        map[string]*URLEntry // Map URL to its entry for deduplication
-	maxEntries    int
-	filters       []filters.Filter
-	mu            sync.RWMutex
+	urls            []URLEntry
+	urlMap          map[string]*URLEntry // Map URL to its entry for deduplication
+	maxEntries      int
+	filters         []filters.Filter
+	mu              sync.RWMutex
 
 	// Channel-based async operations
 	addChan   chan *addLogRequest
@@ -79,18 +79,18 @@ type addLogRequest struct {
 
 func NewStore(maxEntries int) *Store {
 	s := &Store{
-		entries:       make([]LogEntry, 0, maxEntries),
-		byProcess:     make(map[string][]int),
-		errors:        make([]LogEntry, 0, 100),
-		errorContexts: make([]ErrorContext, 0, 100),
+		entries:         make([]LogEntry, 0, maxEntries),
+		byProcess:       make(map[string][]int),
+		errors:          make([]LogEntry, 0, 100),
+		errorContexts:   make([]ErrorContext, 0, 100),
 		errorParser:     NewErrorParser(),
 		timeBasedParser: NewTimeBasedErrorParser(),
-		urls:          make([]URLEntry, 0, 100),
-		urlMap:        make(map[string]*URLEntry),
-		maxEntries:    maxEntries,
-		filters:       []filters.Filter{},
-		addChan:       make(chan *addLogRequest, 1000),
-		closeChan:     make(chan struct{}),
+		urls:            make([]URLEntry, 0, 100),
+		urlMap:          make(map[string]*URLEntry),
+		maxEntries:      maxEntries,
+		filters:         []filters.Filter{},
+		addChan:         make(chan *addLogRequest, 1000),
+		closeChan:       make(chan struct{}),
 	}
 
 	// Start async worker
@@ -515,7 +515,7 @@ func (s *Store) Close() {
 		}
 	}
 	s.mu.Unlock()
-	
+
 	close(s.closeChan)
 	s.wg.Wait()
 }

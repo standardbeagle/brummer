@@ -29,24 +29,24 @@ func NewExponentialBackoff() *ExponentialBackoff {
 func (eb *ExponentialBackoff) NextDelay() time.Duration {
 	// Calculate exponential delay
 	delay := time.Duration(float64(eb.BaseDelay) * math.Pow(eb.Multiplier, float64(eb.attemptCount)))
-	
+
 	// Cap at maximum delay
 	if delay > eb.MaxDelay {
 		delay = eb.MaxDelay
 	}
-	
+
 	// Add jitter to prevent thundering herd
 	if eb.Jitter {
 		jitterRange := float64(delay) * 0.1 // ±10% jitter
 		jitter := time.Duration((rand.Float64()*2 - 1) * jitterRange)
 		delay += jitter
 	}
-	
+
 	// Ensure minimum positive delay
 	if delay < eb.BaseDelay {
 		delay = eb.BaseDelay
 	}
-	
+
 	eb.attemptCount++
 	return delay
 }
@@ -72,11 +72,11 @@ const (
 
 // CircuitBreaker implements the circuit breaker pattern for network connections
 type CircuitBreaker struct {
-	maxFailures   int
-	resetTimeout  time.Duration
-	failureCount  int
-	lastFailTime  time.Time
-	state         CircuitBreakerState
+	maxFailures  int
+	resetTimeout time.Duration
+	failureCount int
+	lastFailTime time.Time
+	state        CircuitBreakerState
 }
 
 // NewCircuitBreaker creates a new circuit breaker with the specified parameters
@@ -102,13 +102,13 @@ func (cb *CircuitBreaker) Call(fn func() error) error {
 			LastFailTime: cb.lastFailTime,
 		}
 	}
-	
+
 	err := fn()
 	if err != nil {
 		cb.RecordFailure()
 		return err
 	}
-	
+
 	cb.RecordSuccess()
 	return nil
 }
@@ -142,7 +142,7 @@ func (cb *CircuitBreaker) RecordSuccess() {
 func (cb *CircuitBreaker) RecordFailure() {
 	cb.failureCount++
 	cb.lastFailTime = time.Now()
-	
+
 	if cb.failureCount >= cb.maxFailures {
 		cb.state = CircuitOpen
 	}
@@ -156,11 +156,11 @@ func (cb *CircuitBreaker) GetState() CircuitBreakerState {
 // GetStats returns circuit breaker statistics
 func (cb *CircuitBreaker) GetStats() map[string]interface{} {
 	return map[string]interface{}{
-		"state":         cb.state.String(),
-		"failureCount":  cb.failureCount,
-		"maxFailures":   cb.maxFailures,
-		"lastFailTime":  cb.lastFailTime,
-		"resetTimeout":  cb.resetTimeout,
+		"state":        cb.state.String(),
+		"failureCount": cb.failureCount,
+		"maxFailures":  cb.maxFailures,
+		"lastFailTime": cb.lastFailTime,
+		"resetTimeout": cb.resetTimeout,
 	}
 }
 
@@ -223,28 +223,28 @@ func NewRetryPolicy(maxRetries int) *RetryPolicy {
 func (rp *RetryPolicy) ExecuteWithRetry(fn func() error) error {
 	for attempt := 0; attempt < rp.maxRetries; attempt++ {
 		err := rp.circuitBreaker.Call(fn)
-		
+
 		if err == nil {
 			// Success - reset backoff for next time
 			rp.backoff.Reset()
 			return nil
 		}
-		
+
 		// Check if this is a circuit breaker error
 		if IsCircuitBreakerError(err) {
 			return err // Don't retry if circuit breaker is open
 		}
-		
+
 		// If this is the last attempt, return the error
 		if attempt == rp.maxRetries-1 {
 			return err
 		}
-		
+
 		// Wait before retrying
 		delay := rp.backoff.NextDelay()
 		time.Sleep(delay)
 	}
-	
+
 	return nil // Should never reach here
 }
 
@@ -257,8 +257,8 @@ func (rp *RetryPolicy) Reset() {
 // GetStats returns retry policy statistics
 func (rp *RetryPolicy) GetStats() map[string]interface{} {
 	return map[string]interface{}{
-		"maxRetries":      rp.maxRetries,
-		"attemptCount":    rp.backoff.GetAttemptCount(),
-		"circuitBreaker":  rp.circuitBreaker.GetStats(),
+		"maxRetries":     rp.maxRetries,
+		"attemptCount":   rp.backoff.GetAttemptCount(),
+		"circuitBreaker": rp.circuitBreaker.GetStats(),
 	}
 }

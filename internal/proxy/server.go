@@ -90,7 +90,7 @@ type Server struct {
 	// Separate locks for different concerns to prevent deadlocks
 	dataMu   sync.RWMutex // Protects data structures (requests, urlMap, etc.)
 	serverMu sync.Mutex   // Protects server start/stop operations only
-	
+
 	requests []Request
 	urlMap   map[string]string // Maps URL to process name
 
@@ -936,12 +936,12 @@ func (s *Server) SwitchMode(newMode ProxyMode) error {
 	// Stop the server first
 	if wasRunning {
 		atomic.StoreInt64(&s.running, 0)
-		
+
 		// Get server safely under lock
 		s.dataMu.RLock()
 		server := s.server
 		s.dataMu.RUnlock()
-		
+
 		if server != nil {
 			server.Close()
 		}

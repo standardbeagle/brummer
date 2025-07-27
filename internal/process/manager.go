@@ -296,12 +296,12 @@ func (m *Manager) runProcess(p *Process) error {
 			m.mu.RLock()
 			callbacks := m.logCallbacks
 			m.mu.RUnlock()
-			
+
 			var exitCodeStr string
 			if p.ExitCode != nil {
 				exitCodeStr = fmt.Sprintf(" (exit code: %d)", *p.ExitCode)
 			}
-			
+
 			failureMsg := fmt.Sprintf("❌ Process '%s' failed%s", p.Name, exitCodeStr)
 			for _, cb := range callbacks {
 				cb(p.ID, failureMsg, true)

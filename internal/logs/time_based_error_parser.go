@@ -23,23 +23,23 @@ type TimeBasedErrorCluster struct {
 type TimeBasedErrorParser struct {
 	// Active clusters being built per process
 	activeClusters map[string]*TimeBasedErrorCluster
-	
+
 	// Completed error clusters
 	completedClusters []TimeBasedErrorCluster
-	
+
 	// Time gap threshold to trigger cluster completion
 	timeGapThreshold time.Duration
-	
+
 	// Minimum lines to consider as an error cluster
 	minClusterSize int
 }
 
 func NewTimeBasedErrorParser() *TimeBasedErrorParser {
 	return &TimeBasedErrorParser{
-		activeClusters:   make(map[string]*TimeBasedErrorCluster),
+		activeClusters:    make(map[string]*TimeBasedErrorCluster),
 		completedClusters: make([]TimeBasedErrorCluster, 0),
-		timeGapThreshold: 200 * time.Millisecond, // 200ms gap triggers completion
-		minClusterSize:   1, // Even single lines can be errors
+		timeGapThreshold:  200 * time.Millisecond, // 200ms gap triggers completion
+		minClusterSize:    1,                      // Even single lines can be errors
 	}
 }
 
@@ -49,23 +49,23 @@ func (p *TimeBasedErrorParser) ProcessLogEntry(entry LogEntry, processName strin
 	if !isError && entry.Level < LevelError {
 		return nil
 	}
-	
+
 	processKey := entry.ProcessID
-	
+
 	// Check if we have an active cluster for this process
 	if activeCluster, exists := p.activeClusters[processKey]; exists {
 		// Check time gap
 		timeSinceLastLine := entry.Timestamp.Sub(activeCluster.EndTime)
-		
+
 		if timeSinceLastLine > p.timeGapThreshold {
 			// Time gap detected - finalize the current cluster
 			p.finalizeCluster(activeCluster)
 			completed := *activeCluster
 			delete(p.activeClusters, processKey)
-			
+
 			// Start a new cluster with this entry
 			p.startNewCluster(entry, processName, processKey)
-			
+
 			return &completed
 		} else {
 			// Add to existing cluster
@@ -84,13 +84,13 @@ func (p *TimeBasedErrorParser) ProcessLogEntry(entry LogEntry, processName strin
 // ForceCompleteAll completes all active clusters (useful for shutdown)
 func (p *TimeBasedErrorParser) ForceCompleteAll() []TimeBasedErrorCluster {
 	var completed []TimeBasedErrorCluster
-	
+
 	for processKey, cluster := range p.activeClusters {
 		p.finalizeCluster(cluster)
 		completed = append(completed, *cluster)
 		delete(p.activeClusters, processKey)
 	}
-	
+
 	return completed
 }
 
@@ -108,7 +108,7 @@ func (p *TimeBasedErrorParser) startNewCluster(entry LogEntry, processName, proc
 		EndTime:     entry.Timestamp,
 		Lines:       []LogEntry{entry},
 	}
-	
+
 	p.updateClusterAnalysis(cluster)
 	p.activeClusters[processKey] = cluster
 }
@@ -117,7 +117,7 @@ func (p *TimeBasedErrorParser) finalizeCluster(cluster *TimeBasedErrorCluster) {
 	// Only finalize if it meets minimum size
 	if len(cluster.Lines) >= p.minClusterSize {
 		p.completedClusters = append(p.completedClusters, *cluster)
-		
+
 		// Keep only last 100 clusters to prevent memory growth
 		if len(p.completedClusters) > 100 {
 			p.completedClusters = p.completedClusters[1:]
@@ -129,15 +129,15 @@ func (p *TimeBasedErrorParser) updateClusterAnalysis(cluster *TimeBasedErrorClus
 	if len(cluster.Lines) == 0 {
 		return
 	}
-	
+
 	// Combine all content from the cluster
 	var allContent []string
 	for _, line := range cluster.Lines {
 		allContent = append(allContent, line.Content)
 	}
-	
+
 	combinedContent := strings.Join(allContent, "\n")
-	
+
 	// Simple error type detection on the combined content
 	cluster.ErrorType = p.detectErrorType(combinedContent)
 	cluster.Message = p.extractMainMessage(cluster.Lines[0].Content) // Use first line as primary message
@@ -146,19 +146,19 @@ func (p *TimeBasedErrorParser) updateClusterAnalysis(cluster *TimeBasedErrorClus
 
 func (p *TimeBasedErrorParser) detectErrorType(content string) string {
 	content = strings.ToLower(content)
-	
+
 	// Check for specific error types in order of specificity
 	errorTypes := map[string][]string{
-		"MongoError": {"mongoerror", "mongo", "mongodb"},
-		"TypeError": {"typeerror", "cannot read property", "is not a function"},
-		"ReferenceError": {"referenceerror", "is not defined"},
-		"SyntaxError": {"syntaxerror", "unexpected token", "unexpected end"},
-		"NetworkError": {"fetcherror", "enotfound", "connection", "network"},
+		"MongoError":       {"mongoerror", "mongo", "mongodb"},
+		"TypeError":        {"typeerror", "cannot read property", "is not a function"},
+		"ReferenceError":   {"referenceerror", "is not defined"},
+		"SyntaxError":      {"syntaxerror", "unexpected token", "unexpected end"},
+		"NetworkError":     {"fetcherror", "enotfound", "connection", "network"},
 		"CompilationError": {"compilation failed", "build failed", "compile error"},
-		"LintError": {"eslint", "lint error", "tslint"},
-		"RuntimeError": {"runtime error", "panic", "exception"},
+		"LintError":        {"eslint", "lint error", "tslint"},
+		"RuntimeError":     {"runtime error", "panic", "exception"},
 	}
-	
+
 	for errorType, keywords := range errorTypes {
 		for _, keyword := range keywords {
 			if strings.Contains(content, keyword) {
@@ -166,19 +166,19 @@ func (p *TimeBasedErrorParser) detectErrorType(content string) string {
 			}
 		}
 	}
-	
+
 	return "Error"
 }
 
 func (p *TimeBasedErrorParser) extractMainMessage(firstLine string) string {
 	// Strip common prefixes
 	cleaned := p.stripLogPrefixes(firstLine)
-	
+
 	// Limit message length for display
 	if len(cleaned) > 200 {
 		return cleaned[:197] + "..."
 	}
-	
+
 	return cleaned
 }
 
@@ -186,13 +186,13 @@ func (p *TimeBasedErrorParser) stripLogPrefixes(content string) string {
 	// TODO: Implement sophisticated prefix stripping
 	// For now, just return the content as-is
 	cleaned := content
-	
+
 	return strings.TrimSpace(cleaned)
 }
 
 func (p *TimeBasedErrorParser) determineSeverity(content string) string {
 	content = strings.ToLower(content)
-	
+
 	if strings.Contains(content, "critical") || strings.Contains(content, "fatal") || strings.Contains(content, "panic") {
 		return "critical"
 	}
@@ -202,7 +202,7 @@ func (p *TimeBasedErrorParser) determineSeverity(content string) string {
 	if strings.Contains(content, "warn") {
 		return "warning"
 	}
-	
+
 	return "error" // Default for unknown errors
 }
 
@@ -211,10 +211,10 @@ func (cluster *TimeBasedErrorCluster) ToErrorContext() ErrorContext {
 	var rawLines []string
 	var stackLines []string
 	var contextLines []string
-	
+
 	for _, line := range cluster.Lines {
 		rawLines = append(rawLines, line.Content)
-		
+
 		// Simple heuristics for stack vs context
 		if strings.Contains(line.Content, " at ") || strings.Contains(line.Content, ".js:") || strings.Contains(line.Content, ".ts:") {
 			stackLines = append(stackLines, line.Content)
@@ -222,7 +222,7 @@ func (cluster *TimeBasedErrorCluster) ToErrorContext() ErrorContext {
 			contextLines = append(contextLines, line.Content)
 		}
 	}
-	
+
 	return ErrorContext{
 		ID:          cluster.ID,
 		ProcessID:   cluster.ProcessID,

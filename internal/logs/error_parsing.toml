@@ -98,8 +98,8 @@ severity = "error"
 single_line = true
 description = "JavaScript ReferenceError"
 
-[error_patterns.javascript.fetch_error]
-pattern = "^(FetchError):\\s*(request to .+)"
+[error_patterns.javascript.a_fetch_error]
+pattern = "^(FetchError):\\s*(.+)"
 type = "NetworkError"
 severity = "error"
 single_line = true

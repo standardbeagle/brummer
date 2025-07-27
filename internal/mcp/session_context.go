@@ -23,7 +23,7 @@ type SessionContext struct {
 
 	// Connection contexts per instance
 	connectionContexts map[string]*ConnectionLifecycleContext
-	connMu            sync.RWMutex
+	connMu             sync.RWMutex
 
 	// Registered items from connected instance
 	RegisteredTools     map[string]bool // tool name -> registered
@@ -76,10 +76,10 @@ type SessionManager struct {
 	mu       sync.RWMutex
 
 	// Context management
-	defaultTimeout    time.Duration
-	operationTimeout  time.Duration
-	cleanupInterval   time.Duration
-	
+	defaultTimeout   time.Duration
+	operationTimeout time.Duration
+	cleanupInterval  time.Duration
+
 	// Lifecycle
 	stopCh chan struct{}
 	wg     sync.WaitGroup
@@ -93,10 +93,10 @@ type SessionManager struct {
 // NewSessionManager creates a new session manager
 func NewSessionManager() *SessionManager {
 	return &SessionManager{
-		sessions:          make(map[string]*SessionContext),
-		defaultTimeout:    24 * time.Hour,   // Long-lived sessions
-		operationTimeout:  30 * time.Second, // Individual operations  
-		cleanupInterval:   5 * time.Minute,
+		sessions:         make(map[string]*SessionContext),
+		defaultTimeout:   24 * time.Hour,   // Long-lived sessions
+		operationTimeout: 30 * time.Second, // Individual operations
+		cleanupInterval:  5 * time.Minute,
 		stopCh:           make(chan struct{}),
 	}
 }
@@ -110,7 +110,7 @@ func (sm *SessionManager) Start() {
 // Stop gracefully shuts down the session manager
 func (sm *SessionManager) Stop() {
 	close(sm.stopCh)
-	
+
 	// Cancel all active sessions
 	sm.mu.Lock()
 	for _, session := range sm.sessions {
@@ -119,7 +119,7 @@ func (sm *SessionManager) Stop() {
 		}
 	}
 	sm.mu.Unlock()
-	
+
 	sm.wg.Wait()
 }
 

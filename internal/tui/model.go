@@ -2362,7 +2362,7 @@ func (m *Model) renderURLsView() string {
 	// Separate MCP URLs from regular URLs
 	var mcpURLs []logs.URLEntry
 	var regularURLs []logs.URLEntry
-	
+
 	for _, urlEntry := range urls {
 		if urlEntry.ProcessName == "MCP" || urlEntry.ProcessName == "mcp-server" {
 			mcpURLs = append(mcpURLs, urlEntry)
@@ -2437,7 +2437,7 @@ func (m *Model) renderURLsViewSimple(urls []logs.URLEntry) string {
 
 func (m *Model) renderURLsList(urls []logs.URLEntry) string {
 	var content strings.Builder
-	
+
 	urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
 	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
 	processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
@@ -2489,27 +2489,27 @@ func (m *Model) renderURLsList(urls []logs.URLEntry) string {
 			content.WriteString("\n")
 		}
 	}
-	
+
 	return content.String()
 }
 
 func (m *Model) renderMCPConnectionBox(mcpURLs []logs.URLEntry) string {
 	var content strings.Builder
-	
+
 	// Header
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
 	content.WriteString(headerStyle.Render("🤖 Agent Integration") + "\n\n")
-	
+
 	// Get actual MCP port
 	actualPort := m.mcpPort
 	if m.mcpServer != nil && m.mcpServer.IsRunning() {
 		actualPort = m.mcpServer.GetPort()
 	}
-	
+
 	// MCP server status and URL
 	urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
 	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
-	
+
 	if m.mcpServer != nil && m.mcpServer.IsRunning() {
 		content.WriteString(statusStyle.Render("✅ MCP Server Running") + "\n")
 		mcpURL := fmt.Sprintf("http://localhost:%d/mcp", actualPort)
@@ -2518,7 +2518,7 @@ func (m *Model) renderMCPConnectionBox(mcpURLs []logs.URLEntry) string {
 		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
 		content.WriteString(errorStyle.Render("❌ MCP Server Not Running") + "\n\n")
 	}
-	
+
 	// Styles
 	methodStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
 	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
@@ -2528,16 +2528,16 @@ func (m *Model) renderMCPConnectionBox(mcpURLs []logs.URLEntry) string {
 		Background(lipgloss.Color("75")).
 		Padding(0, 1).
 		Bold(true)
-	
+
 	if m.showingMCPHelp {
 		// Show detailed setup instructions
 		content.WriteString(methodStyle.Render("🔧 Detailed Setup Instructions") + "\n\n")
-		
+
 		content.WriteString(methodStyle.Render("1. HTTP Connection (Recommended)") + "\n")
 		content.WriteString(textStyle.Render("Use the URL above in your MCP client:") + "\n")
 		mcpURL := fmt.Sprintf("http://localhost:%d/mcp", actualPort)
 		content.WriteString(codeStyle.Render(mcpURL) + "\n\n")
-		
+
 		content.WriteString(textStyle.Render("Claude Desktop config example:") + "\n")
 		content.WriteString(codeStyle.Render(`{
   "servers": {
@@ -2547,29 +2547,29 @@ func (m *Model) renderMCPConnectionBox(mcpURLs []logs.URLEntry) string {
     }
   }
 }`) + "\n\n")
-		
+
 		content.WriteString(methodStyle.Render("2. Direct Integration (Advanced)") + "\n")
 		content.WriteString(textStyle.Render("For hub mode coordination:") + "\n")
 		content.WriteString(codeStyle.Render("brum --mcp") + "\n")
 		content.WriteString(textStyle.Render("or") + "\n")
 		content.WriteString(codeStyle.Render("npx -y @standardbeagle/brummer --mcp") + "\n\n")
-		
+
 		content.WriteString(textStyle.Render("Press ") + buttonStyle.Render(" ? ") + textStyle.Render(" to hide help"))
 	} else {
 		// Show simplified connection methods
 		content.WriteString(methodStyle.Render("Connection Methods:") + "\n\n")
-		
+
 		content.WriteString(textStyle.Render("📡 HTTP Connection (above URL)") + "\n")
 		content.WriteString(textStyle.Render("   For Claude Desktop, Cursor, etc.") + "\n\n")
-		
+
 		content.WriteString(textStyle.Render("🔌 Direct Integration") + "\n")
 		content.WriteString(codeStyle.Render("brum --mcp") + "\n")
 		content.WriteString(textStyle.Render("or") + "\n")
 		content.WriteString(codeStyle.Render("npx -y @standardbeagle/brummer --mcp") + "\n\n")
-		
+
 		content.WriteString(textStyle.Render("Press ") + buttonStyle.Render(" ? ") + textStyle.Render(" for setup help"))
 	}
-	
+
 	return content.String()
 }
 
@@ -3345,10 +3345,10 @@ type restartProcessMsg struct {
 }
 
 type restartAllMsg struct {
-	message     string
-	isError     bool
-	clearLogs   bool
-	restarted   int
+	message   string
+	isError   bool
+	clearLogs bool
+	restarted int
 }
 
 func (m *Model) waitForUpdates() tea.Cmd {
@@ -3715,7 +3715,7 @@ func (m *Model) handleRestartProcess(proc *process.Process) tea.Cmd {
 		// This prevents port conflicts when restarting servers
 		if proc.Name == "server" || proc.Name == "dev" || proc.Name == "start" {
 			m.processMgr.KillProcessesByPort()
-			// Give a moment for ports to be freed
+			// Give a moment for ports to be freed - using timer in tea.Cmd context is appropriate
 			time.Sleep(500 * time.Millisecond)
 		}
 

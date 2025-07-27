@@ -118,7 +118,7 @@ func (afo *AtomicFileOperations) SafeListInstances() (map[string]*Instance, erro
 func (afo *AtomicFileOperations) withLock(fn func() error) error {
 	// Create lock file path
 	lockFile := filepath.Join(afo.instancesDir, ".discovery.lock")
-	
+
 	// Ensure the lock directory exists
 	if err := os.MkdirAll(afo.instancesDir, DefaultDirMode); err != nil {
 		return fmt.Errorf("failed to create lock directory: %w", err)

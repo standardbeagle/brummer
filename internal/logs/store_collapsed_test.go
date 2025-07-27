@@ -24,6 +24,9 @@ func TestLogCollapsing(t *testing.T) {
 	time.Sleep(1 * time.Millisecond)
 	store.Add("proc1", "test", "Another repeated message", false)
 
+	// Wait for async processing to complete
+	time.Sleep(10 * time.Millisecond)
+
 	// Get collapsed logs
 	collapsed := store.GetAllCollapsed()
 
@@ -75,6 +78,9 @@ func TestLogCollapsingByProcess(t *testing.T) {
 	store.Add("proc2", "test2", "Message A", false) // Same content, different process
 	store.Add("proc1", "test1", "Message A", false) // Same as first
 
+	// Wait for async processing to complete
+	time.Sleep(10 * time.Millisecond)
+
 	// Get collapsed logs for proc1
 	collapsed := store.GetByProcessCollapsed("proc1")
 
@@ -114,6 +120,9 @@ func TestLogCollapsingWithDifferentLevels(t *testing.T) {
 	store.Add("proc1", "test", "Test message", false)
 	store.Add("proc1", "test", "Test message", true) // Same content but error
 	store.Add("proc1", "test", "Test message", false)
+
+	// Wait for async processing to complete
+	time.Sleep(10 * time.Millisecond)
 
 	// Get collapsed logs
 	collapsed := store.GetAllCollapsed()

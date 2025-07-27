@@ -9,13 +9,13 @@ import (
 
 // NetworkError represents a structured network error with classification and retry information
 type NetworkError struct {
-	Type       ErrorType                  `json:"type"`
-	Underlying error                      `json:"-"`
-	Temporary  bool                       `json:"temporary"`
-	RetryAfter time.Duration              `json:"retry_after"`
-	Context    map[string]interface{}     `json:"context,omitempty"`
-	Instance   string                     `json:"instance,omitempty"`
-	Timestamp  time.Time                  `json:"timestamp"`
+	Type       ErrorType              `json:"type"`
+	Underlying error                  `json:"-"`
+	Temporary  bool                   `json:"temporary"`
+	RetryAfter time.Duration          `json:"retry_after"`
+	Context    map[string]interface{} `json:"context,omitempty"`
+	Instance   string                 `json:"instance,omitempty"`
+	Timestamp  time.Time              `json:"timestamp"`
 }
 
 // ErrorType represents different categories of network errors
@@ -129,40 +129,40 @@ func ClassifyNetworkError(err error) *NetworkError {
 	}
 
 	netErr := &NetworkError{
-		Type:      ErrorTypeUnknown,
+		Type:       ErrorTypeUnknown,
 		Underlying: err,
-		Temporary: false,
-		Timestamp: time.Now(),
-		Context:   make(map[string]interface{}),
+		Temporary:  false,
+		Timestamp:  time.Now(),
+		Context:    make(map[string]interface{}),
 	}
 
 	// Analyze error message for specific patterns first (more specific)
 	errStr := strings.ToLower(err.Error())
-	
+
 	switch {
 	case strings.Contains(errStr, "context canceled"):
 		netErr.Type = ErrorTypeContextCancelled
 		netErr.Temporary = false // Don't retry cancelled operations
 		return netErr
-		
+
 	case strings.Contains(errStr, "context deadline exceeded"):
 		netErr.Type = ErrorTypeContextDeadline
 		netErr.Temporary = true
 		netErr.RetryAfter = 1 * time.Second
 		return netErr
 	}
-	
+
 	// Check for standard net.Error interface
 	if nerr, ok := err.(net.Error); ok {
 		netErr.Context["net_error"] = true
-		
+
 		if nerr.Timeout() {
 			netErr.Type = ErrorTypeTimeout
 			netErr.Temporary = true
 			netErr.RetryAfter = 5 * time.Second
 			return netErr
 		}
-		
+
 		if nerr.Temporary() {
 			netErr.Temporary = true
 			netErr.RetryAfter = 2 * time.Second
@@ -175,49 +175,49 @@ func ClassifyNetworkError(err error) *NetworkError {
 		netErr.Type = ErrorTypeConnRefused
 		netErr.Temporary = true
 		netErr.RetryAfter = 10 * time.Second
-		
+
 	case strings.Contains(errStr, "connection reset"):
 		netErr.Type = ErrorTypeConnReset
 		netErr.Temporary = true
 		netErr.RetryAfter = 2 * time.Second
-		
+
 	case strings.Contains(errStr, "timeout") || strings.Contains(errStr, "timed out"):
 		netErr.Type = ErrorTypeTimeout
 		netErr.Temporary = true
 		netErr.RetryAfter = 5 * time.Second
-		
+
 	case strings.Contains(errStr, "network is unreachable"):
 		netErr.Type = ErrorTypeNetworkUnreachable
 		netErr.Temporary = true
 		netErr.RetryAfter = 15 * time.Second
-		
+
 	case strings.Contains(errStr, "host unreachable") || strings.Contains(errStr, "no such host"):
 		netErr.Type = ErrorTypeHostUnreachable
 		netErr.Temporary = true
 		netErr.RetryAfter = 30 * time.Second
-		
+
 	case strings.Contains(errStr, "no route to host"):
 		netErr.Type = ErrorTypeNoRoute
 		netErr.Temporary = true
 		netErr.RetryAfter = 30 * time.Second
-		
+
 	case strings.Contains(errStr, "permission denied"):
 		netErr.Type = ErrorTypePermissionDenied
 		netErr.Temporary = false // Don't retry permission errors
-		
+
 	case strings.Contains(errStr, "tls") || strings.Contains(errStr, "certificate"):
 		netErr.Type = ErrorTypeTLSHandshake
 		netErr.Temporary = false // Don't retry TLS errors
-		
+
 	case strings.Contains(errStr, "dns") || strings.Contains(errStr, "name resolution"):
 		netErr.Type = ErrorTypeDNS
 		netErr.Temporary = true
 		netErr.RetryAfter = 10 * time.Second
-		
+
 	case strings.Contains(errStr, "process") && strings.Contains(errStr, "not found"):
 		netErr.Type = ErrorTypeProcessNotFound
 		netErr.Temporary = false // Don't retry if process doesn't exist
-		
+
 	default:
 		// For unknown errors, be conservative about retrying
 		netErr.Type = ErrorTypeUnknown
@@ -249,20 +249,20 @@ func ClassifyHTTPError(statusCode int, err error) *NetworkError {
 		netErr.Temporary = true
 		netErr.RetryAfter = 5 * time.Second
 		netErr.Context["http_category"] = "server_error"
-		
+
 	case statusCode == 429:
 		// Rate limiting - temporary but longer delay
 		netErr.Type = ErrorTypeProtocol
 		netErr.Temporary = true
 		netErr.RetryAfter = 30 * time.Second
 		netErr.Context["http_category"] = "rate_limited"
-		
+
 	case statusCode >= 400 && statusCode < 500:
 		// Client errors - usually not retryable
 		netErr.Type = ErrorTypeProtocol
 		netErr.Temporary = false
 		netErr.Context["http_category"] = "client_error"
-		
+
 	case statusCode >= 300 && statusCode < 400:
 		// Redirection - might be retryable depending on implementation
 		netErr.Type = ErrorTypeProtocol
@@ -279,12 +279,12 @@ func IsRetryableError(err error) bool {
 	if netErr, ok := err.(*NetworkError); ok {
 		return netErr.ShouldRetry()
 	}
-	
+
 	// For non-NetworkError types, use basic heuristics
 	if nerr, ok := err.(net.Error); ok {
 		return nerr.Temporary()
 	}
-	
+
 	// Default to not retrying unknown error types
 	return false
 }
@@ -294,20 +294,20 @@ func GetRetryDelay(err error) time.Duration {
 	if netErr, ok := err.(*NetworkError); ok {
 		return netErr.GetRetryDelay()
 	}
-	
+
 	// Default retry delay for unstructured errors
 	return 5 * time.Second
 }
 
 // ErrorStats tracks error statistics for monitoring and debugging
 type ErrorStats struct {
-	TotalErrors    int                    `json:"total_errors"`
-	ErrorsByType   map[string]int         `json:"errors_by_type"`
-	ErrorsByCode   map[int]int            `json:"errors_by_code,omitempty"`
-	LastError      *NetworkError          `json:"last_error,omitempty"`
-	LastErrorTime  time.Time              `json:"last_error_time"`
-	TempErrorCount int                    `json:"temporary_error_count"`
-	PermErrorCount int                    `json:"permanent_error_count"`
+	TotalErrors    int            `json:"total_errors"`
+	ErrorsByType   map[string]int `json:"errors_by_type"`
+	ErrorsByCode   map[int]int    `json:"errors_by_code,omitempty"`
+	LastError      *NetworkError  `json:"last_error,omitempty"`
+	LastErrorTime  time.Time      `json:"last_error_time"`
+	TempErrorCount int            `json:"temporary_error_count"`
+	PermErrorCount int            `json:"permanent_error_count"`
 }
 
 // NewErrorStats creates a new error statistics tracker
@@ -325,16 +325,16 @@ func (es *ErrorStats) RecordError(err error) {
 
 	if netErr, ok := err.(*NetworkError); ok {
 		es.LastError = netErr
-		
+
 		typeStr := netErr.Type.String()
 		es.ErrorsByType[typeStr]++
-		
+
 		if netErr.Temporary {
 			es.TempErrorCount++
 		} else {
 			es.PermErrorCount++
 		}
-		
+
 		if httpCode, exists := netErr.Context["http_status_code"]; exists {
 			if code, ok := httpCode.(int); ok {
 				es.ErrorsByCode[code]++
@@ -347,7 +347,7 @@ func (es *ErrorStats) RecordError(err error) {
 			es.LastError = classified
 			typeStr := classified.Type.String()
 			es.ErrorsByType[typeStr]++
-			
+
 			if classified.Temporary {
 				es.TempErrorCount++
 			} else {
@@ -365,7 +365,7 @@ func (es *ErrorStats) GetErrorRate() (tempRate, permRate float64) {
 	if es.TotalErrors == 0 {
 		return 0, 0
 	}
-	
+
 	tempRate = float64(es.TempErrorCount) / float64(es.TotalErrors) * 100
 	permRate = float64(es.PermErrorCount) / float64(es.TotalErrors) * 100
 	return tempRate, permRate

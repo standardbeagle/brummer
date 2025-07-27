@@ -30,10 +30,10 @@ func NewPersistentHubClient(port int) (*PersistentHubClient, error) {
 	// Create transport optimized for long-running persistent connections
 	transport := &http.Transport{
 		// Connection pooling settings
-		MaxIdleConns:        10,                // Total idle connections across all hosts
-		MaxIdleConnsPerHost: 1,                 // Only 1 persistent connection per instance
-		IdleConnTimeout:     24 * time.Hour,    // Keep connections alive for hours
-		MaxConnsPerHost:     2,                 // Limit total connections per host
+		MaxIdleConns:        10,             // Total idle connections across all hosts
+		MaxIdleConnsPerHost: 1,              // Only 1 persistent connection per instance
+		IdleConnTimeout:     24 * time.Hour, // Keep connections alive for hours
+		MaxConnsPerHost:     2,              // Limit total connections per host
 
 		// Keep-alive settings for long-running connections
 		DisableKeepAlives: false,
@@ -52,13 +52,13 @@ func NewPersistentHubClient(port int) (*PersistentHubClient, error) {
 			if err != nil {
 				return nil, err
 			}
-			
+
 			// Configure socket options for better connection stability
 			if tcpConn, ok := conn.(*net.TCPConn); ok {
 				tcpConn.SetKeepAlive(true)
 				tcpConn.SetKeepAlivePeriod(30 * time.Second)
 			}
-			
+
 			return conn, nil
 		},
 
@@ -290,7 +290,7 @@ func (c *PersistentHubClient) GetConnectionStats() map[string]interface{} {
 	defer c.connMu.Unlock()
 
 	return map[string]interface{}{
-		"established":      c.established,
+		"established":     c.established,
 		"baseURL":         c.baseURL,
 		"maxIdleConns":    c.transport.MaxIdleConns,
 		"maxConnsPerHost": c.transport.MaxConnsPerHost,

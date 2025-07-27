@@ -422,6 +422,9 @@ func registerHubLogTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		mcplib.WithNumber("limit",
 			mcplib.Description("Number of historical logs to return (default: 100)"),
 		),
+		mcplib.WithString("output_file",
+			mcplib.Description("Optional file path to write log data (e.g., 'logs.json', 'debug/instance-logs.json')"),
+		),
 	)
 	srv.AddTool(streamTool, func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		instanceID, err := request.RequireString("instance_id")
@@ -441,6 +444,9 @@ func registerHubLogTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		}
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
+		}
+		if outputFile := request.GetString("output_file", ""); outputFile != "" {
+			args["output_file"] = outputFile
 		}
 
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "logs_stream", args)
@@ -527,6 +533,9 @@ func registerHubLogTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		mcplib.WithNumber("limit",
 			mcplib.Description("Maximum results to return (default: 100)"),
 		),
+		mcplib.WithString("output_file",
+			mcplib.Description("Optional file path to write search results (e.g., 'search-results.json', 'debug/logs-search.json')"),
+		),
 	)
 	srv.AddTool(searchTool, func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		instanceID, err := request.RequireString("instance_id")
@@ -557,6 +566,9 @@ func registerHubLogTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		}
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
+		}
+		if outputFile := request.GetString("output_file", ""); outputFile != "" {
+			args["output_file"] = outputFile
 		}
 
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "logs_search", args)
@@ -632,6 +644,9 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		mcplib.WithNumber("limit",
 			mcplib.Description("Maximum requests to return (default: 100)"),
 		),
+		mcplib.WithString("output_file",
+			mcplib.Description("Optional file path to write request data (e.g., 'requests.json', 'debug/api-requests.json')"),
+		),
 	)
 	srv.AddTool(requestsTool, func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		instanceID, err := request.RequireString("instance_id")
@@ -648,6 +663,9 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		}
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
+		}
+		if outputFile := request.GetString("output_file", ""); outputFile != "" {
+			args["output_file"] = outputFile
 		}
 
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "proxy_requests", args)
@@ -724,6 +742,9 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		mcplib.WithNumber("limit",
 			mcplib.Description("Maximum sessions to return (default: 50)"),
 		),
+		mcplib.WithString("output_file",
+			mcplib.Description("Optional file path to write telemetry session data (e.g., 'sessions.json', 'debug/telemetry-sessions.json')"),
+		),
 	)
 	srv.AddTool(sessionsTool, func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		instanceID, err := request.RequireString("instance_id")
@@ -737,6 +758,9 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		}
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
+		}
+		if outputFile := request.GetString("output_file", ""); outputFile != "" {
+			args["output_file"] = outputFile
 		}
 
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "telemetry_sessions", args)
@@ -820,6 +844,9 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		mcplib.WithNumber("limit",
 			mcplib.Description("Number of historical events to return (default: 100)"),
 		),
+		mcplib.WithString("output_file",
+			mcplib.Description("Optional file path to write telemetry event data (e.g., 'events.json', 'debug/telemetry-events.json')"),
+		),
 	)
 	srv.AddTool(eventsTool, func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
 		instanceID, err := request.RequireString("instance_id")
@@ -839,6 +866,9 @@ func registerHubProxyTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 		}
 		if limit := request.GetInt("limit", 0); limit > 0 {
 			args["limit"] = limit
+		}
+		if outputFile := request.GetString("output_file", ""); outputFile != "" {
+			args["output_file"] = outputFile
 		}
 
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "telemetry_events", args)
@@ -1149,19 +1179,19 @@ func registerHubBrowserTools(srv *server.MCPServer, connMgr *ConnectionManager) 
 1. instances_list to identify target frontend instances
 2. hub_browser_navigate to set up desired page state (if needed)
 3. hub_browser_screenshot to capture visual state from specific instance
-4. Use outputPath for organized screenshot management across instances
+4. Use output_file for organized screenshot management across instances
 
 **Instance targeting:**
 - **instance_id**: Required - which brummer instance to capture screenshot from
 - **sessionId**: Optional - specific browser session within instance
-- **outputPath**: Optional - where to save screenshot (useful for organizing by instance)
+- **output_file**: Optional - where to save screenshot (useful for organizing by instance)
 
 **Few-shot examples:**
 1. User: "Take a screenshot of the main application"
    → hub_browser_screenshot with {"instance_id": "main-app-abc123"}
 
 2. User: "Capture the admin dashboard for documentation"
-   → hub_browser_screenshot with {"instance_id": "admin-def456", "outputPath": "admin-dashboard.png"}
+   → hub_browser_screenshot with {"instance_id": "admin-def456", "output_file": "admin-dashboard.png"}
 
 3. User: "Screenshot the e-commerce checkout page"
    → hub_browser_screenshot with {"instance_id": "ecommerce-ghi789", "sessionId": "checkout-session"}
@@ -1176,7 +1206,7 @@ func registerHubBrowserTools(srv *server.MCPServer, connMgr *ConnectionManager) 
 - **Multi-environment documentation**: Capture different configurations per instance
 
 **Screenshot organization patterns:**
-1. **Service-based naming**: Use outputPath like "frontend-homepage.png", "admin-settings.png"
+1. **Service-based naming**: Use output_file like "frontend-homepage.png", "admin-settings.png"
 2. **Timestamp organization**: Include instance name and timestamp in filenames
 3. **Feature documentation**: Capture specific features from relevant instances
 4. **Comparison sets**: Take screenshots from multiple instances for side-by-side comparison
@@ -1194,8 +1224,8 @@ func registerHubBrowserTools(srv *server.MCPServer, connMgr *ConnectionManager) 
 		mcplib.WithString("sessionId",
 			mcplib.Description("Specific session to screenshot (defaults to most recent)"),
 		),
-		mcplib.WithString("outputPath",
-			mcplib.Description("Path to save screenshot (optional)"),
+		mcplib.WithString("output_file",
+			mcplib.Description("Optional file path to save screenshot (e.g., 'screenshot.png', 'captures/page.png')"),
 		),
 	)
 	srv.AddTool(screenshotTool, func(ctx context.Context, request mcplib.CallToolRequest) (*mcplib.CallToolResult, error) {
@@ -1208,8 +1238,8 @@ func registerHubBrowserTools(srv *server.MCPServer, connMgr *ConnectionManager) 
 		if sessionID := request.GetString("sessionId", ""); sessionID != "" {
 			args["sessionId"] = sessionID
 		}
-		if outputPath := request.GetString("outputPath", ""); outputPath != "" {
-			args["outputPath"] = outputPath
+		if outputFile := request.GetString("output_file", ""); outputFile != "" {
+			args["output_file"] = outputFile
 		}
 
 		result, err := callInstanceTool(ctx, connMgr, instanceID, "browser_screenshot", args)

@@ -2,6 +2,31 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Current Execution Status
+
+⚠️ **CRITICAL INSTRUCTION**: Always update this section when working on tasks to maintain continuity between sessions.
+
+- **Phase**: Task Execution - Critical Stabilization
+- **Current Task**: Fix 3 failing tests and TUI race condition
+- **Stage**: COMPLETED - Critical fixes implemented, feature completion unblocked
+- **Started**: July 27, 2025
+- **Branch**: feature/add-file-output-to-mcp-tools (existing)
+- **Plan File**: todo-critical-stabilization.md
+- **Log File**: execution-log.md
+
+### Current Issues Being Resolved:
+1. **CRITICAL**: TestErrorParser_JavaScriptRuntimeErrors/Network_Error - Expected NetworkError but got JavaScriptError
+2. **CRITICAL**: TestLogCollapsing - Third entry count incorrect (expected 2, got 1)  
+3. **CRITICAL**: TestLogCollapsingByProcess - Index out of range panic
+4. **HIGH**: TUI race condition - time.Sleep(500ms) blocking UI thread at line 3719
+
+### Next Agent Instructions:
+- **ALWAYS check this status section first** to understand current work context
+- **ALWAYS update this section** when starting/completing tasks
+- **Current plan state stored in**: `todo-critical-stabilization.md`
+- **Execution tracking in**: `execution-log.md`
+- **Required for completion**: All 4 critical issues must be resolved before feature work continues
+
 ## Commands
 
 ### Building and Running
@@ -346,6 +371,51 @@ Brummer provides comprehensive MCP integration with two operational modes: **Sin
                                                 │  (Port 7780)    │
                                                 └─────────────────┘
 ```
+
+### Tool Description Design Philosophy
+
+**Theory Under Test**: Brummer implements a two-tiered documentation approach designed to optimize MCP client adoption and usage patterns.
+
+#### **Concise Discovery + Detailed Guidance Pattern**
+
+**Primary Hypothesis**: By providing concise, targeted tool descriptions that explicitly reference extended documentation via `about tool="toolname"`, MCP clients will:
+
+1. **Faster Tool Discovery**: Short descriptions in `tools/list` responses enable quick scanning and tool selection
+2. **Guided Deep Dive**: Explicit reference to `about tool="toolname"` creates a clear path to comprehensive documentation
+3. **Improved Usage Accuracy**: Detailed examples and context in the about tool lead to more effective tool utilization
+4. **Increased Adoption**: The combination of easy discovery + comprehensive guidance lowers barriers to effective tool usage
+
+#### **Implementation Strategy**
+
+**Tool List Descriptions** (2-3 lines maximum):
+- Brief functional description of what the tool does
+- Key capability or differentiator (e.g., "supports file output", "real-time streaming")
+- Explicit reference: "For detailed documentation and examples, use: about tool=\"toolname\""
+
+**About Tool Documentation** (comprehensive):
+- When to use (specific scenarios and user intents)
+- Workflow context and integration patterns
+- Few-shot examples with realistic user requests
+- Parameter combinations and best practices
+- Common error scenarios and troubleshooting
+- Integration with other tools in the ecosystem
+
+#### **Expected Outcomes**
+
+This design philosophy aims to:
+- **Reduce Cognitive Load**: Tool lists become scannable rather than overwhelming
+- **Increase Discoverability**: Users can quickly identify relevant tools without information overload
+- **Improve Success Rate**: Comprehensive guidance in about tool reduces trial-and-error usage
+- **Drive Ecosystem Adoption**: Clear path from discovery to mastery encourages broader tool utilization
+- **Support AI Assistants**: Enables efficient tool selection followed by detailed context retrieval
+
+#### **Measurement Criteria**
+
+Success indicators for this approach:
+- Tool usage patterns (frequency of about tool calls following tool discovery)
+- Error reduction in tool calls (fewer malformed requests)
+- User workflow completion rates (successful multi-tool sequences)
+- Documentation access patterns (about tool usage correlation with tool adoption)
 
 ### Server Configuration
 

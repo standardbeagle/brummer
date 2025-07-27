@@ -34,9 +34,9 @@ func (ns NetworkState) String() string {
 
 // SleepWakeEvent represents system sleep/wake events
 type SleepWakeEvent struct {
-	Type      string    // "sleep", "wake", or "suspected_wake"
+	Type      string // "sleep", "wake", or "suspected_wake"
 	Timestamp time.Time
-	Reason    string    // Description of why this event was detected
+	Reason    string // Description of why this event was detected
 }
 
 // NetworkEvent represents a network connectivity change
@@ -63,8 +63,8 @@ type NetworkMonitor struct {
 	// Configuration
 	connectivityTestInterval time.Duration
 	interfaceCheckInterval   time.Duration
-	testEndpoints           []string
-	connectivityTimeout     time.Duration
+	testEndpoints            []string
+	connectivityTimeout      time.Duration
 
 	// Lifecycle management
 	ctx    context.Context
@@ -97,8 +97,8 @@ func NewNetworkMonitor() *NetworkMonitor {
 		ctx:                      ctx,
 		cancel:                   cancel,
 		testEndpoints: []string{
-			"1.1.1.1:53",      // Cloudflare DNS
-			"8.8.8.8:53",      // Google DNS
+			"1.1.1.1:53",        // Cloudflare DNS
+			"8.8.8.8:53",        // Google DNS
 			"208.67.222.222:53", // OpenDNS
 		},
 	}
@@ -228,13 +228,13 @@ func (nm *NetworkMonitor) monitorSleepWake() {
 
 		case <-ticker.C:
 			now := time.Now()
-			
+
 			// Detect potential sleep by looking for time jumps
 			// If more than 2x the check interval has passed, we might have slept
 			expectedNext := lastSeen.Add(checkInterval)
 			if now.After(expectedNext.Add(checkInterval)) {
 				suspectedSleepDuration := now.Sub(expectedNext)
-				
+
 				// Only report if the gap is significant (more than 2 minutes)
 				if suspectedSleepDuration > 2*time.Minute {
 					select {
@@ -247,7 +247,7 @@ func (nm *NetworkMonitor) monitorSleepWake() {
 					}
 				}
 			}
-			
+
 			lastSeen = now
 		}
 	}
@@ -282,7 +282,7 @@ func (nm *NetworkMonitor) checkConnectivity() {
 		newState = NetworkStateConnected
 	} else {
 		nm.consecutiveTests++
-		
+
 		// Require multiple failures before declaring disconnected
 		if nm.consecutiveTests >= 2 {
 			newState = NetworkStateDisconnected
@@ -296,7 +296,7 @@ func (nm *NetworkMonitor) checkConnectivity() {
 		nm.currentState = newState
 		nm.lastStateChange = now
 
-		reason := fmt.Sprintf("Connectivity test result: %v (consecutive failures: %d)", 
+		reason := fmt.Sprintf("Connectivity test result: %v (consecutive failures: %d)",
 			connected, nm.consecutiveTests)
 
 		// Send network event
@@ -310,7 +310,7 @@ func (nm *NetworkMonitor) checkConnectivity() {
 			// Channel full, drop event
 		}
 
-		debugLog("Network state changed: %s -> %s (%s)", 
+		debugLog("Network state changed: %s -> %s (%s)",
 			previousState, newState, reason)
 	}
 
@@ -404,13 +404,13 @@ func (nm *NetworkMonitor) GetStats() map[string]interface{} {
 	defer nm.mu.RUnlock()
 
 	return map[string]interface{}{
-		"currentState":       nm.currentState.String(),
-		"lastStateChange":    nm.lastStateChange,
-		"lastConnectTest":    nm.lastConnectTest,
-		"consecutiveTests":   nm.consecutiveTests,
-		"interfaceCount":     len(nm.interfaceStates),
-		"testEndpoints":      nm.testEndpoints,
-		"platform":           runtime.GOOS,
+		"currentState":     nm.currentState.String(),
+		"lastStateChange":  nm.lastStateChange,
+		"lastConnectTest":  nm.lastConnectTest,
+		"consecutiveTests": nm.consecutiveTests,
+		"interfaceCount":   len(nm.interfaceStates),
+		"testEndpoints":    nm.testEndpoints,
+		"platform":         runtime.GOOS,
 	}
 }
 
