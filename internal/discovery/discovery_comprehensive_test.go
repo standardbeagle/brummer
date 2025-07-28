@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -209,7 +210,7 @@ func TestInstanceFileValidation(t *testing.T) {
 			if tc.shouldFail {
 				if err == nil {
 					t.Errorf("Expected error for %s", tc.name)
-				} else if tc.errorContains != "" && !contains(err.Error(), tc.errorContains) {
+				} else if tc.errorContains != "" && !strings.Contains(err.Error(), tc.errorContains) {
 					t.Errorf("Expected error containing '%s', got: %v", tc.errorContains, err)
 				}
 			} else {
@@ -291,7 +292,8 @@ func TestFileWatcherReliability(t *testing.T) {
 	}
 	
 	// Small delay to ensure updates are processed
-	time.Sleep(500 * time.Millisecond)
+	// This is needed because file system events may be batched
+	time.Sleep(100 * time.Millisecond)
 	
 	// Remove half the instances
 	removedCount := numInstances / 2
@@ -418,11 +420,11 @@ func TestStaleInstanceCleanup(t *testing.T) {
 	}
 	
 	// Wait for discovery
-	time.Sleep(200 * time.Millisecond)
-	
-	// Verify both instances exist
-	instances := discovery.GetInstances()
-	if len(instances) != 2 {
+	if !th.WaitForCondition(2*time.Second, 50*time.Millisecond, func() bool {
+		instances := discovery.GetInstances()
+		return len(instances) == 2
+	}) {
+		instances := discovery.GetInstances()
 		t.Fatalf("Expected 2 instances, got %d", len(instances))
 	}
 	
@@ -432,16 +434,16 @@ func TestStaleInstanceCleanup(t *testing.T) {
 	}
 	
 	// Verify stale instance was removed
-	instances = discovery.GetInstances()
-	if len(instances) != 1 {
-		t.Errorf("Expected 1 instance after cleanup, got %d", len(instances))
+	finalInstances := discovery.GetInstances()
+	if len(finalInstances) != 1 {
+		t.Errorf("Expected 1 instance after cleanup, got %d", len(finalInstances))
 	}
 	
-	if _, exists := instances["stale-1"]; exists {
+	if _, exists := finalInstances["stale-1"]; exists {
 		t.Error("Stale instance should have been removed")
 	}
 	
-	if _, exists := instances["fresh-1"]; !exists {
+	if _, exists := finalInstances["fresh-1"]; !exists {
 		t.Error("Fresh instance should still exist")
 	}
 }
@@ -480,15 +482,20 @@ func TestFileCorruptionHandling(t *testing.T) {
 	
 	// Start discovery - it should handle corrupted files gracefully
 	discovery.Start()
-	time.Sleep(200 * time.Millisecond)
 	
-	// Should only have the valid instance
-	instances := discovery.GetInstances()
-	if len(instances) != 1 {
+	// Wait for discovery to process files
+	if !th.WaitForCondition(2*time.Second, 50*time.Millisecond, func() bool {
+		instances := discovery.GetInstances()
+		// Should find exactly one valid instance among the corrupted files
+		return len(instances) == 1
+	}) {
+		instances := discovery.GetInstances()
 		t.Errorf("Expected 1 valid instance, got %d", len(instances))
 	}
 	
-	if _, exists := instances["valid-among-corrupt"]; !exists {
+	// Verify the valid instance was discovered
+	validInstances := discovery.GetInstances()
+	if _, exists := validInstances["valid-among-corrupt"]; !exists {
 		t.Error("Valid instance should be discovered despite corrupted files")
 	}
 }
@@ -630,16 +637,3 @@ func TestHubDiscoveryIntegration(t *testing.T) {
 	}
 }
 
-// Helper function to check if string contains substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && s[0:len(substr)] == substr || (len(s) > len(substr) && s[len(s)-len(substr):] == substr) || (len(substr) > 0 && len(s) > len(substr) && findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
