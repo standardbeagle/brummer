@@ -527,16 +527,21 @@ For detailed documentation and examples, use: about tool="logs_stream"`,
 					"type": "integer",
 					"default": 100,
 					"description": "Number of historical logs to return"
+				},
+				"output_file": {
+					"type": "string",
+					"description": "Optional file path to write log data (e.g., 'logs.json', 'debug/stream-logs.json')"
 				}
 			}
 		}`),
 		Streaming: true,
 		StreamingHandler: func(args json.RawMessage, send func(interface{})) (interface{}, error) {
 			var params struct {
-				ProcessID string `json:"processId"`
-				Level     string `json:"level"`
-				Follow    bool   `json:"follow"`
-				Limit     int    `json:"limit"`
+				ProcessID  string `json:"processId"`
+				Level      string `json:"level"`
+				Follow     bool   `json:"follow"`
+				Limit      int    `json:"limit"`
+				OutputFile string `json:"output_file"`
 			}
 			// Set defaults
 			params.Follow = true
@@ -609,8 +614,9 @@ For detailed documentation and examples, use: about tool="logs_stream"`,
 		},
 		Handler: func(args json.RawMessage) (interface{}, error) {
 			var params struct {
-				ProcessID string `json:"processId"`
-				Limit     int    `json:"limit"`
+				ProcessID  string `json:"processId"`
+				Limit      int    `json:"limit"`
+				OutputFile string `json:"output_file"`
 			}
 			params.Limit = 100
 			json.Unmarshal(args, &params)
@@ -626,7 +632,51 @@ For detailed documentation and examples, use: about tool="logs_stream"`,
 				logs = logs[len(logs)-params.Limit:]
 			}
 
-			return logs, nil
+			result := map[string]interface{}{
+				"logs": logs,
+			}
+
+			// Write to file if requested
+			if params.OutputFile != "" {
+				// Validate output path for security
+				if err := validateOutputPath(params.OutputFile); err != nil {
+					result["error"] = fmt.Sprintf("Invalid output file path: %v", err)
+					return result, nil
+				}
+
+				logData := map[string]interface{}{
+					"timestamp": time.Now().Format(time.RFC3339),
+					"tool":      "logs_stream",
+					"parameters": map[string]interface{}{
+						"processId": params.ProcessID,
+						"limit":     params.Limit,
+					},
+					"count": len(logs),
+					"logs":  logs,
+				}
+
+				data, err := json.MarshalIndent(logData, "", "  ")
+				if err != nil {
+					result["error"] = fmt.Sprintf("Failed to marshal logs data: %v", err)
+					return result, nil
+				}
+
+				if err := os.WriteFile(params.OutputFile, data, 0644); err != nil {
+					absPath, _ := filepath.Abs(params.OutputFile)
+					cwd, _ := os.Getwd()
+					result["error"] = fmt.Sprintf("Failed to write logs to file: %v\nFile path: %s\nAbsolute path: %s\nWorking directory: %s\nData size: %d bytes", err, params.OutputFile, absPath, cwd, len(data))
+					return result, nil
+				}
+				result["file_written"] = params.OutputFile
+				result["message"] = fmt.Sprintf("Logs written to %s (%d entries)", params.OutputFile, len(logs))
+			}
+
+			// For backward compatibility, return logs directly if no file output
+			if params.OutputFile == "" {
+				return logs, nil
+			}
+
+			return result, nil
 		},
 	}
 
@@ -668,18 +718,23 @@ For detailed documentation and examples, use: about tool="logs_search"`,
 					"type": "integer",
 					"default": 100,
 					"description": "Maximum results to return"
+				},
+				"output_file": {
+					"type": "string",
+					"description": "Optional file path to write search results (e.g., 'search-results.json', 'debug/logs-search.json')"
 				}
 			},
 			"required": ["query"]
 		}`),
 		Handler: func(args json.RawMessage) (interface{}, error) {
 			var params struct {
-				Query     string `json:"query"`
-				Regex     bool   `json:"regex"`
-				Level     string `json:"level"`
-				ProcessID string `json:"processId"`
-				Since     string `json:"since"`
-				Limit     int    `json:"limit"`
+				Query      string `json:"query"`
+				Regex      bool   `json:"regex"`
+				Level      string `json:"level"`
+				ProcessID  string `json:"processId"`
+				Since      string `json:"since"`
+				Limit      int    `json:"limit"`
+				OutputFile string `json:"output_file"`
 			}
 			params.Limit = 100
 			if err := json.Unmarshal(args, &params); err != nil {
@@ -748,7 +803,55 @@ For detailed documentation and examples, use: about tool="logs_search"`,
 				}
 			}
 
-			return filtered, nil
+			result := map[string]interface{}{
+				"results": filtered,
+			}
+
+			// Write to file if requested
+			if params.OutputFile != "" {
+				// Validate output path for security
+				if err := validateOutputPath(params.OutputFile); err != nil {
+					result["error"] = fmt.Sprintf("Invalid output file path: %v", err)
+					return result, nil
+				}
+
+				searchData := map[string]interface{}{
+					"timestamp": time.Now().Format(time.RFC3339),
+					"tool":      "logs_search",
+					"parameters": map[string]interface{}{
+						"query":     params.Query,
+						"regex":     params.Regex,
+						"level":     params.Level,
+						"processId": params.ProcessID,
+						"since":     params.Since,
+						"limit":     params.Limit,
+					},
+					"count":   len(filtered),
+					"results": filtered,
+				}
+
+				data, err := json.MarshalIndent(searchData, "", "  ")
+				if err != nil {
+					result["error"] = fmt.Sprintf("Failed to marshal search results: %v", err)
+					return result, nil
+				}
+
+				if err := os.WriteFile(params.OutputFile, data, 0644); err != nil {
+					absPath, _ := filepath.Abs(params.OutputFile)
+					cwd, _ := os.Getwd()
+					result["error"] = fmt.Sprintf("Failed to write search results to file: %v\nFile path: %s\nAbsolute path: %s\nWorking directory: %s\nData size: %d bytes", err, params.OutputFile, absPath, cwd, len(data))
+					return result, nil
+				}
+				result["file_written"] = params.OutputFile
+				result["message"] = fmt.Sprintf("Search results written to %s (%d entries)", params.OutputFile, len(filtered))
+			}
+
+			// For backward compatibility, return results directly if no file output
+			if params.OutputFile == "" {
+				return filtered, nil
+			}
+
+			return result, nil
 		},
 	}
 }
@@ -778,6 +881,10 @@ For detailed documentation and examples, use: about tool="proxy_requests"`,
 					"type": "integer",
 					"default": 100,
 					"description": "Maximum requests to return"
+				},
+				"output_file": {
+					"type": "string",
+					"description": "Optional file path to write request data (e.g., 'requests.json', 'debug/api-requests.json')"
 				}
 			}
 		}`),
@@ -786,6 +893,7 @@ For detailed documentation and examples, use: about tool="proxy_requests"`,
 				ProcessName string `json:"processName"`
 				Status      string `json:"status"`
 				Limit       int    `json:"limit"`
+				OutputFile  string `json:"output_file"`
 			}
 			params.Limit = 100
 			json.Unmarshal(args, &params)
@@ -829,7 +937,52 @@ For detailed documentation and examples, use: about tool="proxy_requests"`,
 				requests = requests[len(requests)-params.Limit:]
 			}
 
-			return requests, nil
+			result := map[string]interface{}{
+				"requests": requests,
+			}
+
+			// Write to file if requested
+			if params.OutputFile != "" {
+				// Validate output path for security
+				if err := validateOutputPath(params.OutputFile); err != nil {
+					result["error"] = fmt.Sprintf("Invalid output file path: %v", err)
+					return result, nil
+				}
+
+				requestData := map[string]interface{}{
+					"timestamp": time.Now().Format(time.RFC3339),
+					"tool":      "proxy_requests",
+					"parameters": map[string]interface{}{
+						"processName": params.ProcessName,
+						"status":      params.Status,
+						"limit":       params.Limit,
+					},
+					"count":    len(requests),
+					"requests": requests,
+				}
+
+				data, err := json.MarshalIndent(requestData, "", "  ")
+				if err != nil {
+					result["error"] = fmt.Sprintf("Failed to marshal request data: %v", err)
+					return result, nil
+				}
+
+				if err := os.WriteFile(params.OutputFile, data, 0644); err != nil {
+					absPath, _ := filepath.Abs(params.OutputFile)
+					cwd, _ := os.Getwd()
+					result["error"] = fmt.Sprintf("Failed to write request data to file: %v\nFile path: %s\nAbsolute path: %s\nWorking directory: %s\nData size: %d bytes", err, params.OutputFile, absPath, cwd, len(data))
+					return result, nil
+				}
+				result["file_written"] = params.OutputFile
+				result["message"] = fmt.Sprintf("Request data written to %s (%d entries)", params.OutputFile, len(requests))
+			}
+
+			// For backward compatibility, return requests directly if no file output
+			if params.OutputFile == "" {
+				return requests, nil
+			}
+
+			return result, nil
 		},
 	}
 
@@ -856,6 +1009,10 @@ For detailed documentation and examples, use: about tool="telemetry_sessions"`,
 					"type": "integer",
 					"default": 10,
 					"description": "Maximum sessions to return"
+				},
+				"output_file": {
+					"type": "string",
+					"description": "Optional file path to write telemetry session data (e.g., 'sessions.json', 'debug/telemetry-sessions.json')"
 				}
 			}
 		}`),
@@ -864,6 +1021,7 @@ For detailed documentation and examples, use: about tool="telemetry_sessions"`,
 				ProcessName string `json:"processName"`
 				SessionID   string `json:"sessionId"`
 				Limit       int    `json:"limit"`
+				OutputFile  string `json:"output_file"`
 			}
 			params.Limit = 10
 			json.Unmarshal(args, &params)
@@ -898,7 +1056,52 @@ For detailed documentation and examples, use: about tool="telemetry_sessions"`,
 				sessions = sessions[:params.Limit]
 			}
 
-			return sessions, nil
+			result := map[string]interface{}{
+				"sessions": sessions,
+			}
+
+			// Write to file if requested
+			if params.OutputFile != "" {
+				// Validate output path for security
+				if err := validateOutputPath(params.OutputFile); err != nil {
+					result["error"] = fmt.Sprintf("Invalid output file path: %v", err)
+					return result, nil
+				}
+
+				sessionData := map[string]interface{}{
+					"timestamp": time.Now().Format(time.RFC3339),
+					"tool":      "telemetry_sessions",
+					"parameters": map[string]interface{}{
+						"processName": params.ProcessName,
+						"sessionId":   params.SessionID,
+						"limit":       params.Limit,
+					},
+					"count":    len(sessions),
+					"sessions": sessions,
+				}
+
+				data, err := json.MarshalIndent(sessionData, "", "  ")
+				if err != nil {
+					result["error"] = fmt.Sprintf("Failed to marshal session data: %v", err)
+					return result, nil
+				}
+
+				if err := os.WriteFile(params.OutputFile, data, 0644); err != nil {
+					absPath, _ := filepath.Abs(params.OutputFile)
+					cwd, _ := os.Getwd()
+					result["error"] = fmt.Sprintf("Failed to write session data to file: %v\nFile path: %s\nAbsolute path: %s\nWorking directory: %s\nData size: %d bytes", err, params.OutputFile, absPath, cwd, len(data))
+					return result, nil
+				}
+				result["file_written"] = params.OutputFile
+				result["message"] = fmt.Sprintf("Session data written to %s (%d entries)", params.OutputFile, len(sessions))
+			}
+
+			// For backward compatibility, return sessions directly if no file output
+			if params.OutputFile == "" {
+				return sessions, nil
+			}
+
+			return result, nil
 		},
 	}
 
@@ -931,16 +1134,21 @@ For detailed documentation and examples, use: about tool="telemetry_events"`,
 					"type": "integer",
 					"default": 50,
 					"description": "Number of historical events"
+				},
+				"output_file": {
+					"type": "string",
+					"description": "Optional file path to write telemetry event data (e.g., 'events.json', 'debug/telemetry-events.json')"
 				}
 			}
 		}`),
 		Streaming: true,
 		StreamingHandler: func(args json.RawMessage, send func(interface{})) (interface{}, error) {
 			var params struct {
-				SessionID string `json:"sessionId"`
-				EventType string `json:"eventType"`
-				Follow    bool   `json:"follow"`
-				Limit     int    `json:"limit"`
+				SessionID  string `json:"sessionId"`
+				EventType  string `json:"eventType"`
+				Follow     bool   `json:"follow"`
+				Limit      int    `json:"limit"`
+				OutputFile string `json:"output_file"`
 			}
 			params.Follow = true
 			params.Limit = 50
@@ -1013,8 +1221,9 @@ For detailed documentation and examples, use: about tool="telemetry_events"`,
 		Handler: func(args json.RawMessage) (interface{}, error) {
 			// Non-streaming version
 			var params struct {
-				SessionID string `json:"sessionId"`
-				Limit     int    `json:"limit"`
+				SessionID  string `json:"sessionId"`
+				Limit      int    `json:"limit"`
+				OutputFile string `json:"output_file"`
 			}
 			params.Limit = 50
 			json.Unmarshal(args, &params)
@@ -1040,7 +1249,51 @@ For detailed documentation and examples, use: about tool="telemetry_events"`,
 				events = events[len(events)-params.Limit:]
 			}
 
-			return events, nil
+			result := map[string]interface{}{
+				"events": events,
+			}
+
+			// Write to file if requested
+			if params.OutputFile != "" {
+				// Validate output path for security
+				if err := validateOutputPath(params.OutputFile); err != nil {
+					result["error"] = fmt.Sprintf("Invalid output file path: %v", err)
+					return result, nil
+				}
+
+				eventData := map[string]interface{}{
+					"timestamp": time.Now().Format(time.RFC3339),
+					"tool":      "telemetry_events",
+					"parameters": map[string]interface{}{
+						"sessionId": params.SessionID,
+						"limit":     params.Limit,
+					},
+					"count":  len(events),
+					"events": events,
+				}
+
+				data, err := json.MarshalIndent(eventData, "", "  ")
+				if err != nil {
+					result["error"] = fmt.Sprintf("Failed to marshal event data: %v", err)
+					return result, nil
+				}
+
+				if err := os.WriteFile(params.OutputFile, data, 0644); err != nil {
+					absPath, _ := filepath.Abs(params.OutputFile)
+					cwd, _ := os.Getwd()
+					result["error"] = fmt.Sprintf("Failed to write event data to file: %v\nFile path: %s\nAbsolute path: %s\nWorking directory: %s\nData size: %d bytes", err, params.OutputFile, absPath, cwd, len(data))
+					return result, nil
+				}
+				result["file_written"] = params.OutputFile
+				result["message"] = fmt.Sprintf("Event data written to %s (%d entries)", params.OutputFile, len(events))
+			}
+
+			// For backward compatibility, return events directly if no file output
+			if params.OutputFile == "" {
+				return events, nil
+			}
+
+			return result, nil
 		},
 	}
 }
