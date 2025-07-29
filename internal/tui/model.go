@@ -253,10 +253,11 @@ type Model struct {
 	aiCoderView    AICoderView
 	
 	// PTY support
-	aiCoderPTYView   *AICoderPTYView
-	ptyManager       *aicoder.PTYManager
-	ptyEventSub      chan aicoder.PTYEvent
-	ptyDataProvider  aicoder.BrummerDataProvider
+	aiCoderPTYView    *AICoderPTYView
+	ptyManager        *aicoder.PTYManager
+	ptyEventSub       chan aicoder.PTYEvent
+	ptyDataProvider   aicoder.BrummerDataProvider
+	debugForwarder    *AICoderDebugForwarder
 }
 
 // handleGlobalKeys handles keys that should work in all views
@@ -1025,6 +1026,40 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		// Get PTY manager from AI coder manager
 		m.ptyManager = m.aiCoderManager.GetPTYManager()
 		
+		// Initialize debug forwarder
+		m.debugForwarder = NewAICoderDebugForwarder(&m)
+		
+		// Subscribe to events for debug forwarding
+		m.eventBus.Subscribe(events.ErrorDetected, func(event events.Event) {
+			if m.updateChan != nil && m.debugForwarder != nil {
+				go func() {
+					if cmd := m.debugForwarder.HandleBrummerEvent(event); cmd != nil {
+						m.updateChan <- cmd()
+					}
+				}()
+			}
+		})
+		
+		m.eventBus.Subscribe(events.TestFailed, func(event events.Event) {
+			if m.updateChan != nil && m.debugForwarder != nil {
+				go func() {
+					if cmd := m.debugForwarder.HandleBrummerEvent(event); cmd != nil {
+						m.updateChan <- cmd()
+					}
+				}()
+			}
+		})
+		
+		m.eventBus.Subscribe(events.BuildEvent, func(event events.Event) {
+			if m.updateChan != nil && m.debugForwarder != nil {
+				go func() {
+					if cmd := m.debugForwarder.HandleBrummerEvent(event); cmd != nil {
+						m.updateChan <- cmd()
+					}
+				}()
+			}
+		})
+		
 		// Create PTY event subscription channel
 		m.ptyEventSub = make(chan aicoder.PTYEvent, 100)
 		
@@ -1264,6 +1299,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Debug log to verify system messages are being received
 		if strings.Contains(msg.message, "MCP") {
 			m.logStore.Add("system-debug", "TUI", fmt.Sprintf("Received MCP system message: %s", msg.message), false)
+		}
+		// Forward to debug forwarder if enabled
+		if m.debugForwarder != nil {
+			if cmd := m.debugForwarder.HandleBrummerEvent(msg); cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 		cmds = append(cmds, m.waitForUpdates())
 

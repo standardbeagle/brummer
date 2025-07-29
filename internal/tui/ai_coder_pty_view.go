@@ -25,6 +25,8 @@ type AICoderPTYView struct {
 	isFullScreen   bool
 	terminalFocused bool
 	showHelp       bool
+	statusMessage  string
+	statusTime     time.Time
 	
 	// Key bindings
 	keyBindings []aicoder.KeyBinding
@@ -141,6 +143,22 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 		// Detach from current session (but keep it running)
 		v.currentSession = nil
 		v.terminalFocused = false
+		return v, nil
+		
+	case key.Matches(msg, key.NewBinding(key.WithKeys("f12"))):
+		// Toggle debug mode for auto event forwarding
+		if v.currentSession != nil {
+			newState := !v.currentSession.IsDebugModeEnabled()
+			v.currentSession.SetDebugMode(newState)
+			
+			// Show status message
+			status := "disabled"
+			if newState {
+				status = "enabled"
+			}
+			v.statusMessage = fmt.Sprintf("[DEBUG MODE %s - Auto-forwarding Brummer events]", strings.ToUpper(status))
+			v.statusTime = time.Now()
+		}
 		return v, nil
 	}
 	
@@ -315,7 +333,19 @@ func (v *AICoderPTYView) renderWindowed() string {
 	// Session info header
 	sessionInfo := v.sessionInfoStyle.Render(v.getSessionInfo())
 	content.WriteString(sessionInfo)
-	content.WriteString("\n\n")
+	content.WriteString("\n")
+	
+	// Status message if present
+	if v.statusMessage != "" && time.Since(v.statusTime) < 3*time.Second {
+		statusStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("220")).
+			Background(lipgloss.Color("236")).
+			Padding(0, 1).
+			Bold(true)
+		content.WriteString(statusStyle.Render(v.statusMessage))
+		content.WriteString("\n")
+	}
+	content.WriteString("\n")
 	
 	// Terminal content
 	if v.currentSession != nil {
@@ -335,7 +365,7 @@ func (v *AICoderPTYView) renderWindowed() string {
 		content.WriteString(v.renderHelp())
 	} else {
 		// Brief controls
-		controls := "F11: Full Screen | Ctrl+H: Help | Enter: Focus Terminal | Ctrl+N/P: Switch Session"
+		controls := "F11: Full Screen | F12: Debug Mode | Ctrl+H: Help | Enter: Focus Terminal | Ctrl+N/P: Switch Session"
 		if v.terminalFocused {
 			controls = "ESC: Unfocus | " + controls
 		}
@@ -377,7 +407,7 @@ func (v *AICoderPTYView) renderHelp() string {
 	var help strings.Builder
 	
 	help.WriteString(v.helpStyle.Render("🔥 AI Coder PTY Controls:\n"))
-	help.WriteString(v.helpStyle.Render("Navigation: F11 (Full Screen) | Enter (Focus) | ESC (Unfocus/Exit)\n"))
+	help.WriteString(v.helpStyle.Render("Navigation: F11 (Full Screen) | F12 (Debug Mode) | Enter (Focus) | ESC (Unfocus/Exit)\n"))
 	help.WriteString(v.helpStyle.Render("Sessions: Ctrl+N (Next) | Ctrl+P (Previous) | Ctrl+D (Detach)\n"))
 	help.WriteString(v.helpStyle.Render("\n🔹 Data Injection Keys:\n"))
 	
@@ -386,6 +416,8 @@ func (v *AICoderPTYView) renderHelp() string {
 			strings.ToUpper(binding.Key), binding.Description)))
 	}
 	
+	help.WriteString(v.helpStyle.Render("\n🚨 Debug Mode (F12):\n"))
+	help.WriteString(v.helpStyle.Render("When enabled, automatically forwards errors, test failures, and build failures to AI\n"))
 	help.WriteString(v.helpStyle.Render("\nCtrl+H: Toggle this help"))
 	
 	return help.String()

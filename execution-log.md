@@ -58,14 +58,33 @@
 - [ ] Log reviewed and formatted
 
 ## Integration Progress
-- **Core PTY Integration**: Complete
+- **Core PTY Integration**: Complete ✅
   - TUI data provider created
   - Model updated with PTY fields
   - View rendering switched to PTY view
   - Event bridge implemented
   - /ai command updated
 
-- **Remaining Work**:
-  - Output streaming (subscribeToActivePTY needs testing)
-  - Debug mode automatic event forwarding
-  - Testing the complete integration
+- **Output Streaming**: Complete ✅
+  - subscribeToActivePTY already implemented
+  - PTY output messages properly routed
+  - Re-subscription on each output message
+
+- **Debug Mode Integration**: Complete ✅
+  - F12 key binding to toggle debug mode
+  - AICoderDebugForwarder created
+  - Event subscriptions for ErrorDetected, TestFailed, BuildEvent
+  - Auto-forwarding with 5-second throttle
+  - Visual indicator in PTY view when debug mode enabled
+
+## Final Implementation Status
+All tasks from the integration plan have been completed:
+1. ✅ TUI Data Provider Implementation
+2. ✅ Update TUI Model for PTY Support  
+3. ✅ Replace AI Coder View Rendering
+4. ✅ Create PTY Event Bridge
+5. ✅ Integrate /ai Command
+6. ✅ Implement Output Streaming
+7. ✅ Add Debug Mode Integration
+8. ⏳ Polish and Cleanup (optional)
+9. ⏳ Testing and Documentation (next phase)
