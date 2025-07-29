@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/parser"
 )
 
@@ -26,6 +27,9 @@ type Config struct {
 	ProxyURL      *string `toml:"proxy_url,omitempty"`
 	StandardProxy *bool   `toml:"standard_proxy,omitempty"`
 	NoProxy       *bool   `toml:"no_proxy,omitempty"`
+
+	// AI Coder Settings
+	AICoders *AICoderConfig `toml:"ai_coders,omitempty"`
 }
 
 // ConfigWithSources tracks where each config value comes from
@@ -119,6 +123,9 @@ func Load() (*Config, error) {
 		if fileCfg.NoProxy != nil {
 			cfg.NoProxy = fileCfg.NoProxy
 		}
+		if fileCfg.AICoders != nil {
+			cfg.AICoders = fileCfg.AICoders
+		}
 	}
 
 	return cfg, nil
@@ -185,6 +192,10 @@ func LoadWithSources() (*ConfigWithSources, error) {
 		if fileCfg.NoProxy != nil {
 			cfg.NoProxy = fileCfg.NoProxy
 			cfg.Sources["no_proxy"] = path
+		}
+		if fileCfg.AICoders != nil {
+			cfg.AICoders = fileCfg.AICoders
+			cfg.Sources["ai_coders"] = path
 		}
 	}
 
@@ -283,6 +294,21 @@ func (c *Config) GetNoProxy() bool {
 		return *c.NoProxy
 	}
 	return false // default
+}
+
+func (c *Config) GetAICoderConfig() aicoder.AICoderConfig {
+	aiConfig := c.AICoders
+	if aiConfig == nil {
+		aiConfig = &AICoderConfig{}
+	}
+	
+	// Convert to simplified config for aicoder package
+	return aicoder.AICoderConfig{
+		MaxConcurrent:    aiConfig.GetMaxConcurrent(),
+		WorkspaceBaseDir: aiConfig.GetWorkspaceBaseDir(),
+		DefaultProvider:  aiConfig.GetDefaultProvider(),
+		TimeoutMinutes:   aiConfig.GetTimeoutMinutes(),
+	}
 }
 
 // DisplaySettingsWithSources returns a TOML-formatted string with source comments

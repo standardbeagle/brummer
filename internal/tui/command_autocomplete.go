@@ -151,7 +151,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 	// Always show dropdown if we have suggestions or if we're at the beginning
 	if len(c.suggestions) == 0 && c.currentIndex == 0 && (value == "" || value == "/") {
 		// Show initial commands when empty
-		c.suggestions = []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy"}
+		c.suggestions = []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "help"}
 		c.showDropdown = true
 	}
 

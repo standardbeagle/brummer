@@ -3,6 +3,7 @@ package events
 import (
 	"context"
 	"fmt"
+	"log"
 	"runtime"
 	"sync"
 	"time"
@@ -156,4 +157,59 @@ func (eb *EventBus) Shutdown() {
 
 func generateEventID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// AI Coder Event Integration
+
+// RegisterAICoderAggregator creates and registers an AI coder event aggregator
+func (eb *EventBus) RegisterAICoderAggregator(maxEvents int) *AICoderEventAggregator {
+	return NewAICoderEventAggregator(eb, maxEvents)
+}
+
+// SubscribeAICoderEvents subscribes to all AI coder events for a specific coder
+func (eb *EventBus) SubscribeAICoderEvents(coderID string, handler Handler) {
+	// Subscribe to all AI coder events for specific coder
+	eventTypes := []EventType{
+		EventAICoderCreated, EventAICoderStarted, EventAICoderPaused,
+		EventAICoderResumed, EventAICoderCompleted, EventAICoderFailed,
+		EventAICoderStopped, EventAICoderDeleted, EventAICoderProgress,
+	}
+	
+	for _, eventType := range eventTypes {
+		eb.Subscribe(eventType, func(event Event) {
+			// Check if event is for the specific coder
+			if eventCoderID, ok := event.Data["coder_id"].(string); ok && eventCoderID == coderID {
+				handler(event)
+			}
+		})
+	}
+}
+
+// EmitAICoderEvent emits an AI coder event with validation
+func (eb *EventBus) EmitAICoderEvent(eventType EventType, coderID, coderName string, data map[string]interface{}) {
+	if string(eventType) == "" {
+		log.Printf("Warning: AI coder event missing type")
+		return
+	}
+	
+	if coderID == "" {
+		log.Printf("Warning: AI coder event missing coder ID")
+		return
+	}
+	
+	// Ensure data map exists
+	if data == nil {
+		data = make(map[string]interface{})
+	}
+	
+	// Add coder information to data
+	data["coder_id"] = coderID
+	data["coder_name"] = coderName
+	
+	eb.Publish(Event{
+		Type:      eventType,
+		ProcessID: fmt.Sprintf("ai-coder-%s", coderID),
+		Timestamp: time.Now(),
+		Data:      data,
+	})
 }

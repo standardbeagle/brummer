@@ -14,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/parser"
 	"github.com/standardbeagle/brummer/pkg/events"
@@ -84,6 +85,10 @@ type Manager struct {
 	logCallbacks   []LogCallback
 	installedMgrs  []parser.InstalledPackageManager
 	mu             sync.RWMutex
+	
+	// AI Coder integration
+	aiCoderMgr     *aicoder.AICoderManager
+	aiCoderIntegration *AICoderIntegration
 }
 
 type LogCallback func(processID string, line string, isError bool)
@@ -861,4 +866,168 @@ func (m *Manager) killNodeDevProcesses() {
 // killWindowsDevProcesses kills common development processes on Windows
 func (m *Manager) killWindowsDevProcesses() {
 	m.killWindowsDevProcessesImpl()
+}
+
+// AI Coder Integration Methods
+
+// SetAICoderManager initializes AI coder integration
+func (m *Manager) SetAICoderManager(mgr *aicoder.AICoderManager) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	m.aiCoderMgr = mgr
+	
+	// Initialize AI coder integration if not already done
+	if m.aiCoderIntegration == nil {
+		m.aiCoderIntegration = NewAICoderIntegration(m, m.eventBus)
+	}
+	
+	// Initialize the integration with the AI coder manager
+	if err := m.aiCoderIntegration.Initialize(mgr); err != nil {
+		// Log error but don't fail - integration should be optional
+		if m.eventBus != nil {
+			m.eventBus.Publish(events.Event{
+				Type:      "process.integration.error",
+				ProcessID: "ai-coder-integration",
+				Timestamp: time.Now(),
+				Data: map[string]interface{}{
+					"error": fmt.Sprintf("Failed to initialize AI coder integration: %v", err),
+				},
+			})
+		}
+	}
+	
+	// Start monitoring AI coder processes
+	go m.monitorAICoders()
+}
+
+// monitorAICoders monitors AI coder processes and syncs with process manager
+func (m *Manager) monitorAICoders() {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+	
+	for range ticker.C {
+		m.mu.RLock()
+		aiCoderMgr := m.aiCoderMgr
+		m.mu.RUnlock()
+		
+		if aiCoderMgr == nil {
+			continue
+		}
+		
+		coders := aiCoderMgr.ListCoders()
+		m.syncAICoderProcesses(coders)
+	}
+}
+
+// syncAICoderProcesses synchronizes AI coder processes with process manager
+func (m *Manager) syncAICoderProcesses(coders []*aicoder.AICoderProcess) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	
+	// Create or update process entries for AI coders
+	for _, coder := range coders {
+		processID := fmt.Sprintf("ai-coder-%s", coder.ID)
+		
+		if _, exists := m.processes[processID]; exists {
+			// Update existing process - for AI coder processes, we need to handle updates differently
+			// Since we can't easily cast from Process to AICoderProcess, we'll recreate it
+			delete(m.processes, processID)
+		}
+		
+		// Create new AI coder process entry
+		aiCoderProcess := NewAICoderProcess(coder)
+		m.processes[processID] = aiCoderProcess.Process
+		
+		// Emit process started event
+		if m.eventBus != nil {
+			m.eventBus.Publish(events.Event{
+				Type:      events.ProcessStarted,
+				ProcessID: processID,
+				Timestamp: time.Now(),
+				Data: map[string]interface{}{
+					"name":         fmt.Sprintf("AI Coder: %s", coder.Name),
+					"type":         "ai-coder",
+					"status":       string(coder.Status),
+					"provider":     coder.Provider,
+					"workspace":    coder.WorkspaceDir,
+					"task":         coder.Task,
+					"progress":     coder.Progress,
+				},
+			})
+		}
+	}
+	
+	// Remove processes for deleted AI coders
+	m.cleanupStaleAICoderProcesses(coders)
+}
+
+// cleanupStaleAICoderProcesses removes AI coder processes that no longer exist
+func (m *Manager) cleanupStaleAICoderProcesses(currentCoders []*aicoder.AICoderProcess) {
+	// Create map of current coder IDs for quick lookup
+	currentCoderIDs := make(map[string]bool)
+	for _, coder := range currentCoders {
+		currentCoderIDs[coder.ID] = true
+	}
+	
+	// Find and remove stale AI coder processes
+	for processID, process := range m.processes {
+		if strings.HasPrefix(processID, "ai-coder-") {
+			coderID := strings.TrimPrefix(processID, "ai-coder-")
+			if !currentCoderIDs[coderID] {
+				// This AI coder no longer exists, remove it
+				delete(m.processes, processID)
+				
+				// Emit process exited event
+				if m.eventBus != nil {
+					m.eventBus.Publish(events.Event{
+						Type:      events.ProcessExited,
+						ProcessID: processID,
+						Timestamp: time.Now(),
+						Data: map[string]interface{}{
+							"name":      process.Name,
+							"type":      "ai-coder",
+							"exit_code": 0, // AI coders don't have exit codes
+							"reason":    "deleted",
+						},
+					})
+				}
+			}
+		}
+	}
+}
+
+// GetAICoderProcesses returns all AI coder processes
+func (m *Manager) GetAICoderProcesses() []*AICoderProcess {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	
+	var aiCoderProcesses []*AICoderProcess
+	
+	for processID := range m.processes {
+		if strings.HasPrefix(processID, "ai-coder-") {
+			// Create AI coder process wrapper
+			coderID := strings.TrimPrefix(processID, "ai-coder-")
+			if m.aiCoderMgr != nil {
+				if coder, exists := m.aiCoderMgr.GetCoder(coderID); exists {
+					aiCoderProcess := NewAICoderProcess(coder)
+					aiCoderProcesses = append(aiCoderProcesses, aiCoderProcess)
+				}
+			}
+		}
+	}
+	
+	return aiCoderProcesses
+}
+
+// IsAICoderProcess checks if a process ID belongs to an AI coder
+func (m *Manager) IsAICoderProcess(processID string) bool {
+	return strings.HasPrefix(processID, "ai-coder-")
+}
+
+// GetAICoderIntegration returns the AI coder integration instance
+func (m *Manager) GetAICoderIntegration() *AICoderIntegration {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.aiCoderIntegration
 }

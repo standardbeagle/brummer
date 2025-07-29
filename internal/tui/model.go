@@ -20,6 +20,7 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/parser"
@@ -29,6 +30,33 @@ import (
 )
 
 type View string
+
+// simpleAICoderConfig implements aicoder.Config for TUI
+type simpleAICoderConfig struct {
+	maxConcurrent    int
+	workspaceBaseDir string
+	defaultProvider  string
+	timeoutMinutes   int
+}
+
+func (c *simpleAICoderConfig) GetAICoderConfig() aicoder.AICoderConfig {
+	return aicoder.AICoderConfig{
+		MaxConcurrent:    c.maxConcurrent,
+		WorkspaceBaseDir: c.workspaceBaseDir,
+		DefaultProvider:  c.defaultProvider,
+		TimeoutMinutes:   c.timeoutMinutes,
+	}
+}
+
+// eventBusWrapper wraps the Brummer EventBus to implement aicoder.EventBus
+type eventBusWrapper struct {
+	eventBus *events.EventBus
+}
+
+func (w *eventBusWrapper) Emit(eventType string, event interface{}) {
+	// TODO: Convert aicoder events to Brummer events when event integration is ready
+	// This will be implemented in Task 06 - Event System Integration
+}
 
 const (
 	ViewScripts        View = "scripts"
@@ -42,6 +70,7 @@ const (
 	ViewSearch         View = "search"
 	ViewFilters        View = "filters"
 	ViewScriptSelector View = "script-selector"
+	ViewAICoders       View = "ai-coders"
 )
 
 // ViewConfig holds configuration for each view
@@ -95,6 +124,12 @@ var viewConfigs = map[View]ViewConfig{
 		Description: "MCP Connections",
 		KeyBinding:  "7",
 		Icon:        "🔌",
+	},
+	ViewAICoders: {
+		Title:       "AI Coders",
+		Description: "Manage and monitor agentic AI coding assistants",
+		KeyBinding:  "8",
+		Icon:        "🤖",
 	},
 }
 
@@ -212,6 +247,16 @@ type Model struct {
 	mcpConnections      map[string]*mcpConnectionItem // sessionId -> connection
 	mcpActivities       map[string][]MCPActivity      // sessionId -> activities
 	mcpActivityMu       sync.RWMutex
+	
+	// AI Coder fields
+	aiCoderManager *aicoder.AICoderManager
+	aiCoderView    AICoderView
+	
+	// PTY support
+	aiCoderPTYView   *AICoderPTYView
+	ptyManager       *aicoder.PTYManager
+	ptyEventSub      chan aicoder.PTYEvent
+	ptyDataProvider  aicoder.BrummerDataProvider
 }
 
 // handleGlobalKeys handles keys that should work in all views
@@ -956,6 +1001,39 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	if debugMode && initialView == ViewMCPConnections {
 		m.updateMCPConnectionsList()
 	}
+	
+	// Initialize AI Coder manager and view
+	// Create a simple config implementation
+	aiCoderConfig := &simpleAICoderConfig{
+		maxConcurrent:    3,
+		workspaceBaseDir: filepath.Join(os.Getenv("HOME"), ".brummer", "ai-coders"),
+		defaultProvider:  "mock",
+		timeoutMinutes:   30,
+	}
+	eventBusWrapper := &eventBusWrapper{eventBus: eventBus}
+	
+	// Create PTY data provider first
+	m.ptyDataProvider = NewTUIDataProvider(&m)
+	
+	// Initialize AI Coder manager with PTY support
+	var err error
+	m.aiCoderManager, err = aicoder.NewAICoderManagerWithPTY(aiCoderConfig, eventBusWrapper, m.ptyDataProvider)
+	if err != nil {
+		// Log error but continue - AI Coder is optional
+		fmt.Printf("Warning: Failed to initialize AI Coder manager: %v\n", err)
+	} else {
+		// Get PTY manager from AI coder manager
+		m.ptyManager = m.aiCoderManager.GetPTYManager()
+		
+		// Create PTY event subscription channel
+		m.ptyEventSub = make(chan aicoder.PTYEvent, 100)
+		
+		// Initialize PTY view
+		m.aiCoderPTYView = NewAICoderPTYView(m.ptyManager)
+	}
+	
+	// Keep the old view for compatibility during transition
+	m.aiCoderView = NewAICoderView(m.aiCoderManager)
 
 	// Set up event subscriptions immediately in constructor (not in Init)
 	// This ensures subscriptions are active before MCP server starts
@@ -1083,11 +1161,18 @@ func (m *Model) Init() tea.Cmd {
 		}
 	}()
 
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		textinput.Blink,
 		m.waitForUpdates(),
 		m.tickCmd(),
-	)
+	}
+	
+	// Start listening for PTY events if available
+	if m.ptyEventSub != nil {
+		cmds = append(cmds, m.listenPTYEvents())
+	}
+	
+	return tea.Batch(cmds...)
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -1576,6 +1661,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+	case ViewAICoders:
+		// Update PTY view if available
+		if m.aiCoderPTYView != nil {
+			var cmd tea.Cmd
+			m.aiCoderPTYView, cmd = m.aiCoderPTYView.Update(msg)
+			cmds = append(cmds, cmd)
+		} else {
+			// Fall back to old view
+			var cmd tea.Cmd
+			m.aiCoderView, cmd = m.aiCoderView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
+	}
+	
+	// Handle PTY event messages
+	if cmd := m.handlePTYEventMsg(msg); cmd != nil {
+		cmds = append(cmds, cmd)
 	}
 
 	return m, tea.Batch(cmds...)
@@ -1633,6 +1736,19 @@ func (m *Model) renderLayout(content string) string {
 }
 
 // renderContent renders the main content area based on current view
+// renderAICoderPTYView renders the PTY-based AI coder view
+func (m *Model) renderAICoderPTYView() string {
+	if m.aiCoderPTYView == nil {
+		return "AI Coder PTY view not initialized"
+	}
+	
+	// Get the PTY view content
+	content := m.aiCoderPTYView.View()
+	
+	// Apply consistent styling if needed
+	return content
+}
+
 func (m *Model) renderContent() string {
 	if m.showingRunDialog {
 		return m.renderRunDialog()
@@ -1663,6 +1779,12 @@ func (m *Model) renderContent() string {
 			return m.renderMCPConnections()
 		}
 		return m.renderSettings() // Fallback if not in debug mode
+	case ViewAICoders:
+		// Use PTY view if available, otherwise fall back to old view
+		if m.aiCoderPTYView != nil {
+			return m.renderAICoderPTYView()
+		}
+		return m.aiCoderView.View()
 	case ViewFilters:
 		return m.renderFiltersView()
 	default:
@@ -1702,6 +1824,16 @@ func (m *Model) getViewStatus() string {
 		requests := m.proxyServer.GetRequests()
 		return fmt.Sprintf("%d requests", len(requests))
 
+	case ViewAICoders:
+		coders := m.aiCoderManager.ListCoders()
+		running := 0
+		for _, c := range coders {
+			if c.Status == aicoder.StatusRunning {
+				running++
+			}
+		}
+		return fmt.Sprintf("%d AI coders, %d running", len(coders), running)
+
 	default:
 		return ""
 	}
@@ -1725,6 +1857,9 @@ func (m *Model) updateSizes() {
 	m.urlsViewport.Width = m.width
 	m.urlsViewport.Height = contentHeight
 	// webRequestsList size is set in render functions as needed
+	
+	// Update AI Coder view size
+	m.aiCoderView, _ = m.aiCoderView.Update(tea.WindowSizeMsg{Width: m.width, Height: contentHeight})
 }
 
 func (m *Model) cycleView() {
@@ -1783,6 +1918,12 @@ func (m *Model) switchToView(view View) {
 		if m.debugMode {
 			// Initialize MCP connections list
 			m.updateMCPConnectionsList()
+		}
+	case ViewAICoders:
+		// Initialize AI coder view
+		cmd := m.aiCoderView.Init()
+		if cmd != nil {
+			m.updateChan <- cmd()
 		}
 	}
 }
@@ -2141,7 +2282,7 @@ func (m *Model) renderHeader() string {
 	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// Use ordered list of views
-	orderedViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
+	orderedViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings, ViewAICoders}
 	if m.debugMode {
 		orderedViews = append(orderedViews, ViewMCPConnections)
 	}
@@ -4578,6 +4719,154 @@ func (m *Model) handleSlashCommand(input string) {
 		// Switch to URLs view to show the result
 		m.currentView = ViewURLs
 
+	case "/ai":
+		if len(parts) < 2 {
+			m.logStore.Add("system", "System", "Usage: /ai <config-key> [task] - Open AI CLI interactively or with task", true)
+			if m.aiCoderManager != nil {
+				providers := m.aiCoderManager.GetProviders()
+				if len(providers) > 0 {
+					m.logStore.Add("system", "System", fmt.Sprintf("Available providers: %s", strings.Join(providers, ", ")), false)
+				}
+			}
+			return
+		}
+		
+		configKey := parts[1]
+		
+		// Check if there's a task (everything after the config key)
+		var task string
+		if len(parts) > 2 {
+			task = strings.Join(parts[2:], " ")
+		}
+		
+		// Get the AI coder configuration to check for CLI tools
+		if m.aiCoderManager != nil {
+			providers := m.aiCoderManager.GetProviders()
+			found := false
+			for _, provider := range providers {
+				if provider == configKey {
+					found = true
+					break
+				}
+			}
+			
+			if found {
+				// Use PTY sessions for AI coders
+				if m.aiCoderManager != nil && m.aiCoderPTYView != nil {
+					var session *aicoder.PTYSession
+					var err error
+					
+					if task == "" {
+						// Interactive mode - create interactive CLI session
+						session, err = m.aiCoderManager.CreateInteractiveCLISession(configKey)
+						if err != nil {
+							m.logStore.Add("system", "System", fmt.Sprintf("Failed to create interactive session for %s: %v", configKey, err), true)
+							return
+						}
+						m.logStore.Add("system", "System", fmt.Sprintf("Started %s in interactive mode (PTY)", configKey), false)
+					} else {
+						// Task mode - create task CLI session
+						session, err = m.aiCoderManager.CreateTaskCLISession(configKey, task)
+						if err != nil {
+							m.logStore.Add("system", "System", fmt.Sprintf("Failed to create task session for %s: %v", configKey, err), true)
+							return
+						}
+						m.logStore.Add("system", "System", fmt.Sprintf("Started %s with task: %s", configKey, task), false)
+					}
+					
+					// Auto-switch to AI Coder view and attach to session
+					m.currentView = ViewAICoders
+					m.aiCoderPTYView.AttachToSession(session.ID)
+					
+					// Send PTY session created event
+					if m.updateChan != nil {
+						go func() {
+							m.updateChan <- ptySessionCreatedMsg{
+								sessionID: session.ID,
+								name:      session.Name,
+								timestamp: time.Now(),
+							}
+						}()
+					}
+				} else {
+					// Fallback to old method if PTY not available
+					if task == "" {
+						// Interactive mode - start CLI tool directly
+						if err := m.startInteractiveCLI(configKey); err != nil {
+							m.logStore.Add("system", "System", fmt.Sprintf("Failed to start %s: %v", configKey, err), true)
+							m.logStore.Add("system", "System", "💡 Tip: Some CLI tools don't work well as subprocesses. Try:", false)
+							m.logStore.Add("system", "System", fmt.Sprintf("   • Use: /term %s (runs in external terminal)", m.getCLICommand(configKey)), false)
+							m.logStore.Add("system", "System", "   • Or provide a task: /ai " + configKey + " <your task>", false)
+						} else {
+							m.logStore.Add("system", "System", fmt.Sprintf("Started %s in interactive mode", configKey), false)
+							// Switch to processes view to see the running CLI
+							m.currentView = ViewProcesses
+						}
+					} else {
+						// Non-interactive mode - start CLI with task
+						if err := m.startNonInteractiveCLI(configKey, task); err != nil {
+							m.logStore.Add("system", "System", fmt.Sprintf("Failed to start %s with task: %v", configKey, err), true)
+							m.logStore.Add("system", "System", "💡 Tip: Try using /term command instead:", false)
+							command, args, _ := m.getCLICommandFromConfig(configKey, task)
+							fullCmd := command + " " + strings.Join(args, " ")
+							m.logStore.Add("system", "System", fmt.Sprintf("   /term %s", fullCmd), false)
+						} else {
+							m.logStore.Add("system", "System", fmt.Sprintf("Started %s with task: %s", configKey, task), false)
+							// Switch to processes view to see the running CLI
+							m.currentView = ViewProcesses
+						}
+					}
+				}
+			} else {
+				m.logStore.Add("system", "System", fmt.Sprintf("Provider '%s' not found in configuration", configKey), true)
+				if len(providers) > 0 {
+					m.logStore.Add("system", "System", fmt.Sprintf("Available providers: %s", strings.Join(providers, ", ")), false)
+				}
+			}
+		} else {
+			m.logStore.Add("system", "System", "AI coder manager not initialized", true)
+		}
+
+	case "/term":
+		if len(parts) < 2 {
+			m.logStore.Add("system", "System", "Usage: /term <command> - Run an arbitrary terminal command", true)
+			return
+		}
+		
+		// Parse command and arguments
+		cmdParts := parts[1:]
+		command := cmdParts[0]
+		args := cmdParts[1:]
+		
+		// Start the command
+		_, err := m.processMgr.StartCommand("term", command, args)
+		if err != nil {
+			m.logStore.Add("system", "System", fmt.Sprintf("Failed to start command: %v", err), true)
+			return
+		}
+		
+		m.logStore.Add("system", "System", fmt.Sprintf("Started terminal command: %s %s", command, strings.Join(args, " ")), false)
+		
+		// Switch to processes view to see the running command
+		m.currentView = ViewProcesses
+
+	case "/help":
+		m.logStore.Add("system", "System", "Available slash commands:", false)
+		m.logStore.Add("system", "System", "  /run <script>     - Run a package.json script", false)
+		m.logStore.Add("system", "System", "  /term <command>   - Run arbitrary terminal command", false) 
+		m.logStore.Add("system", "System", "  /ai <provider>    - Open interactive AI CLI (claude/opencode/gemini/aider)", false)
+		m.logStore.Add("system", "System", "  /ai <task>        - Create AI coder with task description", false)
+		m.logStore.Add("system", "System", "  /restart [name]   - Restart process (or all)", false)
+		m.logStore.Add("system", "System", "  /stop [name]      - Stop process (or all)", false)
+		m.logStore.Add("system", "System", "  /clear [target]   - Clear logs (all/errors/system)", false)
+		m.logStore.Add("system", "System", "  /show <pattern>   - Show only matching logs", false)
+		m.logStore.Add("system", "System", "  /hide <pattern>   - Hide matching logs", false)
+		m.logStore.Add("system", "System", "  /proxy <url>      - Add URL to reverse proxy", false)
+		m.logStore.Add("system", "System", "  /toggle-proxy     - Switch proxy modes", false)
+		m.logStore.Add("system", "System", "", false)
+		m.logStore.Add("system", "System", "Examples: '/ai claude' opens Claude interactively, '/ai implement auth' creates AI coder", false)
+		m.logStore.Add("system", "System", "Usage: Press '/' to open command palette, or use these commands directly", false)
+
 	case "/toggle-proxy":
 		if m.proxyServer == nil {
 			m.logStore.Add("system", "System", "Error: Proxy server is not enabled", true)
@@ -5218,4 +5507,115 @@ func (m *Model) renderSettings() string {
 	content.WriteString(m.settingsList.View())
 
 	return content.String()
+}
+
+// startInteractiveCLI starts a CLI tool in interactive mode
+func (m *Model) startInteractiveCLI(configKey string) error {
+	// Get CLI command configuration based on config key
+	command, args, err := m.getCLICommandFromConfig(configKey, "")
+	if err != nil {
+		return err
+	}
+	
+	// Start the command in interactive mode (no additional args)
+	_, err = m.processMgr.StartCommand(configKey+"-interactive", command, args)
+	return err
+}
+
+// startNonInteractiveCLI starts a CLI tool with a specific task in non-interactive mode
+func (m *Model) startNonInteractiveCLI(configKey string, task string) error {
+	// Get CLI command configuration based on config key with task
+	command, args, err := m.getCLICommandFromConfig(configKey, task)
+	if err != nil {
+		return err
+	}
+	
+	// Start the command with the task
+	_, err = m.processMgr.StartCommand(configKey+"-task", command, args)
+	return err
+}
+
+// getCLICommandFromConfig retrieves CLI command and args from configuration
+func (m *Model) getCLICommandFromConfig(configKey string, task string) (string, []string, error) {
+	// For now, use the auto-detected CLI tool mappings
+	// This is a simplified implementation that would be enhanced with actual config lookup
+	
+	cliMappings := map[string]struct {
+		command string
+		baseArgs []string
+		taskFlag string
+	}{
+		"claude": {
+			command: "claude",
+			baseArgs: []string{},
+			taskFlag: "", // Claude CLI accepts task as direct input
+		},
+		"sonnet": {
+			command: "claude",
+			baseArgs: []string{"--model", "sonnet"},
+			taskFlag: "",
+		},
+		"opus": {
+			command: "claude",
+			baseArgs: []string{"--model", "opus"},
+			taskFlag: "",
+		},
+		"aider": {
+			command: "aider",
+			baseArgs: []string{"--yes"},
+			taskFlag: "--message",
+		},
+		"opencode": {
+			command: "opencode",
+			baseArgs: []string{"run"},
+			taskFlag: "--prompt",
+		},
+		"gemini": {
+			command: "gemini",
+			baseArgs: []string{},
+			taskFlag: "--prompt",
+		},
+	}
+	
+	mapping, exists := cliMappings[configKey]
+	if !exists {
+		return "", nil, fmt.Errorf("CLI configuration not found for '%s'", configKey)
+	}
+	
+	args := make([]string, len(mapping.baseArgs))
+	copy(args, mapping.baseArgs)
+	
+	// If task is provided, add it based on the tool's requirements
+	if task != "" {
+		if mapping.taskFlag != "" {
+			// Tools that use flags for tasks (aider, opencode, gemini)
+			args = append(args, mapping.taskFlag, task)
+		} else {
+			// Tools that accept task as direct input (claude)
+			// For non-interactive mode, use structured streaming output
+			if configKey == "claude" || configKey == "sonnet" || configKey == "opus" {
+				args = append(args, "--print", "--verbose", "--output-format", "stream-json")
+			}
+			args = append(args, task)
+		}
+	}
+	
+	return mapping.command, args, nil
+}
+
+// getCLICommand returns just the CLI command name for a config key
+func (m *Model) getCLICommand(configKey string) string {
+	cliMappings := map[string]string{
+		"claude":   "claude",
+		"sonnet":   "claude",
+		"opus":     "claude",
+		"aider":    "aider",
+		"opencode": "opencode",
+		"gemini":   "gemini",
+	}
+	
+	if command, exists := cliMappings[configKey]; exists {
+		return command
+	}
+	return configKey // fallback to config key itself
 }

@@ -6,42 +6,42 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ⚠️ **CRITICAL INSTRUCTION**: Always update this section when working on tasks to maintain continuity between sessions.
 
-- **Phase**: Task Execution - File Output Feature COMPLETED
-- **Current Task**: File output feature implementation and testing completed successfully
-- **Stage**: COMPLETED - All file output parameters added and tested
-- **Started**: July 27, 2025
-- **Completed**: July 27, 2025  
-- **Branch**: feature/add-file-output-to-mcp-tools (ready for merge)
-- **Plan File**: All tasks completed successfully
+- **Phase**: AI Coder Feature Implementation - Phase 1 COMPLETED
+- **Current Task**: Phase 1 Complete - Core Service, MCP Tools, Configuration System
+- **Stage**: PHASE_1_COMPLETE - Foundation ready for Phase 2
+- **Started**: January 28, 2025
+- **Phase 1 Completed**: January 29, 2025
+- **Plan Files**: `/requests/agentic-ai-coders/` - Complete subtask breakdown
+- **Execution Strategy**: 3-phase parallel development (8 atomic subtasks)
 
-### Previous Work Completed:
-1. ✅ **RESOLVED**: TestErrorParser_JavaScriptRuntimeErrors/Network_Error - Fixed FetchError → NetworkError mapping
-2. ✅ **RESOLVED**: TestLogCollapsing - Fixed async processing delays in tests
-3. ✅ **RESOLVED**: TestLogCollapsingByProcess - Fixed async processing delays
-4. ✅ **REVIEWED**: TUI race condition - Confirmed as legitimate sleep in proper context
+### Phase 1 Results - AI Coder Foundation:
+1. ✅ **COMPLETED**: Created comprehensive subtask plan with 8 atomic tasks
+2. ✅ **COMPLETED**: Generated context package with architecture analysis
+3. ✅ **COMPLETED**: Documented tmux-style interactive AI coder design
+4. ✅ **COMPLETED**: Updated CLAUDE.md with full AI coder documentation
+5. ✅ **COMPLETED**: Task 01 - Core Service (AICoderManager implementation)
+6. ✅ **COMPLETED**: Task 02 - MCP Tools (6 AI coder control tools)
+7. ✅ **COMPLETED**: Task 03 - Configuration System (TOML config)
+8. ⏳ **PENDING**: Phase 2 execution (tasks 04-06: TUI, process integration, events)
+9. ⏳ **PENDING**: Phase 3 execution (tasks 07-08: testing, documentation)
 
-### File Output Feature - COMPLETED:
-1. ✅ **COMPLETED**: Audited all MCP tools to identify which need file output parameters
-2. ✅ **COMPLETED**: Added output_file parameter to logs_stream tool schema and handler
-3. ✅ **COMPLETED**: Added output_file parameter to logs_search tool schema and handler  
-4. ✅ **COMPLETED**: Added output_file parameter to proxy_requests tool schema and handler
-5. ✅ **COMPLETED**: Added output_file parameter to telemetry_sessions tool schema and handler
-6. ✅ **COMPLETED**: Added output_file parameter to telemetry_events tool schema and handler
-7. ✅ **COMPLETED**: Comprehensive testing of file output functionality with security validation
-8. ✅ **COMPLETED**: Tool descriptions already properly document file output capabilities
-
-### Implementation Summary:
-- **Tools Enhanced**: logs_stream, logs_search, proxy_requests, telemetry_sessions, telemetry_events
-- **Features Added**: JSON file output with structured data, path validation, error handling
-- **Security**: Path traversal protection, project directory restrictions
-- **Testing**: Complete test suite validates schemas, functionality, and security
-- **Backward Compatibility**: Maintained - tools return original format when no file output requested
+### AI Coder Design Vision:
+"This design makes AI coders feel like pair programming sessions where Brummer acts as the development environment providing real-time feedback to both the human and AI."
 
 ### Next Agent Instructions:
 - **ALWAYS check this status section first** to understand current work context
 - **ALWAYS update this section** when starting/completing tasks
-- **Critical tests are now passing** - feature development can proceed
-- **Focus on file output feature completion and testing**
+- **Follow the subtask execution guide** at `/requests/agentic-ai-coders/subtasks-execute.md`
+- **Use worktrees for parallel development** to avoid merge conflicts
+
+## Current Execution Status
+- **Phase**: Task Execution - AI Coder PTY Integration
+- **Current Task**: Integrate PTY system with main TUI
+- **Stage**: STARTED
+- **Started**: January 29, 2025
+- **Branch**: feature/ai-coder-pty-integration
+- **Log File**: execution-log.md
+- **Plan Files**: `/requests/agentic-ai-coders/integration-plan.md`, `/requests/agentic-ai-coders/integration-tasks.md`
 
 ## Commands
 
@@ -899,6 +899,183 @@ ulimit -u 256               # Process limit
 # Monitor resource usage
 logs_search "memory|cpu"    # Search for resource logs
 ```
+
+## Agentic AI Coders Feature (Tmux-Style Design)
+
+### Overview
+Brummer will support running AI coding assistants as interactive sessions within the TUI, similar to tmux sessions. This creates a seamless development experience where AI coders receive real-time feedback from Brummer's build system, test runners, and error detection.
+
+### Core Concepts
+
+#### Interactive AI Coder Sessions
+- **Tmux-style attach/detach**: AI coders run in persistent sessions that users can attach to and detach from
+- **Direct interaction**: Users can type commands and see AI responses in real-time within the Brummer TUI
+- **Session persistence**: AI coders continue working even when detached, similar to tmux sessions
+- **Multiple sessions**: Support for running multiple AI coders simultaneously with easy switching
+
+#### Real-Time Brummer Integration
+- **Error reporting**: Build errors, test failures, and lint warnings are automatically sent to the AI
+- **Context awareness**: AI receives file changes, process outputs, and system events
+- **Proactive assistance**: AI can suggest fixes before the user even asks
+- **Workspace isolation**: Each AI coder operates in its own sandboxed workspace
+
+### User Interaction Model
+
+#### Starting an AI Coder
+```bash
+# Via TUI
+Press 'a' to switch to AI Coders view
+Press 'n' to create new AI coder
+Select provider (Claude, GPT-4, etc.)
+Enter initial task/prompt
+
+# Via MCP
+ai_coder_create {"task": "implement user auth", "provider": "claude"}
+```
+
+#### Interacting with AI Coders
+```
+┌─────────────────────────────────────────────────────────────┐
+│ AI Coder: implement-auth (Claude) - Running                 │
+├─────────────────────────────────────────────────────────────┤
+│ [AI] I'll implement user authentication. Starting with...   │
+│                                                             │
+│ [Brummer] Build error in auth.go:15                       │
+│   undefined: bcrypt.GenerateFromPassword                   │
+│                                                             │
+│ [AI] I see the issue. We need to import bcrypt. Let me... │
+│                                                             │
+│ [User] > also add JWT token generation                     │
+│                                                             │
+│ [AI] Sure! I'll add JWT token generation to the auth...   │
+├─────────────────────────────────────────────────────────────┤
+│ Progress: ████████░░ 80% | Files: 5 | Tokens: 12.5k       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+#### Session Management Commands
+- `Ctrl+b d` - Detach from current AI coder (continues running)
+- `Ctrl+b n` - Next AI coder session
+- `Ctrl+b p` - Previous AI coder session  
+- `Ctrl+b w` - List all AI coder sessions
+- `Ctrl+b c` - Create new AI coder
+- `Ctrl+b &` - Kill current AI coder session
+
+### Brummer Hooks and Events
+
+#### Automatic Error Reporting
+When Brummer detects errors, they're automatically sent to attached AI coders:
+
+```go
+// Build error detected
+Brummer → AI: "Build failed: undefined variable 'user' at handlers.go:45"
+AI → User: "I see there's an undefined variable. Let me check the context..."
+
+// Test failure
+Brummer → AI: "Test failed: TestUserLogin - expected 200, got 401"
+AI → User: "The login test is failing. This might be due to..."
+
+// Lint warning
+Brummer → AI: "Lint: exported function CreateUser should have comment"
+AI → User: "I'll add the missing documentation comment..."
+```
+
+#### Event Hooks Integration
+```yaml
+AI Coder Hooks:
+  - process_failed: Send stdout/stderr to AI
+  - build_error: Send error details and file context
+  - test_failed: Send test output and failure reason
+  - lint_warning: Send lint messages
+  - file_changed: Notify AI of external file modifications
+```
+
+### Implementation Architecture
+
+#### Component Structure
+```
+/internal/aicoder/
+├── manager.go         # AI coder lifecycle management
+├── session.go         # Interactive session handling (PTY)
+├── provider.go        # AI provider interface (Claude, GPT-4, etc.)
+├── workspace.go       # Isolated workspace management
+└── hooks.go          # Brummer event integration
+
+/internal/tui/
+└── ai_coder_view.go  # Tmux-style TUI view
+
+/internal/mcp/
+└── ai_coder_tools.go # MCP tools for external control
+```
+
+#### Session Lifecycle
+1. **Create**: Initialize AI coder with provider and task
+2. **Attach**: Connect to PTY for interactive communication
+3. **Process**: Handle user input and AI responses
+4. **Hook Events**: Receive and process Brummer events
+5. **Detach**: Disconnect while keeping session alive
+6. **Reattach**: Reconnect to existing session
+7. **Terminate**: Clean up resources and workspace
+
+### Example Workflows
+
+#### Debugging with AI Assistance
+```
+User: [Runs tests, sees failure]
+Brummer → AI: "Test TestAPIAuth failed: token validation error"
+AI: "I see the token validation is failing. Let me check the JWT implementation..."
+AI: [Makes code changes]
+Brummer → AI: "Build successful, running tests..."
+Brummer → AI: "All tests passing"
+AI: "Great! The authentication is now working correctly."
+```
+
+#### Collaborative Feature Development
+```
+User: "Implement rate limiting for the API"
+AI: "I'll implement rate limiting. Which approach would you prefer?"
+User: "Use Redis-based sliding window"
+AI: [Starts implementation]
+Brummer → AI: "Build error: Redis client not found"
+AI: "We need to add the Redis dependency. Let me update go.mod..."
+```
+
+### Configuration
+
+```toml
+[aicoder]
+default_provider = "claude"
+max_concurrent = 3
+workspace_dir = "~/.brummer/ai-workspaces"
+
+[aicoder.providers.claude]
+api_key_env = "CLAUDE_API_KEY"
+model = "claude-3-sonnet"
+max_tokens = 100000
+
+[aicoder.hooks]
+enabled = true
+include_build_errors = true
+include_test_failures = true
+include_lint_warnings = true
+context_lines = 10
+```
+
+### Security and Isolation
+
+- **Workspace Isolation**: Each AI coder operates in a separate directory
+- **Resource Limits**: CPU, memory, and disk usage limits per AI coder
+- **File Access**: Restricted to workspace and project directories only
+- **Network Access**: Configurable restrictions on external API calls
+- **Code Execution**: Optional sandboxing for running generated code
+
+### Future Enhancements
+
+1. **Multi-AI Collaboration**: Multiple AI coders working on different parts of the same feature
+2. **AI Code Review**: AI coders reviewing each other's code changes
+3. **Knowledge Persistence**: AI coders maintaining context across sessions
+4. **Custom Tools**: Ability to give AI coders access to specific development tools
+5. **Team Sharing**: Share AI coder sessions with team members
 
 ## Important Notes
 

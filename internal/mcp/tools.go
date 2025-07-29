@@ -153,6 +153,9 @@ func (s *StreamableServer) registerTools() {
 
 	// Utility tools
 	s.registerUtilityTools()
+
+	// AI Coder tools
+	s.registerAICoderTools()
 }
 
 func (s *StreamableServer) registerScriptTools() {
