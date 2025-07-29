@@ -420,6 +420,14 @@ func (tb *TerminalBuffer) Resize(width, height int) {
 	tb.mu.Lock()
 	defer tb.mu.Unlock()
 	
+	// Ensure positive dimensions
+	if width <= 0 {
+		width = 80
+	}
+	if height <= 0 {
+		height = 24
+	}
+	
 	tb.Width = width
 	tb.Height = height
 	

@@ -231,12 +231,36 @@ func (v *AICoderPTYView) toggleFullScreen() {
 
 // getTerminalSize calculates the available terminal size
 func (v *AICoderPTYView) getTerminalSize() (int, int) {
+	// Ensure we have valid dimensions
+	if v.width <= 0 || v.height <= 0 {
+		// Return sensible defaults if dimensions not set yet
+		return 80, 24
+	}
+	
 	if v.isFullScreen {
 		// Full screen: use almost all available space
-		return v.width - 4, v.height - 4 // Account for borders
+		width := v.width - 4
+		height := v.height - 4
+		// Ensure positive values
+		if width <= 0 {
+			width = 80
+		}
+		if height <= 0 {
+			height = 24
+		}
+		return width, height
 	} else {
 		// Windowed: use portion of available space
-		return v.width - 6, v.height - 8 // Account for borders and info
+		width := v.width - 6
+		height := v.height - 8
+		// Ensure positive values
+		if width <= 0 {
+			width = 80
+		}
+		if height <= 0 {
+			height = 24
+		}
+		return width, height
 	}
 }
 
