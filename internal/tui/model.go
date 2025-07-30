@@ -1230,15 +1230,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleCommandWindow(msg)
 		}
 
-		// Handle "/" key to open command window
-		if msg.String() == "/" && m.width > 0 && m.height > 0 {
-			m.showCommandWindow()
-			return m, nil
-		}
+		// Check if PTY terminal is focused - if so, route ALL keys to PTY view
+		if m.currentView == ViewAICoders && m.aiCoderPTYView != nil && m.aiCoderPTYView.IsTerminalFocused() {
+			// When PTY is focused, ALL keys go to the PTY view
+			// The PTY view will handle ESC to exit focus mode
+			var cmd tea.Cmd
+			m.aiCoderPTYView, cmd = m.aiCoderPTYView.Update(msg)
+			return m, cmd
+		} else {
+			// Handle "/" key to open command window
+			if msg.String() == "/" && m.width > 0 && m.height > 0 {
+				m.showCommandWindow()
+				return m, nil
+			}
 
-		// Handle global keys first
-		if model, cmd, handled := m.handleGlobalKeys(msg); handled {
-			return model, cmd
+			// Handle global keys first (only when PTY is not focused)
+			if model, cmd, handled := m.handleGlobalKeys(msg); handled {
+				return model, cmd
+			}
 		}
 
 		switch {
@@ -1704,10 +1713,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case ViewAICoders:
 		// Update PTY view if available
+		// Note: When PTY is focused, key messages are already handled above
 		if m.aiCoderPTYView != nil {
-			var cmd tea.Cmd
-			m.aiCoderPTYView, cmd = m.aiCoderPTYView.Update(msg)
-			cmds = append(cmds, cmd)
+			// Only update for non-key messages when terminal is focused
+			if _, isKeyMsg := msg.(tea.KeyMsg); !isKeyMsg || !m.aiCoderPTYView.IsTerminalFocused() {
+				var cmd tea.Cmd
+				m.aiCoderPTYView, cmd = m.aiCoderPTYView.Update(msg)
+				cmds = append(cmds, cmd)
+			}
 		} else {
 			// Fall back to old view
 			var cmd tea.Cmd
@@ -4957,6 +4970,13 @@ func (m *Model) showCommandWindow() {
 	scripts := m.processMgr.GetScripts()
 	m.commandAutocomplete = NewCommandAutocompleteWithProcessManager(scripts, m.processMgr)
 	m.commandAutocomplete.SetWidth(min(60, m.width-10))
+	
+	// Set available AI providers if AI coder manager is available
+	if m.aiCoderManager != nil {
+		providers := m.aiCoderManager.GetProviders()
+		m.commandAutocomplete.SetAIProviders(providers)
+	}
+	
 	// Force initial focus
 	m.commandAutocomplete.Focus()
 }

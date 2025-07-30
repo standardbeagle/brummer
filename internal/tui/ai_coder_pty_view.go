@@ -175,10 +175,20 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 	
 	// If terminal is focused, send input to PTY
 	if v.terminalFocused && v.currentSession != nil {
+		// Check for ESC key to unfocus terminal
+		if key.Matches(msg, key.NewBinding(key.WithKeys("esc"))) {
+			v.terminalFocused = false
+			return v, nil
+		}
+		
 		// Convert key message to bytes and send to PTY
 		input := v.keyMsgToBytes(msg)
 		if len(input) > 0 {
-			v.currentSession.WriteInput(input)
+			if err := v.currentSession.WriteInput(input); err != nil {
+				// Session is closed or input buffer is full - silently handle
+				v.terminalFocused = false
+				return v, nil
+			}
 		}
 		return v, nil
 	}
@@ -405,22 +415,42 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 		return ""
 	}
 	
-	buffer := v.currentSession.GetBuffer()
-	if buffer == nil {
+	terminal := v.currentSession.GetTerminal()
+	if terminal == nil {
 		return ""
 	}
 	
-	lines := buffer.GetLines()
 	var content strings.Builder
 	
-	for _, line := range lines {
-		content.WriteString(line.Content)
-		content.WriteString("\n")
-	}
+	// Lock terminal state while reading
+	terminal.Lock()
+	defer terminal.Unlock()
 	
-	// Add cursor indicator if terminal is focused
-	if v.terminalFocused {
-		content.WriteString("█") // Block cursor
+	// Get terminal dimensions
+	width, height := terminal.Size()
+	cursor := terminal.Cursor()
+	cursorVisible := terminal.CursorVisible()
+	
+	// Render each line
+	for y := 0; y < height; y++ {
+		for x := 0; x < width; x++ {
+			cell := terminal.Cell(x, y)
+			
+			// Handle cursor
+			if v.terminalFocused && cursorVisible && x == cursor.X && y == cursor.Y {
+				content.WriteRune('█') // Block cursor
+			} else if cell.Char != 0 {
+				// Render the character
+				content.WriteRune(cell.Char)
+			} else {
+				content.WriteRune(' ')
+			}
+		}
+		
+		// Add newline except for last line
+		if y < height-1 {
+			content.WriteString("\n")
+		}
 	}
 	
 	return content.String()
@@ -491,6 +521,16 @@ func (v *AICoderPTYView) SetCurrentSession(session *aicoder.PTYSession) {
 		termWidth, termHeight := v.getTerminalSize()
 		session.Resize(termWidth, termHeight)
 	}
+}
+
+// IsTerminalFocused returns whether the terminal is currently focused for input
+func (v *AICoderPTYView) IsTerminalFocused() bool {
+	return v.terminalFocused
+}
+
+// UnfocusTerminal removes focus from the terminal
+func (v *AICoderPTYView) UnfocusTerminal() {
+	v.terminalFocused = false
 }
 
 // AttachToSession attaches the view to a specific session

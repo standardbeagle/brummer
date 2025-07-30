@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/hinshun/vt10x"
 )
 
 // PTYSession represents a pseudo-terminal session for an AI coder
@@ -21,7 +22,7 @@ type PTYSession struct {
 	Name         string
 	Command      *exec.Cmd
 	PTY          *os.File
-	Buffer       *TerminalBuffer
+	Terminal     vt10x.Terminal    // vt10x terminal emulator
 	IsActive     bool
 	IsFullScreen bool
 	DebugMode    bool
@@ -60,31 +61,6 @@ const (
 	PTYEventDataInject  PTYEventType = "data_inject"
 )
 
-// TerminalBuffer manages the terminal screen state
-type TerminalBuffer struct {
-	Lines      []TerminalLine
-	Width      int
-	Height     int
-	CursorX    int
-	CursorY    int
-	Scrollback []TerminalLine
-	mu         sync.RWMutex
-}
-
-// TerminalLine represents a line in the terminal
-type TerminalLine struct {
-	Content string
-	Style   TerminalStyle
-}
-
-// TerminalStyle represents text styling (colors, formatting)
-type TerminalStyle struct {
-	FgColor   int
-	BgColor   int
-	Bold      bool
-	Italic    bool
-	Underline bool
-}
 
 // NewPTYSession creates a new PTY session for an AI coder  
 func NewPTYSession(id, name, command string, args []string) (*PTYSession, error) {
@@ -114,12 +90,15 @@ func NewPTYSession(id, name, command string, args []string) (*PTYSession, error)
 		return nil, fmt.Errorf("failed to start PTY: %w", err)
 	}
 	
+	// Create vt10x terminal emulator
+	terminal := vt10x.New(vt10x.WithSize(80, 24))
+	
 	session := &PTYSession{
 		ID:           id,
 		Name:         name,
 		Command:      cmd,
 		PTY:          ptmx,
-		Buffer:       NewTerminalBuffer(80, 24),
+		Terminal:     terminal,
 		IsActive:     true,
 		IsFullScreen: false,
 		DebugMode:    false,
@@ -139,22 +118,6 @@ func NewPTYSession(id, name, command string, args []string) (*PTYSession, error)
 	return session, nil
 }
 
-// NewTerminalBuffer creates a new terminal buffer
-func NewTerminalBuffer(width, height int) *TerminalBuffer {
-	lines := make([]TerminalLine, height)
-	for i := range lines {
-		lines[i] = TerminalLine{Content: "", Style: TerminalStyle{}}
-	}
-	
-	return &TerminalBuffer{
-		Lines:      lines,
-		Width:      width,
-		Height:     height,
-		CursorX:    0,
-		CursorY:    0,
-		Scrollback: make([]TerminalLine, 0, 1000), // Keep 1000 lines of scrollback
-	}
-}
 
 // readLoop continuously reads from the PTY and processes output
 func (s *PTYSession) readLoop() {
@@ -185,11 +148,14 @@ func (s *PTYSession) readLoop() {
 				data := make([]byte, n)
 				copy(data, buffer[:n])
 				
-				// Process the data through terminal buffer
+				// Feed data to terminal emulator
 				if s.isStreamJSON {
 					s.processStreamJSON(data)
 				} else {
-					s.Buffer.ProcessOutput(data)
+					// Write to vt10x terminal
+					s.mu.Lock()
+					s.Terminal.Write(data)
+					s.mu.Unlock()
 				}
 				
 				// Send to output channel
@@ -241,6 +207,13 @@ func (s *PTYSession) writeLoop() {
 
 // WriteInput sends input to the PTY session
 func (s *PTYSession) WriteInput(data []byte) error {
+	s.mu.RLock()
+	if !s.IsActive {
+		s.mu.RUnlock()
+		return fmt.Errorf("session closed")
+	}
+	s.mu.RUnlock()
+	
 	select {
 	case s.InputChan <- data:
 		return nil
@@ -299,7 +272,8 @@ func (s *PTYSession) Resize(width, height int) error {
 		return err
 	}
 	
-	s.Buffer.Resize(width, height)
+	// Resize vt10x terminal
+	s.Terminal.Resize(width, height)
 	
 	s.EventChan <- PTYEvent{
 		Type:      PTYEventResize,
@@ -342,9 +316,11 @@ func (s *PTYSession) IsDebugModeEnabled() bool {
 	return s.DebugMode
 }
 
-// GetBuffer returns the current terminal buffer (read-only)
-func (s *PTYSession) GetBuffer() *TerminalBuffer {
-	return s.Buffer
+// GetTerminal returns the vt10x terminal emulator
+func (s *PTYSession) GetTerminal() vt10x.Terminal {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.Terminal
 }
 
 // Close closes the PTY session
@@ -376,92 +352,6 @@ func (s *PTYSession) Close() error {
 	return nil
 }
 
-// ProcessOutput processes terminal output and updates the buffer
-func (tb *TerminalBuffer) ProcessOutput(data []byte) {
-	tb.mu.Lock()
-	defer tb.mu.Unlock()
-	
-	// This is a simplified implementation
-	// In a full implementation, we'd parse ANSI escape sequences
-	text := string(data)
-	
-	// For now, just append to the current line
-	if tb.CursorY < len(tb.Lines) {
-		tb.Lines[tb.CursorY].Content += text
-	}
-	
-	// Handle newlines
-	for _, char := range text {
-		if char == '\n' {
-			tb.CursorY++
-			tb.CursorX = 0
-			
-			// Scroll if needed
-			if tb.CursorY >= tb.Height {
-				// Move top line to scrollback
-				if len(tb.Lines) > 0 {
-					tb.Scrollback = append(tb.Scrollback, tb.Lines[0])
-					if len(tb.Scrollback) > 1000 {
-						tb.Scrollback = tb.Scrollback[1:]
-					}
-				}
-				
-				// Shift lines up
-				copy(tb.Lines, tb.Lines[1:])
-				tb.Lines[tb.Height-1] = TerminalLine{Content: "", Style: TerminalStyle{}}
-				tb.CursorY = tb.Height - 1
-			}
-		}
-	}
-}
-
-// Resize resizes the terminal buffer
-func (tb *TerminalBuffer) Resize(width, height int) {
-	tb.mu.Lock()
-	defer tb.mu.Unlock()
-	
-	// Ensure positive dimensions
-	if width <= 0 {
-		width = 80
-	}
-	if height <= 0 {
-		height = 24
-	}
-	
-	tb.Width = width
-	tb.Height = height
-	
-	// Resize lines array
-	if len(tb.Lines) < height {
-		// Add more lines
-		for i := len(tb.Lines); i < height; i++ {
-			tb.Lines = append(tb.Lines, TerminalLine{Content: "", Style: TerminalStyle{}})
-		}
-	} else if len(tb.Lines) > height {
-		// Move excess lines to scrollback
-		excess := tb.Lines[height:]
-		tb.Scrollback = append(tb.Scrollback, excess...)
-		if len(tb.Scrollback) > 1000 {
-			tb.Scrollback = tb.Scrollback[len(tb.Scrollback)-1000:]
-		}
-		tb.Lines = tb.Lines[:height]
-	}
-	
-	// Adjust cursor position
-	if tb.CursorY >= height {
-		tb.CursorY = height - 1
-	}
-}
-
-// GetLines returns the current terminal lines (read-only)
-func (tb *TerminalBuffer) GetLines() []TerminalLine {
-	tb.mu.RLock()
-	defer tb.mu.RUnlock()
-	
-	lines := make([]TerminalLine, len(tb.Lines))
-	copy(lines, tb.Lines)
-	return lines
-}
 
 // processStreamJSON processes streaming JSON output from Claude CLI
 func (s *PTYSession) processStreamJSON(data []byte) {
@@ -494,7 +384,9 @@ func (s *PTYSession) parseStreamJSONLine(line string) {
 	var streamEvent map[string]interface{}
 	if err := json.Unmarshal([]byte(line), &streamEvent); err != nil {
 		// If not JSON, treat as regular output
-		s.Buffer.ProcessOutput([]byte(line + "\n"))
+		s.mu.Lock()
+		s.Terminal.Write([]byte(line + "\n"))
+		s.mu.Unlock()
 		return
 	}
 	
@@ -567,5 +459,7 @@ func (s *PTYSession) addFormattedOutput(text, outputType string) {
 		formattedText = text
 	}
 	
-	s.Buffer.ProcessOutput([]byte(formattedText))
+	s.mu.Lock()
+	s.Terminal.Write([]byte(formattedText))
+	s.mu.Unlock()
 }

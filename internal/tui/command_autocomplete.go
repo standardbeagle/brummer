@@ -26,6 +26,7 @@ type CommandAutocomplete struct {
 	// Command-specific data
 	availableScripts map[string]string // Script name -> script command
 	processMgr       *process.Manager  // Reference to process manager to check running scripts
+	aiProviders      []string          // Available AI provider names
 }
 
 func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
@@ -106,6 +107,11 @@ func (c *CommandAutocomplete) SetWidth(width int) {
 	c.input.Width = width - 4 // Account for borders/padding
 }
 
+// SetAIProviders sets the available AI providers for autocomplete
+func (c *CommandAutocomplete) SetAIProviders(providers []string) {
+	c.aiProviders = providers
+}
+
 func (c *CommandAutocomplete) Value() string {
 	return c.input.Value()
 }
@@ -164,7 +170,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 	if c.currentIndex == 0 {
 		// First segment - show root commands
-		rootCommands := []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy"}
+		rootCommands := []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "help"}
 		currentText := ""
 		if len(c.segments) > 0 {
 			currentText = c.segments[0]
@@ -257,6 +263,18 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 				currentText = c.segments[c.currentIndex]
 			}
 			return c.filterSuggestions(urlExamples, currentText)
+			
+		case "/ai":
+			// Return available AI providers
+			if len(c.aiProviders) > 0 {
+				currentText := ""
+				if c.currentIndex < len(c.segments) {
+					currentText = c.segments[c.currentIndex]
+				}
+				return c.filterSuggestions(c.aiProviders, currentText)
+			}
+			// No providers configured - show help message
+			return []string{"<no providers configured - add to .brum.toml>"}
 		}
 	}
 
@@ -478,15 +496,50 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 	case "/toggle-proxy":
 		// No additional parameters needed
 		return true, ""
+		
+	case "/ai":
+		if len(parts) < 2 {
+			if len(c.aiProviders) == 0 {
+				return false, "No AI providers configured. Add [aicoder.providers.<name>] sections to .brum.toml"
+			}
+			return false, fmt.Sprintf("Please specify an AI provider. Available: %s", strings.Join(c.aiProviders, ", "))
+		}
+		providerName := parts[1]
+		
+		// Check if provider exists
+		if len(c.aiProviders) > 0 {
+			found := false
+			for _, provider := range c.aiProviders {
+				if provider == providerName {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false, fmt.Sprintf("AI provider '%s' not found. Available: %s", providerName, strings.Join(c.aiProviders, ", "))
+			}
+		} else {
+			// No providers configured
+			return false, "No AI providers configured. Add [aicoder.providers.<name>] sections to .brum.toml"
+		}
+		return true, ""
+		
+	case "/term":
+		// No additional parameters needed for terminal
+		return true, ""
+		
+	case "/help":
+		// No additional parameters needed
+		return true, ""
 
 	default:
 		// Check if it's a partial command
-		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy"} {
+		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "help"} {
 			if strings.HasPrefix(cmd, strings.TrimPrefix(command, "/")) {
 				return false, fmt.Sprintf("Incomplete command. Did you mean /%s?", cmd)
 			}
 		}
-		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy", command)
+		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /help", command)
 	}
 }
 

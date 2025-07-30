@@ -116,9 +116,10 @@ func (m *Model) subscribeToActivePTY() tea.Cmd {
 	return func() tea.Msg {
 		// This will block until output is received
 		data := <-m.aiCoderPTYView.currentSession.OutputChan
-		return PTYOutputMsg{
-			SessionID: m.aiCoderPTYView.currentSession.ID,
-			Data:      data,
+		return ptyOutputMsg{
+			sessionID: m.aiCoderPTYView.currentSession.ID,
+			data:      data,
+			timestamp: time.Now(),
 		}
 	}
 }
