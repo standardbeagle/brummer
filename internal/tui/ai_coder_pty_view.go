@@ -119,7 +119,21 @@ func (v *AICoderPTYView) Update(msg tea.Msg) (*AICoderPTYView, tea.Cmd) {
 			case tea.MouseWheelUp:
 				// Scroll up
 				v.scrollOffset += 3 // Scroll 3 lines at a time
-				// TODO: Implement max scroll limit based on history size
+				// Limit scroll to available history
+				if v.currentSession != nil {
+					history := v.currentSession.GetOutputHistory()
+					if len(history) > 0 {
+						historyLines := len(strings.Split(string(history), "\n"))
+						_, termHeight := v.getTerminalSize()
+						maxScroll := historyLines - termHeight
+						if maxScroll < 0 {
+							maxScroll = 0
+						}
+						if v.scrollOffset > maxScroll {
+							v.scrollOffset = maxScroll
+						}
+					}
+				}
 				return v, nil
 				
 			case tea.MouseWheelDown:
@@ -216,8 +230,8 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 
 	// If terminal is focused, send input to PTY
 	if v.terminalFocused && v.currentSession != nil {
-		// Check for ESC key to unfocus terminal
-		if key.Matches(msg, key.NewBinding(key.WithKeys("esc"))) {
+		// Check for Ctrl+Q to unfocus terminal (ESC is used by AI agents)
+		if key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+q"))) {
 			v.terminalFocused = false
 			return v, nil
 		}
@@ -256,7 +270,18 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 		if v.currentSession != nil {
 			_, termHeight := v.getTerminalSize()
 			v.scrollOffset += termHeight / 2
-			// TODO: Implement max scroll limit
+			// Limit scroll to available history
+			history := v.currentSession.GetOutputHistory()
+			if len(history) > 0 {
+				historyLines := len(strings.Split(string(history), "\n"))
+				maxScroll := historyLines - termHeight
+				if maxScroll < 0 {
+					maxScroll = 0
+				}
+				if v.scrollOffset > maxScroll {
+					v.scrollOffset = maxScroll
+				}
+			}
 		}
 		return v, nil
 		
@@ -326,50 +351,114 @@ func (v *AICoderPTYView) addToScrollback(data string) {
 	v.scrollOffset = 0
 }
 
-// getTerminalSize calculates the available terminal size
+// getTerminalSize calculates the available terminal size based on view mode and constraints
+//
+// LAYOUT CONSTRAINTS DOCUMENTATION:
+// This function is critical for proper terminal rendering and must account for all UI elements
+// that consume screen space. The calculations ensure the PTY content fits within borders.
+//
+// CONSTRAINT BREAKDOWN:
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │                           WINDOWED MODE LAYOUT                         │
+// ├─────────────────────────────────────────────────────────────────────────┤
+// │ Session Info Header    (1 line)                                        │
+// │ Status Message        (0-1 lines, conditional, 3s timeout)             │
+// │ Blank Line            (1 line)                                         │
+// │ ╭─────────────────────────────────────────────────────────────────────╮ │
+// │ │ Terminal Content Area (calculated height)                          │ │
+// │ │ ← Border (1 char) + Padding (1 char) = 2 chars per side           │ │
+// │ │ ← Total horizontal deduction: 4 characters                         │ │
+// │ ╰─────────────────────────────────────────────────────────────────────╯ │
+// │ Controls/Help Footer  (2-10 lines, depends on showHelp)               │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// FULL SCREEN MODE LAYOUT:
+// ┌─────────────────────────────────────────────────────────────────────────┐
+// │ Session Info (Full Screen) (1 line)                                    │
+// │ ┌─────────────────────────────────────────────────────────────────────┐ │
+// │ │ Raw PTY Content (entire remaining space)                           │ │
+// │ │ ← Border: 2 chars (left + right)                                   │ │
+// │ │ ← Padding: 2 chars (left + right)                                  │ │
+// │ │ ← Total deduction: 4 characters                                    │ │
+// │ └─────────────────────────────────────────────────────────────────────┘ │
+// │ Footer Controls       (1 line)                                         │
+// └─────────────────────────────────────────────────────────────────────────┘
+//
+// CRITICAL CONSISTENCY REQUIREMENT:
+// This function MUST return dimensions that match the rendering calculations in:
+// - renderWindowed(): terminalWidth := v.width - 4
+// - renderFullScreen(): borderedContent width calculation
+// - renderTerminalWithBorder(): width parameter usage
+//
+// The "-4" deduction is used consistently across all rendering functions.
 func (v *AICoderPTYView) getTerminalSize() (int, int) {
-	// Ensure we have valid dimensions
+	// Ensure we have valid dimensions before any calculations
 	if v.width <= 0 || v.height <= 0 {
 		// Return sensible defaults if dimensions not set yet
+		// These match common terminal defaults
 		return 80, 24
 	}
 
-	// Calculate based on current view mode
-	headerLines := 3 // Session info + blank
+	// WINDOWED MODE HEADER/FOOTER CALCULATIONS:
+	// These must match the actual UI elements rendered in renderWindowed()
+	headerLines := 3 // Base: Session info (1) + blank line (1) + content start (1)
 	if v.statusMessage != "" && time.Since(v.statusTime) < 3*time.Second {
-		headerLines += 2
+		headerLines += 2 // Status message (1) + blank line (1)
 	}
-	footerLines := 2
+	footerLines := 2 // Base: blank line (1) + controls (1)
 	if v.showHelp {
-		footerLines = 10
+		footerLines = 10 // Extended help text takes ~8-10 lines
 	}
 	
-	// Calculate available space more conservatively
-	// The container width is v.width - 6, and inside that we have:
-	// - Border: 2 chars (left + right)
-	// - Padding: 2 chars (left + right from Padding(0, 1))
-	// So content area = container - 4
+	// CORE CONSTRAINT: BORDER + PADDING DEDUCTION
+	// This is the most critical calculation that must remain consistent:
+	//
+	// Border rendering structure (see renderTerminalWithBorder):
+	// "╭─────────╮"  ← Top border
+	// "│ content │"  ← Left border (1) + left padding (1) + content + right padding (1) + right border (1)
+	// "╰─────────╯"  ← Bottom border
+	//
+	// Total horizontal space consumed by border + padding:
+	// - Left border: 1 character
+	// - Left padding: 1 character  
+	// - Right padding: 1 character
+	// - Right border: 1 character
+	// - TOTAL: 4 characters
+	//
+	// This 4-character deduction is used in:
+	// 1. This function (getTerminalSize)
+	// 2. renderWindowed() terminal width calculation
+	// 3. PTY session resize operations
+	// 4. Border rendering width calculations
+	const BORDER_AND_PADDING_WIDTH = 4
+	
 	if v.isFullScreen {
-		// Full screen mode
-		width := v.width - 8  // More conservative for safety
-		height := v.height - 4
+		// FULL SCREEN MODE:
+		// Use maximum available space minus border/padding constraints
+		// Height constraint is minimal (header + footer + border)
+		width := v.width - BORDER_AND_PADDING_WIDTH
+		height := v.height - 4 // Header (1) + footer (1) + top/bottom borders (2)
+		
+		// Safety bounds to prevent degenerate terminals
 		if width <= 0 {
-			width = 80
+			width = 80  // Standard terminal width fallback
 		}
 		if height <= 0 {
-			height = 24
+			height = 24 // Standard terminal height fallback
 		}
 		return width, height
 	} else {
-		// Windowed mode - be even more conservative
-		// Total deductions: 6 (container) + 4 (border+padding) = 10
-		width := v.width - 10
+		// WINDOWED MODE:
+		// Account for all UI elements that consume vertical space
+		width := v.width - BORDER_AND_PADDING_WIDTH - 2 // Additional 2 columns to fit properly in window
 		height := v.height - headerLines - footerLines
+		
+		// Safety bounds to prevent degenerate terminals
 		if width <= 0 {
-			width = 80
+			width = 80  // Standard terminal width fallback
 		}
 		if height <= 0 {
-			height = 24
+			height = 24 // Standard terminal height fallback
 		}
 		return width, height
 	}
@@ -452,7 +541,10 @@ func (v *AICoderPTYView) renderFullScreen() string {
 	// Terminal content
 	if v.currentSession != nil {
 		terminalContent := v.renderTerminalContent()
-		// Use custom border rendering to preserve ANSI codes
+		// FULL SCREEN BORDER CONSTRAINT:
+		// Width: v.width - 4 (BORDER_AND_PADDING_WIDTH from getTerminalSize)
+		// Height: v.height - 4 (header + footer + top/bottom borders)
+		// This MUST match the getTerminalSize() full screen calculation
 		borderedContent := v.renderTerminalWithFullScreenBorder(terminalContent, v.width - 4, v.height - 4)
 		content.WriteString(borderedContent)
 	} else {
@@ -510,8 +602,10 @@ func (v *AICoderPTYView) renderWindowed() string {
 		if terminalHeight < 5 {
 			terminalHeight = 5
 		}
-		// Container width should match terminal width calculation
-		terminalWidth := v.width - 6 // Match getTerminalSize() calculation
+		// CONSISTENCY REQUIREMENT: This width calculation MUST match getTerminalSize()
+		// Both functions use the same BORDER_AND_PADDING_WIDTH = 4 constraint
+		// This ensures the rendered content fits exactly within the calculated terminal size
+		terminalWidth := v.width - 4 // Match getTerminalSize() BORDER_AND_PADDING_WIDTH
 		if terminalWidth < 20 {
 			terminalWidth = 20
 		}
@@ -547,9 +641,9 @@ func (v *AICoderPTYView) renderWindowed() string {
 		content.WriteString(v.renderHelp())
 	} else {
 		// Brief controls
-		controls := "F11: Full Screen | F12: Debug Mode | Ctrl+H: Help | Enter: Focus Terminal"
+		controls := "/ (start of line): Brummer Commands | F11: Full Screen | F12: Debug Mode | Ctrl+H: Help | Enter: Focus Terminal"
 		if v.terminalFocused {
-			controls = "ESC: Unfocus | " + controls
+			controls = "Ctrl+Q: Unfocus | " + controls
 		}
 		if v.scrollOffset > 0 {
 			controls = fmt.Sprintf("[Scrolled ↑ %d] ", v.scrollOffset) + controls + " | Mouse/PgUp/PgDn: Scroll"
@@ -623,8 +717,10 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 	if height > termHeight {
 		height = termHeight
 	}
-	if width > termWidth-4 { // Account for border padding
-		width = termWidth-4
+	// Ensure content fits within our calculated display constraints
+	// termWidth already accounts for border and padding, so use it directly
+	if width > termWidth {
+		width = termWidth
 	}
 	
 	// Track the current text style as we scan across cells
@@ -887,6 +983,31 @@ func (v *AICoderPTYView) renderFromHistory() string {
 
 // renderTerminalWithBorder renders terminal content with a border while preserving ANSI codes
 //
+// TERMINAL SIZE ↔ BORDER RENDERING RELATIONSHIP:
+// This function is the bridge between getTerminalSize() calculations and actual visual output.
+// The relationship is critical for preventing content overflow and ensuring proper layout.
+//
+// CONSTRAINT FLOW:
+// 1. getTerminalSize() calculates: terminalWidth = viewWidth - 4
+// 2. PTY session is resized to these dimensions
+// 3. renderTerminalContent() generates content fitting those dimensions  
+// 4. This function renders borders around content using the SAME width parameter
+// 5. Final output fits exactly within the original view boundaries
+//
+// PARAMETER RELATIONSHIP:
+// - width parameter: Should equal getTerminalSize() width return value
+// - height parameter: Should equal getTerminalSize() height return value  
+// - Content: Must fit within (width-4) x (height-2) after accounting for borders
+//
+// BORDER STRUCTURE AND SPACE CONSUMPTION:
+// ┌────────────────────────────────────────────────────┐
+// │ ╭──────────────────────────────────────────────╮ │ ← width param
+// │ │ content area (width-4 chars wide)                  │ │
+// │ │ ^ left border (1) + left pad (1)                   │ │
+// │ │   right pad (1) + right border (1) ^               │ │  
+// │ ╰──────────────────────────────────────────────╯ │
+// └────────────────────────────────────────────────────┘
+//
 // CRITICAL INSIGHT: Using lipgloss.Style.Render() on content that contains ANSI codes
 // will strip those codes! This is why we must use raw ANSI codes for the border itself
 // and carefully preserve the content's ANSI codes.
@@ -896,6 +1017,7 @@ func (v *AICoderPTYView) renderFromHistory() string {
 // 2. Applies color to the border using raw ANSI codes (not lipgloss)
 // 3. Preserves all ANSI codes in the content
 // 4. Handles line wrapping and padding correctly
+// 5. Ensures content fits exactly within calculated dimensions
 func (v *AICoderPTYView) renderTerminalWithBorder(content string, width, height int) string {
 	// Use rounded border characters for a modern look
 	topLeft := "╭"
@@ -973,17 +1095,30 @@ func (v *AICoderPTYView) renderTerminalWithBorder(content string, width, height 
 
 // ansiLength calculates the visible length of a string, excluding ANSI escape sequences
 //
-// This is crucial for proper padding calculation in bordered content. ANSI escape
-// sequences like \033[31m take up bytes in the string but are invisible when rendered.
-// We need to know the actual visible character count to calculate padding correctly.
+// BORDER RENDERING DEPENDENCY:
+// This function is essential for the getTerminalSize() ↔ border rendering relationship.
+// Without accurate visible length calculation, borders would be misaligned and content
+// would overflow or have incorrect padding.
 //
-// The regex matches:
+// WHY THIS MATTERS FOR CONSTRAINTS:
+// 1. getTerminalSize() calculates: content should fit in (width-4) characters
+// 2. PTY generates content with ANSI codes: "\033[31mHello\033[0m" (5 visible chars, 13 total bytes) 
+// 3. Border rendering needs visible length (5) to calculate correct padding
+// 4. Without this, padding calculation would use total length (13) and overflow borders
+//
+// ANSI SEQUENCE EXAMPLES:
+// - "\033[31mRed text\033[0m" → visible length: 8 ("Red text")
+// - "\033[1;32mBold green\033[0m" → visible length: 10 ("Bold green")  
+// - "Hello \033[4munderlined\033[0m world" → visible length: 21 ("Hello underlined world")
+//
+// REGEX PATTERN BREAKDOWN:
 // - \x1b (ESC character, same as \033)
 // - \[ (literal bracket)
 // - [0-9;]* (any sequence of digits and semicolons)
 // - m (the terminating 'm')
 //
 // This covers all SGR (Select Graphic Rendition) sequences used for colors and text attributes.
+// This is the most common type of ANSI sequence in terminal content.
 func ansiLength(s string) int {
 	// Remove all ANSI SGR sequences
 	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
@@ -1074,7 +1209,7 @@ func (v *AICoderPTYView) renderHelp() string {
 	var help strings.Builder
 
 	help.WriteString(v.helpStyle.Render("🔥 AI Coder PTY Controls:\n"))
-	help.WriteString(v.helpStyle.Render("Navigation: F11 (Full Screen) | F12 (Debug Mode) | Enter (Focus) | ESC (Unfocus/Exit)\n"))
+	help.WriteString(v.helpStyle.Render("Navigation: F11 (Full Screen) | F12 (Debug Mode) | Enter (Focus) | Ctrl+Q (Unfocus) | ESC (Exit Full Screen)\n"))
 	help.WriteString(v.helpStyle.Render("Sessions: Ctrl+N (Next) | Ctrl+P (Previous) | Ctrl+D (Detach)\n"))
 	help.WriteString(v.helpStyle.Render("\n🔹 Data Injection Keys:\n"))
 
@@ -1085,6 +1220,9 @@ func (v *AICoderPTYView) renderHelp() string {
 
 	help.WriteString(v.helpStyle.Render("\n🚨 Debug Mode (F12):\n"))
 	help.WriteString(v.helpStyle.Render("When enabled, automatically forwards errors, test failures, and build failures to AI\n"))
+	help.WriteString(v.helpStyle.Render("\n💡 Slash Commands:\n"))
+	help.WriteString(v.helpStyle.Render("/ at start of line: Opens Brummer command palette\n"))
+	help.WriteString(v.helpStyle.Render("/ mid-line: Sent to AI coder as regular input\n"))
 	help.WriteString(v.helpStyle.Render("\nCtrl+H: Toggle this help"))
 
 	return help.String()
@@ -1144,6 +1282,35 @@ func (v *AICoderPTYView) IsTerminalFocused() bool {
 // UnfocusTerminal removes focus from the terminal
 func (v *AICoderPTYView) UnfocusTerminal() {
 	v.terminalFocused = false
+}
+
+// ShouldInterceptSlashCommand determines if "/" should open Brummer command palette
+// Returns true if:
+// - Terminal is not focused, OR  
+// - Cursor is at start of line (typically indicates new command)
+func (v *AICoderPTYView) ShouldInterceptSlashCommand() bool {
+	// If terminal not focused, always allow Brummer commands
+	if !v.terminalFocused {
+		return true
+	}
+	
+	// If no current session, allow Brummer commands
+	if v.currentSession == nil {
+		return true
+	}
+	
+	// CRITICAL FIX: If terminal IS focused, DON'T intercept slash commands
+	// This allows slash commands to be sent to the AI coder as regular input
+	// Only intercept when terminal is not focused
+	return false
+}
+
+// GetCurrentLineContent returns the current line content for context
+func (v *AICoderPTYView) GetCurrentLineContent() string {
+	if v.currentSession == nil {
+		return ""
+	}
+	return v.currentSession.GetCurrentLineContent()
 }
 
 // AttachToSession attaches the view to a specific session

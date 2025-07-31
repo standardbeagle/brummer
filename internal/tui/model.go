@@ -21,6 +21,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/aicoder"
+	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/parser"
@@ -31,21 +32,72 @@ import (
 
 type View string
 
-// simpleAICoderConfig implements aicoder.Config for TUI
-type simpleAICoderConfig struct {
-	maxConcurrent    int
-	workspaceBaseDir string
-	defaultProvider  string
-	timeoutMinutes   int
+// configAdapter implements aicoder.Config using the real config
+type configAdapter struct {
+	cfg *config.Config
 }
 
-func (c *simpleAICoderConfig) GetAICoderConfig() aicoder.AICoderConfig {
-	return aicoder.AICoderConfig{
-		MaxConcurrent:    c.maxConcurrent,
-		WorkspaceBaseDir: c.workspaceBaseDir,
-		DefaultProvider:  c.defaultProvider,
-		TimeoutMinutes:   c.timeoutMinutes,
+func (c *configAdapter) GetAICoderConfig() aicoder.AICoderConfig {
+	if c.cfg == nil || c.cfg.AICoders == nil {
+		// Return defaults if no config
+		return aicoder.AICoderConfig{
+			MaxConcurrent:    3,
+			WorkspaceBaseDir: filepath.Join(os.Getenv("HOME"), ".brummer", "ai-coders"),
+			DefaultProvider:  "claude",
+			TimeoutMinutes:   30,
+		}
 	}
+	
+	aiCfg := c.cfg.AICoders
+	return aicoder.AICoderConfig{
+		MaxConcurrent:    aiCfg.GetMaxConcurrent(),
+		WorkspaceBaseDir: aiCfg.GetWorkspaceBaseDir(),
+		DefaultProvider:  aiCfg.GetDefaultProvider(),
+		TimeoutMinutes:   aiCfg.GetTimeoutMinutes(),
+	}
+}
+
+func (c *configAdapter) GetProviderConfigs() map[string]*aicoder.ProviderConfig {
+	result := make(map[string]*aicoder.ProviderConfig)
+	
+	if c.cfg == nil || c.cfg.AICoders == nil || c.cfg.AICoders.Providers == nil {
+		return result
+	}
+	
+	// Convert from config.ProviderConfig to aicoder.ProviderConfig
+	for name, provider := range c.cfg.AICoders.Providers {
+		if provider == nil {
+			continue
+		}
+		
+		aiProvider := &aicoder.ProviderConfig{}
+		
+		// Convert CLI tool config if present
+		if provider.CLITool != nil {
+			cliTool := provider.CLITool
+			aiProvider.CLITool = &aicoder.CLIToolConfig{
+				Command:     "",
+				BaseArgs:    cliTool.BaseArgs,
+				FlagMapping: cliTool.FlagMapping,
+				WorkingDir:  ".",
+				Environment: cliTool.Environment,
+			}
+			
+			// Set command
+			if cliTool.Command != nil {
+				aiProvider.CLITool.Command = *cliTool.Command
+			}
+			
+			// Set working dir
+			if cliTool.WorkingDir != nil {
+				aiProvider.CLITool.WorkingDir = *cliTool.WorkingDir
+			}
+		}
+		
+		result[name] = aiProvider
+	}
+	
+	return result
 }
 
 // eventBusWrapper wraps the Brummer EventBus to implement aicoder.EventBus
@@ -113,23 +165,23 @@ var viewConfigs = map[View]ViewConfig{
 		KeyBinding:  "5",
 		Icon:        "🌐",
 	},
+	ViewAICoders: {
+		Title:       "AI Coders",
+		Description: "Manage and monitor agentic AI coding assistants",
+		KeyBinding:  "6",
+		Icon:        "🤖",
+	},
 	ViewSettings: {
 		Title:       "Settings",
 		Description: "Configuration",
-		KeyBinding:  "6",
+		KeyBinding:  "7",
 		Icon:        "⚙️",
 	},
 	ViewMCPConnections: {
 		Title:       "MCP",
 		Description: "MCP Connections",
-		KeyBinding:  "7",
-		Icon:        "🔌",
-	},
-	ViewAICoders: {
-		Title:       "AI Coders",
-		Description: "Manage and monitor agentic AI coding assistants",
 		KeyBinding:  "8",
-		Icon:        "🤖",
+		Icon:        "🔌",
 	},
 }
 
@@ -221,6 +273,8 @@ type Model struct {
 	// UI state
 	copyNotification string
 	notificationTime time.Time
+	headerHeight     int // Calculated height of the header
+	footerHeight     int // Calculated height of the footer
 
 	// System message panel state (for internal Brummer messages)
 	systemPanelExpanded bool            // Whether system message panel is expanded to full screen
@@ -247,17 +301,14 @@ type Model struct {
 	mcpConnections      map[string]*mcpConnectionItem // sessionId -> connection
 	mcpActivities       map[string][]MCPActivity      // sessionId -> activities
 	mcpActivityMu       sync.RWMutex
-	
+
 	// AI Coder fields
-	aiCoderManager *aicoder.AICoderManager
-	aiCoderView    AICoderView
-	
-	// PTY support
-	aiCoderPTYView    *AICoderPTYView
-	ptyManager        *aicoder.PTYManager
-	ptyEventSub       chan aicoder.PTYEvent
-	ptyDataProvider   aicoder.BrummerDataProvider
-	debugForwarder    *AICoderDebugForwarder
+	aiCoderManager  *aicoder.AICoderManager
+	aiCoderPTYView  *AICoderPTYView
+	ptyManager      *aicoder.PTYManager
+	ptyEventSub     chan aicoder.PTYEvent
+	ptyDataProvider aicoder.BrummerDataProvider
+	debugForwarder  *AICoderDebugForwarder
 }
 
 // handleGlobalKeys handles keys that should work in all views
@@ -829,9 +880,53 @@ func (d proxyRequestDelegate) Render(w io.Writer, m list.Model, index int, listI
 	if item, ok := listItem.(proxyRequestItem); ok {
 		// Calculate available width for URL based on list width
 		listWidth := m.Width()
+		
+		// For very narrow terminals, use a compact format
+		if listWidth < 50 {
+			// Compact format: "HH:MM STATUS URL"
+			url := item.Request.URL
+			
+			// Calculate actual space needed: time(5) + space(1) + status(3) + space(1) = 10 chars
+			timeStr := item.Request.StartTime.Format("15:04")
+			statusStr := fmt.Sprintf("%d", item.Request.StatusCode)
+			reservedSpace := len(timeStr) + 1 + len(statusStr) + 1
+			
+			maxURLLength := listWidth - reservedSpace
+			if maxURLLength < 3 {
+				// If we can't fit even "...", just show status
+				line := fmt.Sprintf("%s %s", timeStr, statusStr)
+				var str string
+				if index == m.Index() {
+					str = lipgloss.NewStyle().Background(lipgloss.Color("240")).Render(line)
+				} else {
+					str = line
+				}
+				fmt.Fprint(w, str)
+				return
+			}
+			
+			if len(url) > maxURLLength {
+				if maxURLLength <= 3 {
+					url = "..."
+				} else {
+					url = url[:maxURLLength-3] + "..."
+				}
+			}
+			
+			line := fmt.Sprintf("%s %s %s", timeStr, statusStr, url)
+			
+			var str string
+			if index == m.Index() {
+				str = lipgloss.NewStyle().Background(lipgloss.Color("240")).Render(line)
+			} else {
+				str = line
+			}
+			fmt.Fprint(w, str)
+			return
+		}
 
+		// Standard format for wider terminals
 		// Fixed parts: time(8) + space + status(3) + space + method(7 max) + space + indicators(6 max) + padding(4)
-		// Conservative estimate for fixed content
 		timeWidth := 8       // "15:04:05"
 		statusWidth := 3     // "200"
 		methodWidth := 7     // "DELETE" (longest common method)
@@ -841,15 +936,19 @@ func (d proxyRequestDelegate) Render(w io.Writer, m list.Model, index int, listI
 
 		fixedWidth := timeWidth + statusWidth + methodWidth + indicatorsWidth + spacesWidth + paddingWidth
 
-		// Available width for URL (ensure minimum of 20 chars)
+		// Available width for URL with safety checks
 		maxURLLength := listWidth - fixedWidth
-		if maxURLLength < 20 {
-			maxURLLength = 20
+		if maxURLLength < 10 {
+			maxURLLength = 10 // Reasonable minimum for readability
 		}
 
 		url := item.Request.URL
 		if len(url) > maxURLLength {
-			url = url[:maxURLLength-3] + "..."
+			if maxURLLength <= 3 {
+				url = "..." // Fallback for extremely narrow cases
+			} else {
+				url = url[:maxURLLength-3] + "..."
+			}
 		}
 
 		// Build the line
@@ -893,11 +992,11 @@ func formatBytes(bytes int64) string {
 	}
 }
 
-func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int) *Model {
-	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewProcesses, false)
+func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, cfg *config.Config) *Model {
+	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewProcesses, false, cfg)
 }
 
-func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool) *Model {
+func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool, cfg *config.Config) *Model {
 	scripts := processMgr.GetScripts()
 
 	processesList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
@@ -928,10 +1027,12 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		errorsViewport: viewport.New(0, 0),
 		urlsViewport:   viewport.New(0, 0),
 		webRequestsList: func() list.Model {
-			l := list.New([]list.Item{}, proxyRequestDelegate{}, 0, 0)
+			l := list.New([]list.Item{}, proxyRequestDelegate{}, 80, 20)
 			l.SetShowTitle(false)
 			l.SetShowStatusBar(false)
 			l.SetShowHelp(false)
+			l.SetShowPagination(false)
+			l.DisableQuitKeybindings()
 			return l
 		}(),
 		webDetailViewport: viewport.New(0, 0),
@@ -1002,33 +1103,37 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	if debugMode && initialView == ViewMCPConnections {
 		m.updateMCPConnectionsList()
 	}
-	
+
 	// Initialize AI Coder manager and view
-	// Create a simple config implementation
-	aiCoderConfig := &simpleAICoderConfig{
-		maxConcurrent:    3,
-		workspaceBaseDir: filepath.Join(os.Getenv("HOME"), ".brummer", "ai-coders"),
-		defaultProvider:  "mock",
-		timeoutMinutes:   30,
+	// Use the real config if provided, otherwise use defaults
+	var aiCoderConfig aicoder.Config
+	if cfg != nil {
+		aiCoderConfig = &configAdapter{cfg: cfg}
+	} else {
+		// Fallback for tests or when no config is provided
+		aiCoderConfig = &configAdapter{cfg: nil}
 	}
 	eventBusWrapper := &eventBusWrapper{eventBus: eventBus}
-	
+
 	// Create PTY data provider first
 	m.ptyDataProvider = NewTUIDataProvider(&m)
-	
+
 	// Initialize AI Coder manager with PTY support
 	var err error
 	m.aiCoderManager, err = aicoder.NewAICoderManagerWithPTY(aiCoderConfig, eventBusWrapper, m.ptyDataProvider)
 	if err != nil {
 		// Log error but continue - AI Coder is optional
 		fmt.Printf("Warning: Failed to initialize AI Coder manager: %v\n", err)
+		// Also log to the store so users can see it
+		m.logStore.Add("system", "System", fmt.Sprintf("AI Coder initialization failed: %v", err), true)
+		m.logStore.Add("system", "System", "AI Coder features will not be available", true)
 	} else {
 		// Get PTY manager from AI coder manager
 		m.ptyManager = m.aiCoderManager.GetPTYManager()
-		
+
 		// Initialize debug forwarder
 		m.debugForwarder = NewAICoderDebugForwarder(&m)
-		
+
 		// Subscribe to events for debug forwarding
 		m.eventBus.Subscribe(events.ErrorDetected, func(event events.Event) {
 			if m.updateChan != nil && m.debugForwarder != nil {
@@ -1039,7 +1144,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 				}()
 			}
 		})
-		
+
 		m.eventBus.Subscribe(events.TestFailed, func(event events.Event) {
 			if m.updateChan != nil && m.debugForwarder != nil {
 				go func() {
@@ -1049,7 +1154,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 				}()
 			}
 		})
-		
+
 		m.eventBus.Subscribe(events.BuildEvent, func(event events.Event) {
 			if m.updateChan != nil && m.debugForwarder != nil {
 				go func() {
@@ -1059,16 +1164,13 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 				}()
 			}
 		})
-		
+
 		// Create PTY event subscription channel
 		m.ptyEventSub = make(chan aicoder.PTYEvent, 100)
-		
+
 		// Initialize PTY view
 		m.aiCoderPTYView = NewAICoderPTYView(m.ptyManager)
 	}
-	
-	// Keep the old view for compatibility during transition
-	m.aiCoderView = NewAICoderView(m.aiCoderManager)
 
 	// Set up event subscriptions immediately in constructor (not in Init)
 	// This ensures subscriptions are active before MCP server starts
@@ -1201,12 +1303,12 @@ func (m *Model) Init() tea.Cmd {
 		m.waitForUpdates(),
 		m.tickCmd(),
 	}
-	
+
 	// Start listening for PTY events if available
 	if m.ptyEventSub != nil {
 		cmds = append(cmds, m.listenPTYEvents())
 	}
-	
+
 	return tea.Batch(cmds...)
 }
 
@@ -1230,20 +1332,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.handleCommandWindow(msg)
 		}
 
-		// Check if PTY terminal is focused - if so, route ALL keys to PTY view
+		// Handle "/" key for Brummer commands - check if we should intercept it
+		if msg.String() == "/" && m.width > 0 && m.height > 0 {
+			// Check if we should intercept the slash command
+			shouldIntercept := true
+			if m.currentView == ViewAICoders && m.aiCoderPTYView != nil {
+				shouldIntercept = m.aiCoderPTYView.ShouldInterceptSlashCommand()
+			}
+			
+			if shouldIntercept {
+				m.showCommandWindow()
+				return m, nil
+			}
+			// If not intercepting, fall through to PTY handling
+		}
+
+		// Check if PTY terminal is focused - if so, route keys to PTY view
 		if m.currentView == ViewAICoders && m.aiCoderPTYView != nil && m.aiCoderPTYView.IsTerminalFocused() {
-			// When PTY is focused, ALL keys go to the PTY view
+			// When PTY is focused, keys go to the PTY view (except intercepted "/" above)
 			// The PTY view will handle ESC to exit focus mode
 			var cmd tea.Cmd
 			m.aiCoderPTYView, cmd = m.aiCoderPTYView.Update(msg)
 			return m, cmd
 		} else {
-			// Handle "/" key to open command window
-			if msg.String() == "/" && m.width > 0 && m.height > 0 {
-				m.showCommandWindow()
-				return m, nil
-			}
-
 			// Handle global keys first (only when PTY is not focused)
 			if model, cmd, handled := m.handleGlobalKeys(msg); handled {
 				return model, cmd
@@ -1715,21 +1826,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update PTY view if available
 		// Note: When PTY is focused, key messages are already handled above
 		if m.aiCoderPTYView != nil {
-			// Only update for non-key messages when terminal is focused
-			if _, isKeyMsg := msg.(tea.KeyMsg); !isKeyMsg || !m.aiCoderPTYView.IsTerminalFocused() {
+			// Always forward WindowSizeMsg and MouseMsg to ensure proper sizing and scrolling
+			if _, isWindowSize := msg.(tea.WindowSizeMsg); isWindowSize {
+				var cmd tea.Cmd
+				m.aiCoderPTYView, cmd = m.aiCoderPTYView.Update(msg)
+				cmds = append(cmds, cmd)
+			} else if _, isMouseMsg := msg.(tea.MouseMsg); isMouseMsg {
+				// Always forward mouse messages for scrolling
+				var cmd tea.Cmd
+				m.aiCoderPTYView, cmd = m.aiCoderPTYView.Update(msg)
+				cmds = append(cmds, cmd)
+			} else if _, isKeyMsg := msg.(tea.KeyMsg); !isKeyMsg || !m.aiCoderPTYView.IsTerminalFocused() {
+				// Only update for non-key messages when terminal is focused
 				var cmd tea.Cmd
 				m.aiCoderPTYView, cmd = m.aiCoderPTYView.Update(msg)
 				cmds = append(cmds, cmd)
 			}
 		} else {
-			// Fall back to old view
-			var cmd tea.Cmd
-			m.aiCoderView, cmd = m.aiCoderView.Update(msg)
-			cmds = append(cmds, cmd)
+			// No PTY view available - do nothing
 		}
 
 	}
-	
+
 	// Handle PTY event messages
 	if cmd := m.handlePTYEventMsg(msg); cmd != nil {
 		cmds = append(cmds, cmd)
@@ -1750,6 +1868,12 @@ func (m *Model) View() string {
 	if m.showingCommandWindow {
 		return m.renderCommandWindow()
 	}
+	
+	// AI Coder PTY view in full screen mode should render raw
+	if m.currentView == ViewAICoders && m.aiCoderPTYView != nil && m.aiCoderPTYView.isFullScreen {
+		// In full screen mode, return raw PTY output without any BubbleTea styling
+		return m.aiCoderPTYView.GetRawOutput()
+	}
 
 	// Render main content with consistent layout
 	return m.renderLayout(m.renderContent())
@@ -1757,26 +1881,39 @@ func (m *Model) View() string {
 
 // renderLayout provides consistent layout for all views
 func (m *Model) renderLayout(content string) string {
-	// Calculate content height
-	contentHeight := m.height - 4 // Header (2) + Help (2)
-
 	// Build main layout parts
-	parts := []string{m.renderHeader()}
+	header := m.renderHeader()
+	parts := []string{header}
+	
+	// Calculate footer height dynamically
+	helpView := m.help.View(m.keys)
+	m.footerHeight = strings.Count(helpView, "\n") + 1
+	
+	// Calculate content height based on actual header and footer heights
+	contentHeight := m.height - m.headerHeight - m.footerHeight
 
 	// If system panel is expanded, show it instead of main content
 	if m.systemPanelExpanded && len(m.systemMessages) > 0 {
 		// Full screen mode - system panel takes most of the space
-		errorPanelHeight := m.height - 8 // Leave room for header and help
+		errorPanelHeight := contentHeight
 		m.systemPanelViewport.Height = errorPanelHeight
 		parts = append(parts, m.renderSystemPanel())
 	} else {
-		// Normal content - always use full height
-		contentStyle := lipgloss.NewStyle().Height(contentHeight)
-		parts = append(parts, contentStyle.Render(content))
+		// Normal content - always use full height and width
+		// Ensure content fills the entire area to prevent bleed-through
+		paddedContent := content
+		contentLines := strings.Count(content, "\n") + 1
+		if contentLines < contentHeight {
+			// Pad with empty lines to fill the space
+			padding := strings.Repeat("\n", contentHeight-contentLines)
+			paddedContent = content + padding
+		}
+		contentStyle := lipgloss.NewStyle().Height(contentHeight).Width(m.width)
+		parts = append(parts, contentStyle.Render(paddedContent))
 	}
 
 	// Add help at the bottom
-	parts = append(parts, m.help.View(m.keys))
+	parts = append(parts, helpView)
 
 	// Join all parts
 	mainLayout := lipgloss.JoinVertical(lipgloss.Left, parts...)
@@ -1795,10 +1932,23 @@ func (m *Model) renderAICoderPTYView() string {
 	if m.aiCoderPTYView == nil {
 		return "AI Coder PTY view not initialized"
 	}
-	
+
+	// Ensure the view has the correct size
+	// This handles cases where WindowSizeMsg might not have been received
+	// PTY view needs content height, not full terminal height
+	contentHeight := m.height - m.headerHeight - m.footerHeight
+	if contentHeight <= 0 {
+		// Fallback if heights not calculated yet
+		contentHeight = m.height - 5
+	}
+	if m.aiCoderPTYView.width != m.width || m.aiCoderPTYView.height != contentHeight {
+		windowSizeMsg := tea.WindowSizeMsg{Width: m.width, Height: contentHeight}
+		m.aiCoderPTYView.Update(windowSizeMsg)
+	}
+
 	// Get the PTY view content
 	content := m.aiCoderPTYView.View()
-	
+
 	// Apply consistent styling if needed
 	return content
 }
@@ -1834,11 +1984,10 @@ func (m *Model) renderContent() string {
 		}
 		return m.renderSettings() // Fallback if not in debug mode
 	case ViewAICoders:
-		// Use PTY view if available, otherwise fall back to old view
 		if m.aiCoderPTYView != nil {
 			return m.renderAICoderPTYView()
 		}
-		return m.aiCoderView.View()
+		return "AI Coder view not available - check initialization errors"
 	case ViewFilters:
 		return m.renderFiltersView()
 	default:
@@ -1910,14 +2059,15 @@ func (m *Model) updateSizes() {
 	m.errorDetailView.Height = contentHeight
 	m.urlsViewport.Width = m.width
 	m.urlsViewport.Height = contentHeight
-	// webRequestsList size is set in render functions as needed
-	
-	// Update AI Coder view size
-	m.aiCoderView, _ = m.aiCoderView.Update(tea.WindowSizeMsg{Width: m.width, Height: contentHeight})
+	m.webRequestsList.SetSize(m.width, contentHeight)
+	m.webDetailViewport.Width = m.width / 3
+	m.webDetailViewport.Height = contentHeight
+
+	// AI Coder PTY view size is updated in main Update function
 }
 
 func (m *Model) cycleView() {
-	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
+	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewAICoders, ViewSettings}
 	if m.debugMode {
 		views = append(views, ViewMCPConnections)
 	}
@@ -1934,7 +2084,7 @@ func (m *Model) cycleView() {
 }
 
 func (m *Model) cyclePrevView() {
-	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings}
+	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewAICoders, ViewSettings}
 	if m.debugMode {
 		views = append(views, ViewMCPConnections)
 	}
@@ -1974,11 +2124,7 @@ func (m *Model) switchToView(view View) {
 			m.updateMCPConnectionsList()
 		}
 	case ViewAICoders:
-		// Initialize AI coder view
-		cmd := m.aiCoderView.Init()
-		if cmd != nil {
-			m.updateChan <- cmd()
-		}
+		// AI coder PTY view is already initialized
 	}
 }
 
@@ -2336,7 +2482,7 @@ func (m *Model) renderHeader() string {
 	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// Use ordered list of views
-	orderedViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewSettings, ViewAICoders}
+	orderedViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewAICoders, ViewSettings}
 	if m.debugMode {
 		orderedViews = append(orderedViews, ViewMCPConnections)
 	}
@@ -2377,12 +2523,17 @@ func (m *Model) renderHeader() string {
 
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Left, tabs...)
 
-	return lipgloss.JoinVertical(
+	header := lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
 		tabBar,
 		strings.Repeat("─", m.width),
 	)
+	
+	// Store header height for layout calculations
+	m.headerHeight = strings.Count(header, "\n") + 1
+	
+	return header
 }
 
 func (m *Model) renderProcessesView() string {
@@ -2574,7 +2725,7 @@ func (m *Model) renderURLsView() string {
 
 	leftWidth := m.width * 2 / 3
 	rightWidth := m.width - leftWidth - 3
-	contentHeight := m.height - 8
+	contentHeight := m.height - m.headerHeight - m.footerHeight
 
 	// Create left panel content (regular URLs)
 	var leftContent strings.Builder
@@ -2771,20 +2922,58 @@ func (m *Model) renderMCPConnectionBox(mcpURLs []logs.URLEntry) string {
 func (m *Model) renderWebView() string {
 	if m.width < 100 {
 		// For narrow screens, use the simple view
-		return m.renderWebViewSimple()
+		return m.renderWebViewNarrow()
 	}
 
+	// Check if proxy server is running - if not, show appropriate message
+	if m.proxyServer == nil || !m.proxyServer.IsRunning() {
+		return "\n🔴 Proxy server not running\n\nThe web proxy is currently disabled.\nTo enable it, check your configuration or start it manually."
+	}
+
+	// Build filter header that will be shown above the bordered views
+	var header strings.Builder
+	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+
+	// Filter tabs
+	filters := []string{"all", "pages", "api", "images", "other"}
+	var filterParts []string
+	for _, filter := range filters {
+		if filter == m.webFilter {
+			filterParts = append(filterParts, activeFilterStyle.Render("["+filter+"]"))
+		} else {
+			filterParts = append(filterParts, filterStyle.Render(filter))
+		}
+	}
+
+	// Filter line with pause indicator
+	filterLine := "Filter: " + strings.Join(filterParts, " ") + " (f)"
+	if !m.webAutoScroll {
+		filterLine += " ⏸"
+	}
+	header.WriteString(filterLine + "\n")
+
+	// Calculate heights accounting for the filter header
+	filterHeaderHeight := 1 // 1 line for filter
+	contentHeight := m.height - m.headerHeight - m.footerHeight - filterHeaderHeight
+
 	// Split view: requests list on left, detail on right
-	listWidth := m.width * 2 / 3
-	detailWidth := m.width - listWidth - 3
-	// Use standard content height calculation (header + help already handled by renderLayout)
-	// Account for compact 2-line header within the list area
-	contentHeight := m.height - 8
+	// Use a more conservative split for better readability
+	listWidth := int(float64(m.width) * 0.4)  // 40% for list
+	detailWidth := m.width - listWidth - 3    // Rest for detail
+	
+	// Ensure minimum widths
+	if listWidth < 40 {
+		listWidth = 40
+	}
+	if detailWidth < 40 {
+		detailWidth = 40
+	}
 
 	// Update list and detail viewport sizes
-	m.webRequestsList.SetSize(listWidth, contentHeight)
-	m.webDetailViewport.Width = detailWidth
-	m.webDetailViewport.Height = contentHeight
+	m.webRequestsList.SetSize(listWidth-2, contentHeight-2) // Account for borders
+	m.webDetailViewport.Width = detailWidth-2
+	m.webDetailViewport.Height = contentHeight-2
 
 	// Get filtered requests and update list
 	requests := m.getFilteredRequests()
@@ -2797,25 +2986,54 @@ func (m *Model) renderWebView() string {
 	detailContent := m.renderRequestDetail()
 	m.webDetailViewport.SetContent(detailContent)
 
+	// Get list content without filter header (we'll render it above)
+	listContent := m.renderWebRequestsListSimple()
+
 	// Create bordered views
 	borderStyle := lipgloss.NewStyle().
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("240"))
 
+	// Apply borders with proper sizing
 	listView := borderStyle.
-		Width(listWidth).
-		Height(contentHeight).
-		Render(m.renderWebRequestsListWithHeader())
+		Width(listWidth-2).    // Account for border characters
+		Height(contentHeight-2).
+		Render(listContent)
 
 	detailView := borderStyle.
-		Width(detailWidth).
-		Height(contentHeight).
+		Width(detailWidth-2).
+		Height(contentHeight-2).
 		Render(m.webDetailViewport.View())
 
-	return lipgloss.JoinHorizontal(lipgloss.Top, listView, " ", detailView)
+	// Combine header with bordered views
+	borderedContent := lipgloss.JoinHorizontal(lipgloss.Top, listView, " ", detailView)
+	return header.String() + borderedContent
 }
 
-func (m *Model) renderWebViewSimple() string {
+// renderWebRequestsListSimple renders just the list content without headers
+func (m *Model) renderWebRequestsListSimple() string {
+	var content strings.Builder
+
+	// Add the list view - check if empty and show helpful message
+	itemCount := len(m.webRequestsList.Items())
+	if itemCount == 0 {
+		// Show helpful message when no requests are available
+		emptyStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Italic(true).
+			MarginTop(2).
+			MarginLeft(2)
+		emptyMsg := emptyStyle.Render("No requests captured yet.\n\nMake some HTTP requests to see them here.")
+		content.WriteString(emptyMsg)
+	} else {
+		// Just show the list without any headers
+		content.WriteString(m.webRequestsList.View())
+	}
+
+	return content.String()
+}
+
+func (m *Model) renderWebViewNarrow() string {
 	var content strings.Builder
 
 	// Compact header: combine status + filter on one line, help + indicators on another
@@ -2861,10 +3079,10 @@ func (m *Model) renderWebViewSimple() string {
 	content.WriteString(strings.Repeat("─", m.width) + "\n")
 
 	// Calculate list height correctly
-	// renderLayout gives us m.height - 6 for content (header + help already handled)
+	// Use shared header/footer heights for consistent layout
 	// Our filter headers are WITHIN this content area, so subtract them
-	totalContentHeight := m.height - 6 // renderLayout standard allocation
-	filterHeaderLines := 3             // status+filter + help+indicators + separator (compact)
+	totalContentHeight := m.height - m.headerHeight - m.footerHeight
+	filterHeaderLines := 3 // status+filter + help+indicators + separator (compact)
 	listHeight := totalContentHeight - filterHeaderLines
 
 	// Setup list size and update with filtered requests
@@ -2873,8 +3091,17 @@ func (m *Model) renderWebViewSimple() string {
 	m.updateWebRequestsList(requests)
 	m.updateSelectedRequestFromList()
 
-	// Add the list view
-	content.WriteString(m.webRequestsList.View())
+	// Add the list view - show helpful message if empty
+	if len(m.webRequestsList.Items()) == 0 {
+		emptyStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Italic(true).
+			Padding(1, 0)
+		emptyMsg := emptyStyle.Render("No requests captured yet. Make some HTTP requests to see them here.")
+		content.WriteString(emptyMsg)
+	} else {
+		content.WriteString(m.webRequestsList.View())
+	}
 
 	return content.String()
 }
@@ -3190,12 +3417,37 @@ func (m *Model) renderTelemetryDetails(session *proxy.PageSession) string {
 		startIdx = len(session.Events) - 10
 	}
 
+	// Track first event time for elapsed calculations
+	var firstEventTime int64
+	if len(session.Events) > 0 {
+		firstEventTime = session.Events[0].Timestamp
+	}
+
+	var lastEventTime int64
 	for i := startIdx; i < len(session.Events); i++ {
 		event := session.Events[i]
 		eventTime := time.Unix(event.Timestamp/1000, (event.Timestamp%1000)*1000000)
 
+		// Calculate elapsed time from start and delta from last event
+		elapsedMs := event.Timestamp - firstEventTime
+		var deltaMs int64
+		if lastEventTime > 0 {
+			deltaMs = event.Timestamp - lastEventTime
+		}
+		lastEventTime = event.Timestamp
+
+		// Format timing info
+		var timingStr string
+		if i == 0 {
+			// First event shows absolute time
+			timingStr = eventTime.Format("15:04:05")
+		} else {
+			// Subsequent events show elapsed and delta
+			timingStr = fmt.Sprintf("+%dms (Δ%dms)", elapsedMs, deltaMs)
+		}
+
 		eventStr := fmt.Sprintf("%s %s",
-			lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(eventTime.Format("15:04:05")),
+			lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render(timingStr),
 			m.formatTelemetryEvent(event),
 		)
 		content.WriteString("  " + eventStr + "\n")
@@ -3230,6 +3482,15 @@ func (m *Model) formatTelemetryEvent(event proxy.TelemetryEvent) string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Render("User Interaction")
 	case proxy.TelemetryMemoryUsage:
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("208")).Render("Memory Snapshot")
+	case proxy.TelemetryPerformance:
+		// Check for paint timing events
+		if fcp, ok := event.Data["first_contentful_paint"].(float64); ok {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render(fmt.Sprintf("First Contentful Paint: %.0fms", fcp))
+		}
+		if fp, ok := event.Data["first_paint"].(float64); ok {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Render(fmt.Sprintf("First Paint: %.0fms", fp))
+		}
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("33")).Render("Performance Metrics")
 	default:
 		return string(event.Type)
 	}
@@ -3375,52 +3636,6 @@ func (m *Model) updateWebRequestsList(requests []proxy.Request) {
 	}
 }
 
-// renderWebRequestsListWithHeader renders the filter tabs and requests list for split view
-func (m *Model) renderWebRequestsListWithHeader() string {
-	var content strings.Builder
-
-	// Compact header: combine everything on minimal lines
-	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
-
-	// Line 1: Filter + Status combined
-	filters := []string{"all", "pages", "api", "images", "other"}
-	var filterParts []string
-	for _, filter := range filters {
-		if filter == m.webFilter {
-			filterParts = append(filterParts, activeFilterStyle.Render("["+filter+"]"))
-		} else {
-			filterParts = append(filterParts, filterStyle.Render(filter))
-		}
-	}
-
-	// Line 1: Filter tabs
-	filterLine := "Filter: " + strings.Join(filterParts, " ") + " (f)"
-	if !m.webAutoScroll {
-		filterLine += " ⏸"
-	}
-	content.WriteString(filterLine + "\n")
-
-	// Line 2: Proxy status with count
-	if m.proxyServer != nil && m.proxyServer.IsRunning() {
-		modeStr := "Full Proxy"
-		if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
-			modeStr = "Reverse Proxy"
-		}
-
-		// Get request count for display
-		requests := m.getFilteredRequests()
-		countStr := fmt.Sprintf("%d", len(requests))
-
-		statusLine := lipgloss.NewStyle().Foreground(lipgloss.Color("82")).Render("🟢 " + modeStr + " - " + countStr)
-		content.WriteString(statusLine + "\n")
-	}
-
-	// Add the list view
-	content.WriteString(m.webRequestsList.View())
-
-	return content.String()
-}
 
 // renderTelemetrySummary renders a one-line summary of telemetry data
 func (m *Model) renderTelemetrySummary(session *proxy.PageSession) string {
@@ -4480,7 +4695,7 @@ func (m *Model) renderErrorsViewSplit() string {
 	// Calculate split dimensions
 	listWidth := m.width / 3
 	detailWidth := m.width - listWidth - 3 // -3 for border and padding
-	contentHeight := m.height - 5          // Adjust for header
+	contentHeight := m.height - m.headerHeight - m.footerHeight
 
 	// Update sizes
 	m.errorsList.SetSize(listWidth, contentHeight)
@@ -4784,15 +4999,15 @@ func (m *Model) handleSlashCommand(input string) {
 			}
 			return
 		}
-		
+
 		configKey := parts[1]
-		
+
 		// Check if there's a task (everything after the config key)
 		var task string
 		if len(parts) > 2 {
 			task = strings.Join(parts[2:], " ")
 		}
-		
+
 		// Get the AI coder configuration to check for CLI tools
 		if m.aiCoderManager != nil {
 			providers := m.aiCoderManager.GetProviders()
@@ -4803,35 +5018,64 @@ func (m *Model) handleSlashCommand(input string) {
 					break
 				}
 			}
-			
+
 			if found {
+				// Check if AI coder manager is initialized
+				if m.aiCoderManager == nil {
+					m.logStore.Add("system", "System", "AI coder manager not initialized - check configuration", true)
+					m.currentView = ViewLogs
+					return
+				}
+				if m.aiCoderPTYView == nil {
+					m.logStore.Add("system", "System", "AI coder PTY view not initialized", true)
+					m.currentView = ViewLogs
+					return
+				}
+				
 				// Use PTY sessions for AI coders
 				if m.aiCoderManager != nil && m.aiCoderPTYView != nil {
 					var session *aicoder.PTYSession
 					var err error
-					
+
+					// Prepare MCP environment variables
+					mcpEnv := make(map[string]string)
+					if m.mcpServer != nil && m.mcpServer.IsRunning() {
+						actualPort := m.mcpServer.GetPort()
+						mcpEnv["BRUMMER_MCP_URL"] = fmt.Sprintf("http://localhost:%d/mcp", actualPort)
+						mcpEnv["BRUMMER_MCP_PORT"] = fmt.Sprintf("%d", actualPort)
+					}
+
 					if task == "" {
 						// Interactive mode - create interactive CLI session
-						session, err = m.aiCoderManager.CreateInteractiveCLISession(configKey)
+						session, err = m.aiCoderManager.CreateInteractiveCLISessionWithEnv(configKey, mcpEnv)
 						if err != nil {
 							m.logStore.Add("system", "System", fmt.Sprintf("Failed to create interactive session for %s: %v", configKey, err), true)
+							// Switch to logs view to show the error
+							m.currentView = ViewLogs
 							return
 						}
 						m.logStore.Add("system", "System", fmt.Sprintf("Started %s in interactive mode (PTY)", configKey), false)
 					} else {
 						// Task mode - create task CLI session
-						session, err = m.aiCoderManager.CreateTaskCLISession(configKey, task)
+						session, err = m.aiCoderManager.CreateTaskCLISessionWithEnv(configKey, task, mcpEnv)
 						if err != nil {
 							m.logStore.Add("system", "System", fmt.Sprintf("Failed to create task session for %s: %v", configKey, err), true)
+							// Switch to logs view to show the error
+							m.currentView = ViewLogs
 							return
 						}
 						m.logStore.Add("system", "System", fmt.Sprintf("Started %s with task: %s", configKey, task), false)
 					}
-					
+
 					// Auto-switch to AI Coder view and attach to session
 					m.currentView = ViewAICoders
-					m.aiCoderPTYView.AttachToSession(session.ID)
-					
+					if err := m.aiCoderPTYView.AttachToSession(session.ID); err != nil {
+						m.logStore.Add("system", "System", fmt.Sprintf("Failed to attach to session: %v", err), true)
+						// Switch to logs view to show the error
+						m.currentView = ViewLogs
+						return
+					}
+
 					// Send PTY session created event
 					if m.updateChan != nil {
 						go func() {
@@ -4850,7 +5094,7 @@ func (m *Model) handleSlashCommand(input string) {
 							m.logStore.Add("system", "System", fmt.Sprintf("Failed to start %s: %v", configKey, err), true)
 							m.logStore.Add("system", "System", "💡 Tip: Some CLI tools don't work well as subprocesses. Try:", false)
 							m.logStore.Add("system", "System", fmt.Sprintf("   • Use: /term %s (runs in external terminal)", m.getCLICommand(configKey)), false)
-							m.logStore.Add("system", "System", "   • Or provide a task: /ai " + configKey + " <your task>", false)
+							m.logStore.Add("system", "System", "   • Or provide a task: /ai "+configKey+" <your task>", false)
 						} else {
 							m.logStore.Add("system", "System", fmt.Sprintf("Started %s in interactive mode", configKey), false)
 							// Switch to processes view to see the running CLI
@@ -4875,7 +5119,11 @@ func (m *Model) handleSlashCommand(input string) {
 				m.logStore.Add("system", "System", fmt.Sprintf("Provider '%s' not found in configuration", configKey), true)
 				if len(providers) > 0 {
 					m.logStore.Add("system", "System", fmt.Sprintf("Available providers: %s", strings.Join(providers, ", ")), false)
+				} else {
+					m.logStore.Add("system", "System", "No AI coder providers are registered. Check your configuration.", true)
 				}
+				// Switch to logs view to show the error
+				m.currentView = ViewLogs
 			}
 		} else {
 			m.logStore.Add("system", "System", "AI coder manager not initialized", true)
@@ -4886,28 +5134,28 @@ func (m *Model) handleSlashCommand(input string) {
 			m.logStore.Add("system", "System", "Usage: /term <command> - Run an arbitrary terminal command", true)
 			return
 		}
-		
+
 		// Parse command and arguments
 		cmdParts := parts[1:]
 		command := cmdParts[0]
 		args := cmdParts[1:]
-		
+
 		// Start the command
 		_, err := m.processMgr.StartCommand("term", command, args)
 		if err != nil {
 			m.logStore.Add("system", "System", fmt.Sprintf("Failed to start command: %v", err), true)
 			return
 		}
-		
+
 		m.logStore.Add("system", "System", fmt.Sprintf("Started terminal command: %s %s", command, strings.Join(args, " ")), false)
-		
+
 		// Switch to processes view to see the running command
 		m.currentView = ViewProcesses
 
 	case "/help":
 		m.logStore.Add("system", "System", "Available slash commands:", false)
 		m.logStore.Add("system", "System", "  /run <script>     - Run a package.json script", false)
-		m.logStore.Add("system", "System", "  /term <command>   - Run arbitrary terminal command", false) 
+		m.logStore.Add("system", "System", "  /term <command>   - Run arbitrary terminal command", false)
 		m.logStore.Add("system", "System", "  /ai <provider>    - Open interactive AI CLI (claude/opencode/gemini/aider)", false)
 		m.logStore.Add("system", "System", "  /ai <task>        - Create AI coder with task description", false)
 		m.logStore.Add("system", "System", "  /restart [name]   - Restart process (or all)", false)
@@ -4970,13 +5218,13 @@ func (m *Model) showCommandWindow() {
 	scripts := m.processMgr.GetScripts()
 	m.commandAutocomplete = NewCommandAutocompleteWithProcessManager(scripts, m.processMgr)
 	m.commandAutocomplete.SetWidth(min(60, m.width-10))
-	
+
 	// Set available AI providers if AI coder manager is available
 	if m.aiCoderManager != nil {
 		providers := m.aiCoderManager.GetProviders()
 		m.commandAutocomplete.SetAIProviders(providers)
 	}
-	
+
 	// Force initial focus
 	m.commandAutocomplete.Focus()
 }
@@ -5092,19 +5340,24 @@ func (m *Model) renderCommandWindow() string {
 	window := windowStyle.Render(content)
 
 	// Create a full-screen overlay with the centered window
+	// Calculate available space between header and help
+	header := m.renderHeader()
+	helpView := m.help.View(m.keys)
+	headerLines := strings.Count(header, "\n") + 1
+	helpLines := strings.Count(helpView, "\n") + 1
+	availableHeight := m.height - headerLines - helpLines
+	
 	overlay := lipgloss.Place(
-		m.width, m.height-7, // Account for header and help
+		m.width, availableHeight,
 		lipgloss.Center, lipgloss.Center,
 		window,
 		lipgloss.WithWhitespaceBackground(lipgloss.Color("236")), // Dim background
 	)
 
 	// Return the complete view with header and help
-	helpView := m.help.View(m.keys)
-
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
-		m.renderHeader(),
+		header,
 		overlay,
 		helpView,
 	)
@@ -5343,7 +5596,7 @@ func (m *Model) updateSystemPanelViewport() {
 	}
 
 	// Calculate viewport height
-	height := m.height - 4 // Account for header and help
+	height := m.height - m.headerHeight - m.footerHeight
 	if !m.systemPanelExpanded {
 		height = 5 // Show only 5 lines when not expanded
 	}
@@ -5560,8 +5813,8 @@ func (m *Model) renderSettings() string {
 	content.WriteString("\n")
 
 	// Calculate available height for the list
-	headerHeight := 4                              // header + subtitle + margins
-	availableHeight := m.height - 6 - headerHeight // standard layout minus our header
+	localHeaderHeight := 4 // header + subtitle + margins within this view
+	availableHeight := m.height - m.headerHeight - m.footerHeight - localHeaderHeight
 
 	// Update list size and render
 	m.settingsList.SetSize(m.width, availableHeight)
@@ -5577,7 +5830,7 @@ func (m *Model) startInteractiveCLI(configKey string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Start the command in interactive mode (no additional args)
 	_, err = m.processMgr.StartCommand(configKey+"-interactive", command, args)
 	return err
@@ -5590,7 +5843,7 @@ func (m *Model) startNonInteractiveCLI(configKey string, task string) error {
 	if err != nil {
 		return err
 	}
-	
+
 	// Start the command with the task
 	_, err = m.processMgr.StartCommand(configKey+"-task", command, args)
 	return err
@@ -5600,52 +5853,52 @@ func (m *Model) startNonInteractiveCLI(configKey string, task string) error {
 func (m *Model) getCLICommandFromConfig(configKey string, task string) (string, []string, error) {
 	// For now, use the auto-detected CLI tool mappings
 	// This is a simplified implementation that would be enhanced with actual config lookup
-	
+
 	cliMappings := map[string]struct {
-		command string
+		command  string
 		baseArgs []string
 		taskFlag string
 	}{
 		"claude": {
-			command: "claude",
+			command:  "claude",
 			baseArgs: []string{},
 			taskFlag: "", // Claude CLI accepts task as direct input
 		},
 		"sonnet": {
-			command: "claude",
+			command:  "claude",
 			baseArgs: []string{"--model", "sonnet"},
 			taskFlag: "",
 		},
 		"opus": {
-			command: "claude",
+			command:  "claude",
 			baseArgs: []string{"--model", "opus"},
 			taskFlag: "",
 		},
 		"aider": {
-			command: "aider",
+			command:  "aider",
 			baseArgs: []string{"--yes"},
 			taskFlag: "--message",
 		},
 		"opencode": {
-			command: "opencode",
+			command:  "opencode",
 			baseArgs: []string{"run"},
 			taskFlag: "--prompt",
 		},
 		"gemini": {
-			command: "gemini",
+			command:  "gemini",
 			baseArgs: []string{},
 			taskFlag: "--prompt",
 		},
 	}
-	
+
 	mapping, exists := cliMappings[configKey]
 	if !exists {
 		return "", nil, fmt.Errorf("CLI configuration not found for '%s'", configKey)
 	}
-	
+
 	args := make([]string, len(mapping.baseArgs))
 	copy(args, mapping.baseArgs)
-	
+
 	// If task is provided, add it based on the tool's requirements
 	if task != "" {
 		if mapping.taskFlag != "" {
@@ -5660,7 +5913,7 @@ func (m *Model) getCLICommandFromConfig(configKey string, task string) (string, 
 			args = append(args, task)
 		}
 	}
-	
+
 	return mapping.command, args, nil
 }
 
@@ -5674,9 +5927,14 @@ func (m *Model) getCLICommand(configKey string) string {
 		"opencode": "opencode",
 		"gemini":   "gemini",
 	}
-	
+
 	if command, exists := cliMappings[configKey]; exists {
 		return command
 	}
 	return configKey // fallback to config key itself
+}
+
+// GetAICoderManager returns the AI coder manager instance
+func (m *Model) GetAICoderManager() *aicoder.AICoderManager {
+	return m.aiCoderManager
 }
