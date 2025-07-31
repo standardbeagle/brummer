@@ -1,0 +1,75 @@
+# Brummer Configuration
+
+# AI Coder Configuration
+[ai_coders]
+enabled = true
+max_concurrent = 3
+workspace_base_dir = "~/.brummer/ai-coders"
+default_provider = "claude"  # You can use: claude, opencode, gemini
+timeout_minutes = 30
+auto_cleanup = true
+cleanup_after_hours = 24
+
+# OpenCode CLI Tool Configuration
+[ai_coders.providers.opencode]
+[ai_coders.providers.opencode.cli_tool]
+command = "opencode"
+base_args = ["run"]  # Use 'run' subcommand
+
+[ai_coders.providers.opencode.cli_tool.flag_mapping]
+model = "--model"
+prompt = "--prompt"
+debug = "--log-level"
+
+[ai_coders.providers.opencode.cli_tool.environment]
+# OpenCode uses API keys from its own config
+
+# Claude Provider Configuration
+[ai_coders.providers.claude]
+[ai_coders.providers.claude.cli_tool]
+command = "claude"
+base_args = ["--mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}", "--dangerously-skip-permissions"]  # For rapid development
+model = "sonnet"  # Default model
+
+[ai_coders.providers.claude.cli_tool.flag_mapping]
+model = "--model"
+output_format = "--output-format"
+debug = "--debug"
+
+[ai_coders.providers.claude.cli_tool.environment]
+# BRUMMER_MCP_URL and BRUMMER_MCP_PORT are automatically set by Brummer
+# Brummer will inject --mcp-config flag with the running MCP server URL
+
+# Claude Secure (without dangerous permissions)
+[ai_coders.providers.claude-secure]
+[ai_coders.providers.claude-secure.cli_tool]
+command = "claude"
+base_args = ["--mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}"]  # No dangerous permissions - will prompt for each action
+model = "sonnet"  # Default model
+
+[ai_coders.providers.claude-secure.cli_tool.flag_mapping]
+model = "--model"
+output_format = "--output-format"
+debug = "--debug"
+
+# Gemini CLI Tool Configuration
+[ai_coders.providers.gemini]
+[ai_coders.providers.gemini.cli_tool]
+command = "gemini"
+base_args = []
+
+[ai_coders.providers.gemini.cli_tool.flag_mapping]
+model = "--model"
+prompt = "--prompt"
+
+[ai_coders.providers.gemini.cli_tool.environment]
+# Gemini will use its own configuration for API keys
+
+# Terminal Provider Configuration (for terminal-based AI tools)
+[ai_coders.providers.terminal]
+[ai_coders.providers.terminal.cli_tool]
+command = "bash"
+base_args = ["-c"]
+
+# Note: API-based providers (that don't use CLI tools) have been removed
+# All configured providers above use their respective CLI tools
