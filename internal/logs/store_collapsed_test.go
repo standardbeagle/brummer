@@ -6,7 +6,7 @@ import (
 )
 
 func TestLogCollapsing(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	// Add some identical consecutive logs
@@ -70,7 +70,7 @@ func TestLogCollapsing(t *testing.T) {
 }
 
 func TestLogCollapsingByProcess(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	// Add logs from different processes
@@ -113,7 +113,7 @@ func TestLogCollapsingByProcess(t *testing.T) {
 }
 
 func TestLogCollapsingWithDifferentLevels(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	// Add identical content but one as error
@@ -162,7 +162,7 @@ func TestLogCollapsingWithDifferentLevels(t *testing.T) {
 }
 
 func TestLogCollapsingTimestamps(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	// Add logs with measurable time differences
@@ -202,7 +202,7 @@ func TestLogCollapsingTimestamps(t *testing.T) {
 }
 
 func TestAreLogsIdentical(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	now := time.Now()

@@ -26,11 +26,11 @@ func NewClaudeProvider(apiKey, model string) *ClaudeProvider {
 		// Try to get from environment
 		apiKey = os.Getenv("CLAUDE_API_KEY")
 	}
-	
+
 	if model == "" {
 		model = "claude-3-sonnet-20240229" // Default to Sonnet
 	}
-	
+
 	return &ClaudeProvider{
 		apiKey:  apiKey,
 		baseURL: "https://api.anthropic.com/v1",
@@ -66,16 +66,16 @@ func (p *ClaudeProvider) GenerateCode(ctx context.Context, prompt string, option
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("Claude API key not configured")
 	}
-	
+
 	// Build the system prompt
 	systemPrompt := "You are an expert software engineer helping to implement code. " +
 		"Generate clean, well-documented code following best practices. " +
 		"Include error handling and tests where appropriate."
-	
+
 	if options.SystemPrompt != "" {
 		systemPrompt = options.SystemPrompt
 	}
-	
+
 	// Build the request
 	requestBody := map[string]interface{}{
 		"model": p.model,
@@ -88,45 +88,45 @@ func (p *ClaudeProvider) GenerateCode(ctx context.Context, prompt string, option
 		"system":     systemPrompt,
 		"max_tokens": options.MaxTokens,
 	}
-	
+
 	if options.Temperature > 0 {
 		requestBody["temperature"] = options.Temperature
 	}
-	
+
 	if len(options.StopSequences) > 0 {
 		requestBody["stop_sequences"] = options.StopSequences
 	}
-	
+
 	// Marshal request
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	
+
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/messages", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("x-api-key", p.apiKey)
 	req.Header.Set("anthropic-version", "2023-06-01")
-	
+
 	// Send request
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
-	
+
 	// Check for errors
 	if resp.StatusCode != http.StatusOK {
 		var errorResp map[string]interface{}
@@ -137,7 +137,7 @@ func (p *ClaudeProvider) GenerateCode(ctx context.Context, prompt string, option
 		}
 		return nil, fmt.Errorf("Claude API error: status %d, body: %s", resp.StatusCode, string(body))
 	}
-	
+
 	// Parse response
 	var response struct {
 		Content []struct {
@@ -149,11 +149,11 @@ func (p *ClaudeProvider) GenerateCode(ctx context.Context, prompt string, option
 			OutputTokens int `json:"output_tokens"`
 		} `json:"usage"`
 	}
-	
+
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	
+
 	// Extract code from response
 	var code strings.Builder
 	for _, content := range response.Content {
@@ -161,7 +161,7 @@ func (p *ClaudeProvider) GenerateCode(ctx context.Context, prompt string, option
 			code.WriteString(content.Text)
 		}
 	}
-	
+
 	return &GenerateResult{
 		Code:         code.String(),
 		Summary:      fmt.Sprintf("Generated with %s", p.model),
@@ -174,10 +174,10 @@ func (p *ClaudeProvider) GenerateCode(ctx context.Context, prompt string, option
 // StreamGenerate generates code with streaming support
 func (p *ClaudeProvider) StreamGenerate(ctx context.Context, prompt string, options GenerateOptions) (<-chan GenerateUpdate, error) {
 	ch := make(chan GenerateUpdate)
-	
+
 	go func() {
 		defer close(ch)
-		
+
 		// For now, use non-streaming version
 		// Claude API supports streaming, but we'll implement it later
 		result, err := p.GenerateCode(ctx, prompt, options)
@@ -185,7 +185,7 @@ func (p *ClaudeProvider) StreamGenerate(ctx context.Context, prompt string, opti
 			ch <- GenerateUpdate{Error: err}
 			return
 		}
-		
+
 		// Send as single chunk
 		ch <- GenerateUpdate{
 			Content:      result.Code,
@@ -193,7 +193,7 @@ func (p *ClaudeProvider) StreamGenerate(ctx context.Context, prompt string, opti
 			FinishReason: result.FinishReason,
 		}
 	}()
-	
+
 	return ch, nil
 }
 
@@ -205,7 +205,7 @@ func (p *ClaudeProvider) ValidateConfig(config ProviderConfig) error {
 			return fmt.Errorf("API key environment variable %s is not set", config.APIKeyEnv)
 		}
 	}
-	
+
 	// Validate model
 	caps := p.GetCapabilities()
 	validModel := false
@@ -215,10 +215,10 @@ func (p *ClaudeProvider) ValidateConfig(config ProviderConfig) error {
 			break
 		}
 	}
-	
+
 	if config.Model != "" && !validModel {
 		return fmt.Errorf("unsupported model: %s", config.Model)
 	}
-	
+
 	return nil
 }

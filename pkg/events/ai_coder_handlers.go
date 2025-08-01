@@ -13,7 +13,7 @@ type AICoderEventAggregator struct {
 	mu        sync.RWMutex
 	maxEvents int
 	eventBus  *EventBus
-	
+
 	// Event statistics
 	stats   AICoderEventStats
 	statsMu sync.RWMutex
@@ -37,10 +37,10 @@ func NewAICoderEventAggregator(eventBus *EventBus, maxEvents int) *AICoderEventA
 			EventsByCoder: make(map[string]int64),
 		},
 	}
-	
+
 	// Register handlers for all AI coder event types
 	aggregator.registerHandlers()
-	
+
 	return aggregator
 }
 
@@ -55,7 +55,7 @@ func (a *AICoderEventAggregator) registerHandlers() {
 		EventAICoderAPICall, EventAICoderAPIError, EventAICoderRateLimit,
 		EventAICoderResourceUsage, EventAICoderResourceLimit,
 	}
-	
+
 	for _, eventType := range eventTypes {
 		a.eventBus.Subscribe(eventType, a.handleAICoderEvent)
 	}
@@ -69,13 +69,13 @@ func (a *AICoderEventAggregator) handleAICoderEvent(event Event) {
 		log.Printf("Warning: AI coder event missing coder ID")
 		return
 	}
-	
+
 	// Add to event history
 	a.addEvent(aiEvent)
-	
+
 	// Update statistics
 	a.updateStats(aiEvent)
-	
+
 	// Handle specialized processing
 	a.processSpecializedEvent(aiEvent)
 }
@@ -87,18 +87,18 @@ func (a *AICoderEventAggregator) eventToAICoderEvent(event Event) AICoderEvent {
 		Timestamp: event.Timestamp,
 		Data:      event.Data,
 	}
-	
+
 	// Extract coder ID and name from event data
 	if coderID, ok := event.Data["coder_id"].(string); ok {
 		aiEvent.CoderID = coderID
 	}
-	
+
 	if coderName, ok := event.Data["coder_name"].(string); ok {
 		aiEvent.CoderName = coderName
 	} else if name, ok := event.Data["name"].(string); ok {
 		aiEvent.CoderName = name
 	}
-	
+
 	return aiEvent
 }
 
@@ -106,10 +106,10 @@ func (a *AICoderEventAggregator) eventToAICoderEvent(event Event) AICoderEvent {
 func (a *AICoderEventAggregator) addEvent(event AICoderEvent) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	
+
 	// Add new event
 	a.events = append(a.events, event)
-	
+
 	// Trim if over limit
 	if len(a.events) > a.maxEvents {
 		// Remove oldest events
@@ -121,12 +121,12 @@ func (a *AICoderEventAggregator) addEvent(event AICoderEvent) {
 func (a *AICoderEventAggregator) updateStats(event AICoderEvent) {
 	a.statsMu.Lock()
 	defer a.statsMu.Unlock()
-	
+
 	a.stats.TotalEvents++
 	a.stats.EventsByType[event.Type]++
 	a.stats.EventsByCoder[event.CoderID]++
 	a.stats.LastEvent = event.Timestamp
-	
+
 	// Calculate events per minute (simple moving average)
 	if a.stats.TotalEvents > 1 {
 		duration := event.Timestamp.Sub(time.Now().Add(-time.Minute))
@@ -154,7 +154,7 @@ func (a *AICoderEventAggregator) processSpecializedEvent(event AICoderEvent) {
 func (a *AICoderEventAggregator) handleFailureEvent(event AICoderEvent) {
 	// Log failure for debugging
 	log.Printf("AI Coder %s failed: %v", event.CoderID, event.Data)
-	
+
 	// Emit aggregated failure alert if multiple failures
 	failureCount := a.getRecentFailureCount(event.CoderID)
 	if failureCount >= 3 {
@@ -177,7 +177,7 @@ func (a *AICoderEventAggregator) handleCompletionEvent(event AICoderEvent) {
 	creationTime := a.getCreationTime(event.CoderID)
 	if !creationTime.IsZero() {
 		duration := event.Timestamp.Sub(creationTime)
-		
+
 		// Emit completion metrics
 		a.eventBus.Publish(Event{
 			Type:      "ai_coder_completion_metrics",
@@ -228,21 +228,21 @@ func (a *AICoderEventAggregator) handleResourceLimitEvent(event AICoderEvent) {
 func (a *AICoderEventAggregator) GetEvents(filter AICoderEventFilter) []AICoderEvent {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	
+
 	var filtered []AICoderEvent
 	for _, event := range a.events {
 		if filter.matches(event) {
 			filtered = append(filtered, event)
 		}
 	}
-	
+
 	return filtered
 }
 
 func (a *AICoderEventAggregator) GetStats() AICoderEventStats {
 	a.statsMu.RLock()
 	defer a.statsMu.RUnlock()
-	
+
 	return a.stats
 }
 
@@ -258,19 +258,19 @@ func (f AICoderEventFilter) matches(event AICoderEvent) bool {
 	if f.CoderID != "" && event.CoderID != f.CoderID {
 		return false
 	}
-	
+
 	if f.EventType != "" && event.Type != f.EventType {
 		return false
 	}
-	
+
 	if !f.Since.IsZero() && event.Timestamp.Before(f.Since) {
 		return false
 	}
-	
+
 	if !f.Until.IsZero() && event.Timestamp.After(f.Until) {
 		return false
 	}
-	
+
 	return true
 }
 
@@ -278,30 +278,30 @@ func (f AICoderEventFilter) matches(event AICoderEvent) bool {
 func (a *AICoderEventAggregator) getRecentFailureCount(coderID string) int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	
+
 	count := 0
 	cutoff := time.Now().Add(-10 * time.Minute) // Recent = last 10 minutes
-	
+
 	for _, event := range a.events {
-		if event.CoderID == coderID && 
-		   event.Type == string(EventAICoderFailed) && 
-		   event.Timestamp.After(cutoff) {
+		if event.CoderID == coderID &&
+			event.Type == string(EventAICoderFailed) &&
+			event.Timestamp.After(cutoff) {
 			count++
 		}
 	}
-	
+
 	return count
 }
 
 func (a *AICoderEventAggregator) getCreationTime(coderID string) time.Time {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	
+
 	for _, event := range a.events {
 		if event.CoderID == coderID && event.Type == string(EventAICoderCreated) {
 			return event.Timestamp
 		}
 	}
-	
+
 	return time.Time{}
 }

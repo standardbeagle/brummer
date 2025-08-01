@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync"
 	"testing"
 	"time"
 
@@ -52,11 +53,14 @@ func (m *MockAIProvider) GetCapabilities() ProviderCapabilities {
 type MockEventBus struct {
 	mock.Mock
 	events []interface{}
+	mu     sync.Mutex
 }
 
 func (m *MockEventBus) Emit(eventType string, data interface{}) {
 	m.Called(eventType, data)
+	m.mu.Lock()
 	m.events = append(m.events, data)
+	m.mu.Unlock()
 }
 
 func (m *MockEventBus) Subscribe(eventType string, handler func(interface{})) {
@@ -488,4 +492,9 @@ func (c *TestConfig) GetAICoderConfig() AICoderConfig {
 		DefaultProvider:  c.DefaultProvider,
 		TimeoutMinutes:   c.TimeoutMinutes,
 	}
+}
+
+func (c *TestConfig) GetProviderConfigs() map[string]*ProviderConfig {
+	// Return empty provider configs for testing
+	return make(map[string]*ProviderConfig)
 }

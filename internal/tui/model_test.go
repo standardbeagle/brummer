@@ -37,18 +37,18 @@ func TestModelCreation(t *testing.T) {
 	// Create required dependencies
 	tempDir := t.TempDir()
 	eventBus := events.NewEventBus()
-	logStore := logs.NewStore(1000)
+	logStore := logs.NewStore(1000, eventBus)
 	defer logStore.Close()
 
 	processMgr, err := process.NewManager(tempDir, eventBus, false)
 	require.NoError(t, err)
 
 	// Test creating model with default view
-	model := NewModel(processMgr, logStore, eventBus, nil, nil, 7777)
+	model := NewModel(processMgr, logStore, eventBus, nil, nil, 7777, nil)
 	require.NotNil(t, model)
 
 	// Test creating model with specific view
-	modelWithView := NewModelWithView(processMgr, logStore, eventBus, nil, nil, 7777, ViewLogs, false)
+	modelWithView := NewModelWithView(processMgr, logStore, eventBus, nil, nil, 7777, ViewLogs, false, nil)
 	require.NotNil(t, modelWithView)
 }
 
@@ -56,13 +56,13 @@ func TestModelCreation(t *testing.T) {
 func TestModelViewSwitching(t *testing.T) {
 	tempDir := t.TempDir()
 	eventBus := events.NewEventBus()
-	logStore := logs.NewStore(1000)
+	logStore := logs.NewStore(1000, eventBus)
 	defer logStore.Close()
 
 	processMgr, err := process.NewManager(tempDir, eventBus, false)
 	require.NoError(t, err)
 
-	_ = NewModel(processMgr, logStore, eventBus, nil, nil, 7777)
+	_ = NewModel(processMgr, logStore, eventBus, nil, nil, 7777, nil)
 
 	// Test view navigation
 	views := []View{

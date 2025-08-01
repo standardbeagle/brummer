@@ -211,4 +211,3 @@ func BenchmarkMessageQueueLockFree_HighContention(b *testing.B) {
 
 	wg.Wait()
 }
-

@@ -301,7 +301,7 @@ func (c *Config) GetAICoderConfig() aicoder.AICoderConfig {
 	if aiConfig == nil {
 		aiConfig = &AICoderConfig{}
 	}
-	
+
 	// Convert to simplified config for aicoder package
 	return aicoder.AICoderConfig{
 		MaxConcurrent:    aiConfig.GetMaxConcurrent(),

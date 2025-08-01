@@ -23,7 +23,7 @@ import (
 func TestPhase1MCPServerImplementation(t *testing.T) {
 	// Setup
 	eventBus := events.NewEventBus()
-	logStore := logs.NewStore(1000)
+	logStore := logs.NewStore(1000, nil)
 	processMgr, err := process.NewManager(".", eventBus, false)
 	if err != nil {
 		t.Fatalf("Failed to create process manager: %v", err)
@@ -31,7 +31,7 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 	proxyServer := proxy.NewServer(0, eventBus) // Use random port
 
 	// Create MCP server
-	server := mcp.NewStreamableServer(0, processMgr, logStore, proxyServer, eventBus)
+	server := mcp.NewMCPServer(0, processMgr, logStore, proxyServer, eventBus)
 
 	// Start server in background
 	go func() {
@@ -367,7 +367,7 @@ func TestEndToEndScenario(t *testing.T) {
 
 	// Setup components
 	eventBus := events.NewEventBus()
-	logStore := logs.NewStore(1000)
+	logStore := logs.NewStore(1000, nil)
 	processMgr, err := process.NewManager(testDir, eventBus, true)
 	if err != nil {
 		t.Fatalf("Failed to create process manager: %v", err)
@@ -380,7 +380,7 @@ func TestEndToEndScenario(t *testing.T) {
 	})
 
 	// Create and start MCP server
-	server := mcp.NewStreamableServer(0, processMgr, logStore, nil, eventBus)
+	server := mcp.NewMCPServer(0, processMgr, logStore, nil, eventBus)
 	go server.Start()
 	defer server.Stop()
 	time.Sleep(100 * time.Millisecond)

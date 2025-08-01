@@ -48,6 +48,47 @@ type PTYSession struct {
 	historyMutex  sync.Mutex
 }
 
+// IsAtStartOfLine returns true if the cursor is at the beginning of a line
+// This helps determine if a "/" should trigger Brummer commands vs AI input
+func (s *PTYSession) IsAtStartOfLine() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.Terminal == nil {
+		return true // Default to allowing Brummer commands
+	}
+
+	// Get cursor position
+	cursor := s.Terminal.Cursor()
+	return cursor.X == 0
+}
+
+// GetCurrentLineContent returns the content of the current line up to cursor
+// This helps determine context for slash command routing
+func (s *PTYSession) GetCurrentLineContent() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.Terminal == nil {
+		return ""
+	}
+
+	cursor := s.Terminal.Cursor()
+	content := s.Terminal.String()
+	lines := strings.Split(content, "\n")
+
+	if cursor.Y >= len(lines) {
+		return ""
+	}
+
+	currentLine := lines[cursor.Y]
+	if cursor.X >= len(currentLine) {
+		return currentLine
+	}
+
+	return currentLine[:cursor.X]
+}
+
 // PTYEvent represents events that can occur in a PTY session
 type PTYEvent struct {
 	Type      PTYEventType
@@ -68,6 +109,11 @@ const (
 
 // NewPTYSession creates a new PTY session for an AI coder
 func NewPTYSession(id, name, command string, args []string) (*PTYSession, error) {
+	return NewPTYSessionWithEnv(id, name, command, args, nil)
+}
+
+// NewPTYSessionWithEnv creates a new PTY session with additional environment variables
+func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[string]string) (*PTYSession, error) {
 	// Detect if this is a stream-json session
 	isStreamJSON := false
 	for i, arg := range args {
@@ -84,8 +130,13 @@ func NewPTYSession(id, name, command string, args []string) (*PTYSession, error)
 	// Set up environment for proper terminal behavior
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 	cmd.Env = append(cmd.Env, "COLORTERM=truecolor")
-	cmd.Env = append(cmd.Env, "COLUMNS=80")  // Set initial columns
-	cmd.Env = append(cmd.Env, "LINES=24")    // Set initial lines
+	cmd.Env = append(cmd.Env, "COLUMNS=80") // Set initial columns
+	cmd.Env = append(cmd.Env, "LINES=24")   // Set initial lines
+
+	// Add any extra environment variables (like BRUMMER_MCP_URL)
+	for key, value := range extraEnv {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
+	}
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{
 		Rows: 24,
@@ -371,7 +422,7 @@ func (s *PTYSession) GetTerminal() vt10x.Terminal {
 func (s *PTYSession) GetOutputHistory() []byte {
 	s.historyMutex.Lock()
 	defer s.historyMutex.Unlock()
-	
+
 	// Return a copy to prevent external modification
 	history := make([]byte, len(s.outputHistory))
 	copy(history, s.outputHistory)
@@ -388,15 +439,15 @@ func (s *PTYSession) Close() error {
 	}
 
 	s.IsActive = false
-	
+
 	// Cancel context to signal goroutines to stop
 	s.cancel()
-	
+
 	// Give goroutines a brief moment to exit cleanly
 	// This prevents "send on closed channel" panics
 	go func() {
 		time.Sleep(100 * time.Millisecond)
-		
+
 		// Close channels after goroutines have had time to exit
 		close(s.InputChan)
 		close(s.EventChan)

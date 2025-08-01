@@ -274,4 +274,3 @@ func TestToolSchemas(t *testing.T) {
 		assert.NotNil(t, tool.Handler)
 	}
 }
-

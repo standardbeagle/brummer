@@ -202,7 +202,7 @@ func TestRestartProcessWithPortConflict(t *testing.T) {
 	// Count failed processes - this is where the bug manifests
 	var failedCount int
 	for _, p := range finalProcs {
-		if p.Status == process.StatusFailed {
+		if p.GetStatus() == process.StatusFailed {
 			failedCount++
 		}
 	}
@@ -213,7 +213,7 @@ func TestRestartProcessWithPortConflict(t *testing.T) {
 
 		// Additional debugging
 		for _, p := range finalProcs {
-			if p.Status == process.StatusFailed {
+			if p.GetStatus() == process.StatusFailed {
 				t.Logf("Failed process: %s (PID: %s)", p.Name, p.ID)
 			}
 		}

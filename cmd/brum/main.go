@@ -165,7 +165,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		log.Fatal("Failed to initialize process manager:", err)
 	}
 
-	logStore := logs.NewStore(10000)
+	logStore := logs.NewStore(10000, eventBus)
 	detector := logs.NewEventDetector(eventBus)
 
 	// Initialize proxy server if enabled
@@ -430,8 +430,8 @@ func runApp(cmd *cobra.Command, args []string) {
 		Stop() error
 	} // For TUI compatibility
 	if !noMCP || noTUI {
-		// Use new StreamableServer by default
-		mcpServer = mcp.NewStreamableServer(mcpPort, processMgr, logStore, proxyServer, eventBus)
+		// Create MCP server
+		mcpServer = mcp.NewMCPServer(mcpPort, processMgr, logStore, proxyServer, eventBus)
 		mcpServerInterface = mcpServer
 
 		// Start MCP server in background regardless of TUI mode
@@ -467,8 +467,8 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		// Get actual port and register instance (same for both TUI and no-TUI)
 		actualPort := mcpPort
-		if mcpStreamable, ok := mcpServer.(*mcp.StreamableServer); ok {
-			actualPort = mcpStreamable.GetPort()
+		if mcpSrv, ok := mcpServer.(*mcp.MCPServer); ok {
+			actualPort = mcpSrv.GetPort()
 		}
 
 		// Register this instance with the discovery system
@@ -567,7 +567,23 @@ func runApp(cmd *cobra.Command, args []string) {
 			// Default to processes view when no package.json (no scripts to select)
 			initialView = tui.ViewProcesses
 		}
-		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, initialView, debugMode)
+		// Load configuration
+		cfg, err := config.Load()
+		if err != nil {
+			// Log warning but continue with defaults
+			fmt.Fprintf(os.Stderr, "Warning: Failed to load configuration: %v\n", err)
+			cfg = &config.Config{}
+		}
+
+		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, initialView, debugMode, cfg)
+
+		// Set AI coder manager in MCP server if available
+		if mcpSrv, ok := mcpServer.(*mcp.MCPServer); ok {
+			if aiCoderManager := model.GetAICoderManager(); aiCoderManager != nil {
+				mcpSrv.SetAICoderManager(aiCoderManager)
+			}
+		}
+
 		p := tea.NewProgram(model, tea.WithAltScreen())
 
 		// Run TUI in goroutine so we can handle signals

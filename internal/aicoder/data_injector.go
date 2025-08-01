@@ -34,8 +34,8 @@ type DataInjector struct {
 // NewDataInjector creates a new data injector
 func NewDataInjector() *DataInjector {
 	return &DataInjector{
-		maxLines:      20,   // Maximum lines to inject
-		maxLength:     2000, // Maximum character length
+		maxLines:      20,    // Maximum lines to inject
+		maxLength:     2000,  // Maximum character length
 		includeColors: false, // Disable colors for now
 	}
 }
@@ -95,13 +95,13 @@ func (di *DataInjector) formatError(data interface{}) (string, error) {
 	switch v := data.(type) {
 	case *logs.ErrorContext:
 		var result strings.Builder
-		
+
 		result.WriteString(fmt.Sprintf("Type: %s\n", v.Type))
 		result.WriteString(fmt.Sprintf("Severity: %s\n", v.Severity))
 		result.WriteString(fmt.Sprintf("Process: %s\n", v.ProcessName))
 		result.WriteString(fmt.Sprintf("Time: %s\n", v.Timestamp.Format("15:04:05")))
 		result.WriteString(fmt.Sprintf("Message: %s\n", v.Message))
-		
+
 		// ErrorContext doesn't have File/Line fields directly
 		// Check if we can extract file info from context or stack
 		if len(v.Stack) > 0 {
@@ -114,7 +114,7 @@ func (di *DataInjector) formatError(data interface{}) (string, error) {
 				result.WriteString(fmt.Sprintf("  %s\n", stackLine))
 			}
 		}
-		
+
 		if len(v.Context) > 0 {
 			result.WriteString("Context:\n")
 			for i, line := range v.Context {
@@ -125,12 +125,12 @@ func (di *DataInjector) formatError(data interface{}) (string, error) {
 				result.WriteString(fmt.Sprintf("  %s\n", line))
 			}
 		}
-		
+
 		return di.truncate(result.String()), nil
-		
+
 	case string:
 		return di.truncate(v), nil
-		
+
 	default:
 		return di.truncate(fmt.Sprintf("%v", data)), nil
 	}
@@ -141,24 +141,24 @@ func (di *DataInjector) formatLogs(data interface{}) (string, error) {
 	switch v := data.(type) {
 	case []logs.LogEntry:
 		var result strings.Builder
-		
+
 		for i, entry := range v {
 			if i >= di.maxLines {
 				result.WriteString("... (truncated)\n")
 				break
 			}
-			
-			result.WriteString(fmt.Sprintf("[%s] %s: %s\n", 
+
+			result.WriteString(fmt.Sprintf("[%s] %s: %s\n",
 				entry.Timestamp.Format("15:04:05"),
 				entry.ProcessName,
 				entry.Content))
 		}
-		
+
 		return di.truncate(result.String()), nil
-		
+
 	case string:
 		return di.truncate(v), nil
-		
+
 	default:
 		return di.truncate(fmt.Sprintf("%v", data)), nil
 	}
@@ -180,7 +180,7 @@ func (di *DataInjector) formatBuildOutput(data interface{}) (string, error) {
 			lines[0] = "... (showing last " + fmt.Sprintf("%d", di.maxLines) + " lines)"
 		}
 		return di.truncate(strings.Join(lines, "\n")), nil
-		
+
 	default:
 		return di.truncate(fmt.Sprintf("%v", data)), nil
 	}
@@ -197,25 +197,25 @@ func (di *DataInjector) formatURLs(data interface{}) (string, error) {
 	switch v := data.(type) {
 	case []logs.URLEntry:
 		var result strings.Builder
-		
+
 		for i, url := range v {
 			if i >= di.maxLines {
 				result.WriteString("... (truncated)\n")
 				break
 			}
-			
+
 			result.WriteString(fmt.Sprintf("%s", url.URL))
 			if url.ProxyURL != "" {
 				result.WriteString(fmt.Sprintf(" → %s", url.ProxyURL))
 			}
 			result.WriteString(fmt.Sprintf(" (%s)\n", url.ProcessName))
 		}
-		
+
 		return di.truncate(result.String()), nil
-		
+
 	case string:
 		return di.truncate(v), nil
-		
+
 	default:
 		return di.truncate(fmt.Sprintf("%v", data)), nil
 	}
@@ -226,7 +226,7 @@ func (di *DataInjector) formatProxyRequest(data interface{}) (string, error) {
 	switch v := data.(type) {
 	case *proxy.Request:
 		var result strings.Builder
-		
+
 		result.WriteString(fmt.Sprintf("Method: %s\n", v.Method))
 		result.WriteString(fmt.Sprintf("URL: %s\n", v.URL))
 		result.WriteString(fmt.Sprintf("Status: %d\n", v.StatusCode))
@@ -234,17 +234,17 @@ func (di *DataInjector) formatProxyRequest(data interface{}) (string, error) {
 		result.WriteString(fmt.Sprintf("Time: %s\n", v.StartTime.Format("15:04:05")))
 		result.WriteString(fmt.Sprintf("Host: %s\n", v.Host))
 		result.WriteString(fmt.Sprintf("Path: %s\n", v.Path))
-		
+
 		if v.Error != "" {
 			result.WriteString(fmt.Sprintf("Error: %s\n", v.Error))
 		}
-		
+
 		if v.ProcessName != "" {
 			result.WriteString(fmt.Sprintf("Process: %s\n", v.ProcessName))
 		}
-		
+
 		return di.truncate(result.String()), nil
-		
+
 	default:
 		return di.truncate(fmt.Sprintf("%v", data)), nil
 	}
@@ -260,7 +260,7 @@ func (di *DataInjector) truncate(text string) string {
 	if len(text) <= di.maxLength {
 		return text
 	}
-	
+
 	return text[:di.maxLength-3] + "..."
 }
 
@@ -286,7 +286,7 @@ func GetDefaultKeyBindings() []KeyBinding {
 		},
 		{
 			Key:         "ctrl+t",
-			Description: "Inject test failure details", 
+			Description: "Inject test failure details",
 			DataType:    DataInjectTestFailure,
 		},
 		{

@@ -11,12 +11,12 @@ import (
 type AICoderStatus string
 
 const (
-	StatusCreating   AICoderStatus = "creating"
-	StatusRunning    AICoderStatus = "running"
-	StatusPaused     AICoderStatus = "paused"
-	StatusCompleted  AICoderStatus = "completed"
-	StatusFailed     AICoderStatus = "failed"
-	StatusStopped    AICoderStatus = "stopped"
+	StatusCreating  AICoderStatus = "creating"
+	StatusRunning   AICoderStatus = "running"
+	StatusPaused    AICoderStatus = "paused"
+	StatusCompleted AICoderStatus = "completed"
+	StatusFailed    AICoderStatus = "failed"
+	StatusStopped   AICoderStatus = "stopped"
 )
 
 // AICoderProcess represents a single AI coder instance
@@ -62,17 +62,16 @@ func (p *AICoderProcess) SetStatus(status AICoderStatus) {
 func (p *AICoderProcess) UpdateProgress(progress float64, message string) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	if progress < 0 || progress > 1 {
 		return fmt.Errorf("progress must be between 0 and 1, got %f", progress)
 	}
-	
+
 	p.Progress = progress
 	p.CurrentMessage = message
 	p.UpdatedAt = time.Now()
 	return nil
 }
-
 
 // CreateCoderRequest represents a request to create a new AI coder
 type CreateCoderRequest struct {
@@ -97,6 +96,7 @@ func (e *AICoderError) Error() string {
 // Configuration interface for dependency injection
 type Config interface {
 	GetAICoderConfig() AICoderConfig
+	GetProviderConfigs() map[string]*ProviderConfig
 }
 
 // AICoderConfig is a simplified version for the aicoder package
@@ -114,9 +114,9 @@ type ProviderConfig struct {
 	APIKeyEnv   string
 	MaxTokens   int
 	Temperature float64
-	
+
 	// CLI Tool specific configuration
-	CLITool     *CLIToolConfig
+	CLITool *CLIToolConfig
 }
 
 // CLIToolConfig represents configuration for CLI-based AI tools
@@ -163,11 +163,11 @@ type AICoderEvent struct {
 func (p *AICoderProcess) WriteFile(filename string, content []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
-	
+
 	if p.workspaceMgr == nil {
 		return fmt.Errorf("workspace manager not initialized")
 	}
-	
+
 	p.UpdatedAt = time.Now()
 	return p.workspaceMgr.WriteFile(p.WorkspaceDir, filename, content)
 }
@@ -175,22 +175,22 @@ func (p *AICoderProcess) WriteFile(filename string, content []byte) error {
 func (p *AICoderProcess) ReadFile(filename string) ([]byte, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	
+
 	if p.workspaceMgr == nil {
 		return nil, fmt.Errorf("workspace manager not initialized")
 	}
-	
+
 	return p.workspaceMgr.ReadFile(p.WorkspaceDir, filename)
 }
 
 func (p *AICoderProcess) ListWorkspaceFiles() ([]string, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	
+
 	if p.workspaceMgr == nil {
 		return nil, fmt.Errorf("workspace manager not initialized")
 	}
-	
+
 	return p.workspaceMgr.ListFiles(p.WorkspaceDir)
 }
 
@@ -198,7 +198,7 @@ func (p *AICoderProcess) ListWorkspaceFiles() ([]string, error) {
 func (p *AICoderProcess) ReadWorkspaceFile(filePath string) ([]byte, error) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	
+
 	// This would be implemented by the workspace manager
 	// For now, return a mock implementation
 	content := fmt.Sprintf("// File: %s\n// AI Coder: %s\n// Task: %s\n", filePath, p.ID, p.Task)

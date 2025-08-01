@@ -3,10 +3,12 @@ package mcp
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/standardbeagle/brummer/internal/aicoder"
 )
 
 // registerResources registers all available MCP resources
-func (s *StreamableServer) registerResources() {
+func (s *MCPServer) registerResources() {
 	// Log resources
 	s.resources["logs://recent"] = Resource{
 		URI:         "logs://recent",
@@ -73,10 +75,25 @@ func (s *StreamableServer) registerResources() {
 		Description: "Scripts defined in package.json",
 		MimeType:    "application/json",
 	}
+
+	// AI Coder resources
+	s.resources["aicoder://sessions"] = Resource{
+		URI:         "aicoder://sessions",
+		Name:        "AI Coder Sessions",
+		Description: "Active AI coder PTY sessions",
+		MimeType:    "application/json",
+	}
+
+	s.resources["aicoder://output"] = Resource{
+		URI:         "aicoder://output",
+		Name:        "AI Coder Output",
+		Description: "Raw output from AI coder sessions with ANSI codes",
+		MimeType:    "text/plain",
+	}
 }
 
 // Resource list handler
-func (s *StreamableServer) handleResourcesList(msg *JSONRPCMessage) *JSONRPCMessage {
+func (s *MCPServer) handleResourcesList(msg *JSONRPCMessage) *JSONRPCMessage {
 	resources := make([]map[string]interface{}, 0, len(s.resources))
 
 	for uri, resource := range s.resources {
@@ -98,7 +115,7 @@ func (s *StreamableServer) handleResourcesList(msg *JSONRPCMessage) *JSONRPCMess
 }
 
 // Resource read handler
-func (s *StreamableServer) handleResourceRead(msg *JSONRPCMessage) *JSONRPCMessage {
+func (s *MCPServer) handleResourceRead(msg *JSONRPCMessage) *JSONRPCMessage {
 	var params struct {
 		URI string `json:"uri"`
 	}
@@ -144,6 +161,26 @@ func (s *StreamableServer) handleResourceRead(msg *JSONRPCMessage) *JSONRPCMessa
 	case "scripts://available":
 		content = s.getAvailableScripts()
 
+	case "aicoder://sessions":
+		content = s.getAICoderSessions()
+
+	case "aicoder://output":
+		// This returns plain text with ANSI codes
+		output := s.getAICoderOutput()
+		return &JSONRPCMessage{
+			Jsonrpc: "2.0",
+			ID:      msg.ID,
+			Result: map[string]interface{}{
+				"contents": []map[string]interface{}{
+					{
+						"uri":      params.URI,
+						"mimeType": resource.MimeType,
+						"text":     output,
+					},
+				},
+			},
+		}
+
 	default:
 		return s.createErrorResponse(msg.ID, -32603, "Resource handler not implemented", nil)
 	}
@@ -171,7 +208,7 @@ func (s *StreamableServer) handleResourceRead(msg *JSONRPCMessage) *JSONRPCMessa
 }
 
 // Resource subscribe handler
-func (s *StreamableServer) handleResourceSubscribe(msg *JSONRPCMessage, sessionID string) *JSONRPCMessage {
+func (s *MCPServer) handleResourceSubscribe(msg *JSONRPCMessage, sessionID string) *JSONRPCMessage {
 	var params struct {
 		URI string `json:"uri"`
 	}
@@ -212,7 +249,7 @@ func (s *StreamableServer) handleResourceSubscribe(msg *JSONRPCMessage, sessionI
 }
 
 // Resource unsubscribe handler
-func (s *StreamableServer) handleResourceUnsubscribe(msg *JSONRPCMessage, sessionID string) *JSONRPCMessage {
+func (s *MCPServer) handleResourceUnsubscribe(msg *JSONRPCMessage, sessionID string) *JSONRPCMessage {
 	var params struct {
 		URI string `json:"uri"`
 	}
@@ -251,7 +288,7 @@ func (s *StreamableServer) handleResourceUnsubscribe(msg *JSONRPCMessage, sessio
 
 // Resource content getters
 
-func (s *StreamableServer) getRecentLogs(limit int) []interface{} {
+func (s *MCPServer) getRecentLogs(limit int) []interface{} {
 	logs := s.logStoreGetAllInterface()
 	if len(logs) > limit {
 		return logs[len(logs)-limit:]
@@ -259,7 +296,7 @@ func (s *StreamableServer) getRecentLogs(limit int) []interface{} {
 	return logs
 }
 
-func (s *StreamableServer) getErrorLogs(limit int) []interface{} {
+func (s *MCPServer) getErrorLogs(limit int) []interface{} {
 	allLogs := s.logStoreGetAllInterface()
 	errorLogs := make([]interface{}, 0)
 
@@ -279,7 +316,7 @@ func (s *StreamableServer) getErrorLogs(limit int) []interface{} {
 	return errorLogs
 }
 
-func (s *StreamableServer) getTelemetrySessions() []interface{} {
+func (s *MCPServer) getTelemetrySessions() []interface{} {
 	if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
 		return []interface{}{}
 	}
@@ -292,7 +329,7 @@ func (s *StreamableServer) getTelemetrySessions() []interface{} {
 	return sessions
 }
 
-func (s *StreamableServer) getBrowserErrors() []interface{} {
+func (s *MCPServer) getBrowserErrors() []interface{} {
 	if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
 		return []interface{}{}
 	}
@@ -315,7 +352,7 @@ func (s *StreamableServer) getBrowserErrors() []interface{} {
 	return errors
 }
 
-func (s *StreamableServer) getConsoleErrors() []interface{} {
+func (s *MCPServer) getConsoleErrors() []interface{} {
 	if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
 		return []interface{}{}
 	}
@@ -345,7 +382,7 @@ func (s *StreamableServer) getConsoleErrors() []interface{} {
 	return errors
 }
 
-func (s *StreamableServer) getProxyRequests(limit int) []interface{} {
+func (s *MCPServer) getProxyRequests(limit int) []interface{} {
 	if s.proxyServer == nil {
 		return []interface{}{}
 	}
@@ -365,7 +402,7 @@ func (s *StreamableServer) getProxyRequests(limit int) []interface{} {
 	return result
 }
 
-func (s *StreamableServer) getProxyMappings() []interface{} {
+func (s *MCPServer) getProxyMappings() []interface{} {
 	if s.proxyServer == nil {
 		return []interface{}{}
 	}
@@ -386,7 +423,7 @@ func (s *StreamableServer) getProxyMappings() []interface{} {
 	return result
 }
 
-func (s *StreamableServer) getActiveProcesses() []interface{} {
+func (s *MCPServer) getActiveProcesses() []interface{} {
 	processes := s.processMgr.GetAllProcesses()
 	result := make([]interface{}, 0, len(processes))
 
@@ -404,12 +441,65 @@ func (s *StreamableServer) getActiveProcesses() []interface{} {
 	return result
 }
 
-func (s *StreamableServer) getAvailableScripts() map[string]string {
+func (s *MCPServer) getAvailableScripts() map[string]string {
 	return s.processMgr.GetScripts()
 }
 
+func (s *MCPServer) getAICoderSessions() []interface{} {
+	manager := s.getAICoderManager()
+	if manager == nil {
+		return []interface{}{}
+	}
+
+	coders := manager.ListCoders()
+	sessions := make([]interface{}, 0, len(coders))
+
+	for _, coder := range coders {
+		sessions = append(sessions, map[string]interface{}{
+			"id":        coder.ID,
+			"name":      coder.Name,
+			"status":    string(coder.Status),
+			"provider":  coder.Provider,
+			"task":      coder.Task,
+			"createdAt": coder.CreatedAt,
+		})
+	}
+
+	return sessions
+}
+
+func (s *MCPServer) getAICoderOutput() string {
+	manager := s.getAICoderManager()
+	if manager == nil {
+		return "No AI coder manager available"
+	}
+
+	// Cast to the actual manager type to access PTY functionality
+	if aiMgr, ok := manager.(*aicoder.AICoderManager); ok {
+		ptyMgr := aiMgr.GetPTYManager()
+		if ptyMgr == nil {
+			return "PTY manager not available"
+		}
+
+		// Get all sessions and find the first active one
+		sessions := ptyMgr.ListSessions()
+		for _, session := range sessions {
+			if session.IsActive {
+				// Return raw output history with ANSI codes
+				history := session.GetOutputHistory()
+				if len(history) > 0 {
+					return string(history)
+				}
+				return "No output available yet"
+			}
+		}
+	}
+
+	return "No active AI coder sessions"
+}
+
 // Broadcast resource updates
-func (s *StreamableServer) broadcastResourceUpdate(uri string) {
+func (s *MCPServer) broadcastResourceUpdate(uri string) {
 	s.BroadcastNotification("notifications/resources/updated", map[string]interface{}{
 		"uri": uri,
 	})

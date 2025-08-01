@@ -26,7 +26,7 @@ func NewAICoderProcess(coder *aicoder.AICoderProcess) *AICoderProcess {
 		Cmd:    nil,
 		cancel: nil, // AI coders use their own lifecycle management
 	}
-	
+
 	return &AICoderProcess{
 		Process: process,
 		aiCoder: coder,
@@ -57,16 +57,16 @@ func mapAICoderStatus(status aicoder.AICoderStatus) ProcessStatus {
 func (acp *AICoderProcess) updateFromAICoder(coder *aicoder.AICoderProcess) {
 	acp.mu.Lock()
 	defer acp.mu.Unlock()
-	
+
 	oldStatus := acp.Status
 	newStatus := mapAICoderStatus(coder.Status)
-	
+
 	acp.Status = newStatus
 	acp.aiCoder = coder
-	
+
 	// Update process-specific fields that don't exist in base Process
 	// Progress tracking will be handled separately as it's not part of base Process
-	
+
 	// Status change detection for event emission (handled by manager)
 	_ = oldStatus // Available for status change detection
 }
@@ -75,11 +75,11 @@ func (acp *AICoderProcess) updateFromAICoder(coder *aicoder.AICoderProcess) {
 func (acp *AICoderProcess) GetAICoderInfo() map[string]interface{} {
 	acp.mu.RLock()
 	defer acp.mu.RUnlock()
-	
+
 	if acp.aiCoder == nil {
 		return nil
 	}
-	
+
 	return map[string]interface{}{
 		"provider":   acp.aiCoder.Provider,
 		"workspace":  acp.aiCoder.WorkspaceDir,
@@ -94,11 +94,11 @@ func (acp *AICoderProcess) GetAICoderInfo() map[string]interface{} {
 func (acp *AICoderProcess) GetProgress() float64 {
 	acp.mu.RLock()
 	defer acp.mu.RUnlock()
-	
+
 	if acp.aiCoder == nil {
 		return 0.0
 	}
-	
+
 	return acp.aiCoder.Progress
 }
 
@@ -106,11 +106,11 @@ func (acp *AICoderProcess) GetProgress() float64 {
 func (acp *AICoderProcess) GetProvider() string {
 	acp.mu.RLock()
 	defer acp.mu.RUnlock()
-	
+
 	if acp.aiCoder == nil {
 		return ""
 	}
-	
+
 	return acp.aiCoder.Provider
 }
 
@@ -118,11 +118,11 @@ func (acp *AICoderProcess) GetProvider() string {
 func (acp *AICoderProcess) GetWorkspaceDir() string {
 	acp.mu.RLock()
 	defer acp.mu.RUnlock()
-	
+
 	if acp.aiCoder == nil {
 		return ""
 	}
-	
+
 	return acp.aiCoder.WorkspaceDir
 }
 
@@ -130,11 +130,11 @@ func (acp *AICoderProcess) GetWorkspaceDir() string {
 func (acp *AICoderProcess) GetTask() string {
 	acp.mu.RLock()
 	defer acp.mu.RUnlock()
-	
+
 	if acp.aiCoder == nil {
 		return ""
 	}
-	
+
 	return acp.aiCoder.Task
 }
 

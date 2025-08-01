@@ -12,14 +12,14 @@ import (
 
 // getContext returns a context for the current request
 // In a real implementation, this might include request-specific context
-func (s *StreamableServer) getContext() context.Context {
+func (s *MCPServer) getContext() context.Context {
 	return context.Background()
 }
 
 // Additional handler helpers for AI coder tools
 
 // writeJSONToFile writes JSON data to a file with security validation
-func (s *StreamableServer) writeJSONToFile(filePath string, data interface{}) error {
+func (s *MCPServer) writeJSONToFile(filePath string, data interface{}) error {
 	// Security: prevent path traversal
 	if strings.Contains(filePath, "..") {
 		return fmt.Errorf("path traversal not allowed")

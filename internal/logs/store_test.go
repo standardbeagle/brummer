@@ -6,7 +6,7 @@ import (
 )
 
 func TestDetectURLsInContent(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	tests := []struct {
@@ -83,7 +83,7 @@ func TestDetectURLsInContent(t *testing.T) {
 }
 
 func TestUpdateProxyURL(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	// Add a URL through normal log processing

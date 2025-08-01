@@ -25,11 +25,11 @@ func NewOpenAIProvider(apiKey, model string) *OpenAIProvider {
 		// Try to get from environment
 		apiKey = os.Getenv("OPENAI_API_KEY")
 	}
-	
+
 	if model == "" {
 		model = "gpt-4-turbo-preview" // Default to GPT-4 Turbo
 	}
-	
+
 	return &OpenAIProvider{
 		apiKey:  apiKey,
 		baseURL: "https://api.openai.com/v1",
@@ -67,16 +67,16 @@ func (p *OpenAIProvider) GenerateCode(ctx context.Context, prompt string, option
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("OpenAI API key not configured")
 	}
-	
+
 	// Build the system prompt
 	systemPrompt := "You are an expert software engineer helping to implement code. " +
 		"Generate clean, well-documented code following best practices. " +
 		"Include error handling and tests where appropriate."
-	
+
 	if options.SystemPrompt != "" {
 		systemPrompt = options.SystemPrompt
 	}
-	
+
 	// Build the request
 	requestBody := map[string]interface{}{
 		"model": p.model,
@@ -92,44 +92,44 @@ func (p *OpenAIProvider) GenerateCode(ctx context.Context, prompt string, option
 		},
 		"max_tokens": options.MaxTokens,
 	}
-	
+
 	if options.Temperature > 0 {
 		requestBody["temperature"] = options.Temperature
 	}
-	
+
 	if len(options.StopSequences) > 0 {
 		requestBody["stop"] = options.StopSequences
 	}
-	
+
 	// Marshal request
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	
+
 	// Create HTTP request
 	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/chat/completions", bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+p.apiKey)
-	
+
 	// Send request
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
-	
+
 	// Check for errors
 	if resp.StatusCode != http.StatusOK {
 		var errorResp map[string]interface{}
@@ -140,7 +140,7 @@ func (p *OpenAIProvider) GenerateCode(ctx context.Context, prompt string, option
 		}
 		return nil, fmt.Errorf("OpenAI API error: status %d, body: %s", resp.StatusCode, string(body))
 	}
-	
+
 	// Parse response
 	var response struct {
 		Choices []struct {
@@ -154,15 +154,15 @@ func (p *OpenAIProvider) GenerateCode(ctx context.Context, prompt string, option
 		} `json:"usage"`
 		Model string `json:"model"`
 	}
-	
+
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	
+
 	if len(response.Choices) == 0 {
 		return nil, fmt.Errorf("no response from OpenAI")
 	}
-	
+
 	return &GenerateResult{
 		Code:         response.Choices[0].Message.Content,
 		Summary:      fmt.Sprintf("Generated with %s", response.Model),
@@ -175,10 +175,10 @@ func (p *OpenAIProvider) GenerateCode(ctx context.Context, prompt string, option
 // StreamGenerate generates code with streaming support
 func (p *OpenAIProvider) StreamGenerate(ctx context.Context, prompt string, options GenerateOptions) (<-chan GenerateUpdate, error) {
 	ch := make(chan GenerateUpdate)
-	
+
 	go func() {
 		defer close(ch)
-		
+
 		// For now, use non-streaming version
 		// OpenAI supports streaming, but we'll implement it later
 		result, err := p.GenerateCode(ctx, prompt, options)
@@ -186,7 +186,7 @@ func (p *OpenAIProvider) StreamGenerate(ctx context.Context, prompt string, opti
 			ch <- GenerateUpdate{Error: err}
 			return
 		}
-		
+
 		// Send as single chunk
 		ch <- GenerateUpdate{
 			Content:      result.Code,
@@ -194,7 +194,7 @@ func (p *OpenAIProvider) StreamGenerate(ctx context.Context, prompt string, opti
 			FinishReason: result.FinishReason,
 		}
 	}()
-	
+
 	return ch, nil
 }
 
@@ -206,7 +206,7 @@ func (p *OpenAIProvider) ValidateConfig(config ProviderConfig) error {
 			return fmt.Errorf("API key environment variable %s is not set", config.APIKeyEnv)
 		}
 	}
-	
+
 	// Validate model
 	caps := p.GetCapabilities()
 	validModel := false
@@ -216,10 +216,10 @@ func (p *OpenAIProvider) ValidateConfig(config ProviderConfig) error {
 			break
 		}
 	}
-	
+
 	if config.Model != "" && !validModel {
 		return fmt.Errorf("unsupported model: %s", config.Model)
 	}
-	
+
 	return nil
 }

@@ -15,23 +15,23 @@ const (
 	EventAICoderFailed    EventType = "ai_coder_failed"
 	EventAICoderStopped   EventType = "ai_coder_stopped"
 	EventAICoderDeleted   EventType = "ai_coder_deleted"
-	
+
 	// Progress events
 	EventAICoderProgress  EventType = "ai_coder_progress"
 	EventAICoderMilestone EventType = "ai_coder_milestone"
 	EventAICoderOutput    EventType = "ai_coder_output"
-	
+
 	// Workspace events
 	EventAICoderFileCreated   EventType = "ai_coder_file_created"
 	EventAICoderFileModified  EventType = "ai_coder_file_modified"
 	EventAICoderFileDeleted   EventType = "ai_coder_file_deleted"
 	EventAICoderWorkspaceSync EventType = "ai_coder_workspace_sync"
-	
+
 	// Provider events
-	EventAICoderAPICall     EventType = "ai_coder_api_call"
-	EventAICoderAPIError    EventType = "ai_coder_api_error"
-	EventAICoderRateLimit   EventType = "ai_coder_rate_limit"
-	
+	EventAICoderAPICall   EventType = "ai_coder_api_call"
+	EventAICoderAPIError  EventType = "ai_coder_api_error"
+	EventAICoderRateLimit EventType = "ai_coder_rate_limit"
+
 	// Resource events
 	EventAICoderResourceUsage EventType = "ai_coder_resource_usage"
 	EventAICoderResourceLimit EventType = "ai_coder_resource_limit"

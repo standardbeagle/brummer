@@ -7,7 +7,7 @@ import (
 )
 
 // registerPrompts registers all available MCP prompts
-func (s *StreamableServer) registerPrompts() {
+func (s *MCPServer) registerPrompts() {
 	// Debug Error prompt
 	s.prompts["debug_error"] = Prompt{
 		Name:        "Debug Error",
@@ -82,7 +82,7 @@ func (s *StreamableServer) registerPrompts() {
 }
 
 // Prompt list handler
-func (s *StreamableServer) handlePromptsList(msg *JSONRPCMessage) *JSONRPCMessage {
+func (s *MCPServer) handlePromptsList(msg *JSONRPCMessage) *JSONRPCMessage {
 	prompts := make([]map[string]interface{}, 0, len(s.prompts))
 
 	for name, prompt := range s.prompts {
@@ -116,7 +116,7 @@ func (s *StreamableServer) handlePromptsList(msg *JSONRPCMessage) *JSONRPCMessag
 }
 
 // Prompt get handler
-func (s *StreamableServer) handlePromptGet(msg *JSONRPCMessage) *JSONRPCMessage {
+func (s *MCPServer) handlePromptGet(msg *JSONRPCMessage) *JSONRPCMessage {
 	var params struct {
 		Name      string                 `json:"name"`
 		Arguments map[string]interface{} `json:"arguments"`
@@ -144,7 +144,7 @@ func (s *StreamableServer) handlePromptGet(msg *JSONRPCMessage) *JSONRPCMessage 
 	}
 }
 
-func (s *StreamableServer) generatePromptMessages(prompt Prompt, args map[string]interface{}) []map[string]interface{} {
+func (s *MCPServer) generatePromptMessages(prompt Prompt, args map[string]interface{}) []map[string]interface{} {
 	messages := make([]map[string]interface{}, 0)
 
 	// Generate system message based on prompt type

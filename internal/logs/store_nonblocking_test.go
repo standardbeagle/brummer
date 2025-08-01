@@ -14,7 +14,7 @@ import (
 
 // TestStoreNonBlockingAdd verifies that Add operations don't block
 func TestStoreNonBlockingAdd(t *testing.T) {
-	store := NewStore(1000)
+	store := NewStore(1000, nil)
 	defer store.Close()
 
 	// Track goroutine count
@@ -51,7 +51,7 @@ func TestStoreNonBlockingAdd(t *testing.T) {
 
 // TestStoreConcurrentAddGet verifies no deadlocks with concurrent operations
 func TestStoreConcurrentAddGet(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	var addCount atomic.Int32
@@ -114,7 +114,7 @@ func TestStoreConcurrentAddGet(t *testing.T) {
 
 // TestStoreChannelBackpressure verifies channel doesn't grow unbounded
 func TestStoreChannelBackpressure(t *testing.T) {
-	store := NewStore(10)
+	store := NewStore(10, nil)
 	defer store.Close()
 
 	// Flood with adds
@@ -134,7 +134,7 @@ func TestStoreChannelBackpressure(t *testing.T) {
 
 // TestStoreAsyncProcessing verifies async processing works correctly
 func TestStoreAsyncProcessing(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	// Add a log with URL
@@ -151,7 +151,7 @@ func TestStoreAsyncProcessing(t *testing.T) {
 
 // BenchmarkStoreAddNonBlocking benchmarks non-blocking add performance
 func BenchmarkStoreAddNonBlocking(b *testing.B) {
-	store := NewStore(10000)
+	store := NewStore(10000, nil)
 	defer store.Close()
 
 	b.ResetTimer()
@@ -178,7 +178,7 @@ func BenchmarkStoreAddBlocking(b *testing.B) {
 
 // TestStoreNoDeadlock verifies no deadlocks occur
 func TestStoreNoDeadlock(t *testing.T) {
-	store := NewStore(100)
+	store := NewStore(100, nil)
 	defer store.Close()
 
 	timeout := time.After(5 * time.Second)

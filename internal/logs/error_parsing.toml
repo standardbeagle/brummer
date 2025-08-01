@@ -70,11 +70,11 @@ single_line = false
 description = "Unhandled Promise rejection in JavaScript"
 
 [error_patterns.javascript.error_bracket]
-pattern = "^\\[?(\\w+(?:Error|Exception))\\]?:\\s*(.+)"
+pattern = "^\\[?((?:Type|Reference|Syntax|Range)Error|\\w+Exception)\\]?:\\s*(.+)"
 type = "JavaScriptError"
 severity = "error"
 single_line = true
-description = "Standard JavaScript error with brackets"
+description = "Standard JavaScript error with brackets (specific error types)"
 
 [error_patterns.javascript.error_simple]
 pattern = "(?i)^(?:error:|fatal:|uncaught exception:)\\s*(.+)"
@@ -120,11 +120,11 @@ single_line = false
 description = "JavaScript SyntaxError"
 
 [error_patterns.javascript.generic_error]
-pattern = "^(\\w+Error):\\s*(.+)"
+pattern = "^((?:Type|Reference|Syntax|Range|URI|Eval)Error):\\s*(.+)"
 type = "JavaScriptError"
 severity = "error"
 single_line = true
-description = "Generic JavaScript error"
+description = "Generic JavaScript error (specific error types)"
 
 # TypeScript Error Patterns
 [error_patterns.typescript]

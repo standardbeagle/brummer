@@ -20,11 +20,11 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			Name:        "ScreenshotViewport",
 			Description: "Test basic viewport screenshot capture",
 			Setup: func(t *testing.T) interface{} {
-				server := createTestStreamableServer(t)
+				server := createTestMCPServer(t)
 				return server
 			},
 			Execute: func(t *testing.T, context interface{}) error {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 
 				args := json.RawMessage(`{"format": "png"}`)
 				_, err := server.tools["browser_screenshot"].Handler(args)
@@ -37,7 +37,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 				server.Stop()
 			},
 		},
@@ -45,11 +45,11 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			Name:        "ScreenshotFullPage",
 			Description: "Test full page screenshot capture",
 			Setup: func(t *testing.T) interface{} {
-				server := createTestStreamableServer(t)
+				server := createTestMCPServer(t)
 				return server
 			},
 			Execute: func(t *testing.T, context interface{}) error {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 
 				args := json.RawMessage(`{
 					"format": "png",
@@ -66,7 +66,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 				server.Stop()
 			},
 		},
@@ -74,11 +74,11 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			Name:        "ScreenshotWithSelector",
 			Description: "Test screenshot of specific element",
 			Setup: func(t *testing.T) interface{} {
-				server := createTestStreamableServer(t)
+				server := createTestMCPServer(t)
 				return server
 			},
 			Execute: func(t *testing.T, context interface{}) error {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 
 				args := json.RawMessage(`{
 					"format": "jpeg",
@@ -95,7 +95,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 				server.Stop()
 			},
 		},
@@ -111,11 +111,11 @@ func TestREPLExecuteTool(t *testing.T) {
 			Name:        "SimpleJavaScriptExecution",
 			Description: "Test basic JavaScript execution",
 			Setup: func(t *testing.T) interface{} {
-				server := createTestStreamableServer(t)
+				server := createTestMCPServer(t)
 				return server
 			},
 			Execute: func(t *testing.T, context interface{}) error {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 
 				args := json.RawMessage(`{
 					"code": "console.log('Hello, World!'); return 'test result';"
@@ -130,7 +130,7 @@ func TestREPLExecuteTool(t *testing.T) {
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 				server.Stop()
 			},
 		},
@@ -138,11 +138,11 @@ func TestREPLExecuteTool(t *testing.T) {
 			Name:        "DOMManipulation",
 			Description: "Test JavaScript DOM manipulation",
 			Setup: func(t *testing.T) interface{} {
-				server := createTestStreamableServer(t)
+				server := createTestMCPServer(t)
 				return server
 			},
 			Execute: func(t *testing.T, context interface{}) error {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 
 				args := json.RawMessage(`{
 					"code": "document.body.style.backgroundColor = 'red'; return document.body.style.backgroundColor;"
@@ -157,7 +157,7 @@ func TestREPLExecuteTool(t *testing.T) {
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 				server.Stop()
 			},
 		},
@@ -165,11 +165,11 @@ func TestREPLExecuteTool(t *testing.T) {
 			Name:        "AsyncJavaScriptExecution",
 			Description: "Test asynchronous JavaScript execution",
 			Setup: func(t *testing.T) interface{} {
-				server := createTestStreamableServer(t)
+				server := createTestMCPServer(t)
 				return server
 			},
 			Execute: func(t *testing.T, context interface{}) error {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 
 				args := json.RawMessage(`{
 					"code": "return new Promise(resolve => setTimeout(() => resolve('async result'), 100));"
@@ -184,7 +184,7 @@ func TestREPLExecuteTool(t *testing.T) {
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 				server.Stop()
 			},
 		},
@@ -192,11 +192,11 @@ func TestREPLExecuteTool(t *testing.T) {
 			Name:        "SpecificSessionExecution",
 			Description: "Test JavaScript execution in specific session",
 			Setup: func(t *testing.T) interface{} {
-				server := createTestStreamableServer(t)
+				server := createTestMCPServer(t)
 				return server
 			},
 			Execute: func(t *testing.T, context interface{}) error {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 
 				args := json.RawMessage(`{
 					"code": "return window.location.href;",
@@ -212,7 +212,7 @@ func TestREPLExecuteTool(t *testing.T) {
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
-				server := context.(*StreamableServer)
+				server := context.(*MCPServer)
 				server.Stop()
 			},
 		},
@@ -223,7 +223,7 @@ func TestREPLExecuteTool(t *testing.T) {
 
 // TestBrowserToolsIntegration tests browser tools working together
 func TestBrowserToolsIntegration(t *testing.T) {
-	server := createTestStreamableServer(t)
+	server := createTestMCPServer(t)
 	defer server.Stop()
 
 	// Test tool registration
@@ -256,7 +256,7 @@ func TestBrowserToolsIntegration(t *testing.T) {
 // TestBrowserToolsWithProxyServer tests browser tools with proxy server integration
 func TestBrowserToolsWithProxyServer(t *testing.T) {
 	// Create server with proxy enabled
-	server := createTestStreamableServer(t)
+	server := createTestMCPServer(t)
 	defer server.Stop()
 
 	// Test browser_open with proxy
@@ -293,7 +293,7 @@ func TestBrowserToolsWithProxyServer(t *testing.T) {
 
 // TestBrowserToolResponseHandling tests response handling for browser tools
 func TestBrowserToolResponseHandling(t *testing.T) {
-	server := createTestStreamableServer(t)
+	server := createTestMCPServer(t)
 	defer server.Stop()
 
 	// Test REPL response registration and cleanup
@@ -329,7 +329,7 @@ func TestBrowserToolResponseHandling(t *testing.T) {
 
 // TestBrowserToolParameterValidation tests parameter validation for browser tools
 func TestBrowserToolParameterValidation(t *testing.T) {
-	server := createTestStreamableServer(t)
+	server := createTestMCPServer(t)
 	defer server.Stop()
 
 	// Test screenshot parameter validation
@@ -414,7 +414,7 @@ func TestBrowserToolParameterValidation(t *testing.T) {
 
 // TestJavaScriptCodeGeneration tests that the tools generate proper JavaScript
 func TestJavaScriptCodeGeneration(t *testing.T) {
-	server := createTestStreamableServer(t)
+	server := createTestMCPServer(t)
 	defer server.Stop()
 
 	// Test screenshot code generation (we can verify the parameters are processed correctly)
@@ -451,8 +451,8 @@ func TestJavaScriptCodeGeneration(t *testing.T) {
 	})
 }
 
-// Helper function to create a test StreamableServer
-func createTestStreamableServer(t *testing.T) *StreamableServer {
+// Helper function to create a test MCPServer
+func createTestMCPServer(t *testing.T) *MCPServer {
 	// Create a test HTTP server
 	mockProxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -465,7 +465,7 @@ func createTestStreamableServer(t *testing.T) *StreamableServer {
 
 	// Create server with minimal configuration for testing
 	eventBus := events.NewEventBus()
-	server := NewStreamableServer(7778, nil, nil, nil, eventBus)
+	server := NewMCPServer(7778, nil, nil, nil, eventBus)
 
 	// Make sure browser tools are registered
 	server.registerBrowserTools()

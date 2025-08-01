@@ -28,10 +28,10 @@ func NewAICoderIntegration(processMgr *Manager, eventBus *events.EventBus) *AICo
 // Initialize sets up integration with AI coder manager
 func (integration *AICoderIntegration) Initialize(aiCoderMgr *aicoder.AICoderManager) error {
 	integration.aiCoderMgr = aiCoderMgr
-	
+
 	// Set up AI coder manager in process manager
 	integration.processMgr.SetAICoderManager(aiCoderMgr)
-	
+
 	// Create and start event bridge
 	integration.eventBridge = NewAICoderEventBridge(
 		integration.processMgr,
@@ -39,7 +39,7 @@ func (integration *AICoderIntegration) Initialize(aiCoderMgr *aicoder.AICoderMan
 		integration.eventBus,
 	)
 	integration.eventBridge.Start()
-	
+
 	return nil
 }
 
@@ -48,14 +48,14 @@ func (integration *AICoderIntegration) GetAICoderProcesses() []*AICoderProcess {
 	if integration.aiCoderMgr == nil {
 		return nil
 	}
-	
+
 	coders := integration.aiCoderMgr.ListCoders()
 	processes := make([]*AICoderProcess, len(coders))
-	
+
 	for i, coder := range coders {
 		processes[i] = NewAICoderProcess(coder)
 	}
-	
+
 	return processes
 }
 
@@ -64,7 +64,7 @@ func (integration *AICoderIntegration) ControlAICoder(coderID, action string) er
 	if integration.aiCoderMgr == nil {
 		return fmt.Errorf("AI coder manager not initialized")
 	}
-	
+
 	switch action {
 	case "start":
 		return integration.aiCoderMgr.StartCoder(coderID)
@@ -82,7 +82,7 @@ func (integration *AICoderIntegration) ControlAICoder(coderID, action string) er
 // AICoderProcessStatus represents AI coder process status for display
 type AICoderProcessStatus struct {
 	ID       string
-	Name     string  
+	Name     string
 	Status   ProcessStatus
 	Progress float64
 	Runtime  time.Duration
@@ -94,18 +94,18 @@ func (integration *AICoderIntegration) GetProcessStatus(processID string) (*AICo
 	if !strings.HasPrefix(processID, "ai-coder-") {
 		return nil, fmt.Errorf("not an AI coder process")
 	}
-	
+
 	coderID := strings.TrimPrefix(processID, "ai-coder-")
-	
+
 	if integration.aiCoderMgr == nil {
 		return nil, fmt.Errorf("AI coder manager not initialized")
 	}
-	
+
 	coder, exists := integration.aiCoderMgr.GetCoder(coderID)
 	if !exists {
 		return nil, fmt.Errorf("AI coder not found")
 	}
-	
+
 	return &AICoderProcessStatus{
 		ID:       processID,
 		Name:     fmt.Sprintf("AI Coder: %s", coder.Name),

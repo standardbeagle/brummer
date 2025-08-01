@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -8,8 +9,22 @@ import (
 	"github.com/standardbeagle/brummer/internal/aicoder"
 )
 
+// AICoderManagerInterface defines the interface for AI coder management
+// This allows for testing with mock implementations
+type AICoderManagerInterface interface {
+	CreateCoder(ctx context.Context, req aicoder.CreateCoderRequest) (*aicoder.AICoderProcess, error)
+	GetCoder(id string) (*aicoder.AICoderProcess, bool)
+	ListCoders() []*aicoder.AICoderProcess
+	DeleteCoder(id string) error
+	StartCoder(id string) error
+	StopCoder(id string) error
+	PauseCoder(id string) error
+	ResumeCoder(id string) error
+	UpdateCoderTask(id string, task string) error
+}
+
 // RegisterAICoderTools registers all AI coder management tools
-func (s *StreamableServer) registerAICoderTools() {
+func (s *MCPServer) registerAICoderTools() {
 	// ai_coder_create - Create and launch new AI coder instance
 	s.tools["ai_coder_create"] = MCPTool{
 		Name: "ai_coder_create",
@@ -19,7 +34,7 @@ The AI coder will run as a persistent session that can generate code, handle err
 
 For detailed documentation and examples, use: about tool="ai_coder_create"`,
 		InputSchema: aiCoderCreateSchema,
-		Handler: s.handleAICoderCreate,
+		Handler:     s.handleAICoderCreate,
 	}
 
 	// ai_coder_list - List active AI coders
@@ -31,7 +46,7 @@ Shows running, paused, completed, and failed AI coders with their task details.
 
 For detailed documentation and examples, use: about tool="ai_coder_list"`,
 		InputSchema: aiCoderListSchema,
-		Handler: s.handleAICoderList,
+		Handler:     s.handleAICoderList,
 	}
 
 	// ai_coder_control - Control AI coder state
@@ -43,7 +58,7 @@ Manages the lifecycle of AI coder instances with tmux-style session control.
 
 For detailed documentation and examples, use: about tool="ai_coder_control"`,
 		InputSchema: aiCoderControlSchema,
-		Handler: s.handleAICoderControl,
+		Handler:     s.handleAICoderControl,
 	}
 
 	// ai_coder_status - Get detailed status
@@ -55,7 +70,7 @@ Returns comprehensive information including task, progress, workspace, and recen
 
 For detailed documentation and examples, use: about tool="ai_coder_status"`,
 		InputSchema: aiCoderStatusSchema,
-		Handler: s.handleAICoderStatus,
+		Handler:     s.handleAICoderStatus,
 	}
 
 	// ai_coder_workspace - Access workspace files
@@ -67,7 +82,7 @@ Supports listing files and reading specific file contents from the coder's isola
 
 For detailed documentation and examples, use: about tool="ai_coder_workspace"`,
 		InputSchema: aiCoderWorkspaceSchema,
-		Handler: s.handleAICoderWorkspace,
+		Handler:     s.handleAICoderWorkspace,
 	}
 
 	// ai_coder_logs - Stream AI coder logs
@@ -78,24 +93,28 @@ For detailed documentation and examples, use: about tool="ai_coder_workspace"`,
 Provides real-time or historical logs from AI coder sessions with optional file output.
 
 For detailed documentation and examples, use: about tool="ai_coder_logs"`,
-		InputSchema: aiCoderLogsSchema,
-		Handler: s.handleAICoderLogs,
-		Streaming: true,
+		InputSchema:      aiCoderLogsSchema,
+		Handler:          s.handleAICoderLogs,
+		Streaming:        true,
 		StreamingHandler: s.handleAICoderLogsStream,
 	}
 }
 
 // getAICoderManager retrieves the AI coder manager from the server
 // Returns nil if not available (feature not enabled)
-func (s *StreamableServer) getAICoderManager() *aicoder.AICoderManager {
-	// TODO: This will be set when AICoderManager is added to StreamableServer
-	// For now, return nil to allow compilation
+func (s *MCPServer) getAICoderManager() AICoderManagerInterface {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if manager, ok := s.aiCoderManager.(AICoderManagerInterface); ok {
+		return manager
+	}
 	return nil
 }
 
 // Handler functions
 
-func (s *StreamableServer) handleAICoderCreate(args json.RawMessage) (interface{}, error) {
+func (s *MCPServer) handleAICoderCreate(args json.RawMessage) (interface{}, error) {
 	manager := s.getAICoderManager()
 	if manager == nil {
 		return map[string]interface{}{
@@ -150,7 +169,7 @@ func (s *StreamableServer) handleAICoderCreate(args json.RawMessage) (interface{
 	}, nil
 }
 
-func (s *StreamableServer) handleAICoderList(args json.RawMessage) (interface{}, error) {
+func (s *MCPServer) handleAICoderList(args json.RawMessage) (interface{}, error) {
 	manager := s.getAICoderManager()
 	if manager == nil {
 		return map[string]interface{}{
@@ -208,7 +227,7 @@ func (s *StreamableServer) handleAICoderList(args json.RawMessage) (interface{},
 	}, nil
 }
 
-func (s *StreamableServer) handleAICoderControl(args json.RawMessage) (interface{}, error) {
+func (s *MCPServer) handleAICoderControl(args json.RawMessage) (interface{}, error) {
 	manager := s.getAICoderManager()
 	if manager == nil {
 		return map[string]interface{}{
@@ -276,7 +295,7 @@ func (s *StreamableServer) handleAICoderControl(args json.RawMessage) (interface
 	}, nil
 }
 
-func (s *StreamableServer) handleAICoderStatus(args json.RawMessage) (interface{}, error) {
+func (s *MCPServer) handleAICoderStatus(args json.RawMessage) (interface{}, error) {
 	manager := s.getAICoderManager()
 	if manager == nil {
 		return map[string]interface{}{
@@ -329,7 +348,7 @@ func (s *StreamableServer) handleAICoderStatus(args json.RawMessage) (interface{
 	}, nil
 }
 
-func (s *StreamableServer) handleAICoderWorkspace(args json.RawMessage) (interface{}, error) {
+func (s *MCPServer) handleAICoderWorkspace(args json.RawMessage) (interface{}, error) {
 	manager := s.getAICoderManager()
 	if manager == nil {
 		return map[string]interface{}{
@@ -338,9 +357,9 @@ func (s *StreamableServer) handleAICoderWorkspace(args json.RawMessage) (interfa
 	}
 
 	var params struct {
-		CoderID  string `json:"coder_id"`
+		CoderID   string `json:"coder_id"`
 		Operation string `json:"operation"`
-		FilePath string `json:"file_path"`
+		FilePath  string `json:"file_path"`
 	}
 
 	// Default operation
@@ -399,7 +418,7 @@ func (s *StreamableServer) handleAICoderWorkspace(args json.RawMessage) (interfa
 	}
 }
 
-func (s *StreamableServer) handleAICoderLogs(args json.RawMessage) (interface{}, error) {
+func (s *MCPServer) handleAICoderLogs(args json.RawMessage) (interface{}, error) {
 	// Non-streaming version returns recent logs
 	manager := s.getAICoderManager()
 	if manager == nil {
@@ -470,7 +489,7 @@ func (s *StreamableServer) handleAICoderLogs(args json.RawMessage) (interface{},
 	return result, nil
 }
 
-func (s *StreamableServer) handleAICoderLogsStream(args json.RawMessage, send func(interface{})) (interface{}, error) {
+func (s *MCPServer) handleAICoderLogsStream(args json.RawMessage, send func(interface{})) (interface{}, error) {
 	// Streaming version - sends log updates as they occur
 	manager := s.getAICoderManager()
 	if manager == nil {
@@ -542,4 +561,3 @@ func (s *StreamableServer) handleAICoderLogsStream(args json.RawMessage, send fu
 		"session": coder.SessionID,
 	}, nil
 }
-

@@ -135,7 +135,7 @@ func (v *AICoderPTYView) Update(msg tea.Msg) (*AICoderPTYView, tea.Cmd) {
 					}
 				}
 				return v, nil
-				
+
 			case tea.MouseWheelDown:
 				// Scroll down
 				v.scrollOffset -= 3
@@ -264,7 +264,7 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 			v.terminalFocused = false
 		}
 		return v, nil
-		
+
 	case key.Matches(msg, key.NewBinding(key.WithKeys("pgup"))):
 		// Scroll up
 		if v.currentSession != nil {
@@ -284,7 +284,7 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 			}
 		}
 		return v, nil
-		
+
 	case key.Matches(msg, key.NewBinding(key.WithKeys("pgdown"))):
 		// Scroll down
 		if v.currentSession != nil {
@@ -324,7 +324,7 @@ func (v *AICoderPTYView) toggleFullScreen() tea.Cmd {
 		termWidth, termHeight := v.getTerminalSize()
 		v.currentSession.Resize(termWidth, termHeight)
 	}
-	
+
 	// Return command to enter/exit alternate screen
 	if v.isFullScreen {
 		return tea.EnterAltScreen
@@ -339,14 +339,14 @@ func (v *AICoderPTYView) addToScrollback(data string) {
 	for _, line := range lines {
 		if line != "" || len(lines) > 1 {
 			v.scrollbackBuffer = append(v.scrollbackBuffer, line)
-			
+
 			// Trim buffer if it exceeds max size
 			if len(v.scrollbackBuffer) > v.maxScrollback {
 				v.scrollbackBuffer = v.scrollbackBuffer[len(v.scrollbackBuffer)-v.maxScrollback:]
 			}
 		}
 	}
-	
+
 	// Auto-scroll to bottom when new content arrives
 	v.scrollOffset = 0
 }
@@ -409,7 +409,7 @@ func (v *AICoderPTYView) getTerminalSize() (int, int) {
 	if v.showHelp {
 		footerLines = 10 // Extended help text takes ~8-10 lines
 	}
-	
+
 	// CORE CONSTRAINT: BORDER + PADDING DEDUCTION
 	// This is the most critical calculation that must remain consistent:
 	//
@@ -420,7 +420,7 @@ func (v *AICoderPTYView) getTerminalSize() (int, int) {
 	//
 	// Total horizontal space consumed by border + padding:
 	// - Left border: 1 character
-	// - Left padding: 1 character  
+	// - Left padding: 1 character
 	// - Right padding: 1 character
 	// - Right border: 1 character
 	// - TOTAL: 4 characters
@@ -431,17 +431,17 @@ func (v *AICoderPTYView) getTerminalSize() (int, int) {
 	// 3. PTY session resize operations
 	// 4. Border rendering width calculations
 	const BORDER_AND_PADDING_WIDTH = 4
-	
+
 	if v.isFullScreen {
 		// FULL SCREEN MODE:
 		// Use maximum available space minus border/padding constraints
 		// Height constraint is minimal (header + footer + border)
 		width := v.width - BORDER_AND_PADDING_WIDTH
 		height := v.height - 4 // Header (1) + footer (1) + top/bottom borders (2)
-		
+
 		// Safety bounds to prevent degenerate terminals
 		if width <= 0 {
-			width = 80  // Standard terminal width fallback
+			width = 80 // Standard terminal width fallback
 		}
 		if height <= 0 {
 			height = 24 // Standard terminal height fallback
@@ -452,10 +452,10 @@ func (v *AICoderPTYView) getTerminalSize() (int, int) {
 		// Account for all UI elements that consume vertical space
 		width := v.width - BORDER_AND_PADDING_WIDTH - 2 // Additional 2 columns to fit properly in window
 		height := v.height - headerLines - footerLines
-		
+
 		// Safety bounds to prevent degenerate terminals
 		if width <= 0 {
-			width = 80  // Standard terminal width fallback
+			width = 80 // Standard terminal width fallback
 		}
 		if height <= 0 {
 			height = 24 // Standard terminal height fallback
@@ -521,7 +521,7 @@ func (v *AICoderPTYView) View() string {
 	if v.width <= 0 || v.height <= 0 {
 		return "Initializing AI Coder view..."
 	}
-	
+
 	if v.isFullScreen {
 		return v.renderFullScreen()
 	} else {
@@ -545,7 +545,7 @@ func (v *AICoderPTYView) renderFullScreen() string {
 		// Width: v.width - 4 (BORDER_AND_PADDING_WIDTH from getTerminalSize)
 		// Height: v.height - 4 (header + footer + top/bottom borders)
 		// This MUST match the getTerminalSize() full screen calculation
-		borderedContent := v.renderTerminalWithFullScreenBorder(terminalContent, v.width - 4, v.height - 4)
+		borderedContent := v.renderTerminalWithFullScreenBorder(terminalContent, v.width-4, v.height-4)
 		content.WriteString(borderedContent)
 	} else {
 		noSessionMsg := "No active AI coder session\nPress Ctrl+N to create a new session"
@@ -609,7 +609,7 @@ func (v *AICoderPTYView) renderWindowed() string {
 		if terminalWidth < 20 {
 			terminalWidth = 20
 		}
-		
+
 		// Render terminal content with custom border to preserve ANSI codes
 		borderedContent := v.renderTerminalWithBorder(terminalContent, terminalWidth, terminalHeight)
 		content.WriteString(borderedContent)
@@ -623,14 +623,14 @@ func (v *AICoderPTYView) renderWindowed() string {
 		if terminalWidth < 20 {
 			terminalWidth = 20
 		}
-		
+
 		// Also apply MaxWidth/MaxHeight here
 		containerStyle := v.borderStyle.
 			Width(terminalWidth).
 			Height(terminalHeight).
 			MaxWidth(terminalWidth).
 			MaxHeight(terminalHeight)
-			
+
 		content.WriteString(containerStyle.Render(noSessionMsg))
 	}
 
@@ -661,14 +661,14 @@ func (v *AICoderPTYView) GetRawOutput() string {
 	if v.currentSession == nil {
 		return "\033[2J\033[H" + "No active AI coder session\r\nPress Ctrl+N to create a new session"
 	}
-	
+
 	// In full screen mode, return the raw PTY output directly
 	// This preserves all ANSI codes including cursor positioning, colors, etc.
 	history := v.currentSession.GetOutputHistory()
 	if len(history) == 0 {
 		return "\033[2J\033[HWaiting for output..."
 	}
-	
+
 	// Return the raw output as-is
 	// The PTY program (like Claude Code) is responsible for screen management
 	return string(history)
@@ -698,21 +698,21 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 	if terminal == nil {
 		return "Waiting for terminal..."
 	}
-	
+
 	// Build the visible content from the terminal buffer
 	var content strings.Builder
-	
+
 	// Lock terminal while reading to ensure consistency
 	terminal.Lock()
 	defer terminal.Unlock()
-	
+
 	// Get our available rendering dimensions
 	termWidth, termHeight := v.getTerminalSize()
-	
+
 	// Get the actual terminal buffer dimensions
 	// The terminal may be larger than our display area
 	width, height := terminal.Size()
-	
+
 	// Limit to our available display space
 	if height > termHeight {
 		height = termHeight
@@ -722,7 +722,7 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 	if width > termWidth {
 		width = termWidth
 	}
-	
+
 	// Track the current text style as we scan across cells
 	// This allows us to minimize ANSI code generation by only
 	// emitting codes when the style changes
@@ -730,15 +730,15 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 	currentBG := vt10x.DefaultBG
 	var currentMode int16
 	styleActive := false
-	
+
 	for y := 0; y < height; y++ {
 		lineBuffer := strings.Builder{}
-		
+
 		for x := 0; x < width; x++ {
 			// Get the cell at this position
 			// Each cell contains: character, foreground color, background color, and text attributes
 			cell := terminal.Cell(x, y)
-			
+
 			// Check if this cell's style differs from the current style
 			// This optimization prevents generating redundant ANSI codes
 			if cell.FG != currentFG || cell.BG != currentBG || cell.Mode != currentMode {
@@ -748,13 +748,13 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 					lineBuffer.WriteString("\033[0m")
 					styleActive = false
 				}
-				
+
 				// Check if this cell needs any styling
 				// DefaultFG/DefaultBG are special values meaning "use terminal default"
 				if cell.FG != vt10x.DefaultFG || cell.BG != vt10x.DefaultBG || cell.Mode != 0 {
 					// Build ANSI escape sequence codes
 					codes := []string{}
-					
+
 					// Text attribute codes (Mode is a bitmask)
 					// These must come before color codes in the ANSI sequence
 					if cell.Mode&(1<<2) != 0 { // Bold (bit 2)
@@ -772,7 +772,7 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 					if cell.Mode&(1<<4) != 0 { // Italic (bit 4)
 						codes = append(codes, "3")
 					}
-					
+
 					// Foreground color handling
 					// vt10x uses a clever Color encoding scheme:
 					// - 0-7: Standard ANSI colors
@@ -804,7 +804,7 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 							codes = append(codes, fmt.Sprintf("38;2;%d;%d;%d", r, g, b))
 						}
 					}
-					
+
 					// Background color handling (same scheme as foreground)
 					if cell.BG != vt10x.DefaultBG {
 						if cell.BG < 8 {
@@ -828,7 +828,7 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 							codes = append(codes, fmt.Sprintf("48;2;%d;%d;%d", r, g, b))
 						}
 					}
-					
+
 					// Generate the complete ANSI escape sequence
 					if len(codes) > 0 {
 						// ESC[{code1};{code2};...m format
@@ -837,13 +837,13 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 						styleActive = true
 					}
 				}
-				
+
 				// Update our tracking variables
 				currentFG = cell.FG
 				currentBG = cell.BG
 				currentMode = cell.Mode
 			}
-			
+
 			// Write the character
 			if cell.Char != 0 && cell.Char != '\n' && cell.Char != '\r' {
 				lineBuffer.WriteRune(cell.Char)
@@ -851,18 +851,18 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 				lineBuffer.WriteRune(' ')
 			}
 		}
-		
+
 		// Reset style at end of line if needed
 		if styleActive {
 			lineBuffer.WriteString("\033[0m")
 		}
-		
+
 		content.WriteString(lineBuffer.String())
 		if y < height-1 {
 			content.WriteString("\n")
 		}
 	}
-	
+
 	return content.String()
 }
 
@@ -909,7 +909,7 @@ func (v *AICoderPTYView) renderScrolledView() string {
 
 	// Join and return
 	result := strings.Join(visibleLines, "\n")
-	
+
 	// Add scroll indicator
 	if v.scrollOffset > 0 {
 		scrollInfo := fmt.Sprintf(" [Scrolled up %d lines] ", v.scrollOffset)
@@ -949,7 +949,7 @@ func (v *AICoderPTYView) renderFromHistory() string {
 	// Render each line with color support
 	for y := 0; y < height; y++ {
 		lineBuffer := strings.Builder{}
-		
+
 		for x := 0; x < width; x++ {
 			cell := terminal.Cell(x, y)
 
@@ -970,7 +970,7 @@ func (v *AICoderPTYView) renderFromHistory() string {
 		lineBuffer.WriteString("\033[0m")
 
 		content.WriteString(lineBuffer.String())
-		
+
 		// Add newline except for last line
 		if y < height-1 {
 			content.WriteString("\n")
@@ -979,7 +979,6 @@ func (v *AICoderPTYView) renderFromHistory() string {
 
 	return content.String()
 }
-
 
 // renderTerminalWithBorder renders terminal content with a border while preserving ANSI codes
 //
@@ -990,13 +989,13 @@ func (v *AICoderPTYView) renderFromHistory() string {
 // CONSTRAINT FLOW:
 // 1. getTerminalSize() calculates: terminalWidth = viewWidth - 4
 // 2. PTY session is resized to these dimensions
-// 3. renderTerminalContent() generates content fitting those dimensions  
+// 3. renderTerminalContent() generates content fitting those dimensions
 // 4. This function renders borders around content using the SAME width parameter
 // 5. Final output fits exactly within the original view boundaries
 //
 // PARAMETER RELATIONSHIP:
 // - width parameter: Should equal getTerminalSize() width return value
-// - height parameter: Should equal getTerminalSize() height return value  
+// - height parameter: Should equal getTerminalSize() height return value
 // - Content: Must fit within (width-4) x (height-2) after accounting for borders
 //
 // BORDER STRUCTURE AND SPACE CONSUMPTION:
@@ -1004,7 +1003,7 @@ func (v *AICoderPTYView) renderFromHistory() string {
 // │ ╭──────────────────────────────────────────────╮ │ ← width param
 // │ │ content area (width-4 chars wide)                  │ │
 // │ │ ^ left border (1) + left pad (1)                   │ │
-// │ │   right pad (1) + right border (1) ^               │ │  
+// │ │   right pad (1) + right border (1) ^               │ │
 // │ ╰──────────────────────────────────────────────╯ │
 // └────────────────────────────────────────────────────┘
 //
@@ -1026,14 +1025,14 @@ func (v *AICoderPTYView) renderTerminalWithBorder(content string, width, height 
 	bottomRight := "╯"
 	horizontal := "─"
 	vertical := "│"
-	
+
 	// IMPORTANT: We use raw ANSI codes for border coloring
 	// Using lipgloss.Style.Render() would strip ANSI codes from our content!
 	borderColorCode := "\033[38;5;62m" // Color 62 (a nice blue-gray)
 	resetCode := "\033[0m"
-	
+
 	var result strings.Builder
-	
+
 	// Top border
 	result.WriteString(borderColorCode)
 	result.WriteString(topLeft)
@@ -1043,7 +1042,7 @@ func (v *AICoderPTYView) renderTerminalWithBorder(content string, width, height 
 	result.WriteString(topRight)
 	result.WriteString(resetCode)
 	result.WriteString("\n")
-	
+
 	// Content lines with side borders and padding
 	lines := strings.Split(content, "\n")
 	for i := 0; i < height-2; i++ {
@@ -1052,12 +1051,12 @@ func (v *AICoderPTYView) renderTerminalWithBorder(content string, width, height 
 		result.WriteString(vertical)
 		result.WriteString(resetCode)
 		result.WriteString(" ") // left padding
-		
+
 		// Content line (preserving ANSI codes)
 		if i < len(lines) {
 			// The line already has ANSI codes, just write it
 			result.WriteString(lines[i])
-			
+
 			// Calculate visible length (excluding ANSI codes) for right padding
 			visibleLen := ansiLength(lines[i])
 			if visibleLen < width-4 { // -4 for borders and padding
@@ -1072,7 +1071,7 @@ func (v *AICoderPTYView) renderTerminalWithBorder(content string, width, height 
 				result.WriteString(" ")
 			}
 		}
-		
+
 		// Right padding and border
 		result.WriteString(" ") // right padding
 		result.WriteString(borderColorCode)
@@ -1080,7 +1079,7 @@ func (v *AICoderPTYView) renderTerminalWithBorder(content string, width, height 
 		result.WriteString(resetCode)
 		result.WriteString("\n")
 	}
-	
+
 	// Bottom border
 	result.WriteString(borderColorCode)
 	result.WriteString(bottomLeft)
@@ -1089,7 +1088,7 @@ func (v *AICoderPTYView) renderTerminalWithBorder(content string, width, height 
 	}
 	result.WriteString(bottomRight)
 	result.WriteString(resetCode)
-	
+
 	return result.String()
 }
 
@@ -1102,13 +1101,13 @@ func (v *AICoderPTYView) renderTerminalWithBorder(content string, width, height 
 //
 // WHY THIS MATTERS FOR CONSTRAINTS:
 // 1. getTerminalSize() calculates: content should fit in (width-4) characters
-// 2. PTY generates content with ANSI codes: "\033[31mHello\033[0m" (5 visible chars, 13 total bytes) 
+// 2. PTY generates content with ANSI codes: "\033[31mHello\033[0m" (5 visible chars, 13 total bytes)
 // 3. Border rendering needs visible length (5) to calculate correct padding
 // 4. Without this, padding calculation would use total length (13) and overflow borders
 //
 // ANSI SEQUENCE EXAMPLES:
 // - "\033[31mRed text\033[0m" → visible length: 8 ("Red text")
-// - "\033[1;32mBold green\033[0m" → visible length: 10 ("Bold green")  
+// - "\033[1;32mBold green\033[0m" → visible length: 10 ("Bold green")
 // - "Hello \033[4munderlined\033[0m world" → visible length: 21 ("Hello underlined world")
 //
 // REGEX PATTERN BREAKDOWN:
@@ -1123,7 +1122,7 @@ func ansiLength(s string) int {
 	// Remove all ANSI SGR sequences
 	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*m`)
 	cleaned := ansiRegex.ReplaceAllString(s, "")
-	
+
 	// Use rune length instead of byte length to properly handle Unicode
 	// This ensures emojis and other multi-byte characters count as single visible characters
 	return len([]rune(cleaned))
@@ -1138,13 +1137,13 @@ func (v *AICoderPTYView) renderTerminalWithFullScreenBorder(content string, widt
 	bottomRight := "┘"
 	horizontal := "─"
 	vertical := "│"
-	
+
 	// Border characters with color (red for full screen)
 	borderColorCode := "\033[38;5;196m" // Color 196 (red)
 	resetCode := "\033[0m"
-	
+
 	var result strings.Builder
-	
+
 	// Top border
 	result.WriteString(borderColorCode)
 	result.WriteString(topLeft)
@@ -1154,7 +1153,7 @@ func (v *AICoderPTYView) renderTerminalWithFullScreenBorder(content string, widt
 	result.WriteString(topRight)
 	result.WriteString(resetCode)
 	result.WriteString("\n")
-	
+
 	// Content lines with side borders and padding
 	lines := strings.Split(content, "\n")
 	for i := 0; i < height-2; i++ {
@@ -1163,12 +1162,12 @@ func (v *AICoderPTYView) renderTerminalWithFullScreenBorder(content string, widt
 		result.WriteString(vertical)
 		result.WriteString(resetCode)
 		result.WriteString(" ") // left padding
-		
+
 		// Content line (preserving ANSI codes)
 		if i < len(lines) {
 			// The line already has ANSI codes, just write it
 			result.WriteString(lines[i])
-			
+
 			// Calculate visible length (excluding ANSI codes) for right padding
 			visibleLen := ansiLength(lines[i])
 			if visibleLen < width-4 { // -4 for borders and padding
@@ -1183,7 +1182,7 @@ func (v *AICoderPTYView) renderTerminalWithFullScreenBorder(content string, widt
 				result.WriteString(" ")
 			}
 		}
-		
+
 		// Right padding and border
 		result.WriteString(" ") // right padding
 		result.WriteString(borderColorCode)
@@ -1191,7 +1190,7 @@ func (v *AICoderPTYView) renderTerminalWithFullScreenBorder(content string, widt
 		result.WriteString(resetCode)
 		result.WriteString("\n")
 	}
-	
+
 	// Bottom border
 	result.WriteString(borderColorCode)
 	result.WriteString(bottomLeft)
@@ -1200,7 +1199,7 @@ func (v *AICoderPTYView) renderTerminalWithFullScreenBorder(content string, widt
 	}
 	result.WriteString(bottomRight)
 	result.WriteString(resetCode)
-	
+
 	return result.String()
 }
 
@@ -1286,19 +1285,19 @@ func (v *AICoderPTYView) UnfocusTerminal() {
 
 // ShouldInterceptSlashCommand determines if "/" should open Brummer command palette
 // Returns true if:
-// - Terminal is not focused, OR  
+// - Terminal is not focused, OR
 // - Cursor is at start of line (typically indicates new command)
 func (v *AICoderPTYView) ShouldInterceptSlashCommand() bool {
 	// If terminal not focused, always allow Brummer commands
 	if !v.terminalFocused {
 		return true
 	}
-	
+
 	// If no current session, allow Brummer commands
 	if v.currentSession == nil {
 		return true
 	}
-	
+
 	// CRITICAL FIX: If terminal IS focused, DON'T intercept slash commands
 	// This allows slash commands to be sent to the AI coder as regular input
 	// Only intercept when terminal is not focused

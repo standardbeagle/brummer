@@ -191,7 +191,7 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 			runningScripts := make(map[string]bool)
 			if c.processMgr != nil {
 				for _, proc := range c.processMgr.GetAllProcesses() {
-					if proc.Status == process.StatusRunning {
+					if proc.GetStatus() == process.StatusRunning {
 						runningScripts[proc.Name] = true
 					}
 				}
@@ -217,7 +217,7 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 
 			if c.processMgr != nil {
 				for _, proc := range c.processMgr.GetAllProcesses() {
-					if proc.Status == process.StatusRunning {
+					if proc.GetStatus() == process.StatusRunning {
 						processes = append(processes, proc.Name)
 					}
 				}
@@ -263,7 +263,7 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 				currentText = c.segments[c.currentIndex]
 			}
 			return c.filterSuggestions(urlExamples, currentText)
-			
+
 		case "/ai":
 			// Return available AI providers
 			if len(c.aiProviders) > 0 {
@@ -420,7 +420,7 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		// Check if script is already running
 		if c.processMgr != nil {
 			for _, proc := range c.processMgr.GetAllProcesses() {
-				if proc.Name == scriptName && proc.Status == process.StatusRunning {
+				if proc.Name == scriptName && proc.GetStatus() == process.StatusRunning {
 					return false, fmt.Sprintf("Script '%s' is already running", scriptName)
 				}
 			}
@@ -442,7 +442,7 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		// Check if process exists and is running
 		if c.processMgr != nil {
 			for _, proc := range c.processMgr.GetAllProcesses() {
-				if proc.Name == processName && proc.Status == process.StatusRunning {
+				if proc.Name == processName && proc.GetStatus() == process.StatusRunning {
 					return true, ""
 				}
 			}
@@ -496,7 +496,7 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 	case "/toggle-proxy":
 		// No additional parameters needed
 		return true, ""
-		
+
 	case "/ai":
 		if len(parts) < 2 {
 			if len(c.aiProviders) == 0 {
@@ -505,7 +505,7 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 			return false, fmt.Sprintf("Please specify an AI provider. Available: %s", strings.Join(c.aiProviders, ", "))
 		}
 		providerName := parts[1]
-		
+
 		// Check if provider exists
 		if len(c.aiProviders) > 0 {
 			found := false
@@ -523,11 +523,11 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 			return false, "No AI providers configured. Add [aicoder.providers.<name>] sections to .brum.toml"
 		}
 		return true, ""
-		
+
 	case "/term":
 		// No additional parameters needed for terminal
 		return true, ""
-		
+
 	case "/help":
 		// No additional parameters needed
 		return true, ""
@@ -548,7 +548,7 @@ func (c *CommandAutocomplete) getAvailableScriptsString() string {
 	runningScripts := make(map[string]bool)
 	if c.processMgr != nil {
 		for _, proc := range c.processMgr.GetAllProcesses() {
-			if proc.Status == process.StatusRunning {
+			if proc.GetStatus() == process.StatusRunning {
 				runningScripts[proc.Name] = true
 			}
 		}

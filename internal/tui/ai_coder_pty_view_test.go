@@ -14,15 +14,15 @@ import (
 
 func TestAICoderPTYView_GetTerminalSize(t *testing.T) {
 	tests := []struct {
-		name              string
-		width             int
-		height            int
-		isFullScreen      bool
-		hasStatusMessage  bool
-		showHelp          bool
-		wantWidth         int
-		wantHeight        int
-		description       string
+		name             string
+		width            int
+		height           int
+		isFullScreen     bool
+		hasStatusMessage bool
+		showHelp         bool
+		wantWidth        int
+		wantHeight       int
+		description      string
 	}{
 		{
 			name:         "uninitialized dimensions return defaults",
@@ -43,7 +43,7 @@ func TestAICoderPTYView_GetTerminalSize(t *testing.T) {
 			description:  "Width calculation resulting in negative should use default width",
 		},
 		{
-			name:         "negative height calculation triggers height fallback", 
+			name:         "negative height calculation triggers height fallback",
 			width:        50,
 			height:       4, // 4 - 3 - 2 = -1 (negative)
 			isFullScreen: false,
@@ -61,14 +61,14 @@ func TestAICoderPTYView_GetTerminalSize(t *testing.T) {
 			description:  "Normal windowed mode with header (3) + footer (2) deductions",
 		},
 		{
-			name:              "windowed with status message increases header",
-			width:             100,
-			height:            40,
-			isFullScreen:      false,
-			hasStatusMessage:  true,
-			wantWidth:         94, // 100 - 4 - 2 = 94
-			wantHeight:        33, // 40 - 5 - 2 = 33 (header+2 for status)
-			description:       "Status message adds 2 lines to header calculation",
+			name:             "windowed with status message increases header",
+			width:            100,
+			height:           40,
+			isFullScreen:     false,
+			hasStatusMessage: true,
+			wantWidth:        94, // 100 - 4 - 2 = 94
+			wantHeight:       33, // 40 - 5 - 2 = 33 (header+2 for status)
+			description:      "Status message adds 2 lines to header calculation",
 		},
 		{
 			name:         "windowed with help enabled increases footer",
@@ -129,13 +129,13 @@ func TestAICoderPTYView_GetTerminalSize(t *testing.T) {
 			view.width = tt.width
 			view.height = tt.height
 			view.isFullScreen = tt.isFullScreen
-			
+
 			// Set up status message if needed
 			if tt.hasStatusMessage {
 				view.statusMessage = "Test status message"
 				view.statusTime = time.Now() // Current time ensures it's within 3s window
 			}
-			
+
 			// Set help mode if needed
 			view.showHelp = tt.showHelp
 

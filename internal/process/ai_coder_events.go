@@ -34,11 +34,11 @@ func (bridge *AICoderEventBridge) Start() {
 		events.EventAICoderStopped, events.EventAICoderDeleted, events.EventAICoderProgress,
 		events.EventAICoderMilestone, events.EventAICoderOutput,
 	}
-	
+
 	for _, eventType := range aiCoderEventTypes {
 		bridge.eventBus.Subscribe(eventType, bridge.handleAICoderEvent)
 	}
-	
+
 	// Listen for process control events that target AI coders
 	bridge.eventBus.Subscribe("process_control", bridge.handleProcessControlEvent)
 }
@@ -49,16 +49,16 @@ func (bridge *AICoderEventBridge) handleProcessControlEvent(event events.Event) 
 	if !strings.HasPrefix(event.ProcessID, "ai-coder-") {
 		return
 	}
-	
+
 	// Extract AI coder ID from process ID
 	coderID := strings.TrimPrefix(event.ProcessID, "ai-coder-")
-	
+
 	// Extract action from event data
 	action, ok := event.Data["action"].(string)
 	if !ok {
 		return
 	}
-	
+
 	// Execute action through AI coder manager
 	var err error
 	switch action {
@@ -74,7 +74,7 @@ func (bridge *AICoderEventBridge) handleProcessControlEvent(event events.Event) 
 		// Unknown action, ignore
 		return
 	}
-	
+
 	// Emit result event
 	if err != nil {
 		bridge.eventBus.Publish(events.Event{
@@ -105,9 +105,9 @@ func (bridge *AICoderEventBridge) handleAICoderEvent(event events.Event) {
 	if !hasCoderID {
 		return // Not an AI coder event
 	}
-	
+
 	processID := fmt.Sprintf("ai-coder-%s", coderID)
-	
+
 	var eventType events.EventType
 	switch event.Type {
 	case events.EventAICoderCreated:
@@ -126,14 +126,14 @@ func (bridge *AICoderEventBridge) handleAICoderEvent(event events.Event) {
 		// For other events like progress, just pass through
 		return
 	}
-	
+
 	// Create process event with AI coder context
 	processEventData := make(map[string]interface{})
 	for k, v := range event.Data {
 		processEventData[k] = v
 	}
 	processEventData["process_type"] = "ai-coder"
-	
+
 	bridge.eventBus.Publish(events.Event{
 		Type:      eventType,
 		ProcessID: processID,
@@ -145,13 +145,13 @@ func (bridge *AICoderEventBridge) handleAICoderEvent(event events.Event) {
 // emitAICoderProcessEvent emits a process event for an AI coder
 func (bridge *AICoderEventBridge) emitAICoderProcessEvent(eventType events.EventType, coderID string, data map[string]interface{}) {
 	processID := fmt.Sprintf("ai-coder-%s", coderID)
-	
+
 	// Add AI coder type marker
 	if data == nil {
 		data = make(map[string]interface{})
 	}
 	data["process_type"] = "ai-coder"
-	
+
 	bridge.eventBus.Publish(events.Event{
 		Type:      eventType,
 		ProcessID: processID,

@@ -15,7 +15,7 @@ type PTYManager struct {
 	activeSessions []string // Ordered list of session IDs
 	currentSession string   // Currently focused session
 	mu             sync.RWMutex
-	
+
 	// Brummer integration
 	dataProvider BrummerDataProvider
 	eventBus     EventBus
@@ -32,27 +32,32 @@ func NewPTYManager(dataProvider BrummerDataProvider, eventBus EventBus) *PTYMana
 
 // CreateSession creates a new PTY session
 func (pm *PTYManager) CreateSession(name, command string, args []string) (*PTYSession, error) {
+	return pm.CreateSessionWithEnv(name, command, args, nil)
+}
+
+// CreateSessionWithEnv creates a new PTY session with additional environment variables
+func (pm *PTYManager) CreateSessionWithEnv(name, command string, args []string, extraEnv map[string]string) (*PTYSession, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	
+
 	sessionID := uuid.New().String()
-	
-	session, err := NewPTYSession(sessionID, name, command, args)
+
+	session, err := NewPTYSessionWithEnv(sessionID, name, command, args, extraEnv)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PTY session: %w", err)
 	}
-	
+
 	pm.sessions[sessionID] = session
 	pm.activeSessions = append(pm.activeSessions, sessionID)
-	
+
 	// Set as current session if it's the first one
 	if pm.currentSession == "" {
 		pm.currentSession = sessionID
 	}
-	
+
 	// Start monitoring the session
 	go pm.monitorSession(session)
-	
+
 	// Emit session created event
 	if pm.eventBus != nil {
 		pm.eventBus.Emit("pty_session_created", map[string]interface{}{
@@ -61,7 +66,7 @@ func (pm *PTYManager) CreateSession(name, command string, args []string) (*PTYSe
 			"command":    command,
 		})
 	}
-	
+
 	return session, nil
 }
 
@@ -69,7 +74,7 @@ func (pm *PTYManager) CreateSession(name, command string, args []string) (*PTYSe
 func (pm *PTYManager) GetSession(sessionID string) (*PTYSession, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
-	
+
 	session, exists := pm.sessions[sessionID]
 	return session, exists
 }
@@ -78,11 +83,11 @@ func (pm *PTYManager) GetSession(sessionID string) (*PTYSession, bool) {
 func (pm *PTYManager) GetCurrentSession() (*PTYSession, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
-	
+
 	if pm.currentSession == "" {
 		return nil, false
 	}
-	
+
 	session, exists := pm.sessions[pm.currentSession]
 	return session, exists
 }
@@ -91,20 +96,20 @@ func (pm *PTYManager) GetCurrentSession() (*PTYSession, bool) {
 func (pm *PTYManager) SetCurrentSession(sessionID string) error {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	
+
 	if _, exists := pm.sessions[sessionID]; !exists {
 		return fmt.Errorf("session %s does not exist", sessionID)
 	}
-	
+
 	pm.currentSession = sessionID
-	
+
 	// Emit session focus event
 	if pm.eventBus != nil {
 		pm.eventBus.Emit("pty_session_focused", map[string]interface{}{
 			"session_id": sessionID,
 		})
 	}
-	
+
 	return nil
 }
 
@@ -112,11 +117,11 @@ func (pm *PTYManager) SetCurrentSession(sessionID string) error {
 func (pm *PTYManager) NextSession() (*PTYSession, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	
+
 	if len(pm.activeSessions) == 0 {
 		return nil, fmt.Errorf("no active sessions")
 	}
-	
+
 	// Find current session index
 	currentIndex := -1
 	for i, sessionID := range pm.activeSessions {
@@ -125,13 +130,13 @@ func (pm *PTYManager) NextSession() (*PTYSession, error) {
 			break
 		}
 	}
-	
+
 	// Move to next session (wrap around)
 	nextIndex := (currentIndex + 1) % len(pm.activeSessions)
 	pm.currentSession = pm.activeSessions[nextIndex]
-	
+
 	session := pm.sessions[pm.currentSession]
-	
+
 	// Emit session switch event
 	if pm.eventBus != nil {
 		pm.eventBus.Emit("pty_session_switched", map[string]interface{}{
@@ -139,7 +144,7 @@ func (pm *PTYManager) NextSession() (*PTYSession, error) {
 			"direction":  "next",
 		})
 	}
-	
+
 	return session, nil
 }
 
@@ -147,11 +152,11 @@ func (pm *PTYManager) NextSession() (*PTYSession, error) {
 func (pm *PTYManager) PreviousSession() (*PTYSession, error) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	
+
 	if len(pm.activeSessions) == 0 {
 		return nil, fmt.Errorf("no active sessions")
 	}
-	
+
 	// Find current session index
 	currentIndex := -1
 	for i, sessionID := range pm.activeSessions {
@@ -160,16 +165,16 @@ func (pm *PTYManager) PreviousSession() (*PTYSession, error) {
 			break
 		}
 	}
-	
+
 	// Move to previous session (wrap around)
 	prevIndex := currentIndex - 1
 	if prevIndex < 0 {
 		prevIndex = len(pm.activeSessions) - 1
 	}
 	pm.currentSession = pm.activeSessions[prevIndex]
-	
+
 	session := pm.sessions[pm.currentSession]
-	
+
 	// Emit session switch event
 	if pm.eventBus != nil {
 		pm.eventBus.Emit("pty_session_switched", map[string]interface{}{
@@ -177,7 +182,7 @@ func (pm *PTYManager) PreviousSession() (*PTYSession, error) {
 			"direction":  "previous",
 		})
 	}
-	
+
 	return session, nil
 }
 
@@ -185,20 +190,20 @@ func (pm *PTYManager) PreviousSession() (*PTYSession, error) {
 func (pm *PTYManager) CloseSession(sessionID string) error {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
-	
+
 	session, exists := pm.sessions[sessionID]
 	if !exists {
 		return fmt.Errorf("session %s does not exist", sessionID)
 	}
-	
+
 	// Close the session
 	if err := session.Close(); err != nil {
 		return fmt.Errorf("failed to close session: %w", err)
 	}
-	
+
 	// Remove from maps and lists
 	delete(pm.sessions, sessionID)
-	
+
 	// Remove from active sessions list
 	for i, id := range pm.activeSessions {
 		if id == sessionID {
@@ -206,7 +211,7 @@ func (pm *PTYManager) CloseSession(sessionID string) error {
 			break
 		}
 	}
-	
+
 	// If this was the current session, switch to another one
 	if pm.currentSession == sessionID {
 		if len(pm.activeSessions) > 0 {
@@ -215,14 +220,14 @@ func (pm *PTYManager) CloseSession(sessionID string) error {
 			pm.currentSession = ""
 		}
 	}
-	
+
 	// Emit session closed event
 	if pm.eventBus != nil {
 		pm.eventBus.Emit("pty_session_closed", map[string]interface{}{
 			"session_id": sessionID,
 		})
 	}
-	
+
 	return nil
 }
 
@@ -230,14 +235,14 @@ func (pm *PTYManager) CloseSession(sessionID string) error {
 func (pm *PTYManager) ListSessions() []*PTYSession {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
-	
+
 	sessions := make([]*PTYSession, 0, len(pm.activeSessions))
 	for _, sessionID := range pm.activeSessions {
 		if session, exists := pm.sessions[sessionID]; exists {
 			sessions = append(sessions, session)
 		}
 	}
-	
+
 	return sessions
 }
 
@@ -247,12 +252,12 @@ func (pm *PTYManager) InjectDataToCurrent(dataType DataInjectionType) error {
 	if !exists {
 		return fmt.Errorf("no current session")
 	}
-	
+
 	data, err := pm.getDataForInjection(dataType)
 	if err != nil {
 		return fmt.Errorf("failed to get data for injection: %w", err)
 	}
-	
+
 	return session.InjectData(dataType, data)
 }
 
@@ -262,12 +267,12 @@ func (pm *PTYManager) InjectDataToSession(sessionID string, dataType DataInjecti
 	if !exists {
 		return fmt.Errorf("session %s does not exist", sessionID)
 	}
-	
+
 	data, err := pm.getDataForInjection(dataType)
 	if err != nil {
 		return fmt.Errorf("failed to get data for injection: %w", err)
 	}
-	
+
 	return session.InjectData(dataType, data)
 }
 
@@ -276,7 +281,7 @@ func (pm *PTYManager) getDataForInjection(dataType DataInjectionType) (interface
 	if pm.dataProvider == nil {
 		return nil, fmt.Errorf("no data provider available")
 	}
-	
+
 	switch dataType {
 	case DataInjectError, DataInjectLastError:
 		return pm.dataProvider.GetLastError(), nil
@@ -305,14 +310,14 @@ func (pm *PTYManager) monitorSession(session *PTYSession) {
 		case PTYEventClose:
 			// Auto-cleanup closed sessions
 			pm.CloseSession(session.ID)
-			
+
 		case PTYEventOutput:
 			// In debug mode, analyze output for triggers
 			if session.IsDebugModeEnabled() {
 				pm.analyzeOutputForAutoInjection(session, event.Data)
 			}
 		}
-		
+
 		// Forward events to main event bus
 		if pm.eventBus != nil {
 			pm.eventBus.Emit(string(event.Type), event)
@@ -324,7 +329,7 @@ func (pm *PTYManager) monitorSession(session *PTYSession) {
 func (pm *PTYManager) analyzeOutputForAutoInjection(session *PTYSession, data interface{}) {
 	if outputBytes, ok := data.([]byte); ok {
 		output := string(outputBytes)
-		
+
 		// Look for error patterns and automatically inject relevant data
 		if containsErrorPattern(output) {
 			// Auto-inject last error
@@ -333,7 +338,7 @@ func (pm *PTYManager) analyzeOutputForAutoInjection(session *PTYSession, data in
 				session.InjectData(DataInjectLastError, pm.dataProvider.GetLastError())
 			}()
 		}
-		
+
 		// Look for test failure patterns
 		if containsTestFailurePattern(output) {
 			go func() {
@@ -341,7 +346,7 @@ func (pm *PTYManager) analyzeOutputForAutoInjection(session *PTYSession, data in
 				session.InjectData(DataInjectTestFailure, pm.dataProvider.GetTestFailures())
 			}()
 		}
-		
+
 		// Look for build failure patterns
 		if containsBuildFailurePattern(output) {
 			go func() {
@@ -364,7 +369,7 @@ func containsErrorPattern(output string) bool {
 		"exception",
 		"Exception",
 	}
-	
+
 	for _, pattern := range errorPatterns {
 		if strings.Contains(output, pattern) {
 			return true
@@ -382,7 +387,7 @@ func containsTestFailurePattern(output string) bool {
 		"✗",
 		"❌",
 	}
-	
+
 	for _, pattern := range testPatterns {
 		if strings.Contains(output, pattern) {
 			return true
@@ -400,7 +405,7 @@ func containsBuildFailurePattern(output string) bool {
 		"Compilation error",
 		"compile error",
 	}
-	
+
 	for _, pattern := range buildPatterns {
 		if strings.Contains(output, pattern) {
 			return true
@@ -422,13 +427,13 @@ func (pm *PTYManager) CloseAllSessions() error {
 	sessionIDs := make([]string, len(pm.activeSessions))
 	copy(sessionIDs, pm.activeSessions)
 	pm.mu.Unlock()
-	
+
 	var lastError error
 	for _, sessionID := range sessionIDs {
 		if err := pm.CloseSession(sessionID); err != nil {
 			lastError = err
 		}
 	}
-	
+
 	return lastError
 }

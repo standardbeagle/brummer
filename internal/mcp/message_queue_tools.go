@@ -449,4 +449,3 @@ func (s *MCPServer) setupMessageQueueEventHandlers() {
 		}
 	})
 }
-

@@ -10,7 +10,7 @@ import (
 
 func TestFileOutputParameterValidation(t *testing.T) {
 	// Test that all tools with file output have the correct output_file parameter
-	server := &StreamableServer{
+	server := &MCPServer{
 		tools: make(map[string]MCPTool),
 	}
 
@@ -146,7 +146,7 @@ func TestFileOutputFunctionality(t *testing.T) {
 
 func TestFileOutputDescriptions(t *testing.T) {
 	// Test that all tools with file output mention it in their descriptions
-	server := &StreamableServer{
+	server := &MCPServer{
 		tools: make(map[string]MCPTool),
 	}
 

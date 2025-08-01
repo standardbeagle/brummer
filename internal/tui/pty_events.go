@@ -56,7 +56,7 @@ func (m *Model) convertPTYEvent(event aicoder.PTYEvent) tea.Msg {
 				timestamp: event.Timestamp,
 			}
 		}
-		
+
 	case aicoder.PTYEventClose:
 		reason := "Session closed"
 		if str, ok := event.Data.(string); ok {
@@ -67,7 +67,7 @@ func (m *Model) convertPTYEvent(event aicoder.PTYEvent) tea.Msg {
 			reason:    reason,
 			timestamp: event.Timestamp,
 		}
-		
+
 	case aicoder.PTYEventDataInject:
 		if injectionData, ok := event.Data.(map[string]interface{}); ok {
 			if dataType, ok := injectionData["type"].(aicoder.DataInjectionType); ok {
@@ -78,7 +78,7 @@ func (m *Model) convertPTYEvent(event aicoder.PTYEvent) tea.Msg {
 				}
 			}
 		}
-		
+
 	case aicoder.PTYEventResize:
 		if resizeData, ok := event.Data.(map[string]int); ok {
 			return ptyResizeMsg{
@@ -89,7 +89,7 @@ func (m *Model) convertPTYEvent(event aicoder.PTYEvent) tea.Msg {
 			}
 		}
 	}
-	
+
 	// Return nil for unhandled events
 	return nil
 }
@@ -100,7 +100,7 @@ func (m *Model) listenPTYEvents() tea.Cmd {
 		if m.ptyEventSub == nil {
 			return nil
 		}
-		
+
 		// This will block until an event is received
 		event := <-m.ptyEventSub
 		return m.convertPTYEvent(event)
@@ -112,7 +112,7 @@ func (m *Model) subscribeToActivePTY() tea.Cmd {
 	if m.aiCoderPTYView == nil || m.aiCoderPTYView.currentSession == nil {
 		return nil
 	}
-	
+
 	return func() tea.Msg {
 		// This will block until output is received
 		data := <-m.aiCoderPTYView.currentSession.OutputChan
@@ -137,7 +137,7 @@ func (m *Model) handlePTYEventMsg(msg tea.Msg) tea.Cmd {
 		}
 		// Re-subscribe for more output
 		return m.subscribeToActivePTY()
-		
+
 	case ptySessionClosedMsg:
 		// Forward to PTY view
 		if m.aiCoderPTYView != nil {
@@ -151,7 +151,7 @@ func (m *Model) handlePTYEventMsg(msg tea.Msg) tea.Cmd {
 			})
 		}
 		return nil
-		
+
 	case ptySessionCreatedMsg:
 		// Auto-switch to AI Coder view
 		m.currentView = ViewAICoders
@@ -161,17 +161,17 @@ func (m *Model) handlePTYEventMsg(msg tea.Msg) tea.Cmd {
 		}
 		// Start subscribing to output
 		return m.subscribeToActivePTY()
-		
+
 	case ptyDataInjectedMsg:
 		// Just for logging/feedback, PTY view handles the actual display
-		m.logStore.Add("ai-coder", "AI Coder", 
+		m.logStore.Add("ai-coder", "AI Coder",
 			"Injected data: "+string(msg.dataType), false)
 		return nil
-		
+
 	case ptyResizeMsg:
 		// PTY view handles resize internally
 		return nil
 	}
-	
+
 	return nil
 }

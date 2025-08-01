@@ -15,7 +15,7 @@ func TestCriticalBrowserFunctionality(t *testing.T) {
 	// This is the critical test that must pass for browser features to be considered working
 
 	eventBus := events.NewEventBus()
-	server := NewStreamableServer(7779, nil, nil, nil, eventBus)
+	server := NewMCPServer(7779, nil, nil, nil, eventBus)
 	defer server.Stop()
 
 	// Ensure browser tools are registered
@@ -219,7 +219,7 @@ func TestBrowserToolsE2EWorkflow(t *testing.T) {
 	// Simulate realistic workflow: open browser -> execute JS -> take screenshot
 
 	eventBus := events.NewEventBus()
-	server := NewStreamableServer(7780, nil, nil, nil, eventBus)
+	server := NewMCPServer(7780, nil, nil, nil, eventBus)
 	defer server.Stop()
 
 	server.registerBrowserTools()
@@ -277,7 +277,7 @@ func TestBrowserToolsE2EWorkflow(t *testing.T) {
 // TestBrowserToolsPerformance tests that browser tools respond within reasonable time
 func TestBrowserToolsPerformance(t *testing.T) {
 	eventBus := events.NewEventBus()
-	server := NewStreamableServer(7781, nil, nil, nil, eventBus)
+	server := NewMCPServer(7781, nil, nil, nil, eventBus)
 	defer server.Stop()
 
 	server.registerBrowserTools()

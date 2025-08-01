@@ -448,4 +448,3 @@ func (mq *MessageQueueLockFree) removeExpiredMessages() {
 		return true
 	})
 }
-

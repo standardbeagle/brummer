@@ -2,6 +2,7 @@ package logs
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -183,9 +184,39 @@ func (p *TimeBasedErrorParser) extractMainMessage(firstLine string) string {
 }
 
 func (p *TimeBasedErrorParser) stripLogPrefixes(content string) string {
-	// TODO: Implement sophisticated prefix stripping
-	// For now, just return the content as-is
+	// Remove timestamp patterns like [12:52:32], (12:52:32), 12:52:32
+	timestampPatterns := []string{
+		`^\[\d{1,2}:\d{2}:\d{2}\]\s*`,
+		`^\(\d{1,2}:\d{2}:\d{2}\)\s*`,
+		`^\d{1,2}:\d{2}:\d{2}\s+`,
+		`^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}\s*`,
+	}
+
 	cleaned := content
+	for _, pattern := range timestampPatterns {
+		re := regexp.MustCompile(pattern)
+		cleaned = re.ReplaceAllString(cleaned, "")
+	}
+
+	// Remove process name patterns like [dev], (dev), dev: but preserve TypeScript errors
+	processPatterns := []string{
+		`^\[[\w-]+\]:\s*`,
+		`^\([\w-]+\):\s*`,
+	}
+
+	// Only apply word: pattern if it's not a TypeScript error
+	if !regexp.MustCompile(`^TS\d+:`).MatchString(cleaned) {
+		processPatterns = append(processPatterns, `^[\w-]+:\s+`)
+	}
+
+	for _, pattern := range processPatterns {
+		re := regexp.MustCompile(pattern)
+		cleaned = re.ReplaceAllString(cleaned, "")
+	}
+
+	// Remove ANSI color codes
+	ansiPattern := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	cleaned = ansiPattern.ReplaceAllString(cleaned, "")
 
 	return strings.TrimSpace(cleaned)
 }

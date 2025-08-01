@@ -318,4 +318,3 @@ func TestMessageQueueLockFree_HighContention(t *testing.T) {
 	stats := mq.Stats()
 	assert.Greater(t, stats["total_messages"], int64(0))
 }
-

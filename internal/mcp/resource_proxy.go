@@ -81,7 +81,7 @@ func ExtractInstanceAndResource(prefixedURI string) (instanceID, resourceURI str
 }
 
 // RegisterInstanceResources fetches and registers resources from a connected instance
-func RegisterInstanceResources(server *StreamableServer, connMgr *ConnectionManager, instanceID string) error {
+func RegisterInstanceResources(server *MCPServer, connMgr *ConnectionManager, instanceID string) error {
 	// Find the connection for the instance
 	connections := connMgr.ListInstances()
 
@@ -126,7 +126,7 @@ func RegisterInstanceResources(server *StreamableServer, connMgr *ConnectionMana
 }
 
 // UnregisterInstanceResources removes all resources from a disconnected instance
-func UnregisterInstanceResources(server *StreamableServer, instanceID string) error {
+func UnregisterInstanceResources(server *MCPServer, instanceID string) error {
 	return server.UnregisterResourcesFromInstance(instanceID)
 }
 

@@ -344,4 +344,3 @@ func (mq *MessageQueue) countSubscriptions() int {
 	}
 	return count
 }
-

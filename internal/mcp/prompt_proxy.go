@@ -79,7 +79,7 @@ func ExtractInstanceAndPrompt(prefixedName string) (instanceID, promptName strin
 }
 
 // RegisterInstancePrompts fetches and registers prompts from a connected instance
-func RegisterInstancePrompts(server *StreamableServer, connMgr *ConnectionManager, instanceID string) error {
+func RegisterInstancePrompts(server *MCPServer, connMgr *ConnectionManager, instanceID string) error {
 	// Find the connection for the instance
 	connections := connMgr.ListInstances()
 
@@ -124,7 +124,7 @@ func RegisterInstancePrompts(server *StreamableServer, connMgr *ConnectionManage
 }
 
 // UnregisterInstancePrompts removes all prompts from a disconnected instance
-func UnregisterInstancePrompts(server *StreamableServer, instanceID string) error {
+func UnregisterInstancePrompts(server *MCPServer, instanceID string) error {
 	return server.UnregisterPromptsFromInstance(instanceID)
 }
 

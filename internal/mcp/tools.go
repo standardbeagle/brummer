@@ -1530,7 +1530,7 @@ For detailed documentation and examples, use: about tool="repl_execute"`,
 					result := map[string]interface{}{
 						"sessionId": params.SessionID,
 					}
-					
+
 					// Check if there's an error
 					if errorMsg, hasError := responseMap["error"]; hasError && errorMsg != nil {
 						result["error"] = errorMsg
@@ -1543,21 +1543,21 @@ For detailed documentation and examples, use: about tool="repl_execute"`,
 						result["result"] = response
 						result["success"] = true
 					}
-					
+
 					return result, nil
 				}
 				// If response is not a map, return it as-is
 				return map[string]interface{}{
-					"result": response,
+					"result":    response,
 					"sessionId": params.SessionID,
-					"success": true,
+					"success":   true,
 				}, nil
 			case <-time.After(5 * time.Second):
 				return map[string]interface{}{
-					"error": "timeout waiting for response",
+					"error":     "timeout waiting for response",
 					"sessionId": params.SessionID,
-					"success": false,
-					"hint": "Make sure a browser window is open with the proxy URL (use browser_open or check active sessions)",
+					"success":   false,
+					"hint":      "Make sure a browser window is open with the proxy URL (use browser_open or check active sessions)",
 				}, nil
 			}
 		},

@@ -29,6 +29,11 @@ Quick links:
   - Monitor process status
 - **Process Management**: Start, stop, and monitor multiple processes simultaneously
 - **VS Code Tasks**: Detects and runs VS Code tasks from .vscode/tasks.json
+- **Environment Variable Management** (Planned):
+  - Unified .env file management with multi-format support
+  - TUI view for browsing and editing environment variables
+  - Automatic injection for scripts and AI agents
+  - Secret detection and masking for security
 
 ## Installation
 

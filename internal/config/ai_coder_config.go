@@ -2,41 +2,41 @@ package config
 
 // AICoderConfig holds all configuration for AI coder functionality
 type AICoderConfig struct {
-	Enabled             *bool                      `toml:"enabled,omitempty"`
-	MaxConcurrent       *int                       `toml:"max_concurrent,omitempty"`
-	WorkspaceBaseDir    *string                    `toml:"workspace_base_dir,omitempty"`
-	DefaultProvider     *string                    `toml:"default_provider,omitempty"`
-	TimeoutMinutes      *int                       `toml:"timeout_minutes,omitempty"`
-	AutoCleanup         *bool                      `toml:"auto_cleanup,omitempty"`
-	CleanupAfterHours   *int                       `toml:"cleanup_after_hours,omitempty"`
-	Providers           map[string]*ProviderConfig `toml:"providers,omitempty"`
-	ResourceLimits      *ResourceLimits            `toml:"resource_limits,omitempty"`
-	WorkspaceSettings   *WorkspaceSettings         `toml:"workspace,omitempty"`
-	LoggingConfig       *LoggingConfig             `toml:"logging,omitempty"`
+	Enabled           *bool                      `toml:"enabled,omitempty"`
+	MaxConcurrent     *int                       `toml:"max_concurrent,omitempty"`
+	WorkspaceBaseDir  *string                    `toml:"workspace_base_dir,omitempty"`
+	DefaultProvider   *string                    `toml:"default_provider,omitempty"`
+	TimeoutMinutes    *int                       `toml:"timeout_minutes,omitempty"`
+	AutoCleanup       *bool                      `toml:"auto_cleanup,omitempty"`
+	CleanupAfterHours *int                       `toml:"cleanup_after_hours,omitempty"`
+	Providers         map[string]*ProviderConfig `toml:"providers,omitempty"`
+	ResourceLimits    *ResourceLimits            `toml:"resource_limits,omitempty"`
+	WorkspaceSettings *WorkspaceSettings         `toml:"workspace,omitempty"`
+	LoggingConfig     *LoggingConfig             `toml:"logging,omitempty"`
 }
 
 // ProviderConfig holds configuration for a specific AI provider
 type ProviderConfig struct {
-	APIKeyEnv       *string            `toml:"api_key_env,omitempty"`
-	Model           *string            `toml:"model,omitempty"`
-	BaseURL         *string            `toml:"base_url,omitempty"`
-	MaxTokens       *int               `toml:"max_tokens,omitempty"`
-	Temperature     *float64           `toml:"temperature,omitempty"`
-	RequestTimeout  *int               `toml:"request_timeout_seconds,omitempty"`
-	RateLimit       *RateLimitConfig   `toml:"rate_limit,omitempty"`
-	CustomHeaders   map[string]string  `toml:"custom_headers,omitempty"`
-	
+	APIKeyEnv      *string           `toml:"api_key_env,omitempty"`
+	Model          *string           `toml:"model,omitempty"`
+	BaseURL        *string           `toml:"base_url,omitempty"`
+	MaxTokens      *int              `toml:"max_tokens,omitempty"`
+	Temperature    *float64          `toml:"temperature,omitempty"`
+	RequestTimeout *int              `toml:"request_timeout_seconds,omitempty"`
+	RateLimit      *RateLimitConfig  `toml:"rate_limit,omitempty"`
+	CustomHeaders  map[string]string `toml:"custom_headers,omitempty"`
+
 	// CLI Tool specific configuration
-	CLITool         *CLIToolConfig     `toml:"cli_tool,omitempty"`
+	CLITool *CLIToolConfig `toml:"cli_tool,omitempty"`
 }
 
 // CLIToolConfig represents configuration for CLI-based AI tools
 type CLIToolConfig struct {
-	Command     *string            `toml:"command,omitempty"`     // e.g., "aider"
-	BaseArgs    []string           `toml:"base_args,omitempty"`   // e.g., ["--yes", "--no-auto-commits"]
-	FlagMapping map[string]string  `toml:"flag_mapping,omitempty"` // e.g., {"model": "--model", "max_tokens": "--max-tokens"}
-	WorkingDir  *string            `toml:"working_dir,omitempty"`
-	Environment map[string]string  `toml:"environment,omitempty"`
+	Command     *string           `toml:"command,omitempty"`      // e.g., "aider"
+	BaseArgs    []string          `toml:"base_args,omitempty"`    // e.g., ["--yes", "--no-auto-commits"]
+	FlagMapping map[string]string `toml:"flag_mapping,omitempty"` // e.g., {"model": "--model", "max_tokens": "--max-tokens"}
+	WorkingDir  *string           `toml:"working_dir,omitempty"`
+	Environment map[string]string `toml:"environment,omitempty"`
 }
 
 // RateLimitConfig holds rate limiting configuration
@@ -47,21 +47,21 @@ type RateLimitConfig struct {
 
 // ResourceLimits holds resource limit configuration
 type ResourceLimits struct {
-	MaxMemoryMB        *int `toml:"max_memory_mb,omitempty"`
-	MaxDiskSpaceMB     *int `toml:"max_disk_space_mb,omitempty"`
-	MaxCPUPercent      *int `toml:"max_cpu_percent,omitempty"`
-	MaxProcesses       *int `toml:"max_processes,omitempty"`
-	MaxFilesPerCoder   *int `toml:"max_files_per_coder,omitempty"`
+	MaxMemoryMB      *int `toml:"max_memory_mb,omitempty"`
+	MaxDiskSpaceMB   *int `toml:"max_disk_space_mb,omitempty"`
+	MaxCPUPercent    *int `toml:"max_cpu_percent,omitempty"`
+	MaxProcesses     *int `toml:"max_processes,omitempty"`
+	MaxFilesPerCoder *int `toml:"max_files_per_coder,omitempty"`
 }
 
 // WorkspaceSettings holds workspace configuration
 type WorkspaceSettings struct {
-	Template           *string   `toml:"template,omitempty"`
-	GitIgnoreRules     []string  `toml:"gitignore_rules,omitempty"`
-	AllowedExtensions  []string  `toml:"allowed_extensions,omitempty"`
-	ForbiddenPaths     []string  `toml:"forbidden_paths,omitempty"`
-	MaxFileSize        *int      `toml:"max_file_size_mb,omitempty"`
-	BackupEnabled      *bool     `toml:"backup_enabled,omitempty"`
+	Template          *string  `toml:"template,omitempty"`
+	GitIgnoreRules    []string `toml:"gitignore_rules,omitempty"`
+	AllowedExtensions []string `toml:"allowed_extensions,omitempty"`
+	ForbiddenPaths    []string `toml:"forbidden_paths,omitempty"`
+	MaxFileSize       *int     `toml:"max_file_size_mb,omitempty"`
+	BackupEnabled     *bool    `toml:"backup_enabled,omitempty"`
 }
 
 // LoggingConfig holds logging configuration for AI coders

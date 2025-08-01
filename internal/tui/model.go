@@ -47,7 +47,7 @@ func (c *configAdapter) GetAICoderConfig() aicoder.AICoderConfig {
 			TimeoutMinutes:   30,
 		}
 	}
-	
+
 	aiCfg := c.cfg.AICoders
 	return aicoder.AICoderConfig{
 		MaxConcurrent:    aiCfg.GetMaxConcurrent(),
@@ -59,19 +59,19 @@ func (c *configAdapter) GetAICoderConfig() aicoder.AICoderConfig {
 
 func (c *configAdapter) GetProviderConfigs() map[string]*aicoder.ProviderConfig {
 	result := make(map[string]*aicoder.ProviderConfig)
-	
+
 	if c.cfg == nil || c.cfg.AICoders == nil || c.cfg.AICoders.Providers == nil {
 		return result
 	}
-	
+
 	// Convert from config.ProviderConfig to aicoder.ProviderConfig
 	for name, provider := range c.cfg.AICoders.Providers {
 		if provider == nil {
 			continue
 		}
-		
+
 		aiProvider := &aicoder.ProviderConfig{}
-		
+
 		// Convert CLI tool config if present
 		if provider.CLITool != nil {
 			cliTool := provider.CLITool
@@ -82,21 +82,21 @@ func (c *configAdapter) GetProviderConfigs() map[string]*aicoder.ProviderConfig 
 				WorkingDir:  ".",
 				Environment: cliTool.Environment,
 			}
-			
+
 			// Set command
 			if cliTool.Command != nil {
 				aiProvider.CLITool.Command = *cliTool.Command
 			}
-			
+
 			// Set working dir
 			if cliTool.WorkingDir != nil {
 				aiProvider.CLITool.WorkingDir = *cliTool.WorkingDir
 			}
 		}
-		
+
 		result[name] = aiProvider
 	}
-	
+
 	return result
 }
 
@@ -318,7 +318,7 @@ func (m *Model) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 		// Check if there are running processes
 		runningProcesses := 0
 		for _, proc := range m.processMgr.GetAllProcesses() {
-			if proc.Status == process.StatusRunning {
+			if proc.GetStatus() == process.StatusRunning {
 				runningProcesses++
 			}
 		}
@@ -628,9 +628,11 @@ func (i processItem) Title() string {
 		return headerStyle.Render(i.headerText)
 	}
 
-	status := string(i.process.Status)
+	// Use ProcessState for atomic access to status and name
+	state := i.process.GetStateAtomic()
+	status := string(state.Status)
 	var statusEmoji string
-	switch i.process.Status {
+	switch state.Status {
 	case process.StatusRunning:
 		statusEmoji = "🟢"
 	case process.StatusStopped:
@@ -642,7 +644,7 @@ func (i processItem) Title() string {
 	default:
 		statusEmoji = "⏸️"
 	}
-	title := fmt.Sprintf("%s [%s] %s", statusEmoji, status, i.process.Name)
+	title := fmt.Sprintf("%s [%s] %s", statusEmoji, status, state.Name)
 
 	return title
 }
@@ -654,24 +656,27 @@ func (i processItem) Description() string {
 
 	var parts []string
 
+	// Use ProcessState for atomic access to multiple fields
+	state := i.process.GetStateAtomic()
+
 	// Add PID and start time
-	parts = append(parts, fmt.Sprintf("PID: %s", i.process.ID))
-	parts = append(parts, fmt.Sprintf("Started: %s", i.process.StartTime.Format("15:04:05")))
+	parts = append(parts, fmt.Sprintf("PID: %s", state.ID))
+	parts = append(parts, fmt.Sprintf("Started: %s", state.StartTime.Format("15:04:05")))
 
 	// Add exit code for failed/stopped processes
-	if (i.process.Status == process.StatusFailed || i.process.Status == process.StatusSuccess || i.process.Status == process.StatusStopped) && i.process.ExitCode != nil {
-		parts = append(parts, fmt.Sprintf("Exit: %d", *i.process.ExitCode))
+	if state.IsFinished() && state.ExitCode != nil {
+		parts = append(parts, fmt.Sprintf("Exit: %d", *state.ExitCode))
 	}
 
 	// Add runtime if process has ended
-	if i.process.EndTime != nil {
-		runtime := i.process.EndTime.Sub(i.process.StartTime)
+	if state.EndTime != nil {
+		runtime := state.EndTime.Sub(state.StartTime)
 		parts = append(parts, fmt.Sprintf("Runtime: %s", runtime.Round(time.Millisecond).String()))
 	}
 
 	// Add actions
 	var actions string
-	if i.process.Status == process.StatusRunning {
+	if state.IsRunning() {
 		actions = "Press 's' to stop, 'r' to restart"
 	} else {
 		actions = "Press 'Enter' to view logs"
@@ -880,17 +885,17 @@ func (d proxyRequestDelegate) Render(w io.Writer, m list.Model, index int, listI
 	if item, ok := listItem.(proxyRequestItem); ok {
 		// Calculate available width for URL based on list width
 		listWidth := m.Width()
-		
+
 		// For very narrow terminals, use a compact format
 		if listWidth < 50 {
 			// Compact format: "HH:MM STATUS URL"
 			url := item.Request.URL
-			
+
 			// Calculate actual space needed: time(5) + space(1) + status(3) + space(1) = 10 chars
 			timeStr := item.Request.StartTime.Format("15:04")
 			statusStr := fmt.Sprintf("%d", item.Request.StatusCode)
 			reservedSpace := len(timeStr) + 1 + len(statusStr) + 1
-			
+
 			maxURLLength := listWidth - reservedSpace
 			if maxURLLength < 3 {
 				// If we can't fit even "...", just show status
@@ -904,7 +909,7 @@ func (d proxyRequestDelegate) Render(w io.Writer, m list.Model, index int, listI
 				fmt.Fprint(w, str)
 				return
 			}
-			
+
 			if len(url) > maxURLLength {
 				if maxURLLength <= 3 {
 					url = "..."
@@ -912,9 +917,9 @@ func (d proxyRequestDelegate) Render(w io.Writer, m list.Model, index int, listI
 					url = url[:maxURLLength-3] + "..."
 				}
 			}
-			
+
 			line := fmt.Sprintf("%s %s %s", timeStr, statusStr, url)
-			
+
 			var str string
 			if index == m.Index() {
 				str = lipgloss.NewStyle().Background(lipgloss.Color("240")).Render(line)
@@ -1339,7 +1344,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentView == ViewAICoders && m.aiCoderPTYView != nil {
 				shouldIntercept = m.aiCoderPTYView.ShouldInterceptSlashCommand()
 			}
-			
+
 			if shouldIntercept {
 				m.showCommandWindow()
 				return m, nil
@@ -1868,7 +1873,7 @@ func (m *Model) View() string {
 	if m.showingCommandWindow {
 		return m.renderCommandWindow()
 	}
-	
+
 	// AI Coder PTY view in full screen mode should render raw
 	if m.currentView == ViewAICoders && m.aiCoderPTYView != nil && m.aiCoderPTYView.isFullScreen {
 		// In full screen mode, return raw PTY output without any BubbleTea styling
@@ -1884,11 +1889,11 @@ func (m *Model) renderLayout(content string) string {
 	// Build main layout parts
 	header := m.renderHeader()
 	parts := []string{header}
-	
+
 	// Calculate footer height dynamically
 	helpView := m.help.View(m.keys)
 	m.footerHeight = strings.Count(helpView, "\n") + 1
-	
+
 	// Calculate content height based on actual header and footer heights
 	contentHeight := m.height - m.headerHeight - m.footerHeight
 
@@ -2002,7 +2007,7 @@ func (m *Model) getViewStatus() string {
 		processes := m.processMgr.GetAllProcesses()
 		running := 0
 		for _, p := range processes {
-			if p.Status == process.StatusRunning {
+			if p.GetStatus() == process.StatusRunning {
 				running++
 			}
 		}
@@ -2031,7 +2036,7 @@ func (m *Model) getViewStatus() string {
 		coders := m.aiCoderManager.ListCoders()
 		running := 0
 		for _, c := range coders {
-			if c.Status == aicoder.StatusRunning {
+			if c.GetStatus() == aicoder.StatusRunning {
 				running++
 			}
 		}
@@ -2043,9 +2048,8 @@ func (m *Model) getViewStatus() string {
 }
 
 func (m *Model) updateSizes() {
-	headerHeight := 3 // title + tabs + separator
-	helpHeight := 3
-	contentHeight := m.height - headerHeight - helpHeight
+	// Use calculated header and footer heights for consistency with other views
+	contentHeight := m.height - m.headerHeight - m.footerHeight
 
 	m.processesList.SetSize(m.width, contentHeight)
 	m.settingsList.SetSize(m.width, contentHeight)
@@ -2149,7 +2153,9 @@ func (m *Model) updateProcessList() {
 	var closedProcesses []*process.Process
 
 	for _, p := range processes {
-		if p.Status == process.StatusRunning || p.Status == process.StatusPending {
+		// Use ProcessState to avoid double status check
+		state := p.GetStateAtomic()
+		if state.Status == process.StatusRunning || state.Status == process.StatusPending {
 			runningProcesses = append(runningProcesses, p)
 		} else {
 			closedProcesses = append(closedProcesses, p)
@@ -2443,7 +2449,7 @@ func (m *Model) renderHeader() string {
 	processes := m.processMgr.GetAllProcesses()
 	runningCount := 0
 	for _, proc := range processes {
-		if proc.Status == process.StatusRunning {
+		if proc.GetStatus() == process.StatusRunning {
 			runningCount++
 		}
 	}
@@ -2529,10 +2535,10 @@ func (m *Model) renderHeader() string {
 		tabBar,
 		strings.Repeat("─", m.width),
 	)
-	
+
 	// Store header height for layout calculations
 	m.headerHeight = strings.Count(header, "\n") + 1
-	
+
 	return header
 }
 
@@ -2959,9 +2965,9 @@ func (m *Model) renderWebView() string {
 
 	// Split view: requests list on left, detail on right
 	// Use a more conservative split for better readability
-	listWidth := int(float64(m.width) * 0.4)  // 40% for list
-	detailWidth := m.width - listWidth - 3    // Rest for detail
-	
+	listWidth := int(float64(m.width) * 0.4) // 40% for list
+	detailWidth := m.width - listWidth - 3   // Rest for detail
+
 	// Ensure minimum widths
 	if listWidth < 40 {
 		listWidth = 40
@@ -2972,8 +2978,8 @@ func (m *Model) renderWebView() string {
 
 	// Update list and detail viewport sizes
 	m.webRequestsList.SetSize(listWidth-2, contentHeight-2) // Account for borders
-	m.webDetailViewport.Width = detailWidth-2
-	m.webDetailViewport.Height = contentHeight-2
+	m.webDetailViewport.Width = detailWidth - 2
+	m.webDetailViewport.Height = contentHeight - 2
 
 	// Get filtered requests and update list
 	requests := m.getFilteredRequests()
@@ -2996,13 +3002,13 @@ func (m *Model) renderWebView() string {
 
 	// Apply borders with proper sizing
 	listView := borderStyle.
-		Width(listWidth-2).    // Account for border characters
-		Height(contentHeight-2).
+		Width(listWidth - 2). // Account for border characters
+		Height(contentHeight - 2).
 		Render(listContent)
 
 	detailView := borderStyle.
-		Width(detailWidth-2).
-		Height(contentHeight-2).
+		Width(detailWidth - 2).
+		Height(contentHeight - 2).
 		Render(m.webDetailViewport.View())
 
 	// Combine header with bordered views
@@ -3636,7 +3642,6 @@ func (m *Model) updateWebRequestsList(requests []proxy.Request) {
 	}
 }
 
-
 // renderTelemetrySummary renders a one-line summary of telemetry data
 func (m *Model) renderTelemetrySummary(session *proxy.PageSession) string {
 	if session == nil || len(session.Events) == 0 {
@@ -4104,7 +4109,7 @@ func (m *Model) installMCPToFile(filePath string) {
 func (m *Model) handleRestartProcess(proc *process.Process) tea.Cmd {
 	return func() tea.Msg {
 		// Check if process is still running before trying to stop it
-		if proc.Status == process.StatusRunning {
+		if proc.GetStatus() == process.StatusRunning {
 			// Stop the process and wait for it to terminate completely
 			timeout := 5 * time.Second // 5 second timeout for process termination
 			if err := m.processMgr.StopProcessAndWait(proc.ID, timeout); err != nil {
@@ -4156,7 +4161,7 @@ func (m *Model) handleRestartAll() tea.Cmd {
 		var errors []string
 
 		for _, proc := range processes {
-			if proc.Status == process.StatusRunning {
+			if proc.GetStatus() == process.StatusRunning {
 				// Stop the process
 				if err := m.processMgr.StopProcess(proc.ID); err != nil {
 					errors = append(errors, fmt.Sprintf("Error stopping process %s: %v", proc.Name, err))
@@ -4692,9 +4697,17 @@ func (m *Model) renderErrorsViewSplit() string {
 		return m.renderErrorsView()
 	}
 
-	// Calculate split dimensions
+	// Calculate split dimensions with explicit spacing variables
+	borderWidth := 2    // Left and right border for each panel
+	separatorWidth := 1 // Space between panels
+	paddingWidth := 1   // Internal padding
+
+	listBorderWidth := borderWidth
+	detailBorderWidth := borderWidth
+	totalBorderWidth := listBorderWidth + detailBorderWidth + separatorWidth + paddingWidth
+
 	listWidth := m.width / 3
-	detailWidth := m.width - listWidth - 3 // -3 for border and padding
+	detailWidth := m.width - listWidth - totalBorderWidth
 	contentHeight := m.height - m.headerHeight - m.footerHeight
 
 	// Update sizes
@@ -4785,7 +4798,7 @@ func (m *Model) handleSlashCommand(input string) {
 				processes := m.processMgr.GetAllProcesses()
 				restarted := 0
 				for _, proc := range processes {
-					if proc.Status == process.StatusRunning {
+					if proc.GetStatus() == process.StatusRunning {
 						// Stop the process and wait for termination
 						timeout := 5 * time.Second
 						if err := m.processMgr.StopProcessAndWait(proc.ID, timeout); err != nil {
@@ -4810,7 +4823,7 @@ func (m *Model) handleSlashCommand(input string) {
 				// Find the process
 				var targetProc *process.Process
 				for _, proc := range m.processMgr.GetAllProcesses() {
-					if proc.Name == processName && proc.Status == process.StatusRunning {
+					if proc.Name == processName && proc.GetStatus() == process.StatusRunning {
 						targetProc = proc
 						break
 					}
@@ -4855,7 +4868,7 @@ func (m *Model) handleSlashCommand(input string) {
 				processes := m.processMgr.GetAllProcesses()
 				stopped := 0
 				for _, proc := range processes {
-					if proc.Status == process.StatusRunning {
+					if proc.GetStatus() == process.StatusRunning {
 						if err := m.processMgr.StopProcess(proc.ID); err != nil {
 							m.logStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", proc.Name, err), true)
 						} else {
@@ -4872,7 +4885,7 @@ func (m *Model) handleSlashCommand(input string) {
 				// Find the process
 				var targetProc *process.Process
 				for _, proc := range m.processMgr.GetAllProcesses() {
-					if proc.Name == processName && proc.Status == process.StatusRunning {
+					if proc.Name == processName && proc.GetStatus() == process.StatusRunning {
 						targetProc = proc
 						break
 					}
@@ -5031,7 +5044,7 @@ func (m *Model) handleSlashCommand(input string) {
 					m.currentView = ViewLogs
 					return
 				}
-				
+
 				// Use PTY sessions for AI coders
 				if m.aiCoderManager != nil && m.aiCoderPTYView != nil {
 					var session *aicoder.PTYSession
@@ -5346,7 +5359,7 @@ func (m *Model) renderCommandWindow() string {
 	headerLines := strings.Count(header, "\n") + 1
 	helpLines := strings.Count(helpView, "\n") + 1
 	availableHeight := m.height - headerLines - helpLines
-	
+
 	overlay := lipgloss.Place(
 		m.width, availableHeight,
 		lipgloss.Center, lipgloss.Center,
@@ -5438,7 +5451,7 @@ func (m *Model) handleScriptSelector(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Check if script is already running
 		if m.scriptSelector.processMgr != nil {
 			for _, proc := range m.scriptSelector.processMgr.GetAllProcesses() {
-				if proc.Name == scriptName && proc.Status == process.StatusRunning {
+				if proc.Name == scriptName && proc.GetStatus() == process.StatusRunning {
 					m.scriptSelector.errorMessage = fmt.Sprintf("Script '%s' is already running", scriptName)
 					return m, nil
 				}

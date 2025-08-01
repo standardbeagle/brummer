@@ -149,7 +149,10 @@ func TestSystemWideRaceConditions(t *testing.T) {
 	})
 
 	t.Run("LogStoreConcurrentWrites", func(t *testing.T) {
-		store := logs.NewStore(10000)
+		eb := events.NewEventBus()
+		defer eb.Shutdown()
+
+		store := logs.NewStore(10000, eb)
 		defer store.Close()
 
 		const numWriters = 25
@@ -322,8 +325,11 @@ func TestGoroutineLeakPrevention(t *testing.T) {
 	})
 
 	t.Run("LogStoreCleanup", func(t *testing.T) {
+		eb := events.NewEventBus()
+		defer eb.Shutdown()
+
 		for i := 0; i < 10; i++ {
-			store := logs.NewStore(100)
+			store := logs.NewStore(100, eb)
 
 			// Use the store
 			for j := 0; j < 50; j++ {
@@ -357,7 +363,7 @@ func TestSystemStressWithRaceDetection(t *testing.T) {
 	eb := events.NewEventBus()
 	defer eb.Shutdown()
 
-	store := logs.NewStore(50000)
+	store := logs.NewStore(50000, eb)
 	defer store.Close()
 
 	mgr, err := process.NewManager("/tmp", eb, false)

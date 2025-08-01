@@ -68,7 +68,7 @@ func (p *TUIDataProvider) GetTestFailures() interface{} {
 	// Get test-related errors
 	var testFailures []logs.ErrorContext
 	contexts := p.model.logStore.GetErrorContexts()
-	
+
 	// Get last 10 test-related errors
 	count := 0
 	for i := len(contexts) - 1; i >= 0 && count < 10; i-- {
@@ -94,7 +94,7 @@ func (p *TUIDataProvider) GetBuildOutput() string {
 	// Get logs from build-related processes
 	var buildOutput string
 	logs := p.model.logStore.GetAll()
-	
+
 	// Look for build-related logs in the last 50 entries
 	start := len(logs) - 50
 	if start < 0 {
@@ -104,9 +104,9 @@ func (p *TUIDataProvider) GetBuildOutput() string {
 	for i := start; i < len(logs); i++ {
 		log := logs[i]
 		// Check if this is a build-related log
-		if log.ProcessName == "build" || log.ProcessName == "compile" || 
-		   log.ProcessName == "webpack" || log.ProcessName == "vite" ||
-		   log.ProcessName == "go build" || log.ProcessName == "make" {
+		if log.ProcessName == "build" || log.ProcessName == "compile" ||
+			log.ProcessName == "webpack" || log.ProcessName == "vite" ||
+			log.ProcessName == "go build" || log.ProcessName == "make" {
 			buildOutput += log.Content + "\n"
 		}
 	}
@@ -124,7 +124,7 @@ func (p *TUIDataProvider) GetProcessInfo() interface{} {
 	}
 
 	processes := p.model.processMgr.GetAllProcesses()
-	
+
 	// Create a simplified process info structure
 	type ProcessInfo struct {
 		ID       string
@@ -137,20 +137,23 @@ func (p *TUIDataProvider) GetProcessInfo() interface{} {
 
 	var processInfos []ProcessInfo
 	for _, proc := range processes {
+		// Use ProcessState for atomic access to multiple fields
+		state := proc.GetStateAtomic()
+
 		info := ProcessInfo{
-			ID:       proc.ID,
-			Name:     proc.Name,
-			Status:   string(proc.Status),
-			PID:      0, // Process PID is not exposed
-			Started:  proc.StartTime.Format("15:04:05"),
+			ID:      state.ID,
+			Name:    state.Name,
+			Status:  string(state.Status),
+			PID:     0, // Process PID is not exposed
+			Started: state.StartTime.Format("15:04:05"),
 		}
-		
-		if proc.EndTime != nil {
-			info.Duration = proc.EndTime.Sub(proc.StartTime).String()
+
+		if state.EndTime != nil {
+			info.Duration = state.EndTime.Sub(state.StartTime).String()
 		} else {
 			info.Duration = "Running"
 		}
-		
+
 		processInfos = append(processInfos, info)
 	}
 

@@ -301,4 +301,3 @@ func TestMessageQueue_ConcurrentAccess(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, messages, 5)
 }
-

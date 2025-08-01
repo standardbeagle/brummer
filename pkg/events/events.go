@@ -174,7 +174,7 @@ func (eb *EventBus) SubscribeAICoderEvents(coderID string, handler Handler) {
 		EventAICoderResumed, EventAICoderCompleted, EventAICoderFailed,
 		EventAICoderStopped, EventAICoderDeleted, EventAICoderProgress,
 	}
-	
+
 	for _, eventType := range eventTypes {
 		eb.Subscribe(eventType, func(event Event) {
 			// Check if event is for the specific coder
@@ -191,21 +191,21 @@ func (eb *EventBus) EmitAICoderEvent(eventType EventType, coderID, coderName str
 		log.Printf("Warning: AI coder event missing type")
 		return
 	}
-	
+
 	if coderID == "" {
 		log.Printf("Warning: AI coder event missing coder ID")
 		return
 	}
-	
+
 	// Ensure data map exists
 	if data == nil {
 		data = make(map[string]interface{})
 	}
-	
+
 	// Add coder information to data
 	data["coder_id"] = coderID
 	data["coder_name"] = coderName
-	
+
 	eb.Publish(Event{
 		Type:      eventType,
 		ProcessID: fmt.Sprintf("ai-coder-%s", coderID),

@@ -47,7 +47,7 @@ func (c *CommandAutocomplete) updateScriptSelectorSuggestions() {
 	runningScripts := make(map[string]bool)
 	if c.processMgr != nil {
 		for _, proc := range c.processMgr.GetAllProcesses() {
-			if proc.Status == process.StatusRunning {
+			if proc.GetStatus() == process.StatusRunning {
 				runningScripts[proc.Name] = true
 			}
 		}

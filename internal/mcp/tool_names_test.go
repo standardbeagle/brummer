@@ -15,7 +15,7 @@ func TestToolNamesCompliance(t *testing.T) {
 
 	// Create minimal dependencies
 	eventBus := events.NewEventBus()
-	server := NewStreamableServer(0, nil, nil, nil, eventBus)
+	server := NewMCPServer(0, nil, nil, nil, eventBus)
 
 	// Check each tool name
 	invalidTools := []string{}

@@ -11,7 +11,7 @@ import (
 
 // Legacy HTTP handlers for backward compatibility
 
-func (s *StreamableServer) handleLegacyConnect(w http.ResponseWriter, r *http.Request) {
+func (s *MCPServer) handleLegacyConnect(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -53,12 +53,12 @@ func (s *StreamableServer) handleLegacyConnect(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(response)
 }
 
-func (s *StreamableServer) handleLegacySSE(w http.ResponseWriter, r *http.Request) {
+func (s *MCPServer) handleLegacySSE(w http.ResponseWriter, r *http.Request) {
 	// Legacy SSE endpoint - not used in MCP mode
 	http.Error(w, "SSE not supported in MCP mode", http.StatusNotImplemented)
 }
 
-func (s *StreamableServer) handleLegacyGetLogs(w http.ResponseWriter, r *http.Request) {
+func (s *MCPServer) handleLegacyGetLogs(w http.ResponseWriter, r *http.Request) {
 	processID := r.URL.Query().Get("processId")
 	priority := r.URL.Query().Get("priority")
 
@@ -80,21 +80,21 @@ func (s *StreamableServer) handleLegacyGetLogs(w http.ResponseWriter, r *http.Re
 	json.NewEncoder(w).Encode(logs)
 }
 
-func (s *StreamableServer) handleLegacyGetProcesses(w http.ResponseWriter, r *http.Request) {
+func (s *MCPServer) handleLegacyGetProcesses(w http.ResponseWriter, r *http.Request) {
 	processes := s.processMgr.GetAllProcesses()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(processes)
 }
 
-func (s *StreamableServer) handleLegacyGetScripts(w http.ResponseWriter, r *http.Request) {
+func (s *MCPServer) handleLegacyGetScripts(w http.ResponseWriter, r *http.Request) {
 	scripts := s.processMgr.GetScripts()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(scripts)
 }
 
-func (s *StreamableServer) handleLegacyExecuteScript(w http.ResponseWriter, r *http.Request) {
+func (s *MCPServer) handleLegacyExecuteScript(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -119,7 +119,7 @@ func (s *StreamableServer) handleLegacyExecuteScript(w http.ResponseWriter, r *h
 	json.NewEncoder(w).Encode(process)
 }
 
-func (s *StreamableServer) handleLegacyStopProcess(w http.ResponseWriter, r *http.Request) {
+func (s *MCPServer) handleLegacyStopProcess(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -145,7 +145,7 @@ func (s *StreamableServer) handleLegacyStopProcess(w http.ResponseWriter, r *htt
 
 // Helper methods for log store interface conversion
 
-func (s *StreamableServer) logStoreGetAllInterface() []interface{} {
+func (s *MCPServer) logStoreGetAllInterface() []interface{} {
 	logs := s.logStore.GetAll()
 	result := make([]interface{}, len(logs))
 	for i, log := range logs {
@@ -154,7 +154,7 @@ func (s *StreamableServer) logStoreGetAllInterface() []interface{} {
 	return result
 }
 
-func (s *StreamableServer) logStoreGetByProcessInterface(processID string) []interface{} {
+func (s *MCPServer) logStoreGetByProcessInterface(processID string) []interface{} {
 	logs := s.logStore.GetByProcess(processID)
 	result := make([]interface{}, len(logs))
 	for i, log := range logs {
@@ -163,7 +163,7 @@ func (s *StreamableServer) logStoreGetByProcessInterface(processID string) []int
 	return result
 }
 
-func (s *StreamableServer) logEntryToInterface(entry logs.LogEntry) map[string]interface{} {
+func (s *MCPServer) logEntryToInterface(entry logs.LogEntry) map[string]interface{} {
 	return map[string]interface{}{
 		"id":          entry.ID,
 		"processId":   entry.ProcessID,

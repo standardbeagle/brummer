@@ -18,21 +18,21 @@ import (
 // TestConnectionManagerDiscoveryIntegration tests the complete flow from discovery to connection
 func TestConnectionManagerDiscoveryIntegration(t *testing.T) {
 	t.Parallel()
-	
+
 	// Create test directories
 	tempDir := t.TempDir()
 	instancesDir := filepath.Join(tempDir, "instances")
-	
+
 	// Create discovery system
 	disc, err := discovery.New(instancesDir)
 	if err != nil {
 		t.Fatalf("Failed to create discovery: %v", err)
 	}
 	defer disc.Stop()
-	
+
 	// Create connection manager
 	cm := NewConnectionManager()
-	
+
 	// Wire up discovery callbacks BEFORE starting discovery
 	disc.OnUpdate(func(instances map[string]*discovery.Instance) {
 		for _, inst := range instances {
@@ -41,16 +41,16 @@ func TestConnectionManagerDiscoveryIntegration(t *testing.T) {
 			}
 		}
 	})
-	
+
 	// Start systems
 	disc.Start()
 	// ConnectionManager runs automatically when created
 	defer cm.Stop()
-	
+
 	// Create mock MCP server for testing
 	mockServer := createMockMCPServer(t, 7777)
 	defer mockServer.Close()
-	
+
 	// Register an instance
 	instance := &discovery.Instance{
 		ID:        "test-instance-1",
@@ -67,15 +67,15 @@ func TestConnectionManagerDiscoveryIntegration(t *testing.T) {
 			Executable: "test",
 		},
 	}
-	
+
 	if err := discovery.RegisterInstance(instancesDir, instance); err != nil {
 		t.Fatalf("Failed to register instance: %v", err)
 	}
-	
+
 	// Wait for instance to be discovered and connected
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if !waitForCondition(ctx, 50*time.Millisecond, func() bool {
 		connections := cm.ListInstances()
 		for _, conn := range connections {
@@ -94,18 +94,18 @@ func TestConnectionManagerDiscoveryIntegration(t *testing.T) {
 		}
 		t.Fatalf("Instance not connected. Total connections: %d", len(connections))
 	}
-	
+
 	// Verify we can get a client for the instance
 	client := cm.GetClient("test-session")
 	if client != nil {
 		t.Error("Should not have client for unmapped session")
 	}
-	
+
 	// Connect a session
 	if err := cm.ConnectSession("test-session", "test-instance-1"); err != nil {
 		t.Fatalf("Failed to connect session: %v", err)
 	}
-	
+
 	// Debug: Check the connection has a client
 	connections := cm.ListInstances()
 	for _, conn := range connections {
@@ -113,7 +113,7 @@ func TestConnectionManagerDiscoveryIntegration(t *testing.T) {
 			t.Logf("Connection after session connect: State=%s, HasClient=%v", conn.State, conn.Client != nil)
 		}
 	}
-	
+
 	// Now we should get a client
 	client = cm.GetClient("test-session")
 	if client == nil {
@@ -125,28 +125,28 @@ func TestConnectionManagerDiscoveryIntegration(t *testing.T) {
 func TestDiscoveryToConnectionStateFlow(t *testing.T) {
 	t.Skip("Skipping test that depends on ConnectionManager timing internals")
 	t.Parallel()
-	
+
 	tempDir := t.TempDir()
 	instancesDir := filepath.Join(tempDir, "instances")
-	
+
 	disc, err := discovery.New(instancesDir)
 	if err != nil {
 		t.Fatalf("Failed to create discovery: %v", err)
 	}
 	defer disc.Stop()
-	
+
 	cm := NewConnectionManager()
 	defer cm.Stop()
-	
+
 	// Wire up discovery
 	disc.OnUpdate(func(instances map[string]*discovery.Instance) {
 		for _, inst := range instances {
 			cm.RegisterInstance(inst)
 		}
 	})
-	
+
 	disc.Start()
-	
+
 	// Create instance that will fail to connect (no server)
 	failInstance := &discovery.Instance{
 		ID:        "fail-instance",
@@ -163,14 +163,14 @@ func TestDiscoveryToConnectionStateFlow(t *testing.T) {
 			Executable: "test",
 		},
 	}
-	
+
 	if err := discovery.RegisterInstance(instancesDir, failInstance); err != nil {
 		t.Fatalf("Failed to register instance: %v", err)
 	}
-	
+
 	// Wait for connection attempts and retries
 	time.Sleep(5 * time.Second)
-	
+
 	// Check final state
 	connections := cm.ListInstances()
 	var failedInstance *ConnectionInfo
@@ -180,11 +180,11 @@ func TestDiscoveryToConnectionStateFlow(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if failedInstance == nil {
 		t.Fatal("Instance not found in connection manager")
 	}
-	
+
 	// Should be in retrying or dead state since no server exists
 	acceptableStates := []ConnectionState{StateRetrying, StateDead}
 	validState := false
@@ -194,37 +194,37 @@ func TestDiscoveryToConnectionStateFlow(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !validState {
 		t.Errorf("Expected instance to be retrying or dead, got: %s", failedInstance.State)
 	}
-	
+
 	t.Logf("Instance state after failed connection: %s (retry count: %d)", failedInstance.State, failedInstance.RetryCount)
 }
 
 // TestMultipleInstanceDiscovery tests hub discovering multiple instances
 func TestMultipleInstanceDiscovery(t *testing.T) {
 	t.Parallel()
-	
+
 	tempDir := t.TempDir()
 	instancesDir := filepath.Join(tempDir, "instances")
-	
+
 	disc, err := discovery.New(instancesDir)
 	if err != nil {
 		t.Fatalf("Failed to create discovery: %v", err)
 	}
 	defer disc.Stop()
-	
+
 	cm := NewConnectionManager()
-	
+
 	// Track discovered instances
 	var discoveredMu sync.Mutex
 	discovered := make(map[string]bool)
-	
+
 	disc.OnUpdate(func(instances map[string]*discovery.Instance) {
 		discoveredMu.Lock()
 		defer discoveredMu.Unlock()
-		
+
 		for id, inst := range instances {
 			if !discovered[id] {
 				discovered[id] = true
@@ -232,21 +232,21 @@ func TestMultipleInstanceDiscovery(t *testing.T) {
 			}
 		}
 	})
-	
+
 	disc.Start()
 	// ConnectionManager runs automatically
 	defer cm.Stop()
-	
+
 	// Create multiple mock servers
 	mockServers := make(map[int]MockServer)
 	ports := []int{8001, 8002, 8003}
-	
+
 	for _, port := range ports {
 		server := createMockMCPServer(t, port)
 		defer server.Close()
 		mockServers[port] = server
 	}
-	
+
 	// Register multiple instances
 	instances := []*discovery.Instance{
 		{
@@ -295,18 +295,18 @@ func TestMultipleInstanceDiscovery(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Register all instances
 	for _, inst := range instances {
 		if err := discovery.RegisterInstance(instancesDir, inst); err != nil {
 			t.Fatalf("Failed to register instance %s: %v", inst.ID, err)
 		}
 	}
-	
+
 	// Wait for all instances to be connected
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	if !waitForCondition(ctx, 100*time.Millisecond, func() bool {
 		connections := cm.ListInstances()
 		activeCount := 0
@@ -320,19 +320,19 @@ func TestMultipleInstanceDiscovery(t *testing.T) {
 		connections := cm.ListInstances()
 		t.Fatalf("Not all instances connected. Connections: %+v", connections)
 	}
-	
+
 	// Test session routing to different instances
 	sessions := map[string]string{
 		"session-1": "frontend-abc123",
 		"session-2": "backend-def456",
 		"session-3": "database-ghi789",
 	}
-	
+
 	for sessionID, instanceID := range sessions {
 		if err := cm.ConnectSession(sessionID, instanceID); err != nil {
 			t.Errorf("Failed to connect session %s to instance %s: %v", sessionID, instanceID, err)
 		}
-		
+
 		client := cm.GetClient(sessionID)
 		if client == nil {
 			t.Errorf("No client for session %s", sessionID)
@@ -343,22 +343,22 @@ func TestMultipleInstanceDiscovery(t *testing.T) {
 // TestInstanceFileDisappearance tests handling when instance files are deleted
 func TestInstanceFileDisappearance(t *testing.T) {
 	t.Parallel()
-	
+
 	tempDir := t.TempDir()
 	instancesDir := filepath.Join(tempDir, "instances")
-	
+
 	disc, err := discovery.New(instancesDir)
 	if err != nil {
 		t.Fatalf("Failed to create discovery: %v", err)
 	}
 	defer disc.Stop()
-	
+
 	cm := NewConnectionManager()
-	
+
 	// Track removals
 	var removalsMu sync.Mutex
 	removals := make(map[string]bool)
-	
+
 	disc.OnUpdate(func(instances map[string]*discovery.Instance) {
 		// Check for removals
 		connections := cm.ListInstances()
@@ -369,20 +369,20 @@ func TestInstanceFileDisappearance(t *testing.T) {
 				removalsMu.Unlock()
 			}
 		}
-		
+
 		// Register new instances
 		for _, inst := range instances {
 			cm.RegisterInstance(inst)
 		}
 	})
-	
+
 	disc.Start()
 	// ConnectionManager runs automatically
 	defer cm.Stop()
-	
+
 	mockServer := createMockMCPServer(t, 7779)
 	defer mockServer.Close()
-	
+
 	// Register instance
 	instance := &discovery.Instance{
 		ID:        "disappearing-instance",
@@ -399,15 +399,15 @@ func TestInstanceFileDisappearance(t *testing.T) {
 			Executable: "test",
 		},
 	}
-	
+
 	if err := discovery.RegisterInstance(instancesDir, instance); err != nil {
 		t.Fatalf("Failed to register instance: %v", err)
 	}
-	
+
 	// Wait for connection
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	
+
 	if !waitForCondition(ctx, 50*time.Millisecond, func() bool {
 		connections := cm.ListInstances()
 		for _, conn := range connections {
@@ -419,16 +419,16 @@ func TestInstanceFileDisappearance(t *testing.T) {
 	}) {
 		t.Fatal("Instance not connected")
 	}
-	
+
 	// Remove instance file
 	if err := discovery.UnregisterInstance(instancesDir, "disappearing-instance"); err != nil {
 		t.Fatalf("Failed to unregister instance: %v", err)
 	}
-	
+
 	// Wait for removal to be detected
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel2()
-	
+
 	if !waitForCondition(ctx2, 50*time.Millisecond, func() bool {
 		removalsMu.Lock()
 		wasRemoved := removals["disappearing-instance"]
@@ -442,38 +442,38 @@ func TestInstanceFileDisappearance(t *testing.T) {
 // TestRapidInstanceChurn tests handling rapid instance add/remove cycles
 func TestRapidInstanceChurn(t *testing.T) {
 	t.Parallel()
-	
+
 	tempDir := t.TempDir()
 	instancesDir := filepath.Join(tempDir, "instances")
-	
+
 	disc, err := discovery.New(instancesDir)
 	if err != nil {
 		t.Fatalf("Failed to create discovery: %v", err)
 	}
 	defer disc.Stop()
-	
+
 	cm := NewConnectionManager()
-	
+
 	// Count events
 	var eventsMu sync.Mutex
 	addCount := int32(0)
 	removeCount := int32(0)
-	
+
 	disc.OnUpdate(func(instances map[string]*discovery.Instance) {
 		eventsMu.Lock()
 		defer eventsMu.Unlock()
-		
+
 		// Simple registration of all instances
 		for _, inst := range instances {
 			cm.RegisterInstance(inst)
 			atomic.AddInt32(&addCount, 1)
 		}
 	})
-	
+
 	disc.Start()
 	// ConnectionManager runs automatically
 	defer cm.Stop()
-	
+
 	// Rapid add/remove cycles
 	cycles := 10
 	for i := 0; i < cycles; i++ {
@@ -492,31 +492,31 @@ func TestRapidInstanceChurn(t *testing.T) {
 				Executable: "test",
 			},
 		}
-		
+
 		// Add
 		if err := discovery.RegisterInstance(instancesDir, instance); err != nil {
 			t.Errorf("Failed to register instance %d: %v", i, err)
 		}
-		
+
 		// Small delay
 		time.Sleep(50 * time.Millisecond)
-		
+
 		// Remove
 		if err := discovery.UnregisterInstance(instancesDir, instance.ID); err != nil {
 			t.Errorf("Failed to unregister instance %d: %v", i, err)
 		}
-		
+
 		atomic.AddInt32(&removeCount, 1)
 	}
-	
+
 	// Wait for all operations to complete
 	// A small delay is reasonable here as we're testing rapid churn
 	time.Sleep(200 * time.Millisecond)
-	
+
 	// Verify system is still functional
 	connections := cm.ListInstances()
 	t.Logf("After churn: %d connections, %d adds, %d removes", len(connections), atomic.LoadInt32(&addCount), atomic.LoadInt32(&removeCount))
-	
+
 	// System should have processed events without crashing
 	if atomic.LoadInt32(&addCount) < int32(cycles) {
 		t.Errorf("Not all additions processed: expected at least %d, got %d", cycles, atomic.LoadInt32(&addCount))
@@ -527,7 +527,7 @@ func TestRapidInstanceChurn(t *testing.T) {
 func waitForCondition(ctx context.Context, checkInterval time.Duration, condition func() bool) bool {
 	ticker := time.NewTicker(checkInterval)
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -552,7 +552,7 @@ func createMockMCPServer(t *testing.T, port int) MockServer {
 		if r.Method == "POST" && r.URL.Path == "/mcp" {
 			var req map[string]interface{}
 			json.NewDecoder(r.Body).Decode(&req)
-			
+
 			if method, ok := req["method"].(string); ok && method == "initialize" {
 				response := map[string]interface{}{
 					"jsonrpc": "2.0",
@@ -566,22 +566,22 @@ func createMockMCPServer(t *testing.T, port int) MockServer {
 				return
 			}
 		}
-		
+
 		// Default response
 		w.WriteHeader(http.StatusOK)
 	})
-	
+
 	server := &http.Server{
 		Addr:    fmt.Sprintf(":%d", port),
 		Handler: handler,
 	}
-	
+
 	// Start server in background
 	go server.ListenAndServe()
-	
+
 	// Give server time to start
 	time.Sleep(50 * time.Millisecond)
-	
+
 	return &mockServerImpl{
 		t:      t,
 		port:   port,

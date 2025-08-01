@@ -750,7 +750,7 @@ func (s *MCPServer) Stop() error {
 	if s.messageQueue != nil {
 		s.messageQueue.Stop()
 	}
-	
+
 	if s.server != nil {
 		// Use a timeout context to prevent shutdown from hanging indefinitely
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -1214,15 +1214,15 @@ func (s *MCPServer) CallTool(ctx context.Context, toolName string, arguments jso
 	s.mu.RLock()
 	tool, exists := s.tools[toolName]
 	s.mu.RUnlock()
-	
+
 	if !exists {
 		return nil, fmt.Errorf("tool '%s' not found", toolName)
 	}
-	
+
 	if tool.Handler == nil {
 		return nil, fmt.Errorf("tool '%s' has no handler", toolName)
 	}
-	
+
 	return tool.Handler(arguments)
 }
 
@@ -1232,12 +1232,12 @@ func corsMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, Accept, Mcp-Session-Id")
-		
+
 		if r.Method == "OPTIONS" {
 			w.WriteHeader(http.StatusOK)
 			return
 		}
-		
+
 		next.ServeHTTP(w, r)
 	})
 }

@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/standardbeagle/brummer/pkg/events"
 	"github.com/standardbeagle/brummer/pkg/filters"
 )
 
@@ -19,6 +20,11 @@ const (
 	LevelError
 	LevelCritical
 )
+
+// EventBus interface for publishing events
+type EventBus interface {
+	Publish(event events.Event)
+}
 
 type LogEntry struct {
 	ID          string
@@ -42,17 +48,20 @@ type CollapsedLogEntry struct {
 }
 
 type Store struct {
-	entries         []LogEntry
-	byProcess       map[string][]int
-	errors          []LogEntry
-	errorContexts   []ErrorContext
-	errorParser     *ErrorParser
-	timeBasedParser *TimeBasedErrorParser
-	urls            []URLEntry
-	urlMap          map[string]*URLEntry // Map URL to its entry for deduplication
-	maxEntries      int
-	filters         []filters.Filter
-	mu              sync.RWMutex
+	entries   []LogEntry
+	byProcess map[string][]int
+	errors    []LogEntry
+	// errorContexts removed - now generated on-demand with functional grouping
+	errorParser    *ErrorParser
+	groupingConfig GroupingConfig
+	urls           []URLEntry
+	urlMap         map[string]*URLEntry // Map URL to its entry for deduplication
+	maxEntries     int
+	filters        []filters.Filter
+	mu             sync.RWMutex
+
+	// Event bus for publishing LogLine events
+	eventBus EventBus
 
 	// Channel-based async operations
 	addChan   chan *addLogRequest
@@ -77,20 +86,21 @@ type addLogRequest struct {
 	result      chan *LogEntry
 }
 
-func NewStore(maxEntries int) *Store {
+func NewStore(maxEntries int, eventBus EventBus) *Store {
 	s := &Store{
-		entries:         make([]LogEntry, 0, maxEntries),
-		byProcess:       make(map[string][]int),
-		errors:          make([]LogEntry, 0, 100),
-		errorContexts:   make([]ErrorContext, 0, 100),
-		errorParser:     NewErrorParser(),
-		timeBasedParser: NewTimeBasedErrorParser(),
-		urls:            make([]URLEntry, 0, 100),
-		urlMap:          make(map[string]*URLEntry),
-		maxEntries:      maxEntries,
-		filters:         []filters.Filter{},
-		addChan:         make(chan *addLogRequest, 1000),
-		closeChan:       make(chan struct{}),
+		entries:   make([]LogEntry, 0, maxEntries),
+		byProcess: make(map[string][]int),
+		errors:    make([]LogEntry, 0, 100),
+		// errorContexts removed - generated on-demand
+		errorParser:    NewErrorParser(),
+		groupingConfig: DefaultGroupingConfig(),
+		urls:           make([]URLEntry, 0, 100),
+		urlMap:         make(map[string]*URLEntry),
+		maxEntries:     maxEntries,
+		eventBus:       eventBus,
+		filters:        []filters.Filter{},
+		addChan:        make(chan *addLogRequest, 1000),
+		closeChan:      make(chan struct{}),
 	}
 
 	// Start async worker
@@ -199,15 +209,8 @@ func (s *Store) addSync(processID, processName, content string, isError bool) *L
 		}
 	}
 
-	// Process through time-based error parser for better error clustering
-	if cluster := s.timeBasedParser.ProcessLogEntry(entry, processName, isError); cluster != nil {
-		// Convert cluster to ErrorContext for compatibility
-		errorCtx := cluster.ToErrorContext()
-		s.errorContexts = append(s.errorContexts, errorCtx)
-		if len(s.errorContexts) > 100 {
-			s.errorContexts = s.errorContexts[1:]
-		}
-	}
+	// Error grouping is now done on-demand using functional approach
+	// No need to process individual entries here
 
 	// Detect and track URLs (with deduplication)
 	urls := detectURLs(content)
@@ -232,6 +235,20 @@ func (s *Store) addSync(processID, processName, content string, isError bool) *L
 			// Rebuild the urls slice from the map
 			s.rebuildURLsList()
 		}
+	}
+
+	// Publish LogLine event if eventBus is available
+	if s.eventBus != nil {
+		s.eventBus.Publish(events.Event{
+			Type:      events.LogLine,
+			ProcessID: processID,
+			Data: map[string]interface{}{
+				"line":        content,
+				"isError":     isError,
+				"timestamp":   entry.Timestamp,
+				"processName": processName,
+			},
+		})
 	}
 
 	return &entry
@@ -506,16 +523,7 @@ func (s *Store) GetURLs() []URLEntry {
 
 // Close shuts down the async worker
 func (s *Store) Close() {
-	// Finalize any remaining error clusters before closing
-	s.mu.Lock()
-	if remainingClusters := s.timeBasedParser.ForceCompleteAll(); len(remainingClusters) > 0 {
-		for _, cluster := range remainingClusters {
-			errorCtx := cluster.ToErrorContext()
-			s.errorContexts = append(s.errorContexts, errorCtx)
-		}
-	}
-	s.mu.Unlock()
-
+	// Clean shutdown - no need to finalize clusters since we use functional grouping
 	close(s.closeChan)
 	s.wg.Wait()
 }
@@ -533,7 +541,7 @@ func (s *Store) ClearErrors() {
 	defer s.mu.Unlock()
 
 	s.errors = make([]LogEntry, 0, 100)
-	s.errorContexts = make([]ErrorContext, 0, 100)
+	// errorContexts no longer stored - generated on-demand from entries
 	s.errorParser.ClearErrors()
 }
 
@@ -566,24 +574,75 @@ func (s *Store) ClearLogsForProcess(processName string) {
 	}
 	s.errors = newErrors
 
-	// Clear error contexts from this process
-	newErrorContexts := make([]ErrorContext, 0, 100)
-	for _, ctx := range s.errorContexts {
-		if ctx.ProcessName != processName {
-			newErrorContexts = append(newErrorContexts, ctx)
-		}
-	}
-	s.errorContexts = newErrorContexts
+	// errorContexts no longer stored - they're generated on-demand from entries
+	// No need to clear them separately since they're derived from the filtered entries
 }
 
 // GetErrorContexts returns parsed error contexts with full details
 func (s *Store) GetErrorContexts() []ErrorContext {
+	// Use functional grouping to generate error contexts on-demand
+	return s.GetErrorContextsFromFunctionalGrouping()
+}
+
+// GetErrorContextsFromFunctionalGrouping generates error contexts using the functional grouping algorithm
+func (s *Store) GetErrorContextsFromFunctionalGrouping() []ErrorContext {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	result := make([]ErrorContext, len(s.errorContexts))
-	copy(result, s.errorContexts)
-	return result
+	// Get all log entries for functional grouping
+	allEntries := make([]LogEntry, len(s.entries))
+	copy(allEntries, s.entries)
+
+	// Apply functional grouping
+	errorGroups := GroupErrorsByTimeLocality(allEntries, s.groupingConfig)
+
+	// Convert error groups to error contexts for compatibility
+	var contexts []ErrorContext
+	for _, group := range errorGroups {
+		context := convertErrorGroupToContext(group)
+		contexts = append(contexts, context)
+	}
+
+	// Limit to recent contexts to prevent memory growth
+	if len(contexts) > 100 {
+		contexts = contexts[len(contexts)-100:]
+	}
+
+	return contexts
+}
+
+// convertErrorGroupToContext converts an ErrorGroup to ErrorContext for compatibility
+func convertErrorGroupToContext(group ErrorGroup) ErrorContext {
+	var rawLines []string
+	var stackLines []string
+	var contextLines []string
+
+	for _, entry := range group.Entries {
+		rawLines = append(rawLines, entry.Content)
+
+		// Simple heuristics for stack vs context
+		if strings.Contains(entry.Content, " at ") ||
+			strings.Contains(entry.Content, ".js:") ||
+			strings.Contains(entry.Content, ".ts:") {
+			stackLines = append(stackLines, entry.Content)
+		} else {
+			contextLines = append(contextLines, entry.Content)
+		}
+	}
+
+	return ErrorContext{
+		ID:          group.ID,
+		ProcessID:   group.ProcessID,
+		ProcessName: group.ProcessName,
+		Timestamp:   group.StartTime,
+		Type:        group.ErrorType,
+		Message:     group.Message,
+		Stack:       stackLines,
+		Context:     contextLines,
+		Severity:    group.Severity,
+		Language:    "javascript", // Default for now
+		Raw:         rawLines,
+	}
 }
 
 // rebuildURLsList rebuilds the urls slice from the urlMap

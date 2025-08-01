@@ -8,7 +8,7 @@
   },
   "scripts": {
     "postinstall": "node install.js",
-    "server": "echo \"Server running at http://localhost:3001\" && python3 -m http.server 3001",
+    "server": "npx -y http-server",
     "test": "echo \"Error: no test specified\" && exit 1",
     "test1": "node test-server.js server1",
     "test2": "PORT=3002 node test-server.js server2"

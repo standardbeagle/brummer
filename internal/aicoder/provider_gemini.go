@@ -25,11 +25,11 @@ func NewGeminiProvider(apiKey, model string) *GeminiProvider {
 		// Try to get from environment
 		apiKey = os.Getenv("GEMINI_API_KEY")
 	}
-	
+
 	if model == "" {
 		model = "gemini-1.5-pro" // Default to Gemini 1.5 Pro
 	}
-	
+
 	return &GeminiProvider{
 		apiKey:  apiKey,
 		baseURL: "https://generativelanguage.googleapis.com/v1beta",
@@ -65,19 +65,19 @@ func (p *GeminiProvider) GenerateCode(ctx context.Context, prompt string, option
 	if p.apiKey == "" {
 		return nil, fmt.Errorf("Gemini API key not configured")
 	}
-	
+
 	// Build the system prompt
 	systemPrompt := "You are an expert software engineer helping to implement code. " +
 		"Generate clean, well-documented code following best practices. " +
 		"Include error handling and tests where appropriate."
-	
+
 	if options.SystemPrompt != "" {
 		systemPrompt = options.SystemPrompt
 	}
-	
+
 	// Build the full prompt with system context
 	fullPrompt := systemPrompt + "\n\n" + prompt
-	
+
 	// Build the request
 	requestBody := map[string]interface{}{
 		"contents": []map[string]interface{}{
@@ -94,40 +94,40 @@ func (p *GeminiProvider) GenerateCode(ctx context.Context, prompt string, option
 			"temperature":     options.Temperature,
 		},
 	}
-	
+
 	if len(options.StopSequences) > 0 {
 		requestBody["generationConfig"].(map[string]interface{})["stopSequences"] = options.StopSequences
 	}
-	
+
 	// Marshal request
 	jsonData, err := json.Marshal(requestBody)
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
-	
+
 	// Create HTTP request
 	endpoint := fmt.Sprintf("%s/models/%s:generateContent?key=%s", p.baseURL, p.model, p.apiKey)
 	req, err := http.NewRequestWithContext(ctx, "POST", endpoint, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	
+
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	// Send request
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send request: %w", err)
 	}
 	defer resp.Body.Close()
-	
+
 	// Read response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
-	
+
 	// Check for errors
 	if resp.StatusCode != http.StatusOK {
 		var errorResp map[string]interface{}
@@ -138,7 +138,7 @@ func (p *GeminiProvider) GenerateCode(ctx context.Context, prompt string, option
 		}
 		return nil, fmt.Errorf("Gemini API error: status %d, body: %s", resp.StatusCode, string(body))
 	}
-	
+
 	// Parse response
 	var response struct {
 		Candidates []struct {
@@ -153,21 +153,21 @@ func (p *GeminiProvider) GenerateCode(ctx context.Context, prompt string, option
 			TotalTokenCount int `json:"totalTokenCount"`
 		} `json:"usageMetadata"`
 	}
-	
+
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	
+
 	if len(response.Candidates) == 0 || len(response.Candidates[0].Content.Parts) == 0 {
 		return nil, fmt.Errorf("no response from Gemini")
 	}
-	
+
 	// Extract text from parts
 	var code string
 	for _, part := range response.Candidates[0].Content.Parts {
 		code += part.Text
 	}
-	
+
 	return &GenerateResult{
 		Code:         code,
 		Summary:      fmt.Sprintf("Generated with %s", p.model),
@@ -180,10 +180,10 @@ func (p *GeminiProvider) GenerateCode(ctx context.Context, prompt string, option
 // StreamGenerate generates code with streaming support
 func (p *GeminiProvider) StreamGenerate(ctx context.Context, prompt string, options GenerateOptions) (<-chan GenerateUpdate, error) {
 	ch := make(chan GenerateUpdate)
-	
+
 	go func() {
 		defer close(ch)
-		
+
 		// For now, use non-streaming version
 		// Gemini supports streaming, but we'll implement it later
 		result, err := p.GenerateCode(ctx, prompt, options)
@@ -191,7 +191,7 @@ func (p *GeminiProvider) StreamGenerate(ctx context.Context, prompt string, opti
 			ch <- GenerateUpdate{Error: err}
 			return
 		}
-		
+
 		// Send as single chunk
 		ch <- GenerateUpdate{
 			Content:      result.Code,
@@ -199,7 +199,7 @@ func (p *GeminiProvider) StreamGenerate(ctx context.Context, prompt string, opti
 			FinishReason: result.FinishReason,
 		}
 	}()
-	
+
 	return ch, nil
 }
 
@@ -211,7 +211,7 @@ func (p *GeminiProvider) ValidateConfig(config ProviderConfig) error {
 			return fmt.Errorf("API key environment variable %s is not set", config.APIKeyEnv)
 		}
 	}
-	
+
 	// Validate model
 	caps := p.GetCapabilities()
 	validModel := false
@@ -221,10 +221,10 @@ func (p *GeminiProvider) ValidateConfig(config ProviderConfig) error {
 			break
 		}
 	}
-	
+
 	if config.Model != "" && !validModel {
 		return fmt.Errorf("unsupported model: %s", config.Model)
 	}
-	
+
 	return nil
 }
