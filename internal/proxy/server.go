@@ -1587,6 +1587,24 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 			"count":    len(sessions),
 		}
 
+	case "queue_message":
+		// Handle incoming message queue messages via WebSocket
+		if data, ok := msg.Data.(map[string]interface{}); ok {
+			// Forward to MCP server via event bus
+			s.eventBus.Publish(events.Event{
+				Type: events.EventType("queue.message"),
+				Data: data,
+			})
+			response.Data = map[string]interface{}{
+				"status": "ok",
+				"type":   "queue_message_received",
+			}
+		} else {
+			response.Data = map[string]interface{}{
+				"error": "Invalid queue message format",
+			}
+		}
+
 	case "telemetry":
 		// Handle incoming telemetry data via WebSocket
 		if data, ok := msg.Data.(map[string]interface{}); ok {

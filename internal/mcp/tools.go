@@ -58,7 +58,7 @@ func validateOutputPath(path string) error {
 }
 
 // handleToolsList handles the tools/list request
-func (s *StreamableServer) handleToolsList(msg *JSONRPCMessage) *JSONRPCMessage {
+func (s *MCPServer) handleToolsList(msg *JSONRPCMessage) *JSONRPCMessage {
 	tools := make([]map[string]interface{}, 0)
 	for name, tool := range s.tools {
 		toolInfo := map[string]interface{}{
@@ -84,7 +84,7 @@ func (s *StreamableServer) handleToolsList(msg *JSONRPCMessage) *JSONRPCMessage 
 }
 
 // handleToolCall handles the tools/call request
-func (s *StreamableServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWriter, r *http.Request) (*JSONRPCMessage, bool) {
+func (s *MCPServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWriter, r *http.Request) (*JSONRPCMessage, bool) {
 	var params struct {
 		Name      string          `json:"name"`
 		Arguments json.RawMessage `json:"arguments"`
@@ -135,7 +135,7 @@ func (s *StreamableServer) handleToolCall(msg *JSONRPCMessage, w http.ResponseWr
 }
 
 // registerTools registers all available MCP tools
-func (s *StreamableServer) registerTools() {
+func (s *MCPServer) registerTools() {
 	// Script management tools
 	s.registerScriptTools()
 
@@ -156,9 +156,12 @@ func (s *StreamableServer) registerTools() {
 
 	// AI Coder tools
 	s.registerAICoderTools()
+
+	// Message queue tools
+	s.registerMessageQueueTools()
 }
 
-func (s *StreamableServer) registerScriptTools() {
+func (s *MCPServer) registerScriptTools() {
 	// scripts_list - List all available scripts
 	s.tools["scripts_list"] = MCPTool{
 		Name: "scripts_list",
@@ -208,27 +211,28 @@ For detailed documentation and examples, use: about tool="scripts_run"`,
 
 			// Check if script is already running
 			for _, proc := range s.processMgr.GetAllProcesses() {
-				if proc.Name == params.Name && proc.Status == "running" {
+				state := proc.GetStateAtomic()
+				if state.Name == params.Name && state.IsRunning() {
 					// Script is already running, send status and return
 					send(map[string]interface{}{
 						"type":      "duplicate",
-						"processId": proc.ID,
-						"name":      proc.Name,
-						"status":    string(proc.Status),
-						"message":   fmt.Sprintf("Script '%s' is already running with process ID: %s", proc.Name, proc.ID),
-						"startTime": proc.StartTime.Format(time.RFC3339),
-						"runtime":   time.Since(proc.StartTime).String(),
+						"processId": state.ID,
+						"name":      state.Name,
+						"status":    string(state.Status),
+						"message":   fmt.Sprintf("Script '%s' is already running with process ID: %s", state.Name, state.ID),
+						"startTime": state.StartTime.Format(time.RFC3339),
+						"runtime":   state.Duration().String(),
 						"commands": map[string]string{
-							"stop":    fmt.Sprintf("scripts/stop {\"processId\": \"%s\"}", proc.ID),
+							"stop":    fmt.Sprintf("scripts/stop {\"processId\": \"%s\"}", state.ID),
 							"restart": "First stop the process, then run again",
 						},
 					})
 
 					return map[string]interface{}{
 						"duplicate": true,
-						"processId": proc.ID,
-						"status":    string(proc.Status),
-						"message":   fmt.Sprintf("Script '%s' is already running", proc.Name),
+						"processId": state.ID,
+						"status":    string(state.Status),
+						"message":   fmt.Sprintf("Script '%s' is already running", state.Name),
 					}, nil
 				}
 			}
@@ -263,7 +267,7 @@ For detailed documentation and examples, use: about tool="scripts_run"`,
 			go func() {
 				for {
 					time.Sleep(100 * time.Millisecond)
-					if process.Status != "running" {
+					if process.GetStatus() != "running" {
 						close(logChan)
 						break
 					}
@@ -278,10 +282,12 @@ For detailed documentation and examples, use: about tool="scripts_run"`,
 				})
 			}
 
+			// Use atomic state for final result
+			finalState := process.GetStateAtomic()
 			return map[string]interface{}{
-				"processId": process.ID,
-				"status":    process.Status,
-				"exitCode":  process.ExitCode,
+				"processId": finalState.ID,
+				"status":    string(finalState.Status),
+				"exitCode":  finalState.ExitCode,
 			}, nil
 		},
 		Handler: func(args json.RawMessage) (interface{}, error) {
@@ -294,19 +300,20 @@ For detailed documentation and examples, use: about tool="scripts_run"`,
 
 			// Check if script is already running
 			for _, proc := range s.processMgr.GetAllProcesses() {
-				if proc.Name == params.Name && proc.Status == "running" {
+				state := proc.GetStateAtomic()
+				if state.Name == params.Name && state.IsRunning() {
 					// Script is already running, return its current state
 					result := map[string]interface{}{
-						"processId": proc.ID,
-						"name":      proc.Name,
-						"script":    proc.Script,
-						"status":    string(proc.Status),
+						"processId": state.ID,
+						"name":      state.Name,
+						"script":    state.Script,
+						"status":    string(state.Status),
 						"duplicate": true,
-						"message":   fmt.Sprintf("Script '%s' is already running with process ID: %s", proc.Name, proc.ID),
-						"startTime": proc.StartTime.Format(time.RFC3339),
-						"runtime":   time.Since(proc.StartTime).String(),
+						"message":   fmt.Sprintf("Script '%s' is already running with process ID: %s", state.Name, state.ID),
+						"startTime": state.StartTime.Format(time.RFC3339),
+						"runtime":   state.Duration().String(),
 						"commands": map[string]string{
-							"stop":    fmt.Sprintf("scripts/stop {\"processId\": \"%s\"}", proc.ID),
+							"stop":    fmt.Sprintf("scripts/stop {\"processId\": \"%s\"}", state.ID),
 							"restart": "First stop the process, then run again",
 							"status":  "Check status with: scripts/status",
 						},
@@ -340,11 +347,13 @@ For detailed documentation and examples, use: about tool="scripts_run"`,
 				return nil, err
 			}
 
+			// Use atomic state for the final result
+			state := process.GetStateAtomic()
 			return map[string]interface{}{
-				"processId": process.ID,
-				"name":      process.Name,
-				"script":    process.Script,
-				"status":    string(process.Status),
+				"processId": state.ID,
+				"name":      state.Name,
+				"script":    state.Script,
+				"status":    string(state.Status),
 				"duplicate": false,
 			}, nil
 		},
@@ -422,19 +431,21 @@ For detailed documentation and examples, use: about tool="scripts_status"`,
 				// Filter by name
 				for _, p := range processes {
 					if p.Name == params.Name {
+						// Use atomic state for lock-free access (30-300x faster)
+						state := p.GetStateAtomic()
 						result := map[string]interface{}{
-							"processId": p.ID,
-							"name":      p.Name,
-							"status":    string(p.Status),
-							"startTime": p.StartTime,
-							"uptime":    time.Since(p.StartTime).String(),
+							"processId": state.ID,
+							"name":      state.Name,
+							"status":    string(state.Status),
+							"startTime": state.StartTime,
+							"uptime":    state.Duration().String(),
 						}
 
 						// Add proxy URLs for this process
 						if len(proxyMappings) > 0 {
 							processUrls := make([]map[string]interface{}, 0)
 							for _, m := range proxyMappings {
-								if m.ProcessName == p.Name {
+								if m.ProcessName == state.Name {
 									processUrls = append(processUrls, map[string]interface{}{
 										"targetUrl": m.TargetURL,
 										"proxyUrl":  m.ProxyURL,
@@ -448,9 +459,9 @@ For detailed documentation and examples, use: about tool="scripts_status"`,
 						}
 
 						// Add commands for managing the process
-						if p.Status == "running" {
+						if state.IsRunning() {
 							result["commands"] = map[string]string{
-								"stop":    fmt.Sprintf("scripts/stop {\"processId\": \"%s\"}", p.ID),
+								"stop":    fmt.Sprintf("scripts/stop {\"processId\": \"%s\"}", state.ID),
 								"restart": "First stop the process, then run again",
 							}
 						}
@@ -467,19 +478,21 @@ For detailed documentation and examples, use: about tool="scripts_status"`,
 			// Return all processes
 			result := make([]map[string]interface{}, 0, len(processes))
 			for _, p := range processes {
+				// Use atomic state for lock-free access (30-300x faster)
+				state := p.GetStateAtomic()
 				procInfo := map[string]interface{}{
-					"processId": p.ID,
-					"name":      p.Name,
-					"status":    string(p.Status),
-					"startTime": p.StartTime,
-					"uptime":    time.Since(p.StartTime).String(),
+					"processId": state.ID,
+					"name":      state.Name,
+					"status":    string(state.Status),
+					"startTime": state.StartTime,
+					"uptime":    state.Duration().String(),
 				}
 
 				// Add proxy URLs for each process
 				if len(proxyMappings) > 0 {
 					processUrls := make([]map[string]interface{}, 0)
 					for _, m := range proxyMappings {
-						if m.ProcessName == p.Name {
+						if m.ProcessName == state.Name {
 							processUrls = append(processUrls, map[string]interface{}{
 								"targetUrl": m.TargetURL,
 								"proxyUrl":  m.ProxyURL,
@@ -500,7 +513,7 @@ For detailed documentation and examples, use: about tool="scripts_status"`,
 	}
 }
 
-func (s *StreamableServer) registerLogTools() {
+func (s *MCPServer) registerLogTools() {
 	// logs_stream - Stream real-time logs
 	s.tools["logs_stream"] = MCPTool{
 		Name: "logs_stream",
@@ -859,7 +872,7 @@ For detailed documentation and examples, use: about tool="logs_search"`,
 	}
 }
 
-func (s *StreamableServer) registerProxyTools() {
+func (s *MCPServer) registerProxyTools() {
 	// proxy_requests - Get HTTP requests
 	s.tools["proxy_requests"] = MCPTool{
 		Name: "proxy_requests",
@@ -1301,7 +1314,7 @@ For detailed documentation and examples, use: about tool="telemetry_events"`,
 	}
 }
 
-func (s *StreamableServer) registerBrowserTools() {
+func (s *MCPServer) registerBrowserTools() {
 	// browser_open - Open URL in browser with proxy
 	s.tools["browser_open"] = MCPTool{
 		Name: "browser_open",
@@ -1440,7 +1453,7 @@ For detailed documentation and examples, use: about tool="browser_navigate"`,
 	}
 }
 
-func (s *StreamableServer) registerREPLTool() {
+func (s *MCPServer) registerREPLTool() {
 	// repl_execute - Execute JavaScript in browser context
 	s.tools["repl_execute"] = MCPTool{
 		Name: "repl_execute",
@@ -1472,6 +1485,23 @@ For detailed documentation and examples, use: about tool="repl_execute"`,
 				return nil, err
 			}
 
+			// If no session ID specified, try to get the most recent session
+			if params.SessionID == "" && s.proxyServer != nil && s.proxyServer.GetTelemetryStore() != nil {
+				sessions := s.proxyServer.GetTelemetryStore().GetAllSessions()
+				if len(sessions) > 0 {
+					// Find the most recent active session
+					var mostRecentSession *proxy.PageSession
+					for _, session := range sessions {
+						if mostRecentSession == nil || session.LastActivity.After(mostRecentSession.LastActivity) {
+							mostRecentSession = session
+						}
+					}
+					if mostRecentSession != nil {
+						params.SessionID = mostRecentSession.SessionID
+					}
+				}
+			}
+
 			// Create response ID and register channel
 			responseID := fmt.Sprintf("repl-%d", time.Now().UnixNano())
 			responseChan := s.registerREPLResponse(responseID)
@@ -1494,10 +1524,40 @@ For detailed documentation and examples, use: about tool="repl_execute"`,
 			// Wait for response with timeout
 			select {
 			case response := <-responseChan:
-				return response, nil
+				// Extract the actual result or error from the response
+				if responseMap, ok := response.(map[string]interface{}); ok {
+					// Build a clean response
+					result := map[string]interface{}{
+						"sessionId": params.SessionID,
+					}
+					
+					// Check if there's an error
+					if errorMsg, hasError := responseMap["error"]; hasError && errorMsg != nil {
+						result["error"] = errorMsg
+						result["success"] = false
+					} else if resultValue, hasResult := responseMap["result"]; hasResult {
+						result["result"] = resultValue
+						result["success"] = true
+					} else {
+						// No result or error, return the raw response
+						result["result"] = response
+						result["success"] = true
+					}
+					
+					return result, nil
+				}
+				// If response is not a map, return it as-is
+				return map[string]interface{}{
+					"result": response,
+					"sessionId": params.SessionID,
+					"success": true,
+				}, nil
 			case <-time.After(5 * time.Second):
 				return map[string]interface{}{
 					"error": "timeout waiting for response",
+					"sessionId": params.SessionID,
+					"success": false,
+					"hint": "Make sure a browser window is open with the proxy URL (use browser_open or check active sessions)",
 				}, nil
 			}
 		},
@@ -1813,7 +1873,7 @@ func isWSL() bool {
 	return strings.Contains(strings.ToLower(string(releaseData)), "microsoft")
 }
 
-func (s *StreamableServer) registerUtilityTools() {
+func (s *MCPServer) registerUtilityTools() {
 	// about - Comprehensive information about Brummer
 	s.tools["about"] = MCPTool{
 		Name: "about",
