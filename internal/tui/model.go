@@ -224,12 +224,14 @@ type Model struct {
 	logsViewport      viewport.Model
 	logsViewController *LogsViewController // New controller for logs view
 	errorsViewport    viewport.Model
+	errorsViewController *ErrorsViewController // New controller for errors view
 	errorsList        list.Model
 	selectedError     *logs.ErrorContext
 	errorDetailView   viewport.Model
 	urlsViewport      viewport.Model
 	urlsViewController *URLsViewController // New controller for URLs view
 	webDetailViewport viewport.Model
+	webViewController *WebViewController // New controller for web view
 	settingsList      list.Model
 	searchInput       textinput.Model
 
@@ -1034,6 +1036,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		logsViewport:   viewport.New(0, 0),
 		logsViewController: NewLogsViewController(logStore),
 		errorsViewport: viewport.New(0, 0),
+		errorsViewController: NewErrorsViewController(logStore),
 		urlsViewport:   viewport.New(0, 0),
 		urlsViewController: NewURLsViewController(logStore, mcpServer),
 		webRequestsList: func() list.Model {
@@ -1046,6 +1049,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 			return l
 		}(),
 		webDetailViewport: viewport.New(0, 0),
+		webViewController: NewWebViewController(proxyServer),
 		searchInput:       searchInput,
 		webFilter:         "all", // Default to showing all requests
 		webAutoScroll:     true,  // Start with auto-scroll enabled
@@ -2574,47 +2578,18 @@ func (m *Model) renderProcessesView() string {
 }
 
 func (m *Model) renderLogsView() string {
-	title := "Logs"
-	if m.selectedProcess != "" {
-		if proc, exists := m.processMgr.GetProcess(m.selectedProcess); exists {
-			title = fmt.Sprintf("Logs - %s", proc.Name)
-		}
+	// Update controller dimensions and sync state
+	m.logsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+	m.logsViewController.SetSelectedProcess(m.selectedProcess)
+	m.logsViewController.SetShowPattern(m.showPattern)
+	m.logsViewController.SetHidePattern(m.hidePattern)
+	m.logsViewController.SetShowHighPriority(m.showHighPriority)
+	if m.logsViewController.IsAutoScrollEnabled() != m.logsAutoScroll {
+		m.logsViewController.ToggleAutoScroll()
 	}
-	if m.showHighPriority {
-		title += " [High Priority]"
-	}
-	if m.showPattern != "" {
-		title += fmt.Sprintf(" [Show: %s]", m.showPattern)
-	}
-	if m.hidePattern != "" {
-		title += fmt.Sprintf(" [Hide: %s]", m.hidePattern)
-	}
-
-	header := lipgloss.NewStyle().Bold(true).Render(title)
-
-	// Add auto-scroll indicator
-	var scrollIndicator string
-	if !m.logsAutoScroll {
-		scrollStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("226")).
-			Background(lipgloss.Color("235")).
-			Padding(0, 1).
-			Bold(true)
-		scrollIndicator = scrollStyle.Render("⏸ PAUSED - Press End to resume auto-scroll")
-	}
-
-	// Combine header with scroll indicator
-	headerContent := header
-	if scrollIndicator != "" {
-		headerContent = lipgloss.JoinHorizontal(
-			lipgloss.Left,
-			header,
-			"  ",
-			scrollIndicator,
-		)
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, headerContent, m.logsViewport.View())
+	
+	// Delegate to controller
+	return m.logsViewController.Render()
 }
 
 func (m *Model) renderFiltersView() string {
@@ -2632,85 +2607,11 @@ func (m *Model) renderFiltersView() string {
 }
 
 func (m *Model) renderErrorsView() string {
-	errorContexts := m.logStore.GetErrorContexts()
-
-	var content strings.Builder
-	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Recent Errors") + "\n\n")
-
-	if len(errorContexts) == 0 {
-		// Fall back to simple errors if no contexts
-		errors := m.logStore.GetErrors()
-		if len(errors) == 0 {
-			content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("No errors detected yet. Use /clear errors to clear when errors appear"))
-		} else {
-			errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-			timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-			processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-
-			// Show most recent errors first
-			for i := len(errors) - 1; i >= 0 && i >= len(errors)-20; i-- {
-				err := errors[i]
-				content.WriteString(fmt.Sprintf("%s %s\n%s\n\n",
-					timeStyle.Render(err.Timestamp.Format("15:04:05")),
-					processStyle.Render(fmt.Sprintf("[%s]", err.ProcessName)),
-					errorStyle.Render(err.Content),
-				))
-			}
-		}
-	} else {
-		// Styles for different parts
-		errorTypeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("205")).Bold(true)
-		timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-		processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214"))
-		messageStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-		stackStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-		contextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("243"))
-		separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("236"))
-
-		// Show most recent error contexts first
-		shown := 0
-		for i := len(errorContexts) - 1; i >= 0 && shown < 10; i-- {
-			errorCtx := errorContexts[i]
-
-			// Error header
-			content.WriteString(fmt.Sprintf("%s %s %s\n",
-				timeStyle.Render(errorCtx.Timestamp.Format("15:04:05")),
-				processStyle.Render(fmt.Sprintf("[%s]", errorCtx.ProcessName)),
-				errorTypeStyle.Render(errorCtx.Type),
-			))
-
-			// Main error message
-			content.WriteString(messageStyle.Render(errorCtx.Message) + "\n")
-
-			// Stack trace if available
-			if len(errorCtx.Stack) > 0 {
-				content.WriteString(stackStyle.Render("Stack Trace:") + "\n")
-				for j, stackLine := range errorCtx.Stack {
-					if j > 5 { // Limit stack trace lines
-						content.WriteString(stackStyle.Render(fmt.Sprintf("  ... and %d more lines", len(errorCtx.Stack)-j)) + "\n")
-						break
-					}
-					content.WriteString(stackStyle.Render("  "+strings.TrimSpace(stackLine)) + "\n")
-				}
-			}
-
-			// Additional context if available
-			if len(errorCtx.Context) > 0 && len(errorCtx.Context) <= 5 {
-				for _, ctxLine := range errorCtx.Context {
-					if strings.TrimSpace(ctxLine) != "" {
-						content.WriteString(contextStyle.Render("  "+strings.TrimSpace(ctxLine)) + "\n")
-					}
-				}
-			}
-
-			// Separator between errors
-			content.WriteString(separatorStyle.Render("─────────────────────────────────────────") + "\n\n")
-			shown++
-		}
-	}
-
-	m.errorsViewport.SetContent(content.String())
-	return m.errorsViewport.View()
+	// Update controller dimensions
+	m.errorsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+	
+	// Delegate to controller
+	return m.errorsViewController.Render()
 }
 
 func (m *Model) renderURLsView() string {
@@ -2725,198 +2626,21 @@ func (m *Model) renderURLsView() string {
 
 // renderURLsList has been moved to URLsViewController
 
-// renderMCPConnectionBox has been moved to URLsViewController
-func (m *Model) renderMCPConnectionBox(mcpURLs []logs.URLEntry) string {
-	// This method is kept for backward compatibility but is no longer used
-	return ""
-}
 
 func (m *Model) renderWebView() string {
-	if m.width < 100 {
-		// For narrow screens, use the simple view
-		return m.renderWebViewNarrow()
+	// Update controller dimensions and sync filter state
+	m.webViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+	m.webViewController.SetWebFilter(m.webFilter)
+	if m.webViewController.IsWebAutoScrollEnabled() != m.webAutoScroll {
+		m.webViewController.ToggleWebAutoScroll()
 	}
-
-	// Check if proxy server is running - if not, show appropriate message
-	if m.proxyServer == nil || !m.proxyServer.IsRunning() {
-		return "\n🔴 Proxy server not running\n\nThe web proxy is currently disabled.\nTo enable it, check your configuration or start it manually."
-	}
-
-	// Build filter header that will be shown above the bordered views
-	var header strings.Builder
-	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
-
-	// Filter tabs
-	filters := []string{"all", "pages", "api", "images", "other"}
-	var filterParts []string
-	for _, filter := range filters {
-		if filter == m.webFilter {
-			filterParts = append(filterParts, activeFilterStyle.Render("["+filter+"]"))
-		} else {
-			filterParts = append(filterParts, filterStyle.Render(filter))
-		}
-	}
-
-	// Filter line with pause indicator
-	filterLine := "Filter: " + strings.Join(filterParts, " ") + " (f)"
-	if !m.webAutoScroll {
-		filterLine += " ⏸"
-	}
-	header.WriteString(filterLine + "\n")
-
-	// Calculate heights accounting for the filter header
-	filterHeaderHeight := 1 // 1 line for filter
-	contentHeight := m.height - m.headerHeight - m.footerHeight - filterHeaderHeight
-
-	// Split view: requests list on left, detail on right
-	// Use a more conservative split for better readability
-	listWidth := int(float64(m.width) * 0.4) // 40% for list
-	detailWidth := m.width - listWidth - 3   // Rest for detail
-
-	// Ensure minimum widths
-	if listWidth < 40 {
-		listWidth = 40
-	}
-	if detailWidth < 40 {
-		detailWidth = 40
-	}
-
-	// Update list and detail viewport sizes
-	m.webRequestsList.SetSize(listWidth-2, contentHeight-2) // Account for borders
-	m.webDetailViewport.Width = detailWidth - 2
-	m.webDetailViewport.Height = contentHeight - 2
-
-	// Get filtered requests and update list
-	requests := m.getFilteredRequests()
-	m.updateWebRequestsList(requests)
-
-	// Update selected request from list
-	m.updateSelectedRequestFromList()
-
-	// Render detail panel
-	detailContent := m.renderRequestDetail()
-	m.webDetailViewport.SetContent(detailContent)
-
-	// Get list content without filter header (we'll render it above)
-	listContent := m.renderWebRequestsListSimple()
-
-	// Create bordered views
-	borderStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240"))
-
-	// Apply borders with proper sizing
-	listView := borderStyle.
-		Width(listWidth - 2). // Account for border characters
-		Height(contentHeight - 2).
-		Render(listContent)
-
-	detailView := borderStyle.
-		Width(detailWidth - 2).
-		Height(contentHeight - 2).
-		Render(m.webDetailViewport.View())
-
-	// Combine header with bordered views
-	borderedContent := lipgloss.JoinHorizontal(lipgloss.Top, listView, " ", detailView)
-	return header.String() + borderedContent
+	m.webViewController.SetSelectedRequest(m.selectedRequest)
+	
+	// Delegate to controller
+	return m.webViewController.Render()
 }
 
-// renderWebRequestsListSimple renders just the list content without headers
-func (m *Model) renderWebRequestsListSimple() string {
-	var content strings.Builder
 
-	// Add the list view - check if empty and show helpful message
-	itemCount := len(m.webRequestsList.Items())
-	if itemCount == 0 {
-		// Show helpful message when no requests are available
-		emptyStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245")).
-			Italic(true).
-			MarginTop(2).
-			MarginLeft(2)
-		emptyMsg := emptyStyle.Render("No requests captured yet.\n\nMake some HTTP requests to see them here.")
-		content.WriteString(emptyMsg)
-	} else {
-		// Just show the list without any headers
-		content.WriteString(m.webRequestsList.View())
-	}
-
-	return content.String()
-}
-
-func (m *Model) renderWebViewNarrow() string {
-	var content strings.Builder
-
-	// Compact header: combine status + filter on one line, help + indicators on another
-	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
-
-	// Line 1: Status + Filter
-	var statusAndFilter strings.Builder
-	if m.proxyServer != nil && m.proxyServer.IsRunning() {
-		modeStr := "Full Proxy"
-		if m.proxyServer.GetMode() == proxy.ProxyModeReverse {
-			modeStr = "Reverse Proxy"
-		}
-		statusAndFilter.WriteString(statusStyle.Render(fmt.Sprintf("🟢 %s", modeStr)))
-	} else {
-		statusAndFilter.WriteString(statusStyle.Render("🔴 Proxy not running"))
-		content.WriteString(statusAndFilter.String() + "\n")
-		return content.String()
-	}
-
-	// Add filter to same line
-	filters := []string{"all", "pages", "api", "images", "other"}
-	var filterParts []string
-	for _, filter := range filters {
-		if filter == m.webFilter {
-			filterParts = append(filterParts, activeFilterStyle.Render("["+filter+"]"))
-		} else {
-			filterParts = append(filterParts, filterStyle.Render(filter))
-		}
-	}
-	filterText := " | Filter: " + strings.Join(filterParts, " ") + " (f)"
-	if !m.webAutoScroll {
-		filterText += " ⏸"
-	}
-	statusAndFilter.WriteString(filterText)
-	content.WriteString(statusAndFilter.String() + "\n")
-
-	// Line 2: Help + Indicators (compact)
-	content.WriteString("↑/↓ navigate, Enter select | Indicators: ❌🔐📊\n")
-
-	// Line 3: Separator
-	content.WriteString(strings.Repeat("─", m.width) + "\n")
-
-	// Calculate list height correctly
-	// Use shared header/footer heights for consistent layout
-	// Our filter headers are WITHIN this content area, so subtract them
-	totalContentHeight := m.height - m.headerHeight - m.footerHeight
-	filterHeaderLines := 3 // status+filter + help+indicators + separator (compact)
-	listHeight := totalContentHeight - filterHeaderLines
-
-	// Setup list size and update with filtered requests
-	m.webRequestsList.SetSize(m.width, listHeight)
-	requests := m.getFilteredRequests()
-	m.updateWebRequestsList(requests)
-	m.updateSelectedRequestFromList()
-
-	// Add the list view - show helpful message if empty
-	if len(m.webRequestsList.Items()) == 0 {
-		emptyStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245")).
-			Italic(true).
-			Padding(1, 0)
-		emptyMsg := emptyStyle.Render("No requests captured yet. Make some HTTP requests to see them here.")
-		content.WriteString(emptyMsg)
-	} else {
-		content.WriteString(m.webRequestsList.View())
-	}
-
-	return content.String()
-}
 
 func (m *Model) renderRequestsList(requests []proxy.Request, width int) string {
 	var content strings.Builder
