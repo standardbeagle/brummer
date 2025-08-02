@@ -226,6 +226,7 @@ type Model struct {
 	selectedError     *logs.ErrorContext
 	errorDetailView   viewport.Model
 	urlsViewport      viewport.Model
+	urlsViewController *URLsViewController // New controller for URLs view
 	webDetailViewport viewport.Model
 	settingsList      list.Model
 	searchInput       textinput.Model
@@ -286,8 +287,7 @@ type Model struct {
 	lastErrorCount   int                      // Track last error count
 	lastWebCount     int                      // Track last web request count
 
-	// MCP help state
-	showingMCPHelp bool // Whether to show detailed MCP setup help
+	// MCP help state - moved to URLsViewController
 
 	help help.Model
 	keys keyMap
@@ -1031,6 +1031,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		logsViewport:   viewport.New(0, 0),
 		errorsViewport: viewport.New(0, 0),
 		urlsViewport:   viewport.New(0, 0),
+		urlsViewController: NewURLsViewController(logStore, mcpServer),
 		webRequestsList: func() list.Model {
 			l := list.New([]list.Item{}, proxyRequestDelegate{}, 80, 20)
 			l.SetShowTitle(false)
@@ -1722,12 +1723,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				switch msg.String() {
 				case "?":
 					// Toggle MCP help display
-					m.showingMCPHelp = !m.showingMCPHelp
+					m.urlsViewController.ToggleMCPHelp()
 					return m, nil
 				case "esc":
 					// Hide MCP help if showing
-					if m.showingMCPHelp {
-						m.showingMCPHelp = false
+					if m.urlsViewController.ShowingMCPHelp {
+						m.urlsViewController.ToggleMCPHelp()
 						return m, nil
 					}
 				}
@@ -1879,9 +1880,10 @@ func (m *Model) View() string {
 		// In full screen mode, return raw PTY output without any BubbleTea styling
 		return m.aiCoderPTYView.GetRawOutput()
 	}
+	content := m.renderContent()
 
 	// Render main content with consistent layout
-	return m.renderLayout(m.renderContent())
+	return m.renderLayout(content)
 }
 
 // renderLayout provides consistent layout for all views
@@ -2063,6 +2065,11 @@ func (m *Model) updateSizes() {
 	m.errorDetailView.Height = contentHeight
 	m.urlsViewport.Width = m.width
 	m.urlsViewport.Height = contentHeight
+	
+	// Update URLs controller if initialized
+	if m.urlsViewController != nil {
+		m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+	}
 	m.webRequestsList.SetSize(m.width, contentHeight)
 	m.webDetailViewport.Width = m.width / 3
 	m.webDetailViewport.Height = contentHeight
@@ -2709,220 +2716,21 @@ func (m *Model) renderErrorsView() string {
 }
 
 func (m *Model) renderURLsView() string {
-	urls := m.logStore.GetURLs()
-
-	// Separate MCP URLs from regular URLs
-	var mcpURLs []logs.URLEntry
-	var regularURLs []logs.URLEntry
-
-	for _, urlEntry := range urls {
-		if urlEntry.ProcessName == "MCP" || urlEntry.ProcessName == "mcp-server" {
-			mcpURLs = append(mcpURLs, urlEntry)
-		} else {
-			regularURLs = append(regularURLs, urlEntry)
-		}
-	}
-
-	// Split layout: regular URLs on left, MCP connection box on right
-	if m.width < 100 {
-		// For narrow screens, use simple single column
-		return m.renderURLsViewSimple(urls)
-	}
-
-	leftWidth := m.width * 2 / 3
-	rightWidth := m.width - leftWidth - 3
-	contentHeight := m.height - m.headerHeight - m.footerHeight
-
-	// Create left panel content (regular URLs)
-	var leftContent strings.Builder
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
-	leftContent.WriteString(headerStyle.Render(fmt.Sprintf("🔗 Application URLs (%d)", len(regularURLs))) + "\n\n")
-
-	if len(regularURLs) == 0 {
-		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true)
-		leftContent.WriteString(emptyStyle.Render("No application URLs detected yet.\nStart servers with /run <script>."))
-	} else {
-		leftContent.WriteString(m.renderURLsList(regularURLs))
-	}
-
-	// Create right panel content (MCP connection box)
-	rightContent := m.renderMCPConnectionBox(mcpURLs)
-
-	// Create bordered panels
-	leftPanel := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		Width(leftWidth - 2).
-		Height(contentHeight - 2).
-		Padding(1).
-		Render(leftContent.String())
-
-	rightPanel := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("75")).
-		Width(rightWidth - 2).
-		Height(contentHeight - 2).
-		Padding(1).
-		Render(rightContent)
-
-	// Combine panels side by side
-	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, "   ", rightPanel)
+	// Update controller dimensions
+	m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+	
+	// Delegate to controller
+	return m.urlsViewController.Render()
 }
 
-func (m *Model) renderURLsViewSimple(urls []logs.URLEntry) string {
-	var content strings.Builder
+// renderURLsViewSimple has been moved to URLsViewController
 
-	// Header with count
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
-	content.WriteString(headerStyle.Render(fmt.Sprintf("🔗 Detected URLs (%d)", len(urls))) + "\n\n")
+// renderURLsList has been moved to URLsViewController
 
-	if len(urls) == 0 {
-		emptyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true)
-		content.WriteString(emptyStyle.Render("No URLs detected yet. Start servers with /run <script>. Use /proxy or /toggle-proxy for URL management."))
-	} else {
-		content.WriteString(m.renderURLsList(urls))
-	}
-
-	m.urlsViewport.SetContent(content.String())
-	return m.urlsViewport.View()
-}
-
-func (m *Model) renderURLsList(urls []logs.URLEntry) string {
-	var content strings.Builder
-
-	urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
-	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("214")).Bold(true)
-	labelStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("120")).Bold(true)
-	metaStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("242"))
-	originalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("208"))
-
-	// Get proxy mappings to show labels
-	var proxyMappings map[string]string // URL -> Label
-	if m.proxyServer != nil {
-		proxyMappings = make(map[string]string)
-		for _, mapping := range m.proxyServer.GetURLMappings() {
-			if mapping.Label != "" && mapping.Label != mapping.ProcessName {
-				proxyMappings[mapping.TargetURL] = mapping.Label
-			}
-		}
-	}
-
-	// URLs are already deduplicated and sorted by the store
-	for i, urlEntry := range urls {
-		// Use proxy URL if available, otherwise original URL
-		displayURL := urlEntry.URL
-		isProxied := urlEntry.ProxyURL != ""
-		if isProxied {
-			displayURL = urlEntry.ProxyURL
-		}
-
-		// Get label if available
-		var labelText string
-		if label, hasLabel := proxyMappings[urlEntry.URL]; hasLabel {
-			labelText = fmt.Sprintf(" %s", labelStyle.Render(fmt.Sprintf("(%s)", label)))
-		}
-
-		// Clean, single-line format: [process] URL (label) (time)
-		content.WriteString(fmt.Sprintf("%s %s%s %s\n",
-			processStyle.Render(fmt.Sprintf("[%s]", urlEntry.ProcessName)),
-			urlStyle.Render(displayURL),
-			labelText,
-			timeStyle.Render(fmt.Sprintf("(%s)", urlEntry.Timestamp.Format("15:04:05"))),
-		))
-
-		// Show original URL if using proxy (more compact)
-		if isProxied {
-			content.WriteString(metaStyle.Render(fmt.Sprintf("   ↳ Original: %s", originalStyle.Render(urlEntry.URL))) + "\n")
-		}
-
-		// Add spacing between entries, but not after the last one
-		if i < len(urls)-1 {
-			content.WriteString("\n")
-		}
-	}
-
-	return content.String()
-}
-
+// renderMCPConnectionBox has been moved to URLsViewController
 func (m *Model) renderMCPConnectionBox(mcpURLs []logs.URLEntry) string {
-	var content strings.Builder
-
-	// Header
-	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("75"))
-	content.WriteString(headerStyle.Render("🤖 Agent Integration") + "\n\n")
-
-	// Get actual MCP port
-	actualPort := m.mcpPort
-	if m.mcpServer != nil && m.mcpServer.IsRunning() {
-		actualPort = m.mcpServer.GetPort()
-	}
-
-	// MCP server status and URL
-	urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true)
-	statusStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("46")).Bold(true)
-
-	if m.mcpServer != nil && m.mcpServer.IsRunning() {
-		content.WriteString(statusStyle.Render("✅ MCP Server Running") + "\n")
-		mcpURL := fmt.Sprintf("http://localhost:%d/mcp", actualPort)
-		content.WriteString(urlStyle.Render(mcpURL) + "\n\n")
-	} else {
-		errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
-		content.WriteString(errorStyle.Render("❌ MCP Server Not Running") + "\n\n")
-	}
-
-	// Styles
-	methodStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
-	textStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("250"))
-	codeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Background(lipgloss.Color("236")).Padding(0, 1)
-	buttonStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("0")).
-		Background(lipgloss.Color("75")).
-		Padding(0, 1).
-		Bold(true)
-
-	if m.showingMCPHelp {
-		// Show detailed setup instructions
-		content.WriteString(methodStyle.Render("🔧 Detailed Setup Instructions") + "\n\n")
-
-		content.WriteString(methodStyle.Render("1. HTTP Connection (Recommended)") + "\n")
-		content.WriteString(textStyle.Render("Use the URL above in your MCP client:") + "\n")
-		mcpURL := fmt.Sprintf("http://localhost:%d/mcp", actualPort)
-		content.WriteString(codeStyle.Render(mcpURL) + "\n\n")
-
-		content.WriteString(textStyle.Render("Claude Desktop config example:") + "\n")
-		content.WriteString(codeStyle.Render(`{
-  "servers": {
-    "brummer": {
-      "command": "brum",
-      "args": ["--no-tui", "--port", "7777"]
-    }
-  }
-}`) + "\n\n")
-
-		content.WriteString(methodStyle.Render("2. Direct Integration (Advanced)") + "\n")
-		content.WriteString(textStyle.Render("For hub mode coordination:") + "\n")
-		content.WriteString(codeStyle.Render("brum --mcp") + "\n")
-		content.WriteString(textStyle.Render("or") + "\n")
-		content.WriteString(codeStyle.Render("npx -y @standardbeagle/brummer --mcp") + "\n\n")
-
-		content.WriteString(textStyle.Render("Press ") + buttonStyle.Render(" ? ") + textStyle.Render(" to hide help"))
-	} else {
-		// Show simplified connection methods
-		content.WriteString(methodStyle.Render("Connection Methods:") + "\n\n")
-
-		content.WriteString(textStyle.Render("📡 HTTP Connection (above URL)") + "\n")
-		content.WriteString(textStyle.Render("   For Claude Desktop, Cursor, etc.") + "\n\n")
-
-		content.WriteString(textStyle.Render("🔌 Direct Integration") + "\n")
-		content.WriteString(codeStyle.Render("brum --mcp") + "\n")
-		content.WriteString(textStyle.Render("or") + "\n")
-		content.WriteString(codeStyle.Render("npx -y @standardbeagle/brummer --mcp") + "\n\n")
-
-		content.WriteString(textStyle.Render("Press ") + buttonStyle.Render(" ? ") + textStyle.Render(" for setup help"))
-	}
-
-	return content.String()
+	// This method is kept for backward compatibility but is no longer used
+	return ""
 }
 
 func (m *Model) renderWebView() string {
