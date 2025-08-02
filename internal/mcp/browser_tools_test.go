@@ -33,7 +33,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			Verify: func(t *testing.T, context interface{}, err error) {
 				// Should succeed or timeout (expected without real browser)
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout", "Expected timeout without real browser connection")
+					assert.Contains(t, err.Error(), "proxy server not available", "Expected proxy server error without real browser connection")
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
@@ -62,7 +62,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			Verify: func(t *testing.T, context interface{}, err error) {
 				// Should succeed in generating code or timeout
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout", "Expected timeout without real browser connection")
+					assert.Contains(t, err.Error(), "proxy server not available", "Expected proxy server error without real browser connection")
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
@@ -91,7 +91,7 @@ func TestBrowserScreenshotTool(t *testing.T) {
 			Verify: func(t *testing.T, context interface{}, err error) {
 				// Should succeed in generating code or timeout
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout", "Expected timeout without real browser connection")
+					assert.Contains(t, err.Error(), "proxy server not available", "Expected proxy server error without real browser connection")
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
@@ -126,7 +126,7 @@ func TestREPLExecuteTool(t *testing.T) {
 			Verify: func(t *testing.T, context interface{}, err error) {
 				// Should succeed or timeout (expected without real browser)
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout", "Expected timeout without real browser connection")
+					assert.Contains(t, err.Error(), "proxy server not available", "Expected proxy server error without real browser connection")
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
@@ -153,7 +153,7 @@ func TestREPLExecuteTool(t *testing.T) {
 			Verify: func(t *testing.T, context interface{}, err error) {
 				// Should succeed or timeout
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout", "Expected timeout without real browser connection")
+					assert.Contains(t, err.Error(), "proxy server not available", "Expected proxy server error without real browser connection")
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
@@ -180,7 +180,7 @@ func TestREPLExecuteTool(t *testing.T) {
 			Verify: func(t *testing.T, context interface{}, err error) {
 				// Should succeed or timeout
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout", "Expected timeout without real browser connection")
+					assert.Contains(t, err.Error(), "proxy server not available", "Expected proxy server error without real browser connection")
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
@@ -208,7 +208,7 @@ func TestREPLExecuteTool(t *testing.T) {
 			Verify: func(t *testing.T, context interface{}, err error) {
 				// Should succeed or timeout
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout", "Expected timeout without real browser connection")
+					assert.Contains(t, err.Error(), "proxy server not available", "Expected proxy server error without real browser connection")
 				}
 			},
 			Cleanup: func(t *testing.T, context interface{}) {
@@ -287,7 +287,7 @@ func TestBrowserToolsWithProxyServer(t *testing.T) {
 		// Should succeed
 		assert.NoError(t, err, "Browser refresh should not error")
 		resultMap := result.(map[string]interface{})
-		assert.Contains(t, resultMap, "refreshed", "Result should indicate refresh was sent")
+		assert.Contains(t, resultMap, "sent", "Result should indicate refresh was sent")
 	})
 }
 
@@ -366,9 +366,9 @@ func TestBrowserToolParameterValidation(t *testing.T) {
 				args := json.RawMessage(tc.args)
 				_, err := server.tools["browser_screenshot"].Handler(args)
 
-				// We expect timeout errors in test environment, not parameter errors
+				// We expect proxy server errors in test environment, not parameter errors
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout", "Should timeout, not parameter error")
+					assert.Contains(t, err.Error(), "proxy server not available", "Should fail fast when proxy server not available, not parameter error")
 				}
 			})
 		}
@@ -403,9 +403,9 @@ func TestBrowserToolParameterValidation(t *testing.T) {
 				args := json.RawMessage(tc.args)
 				_, err := server.tools["repl_execute"].Handler(args)
 
-				// We expect timeout errors in test environment, not parameter errors
+				// We expect proxy server errors in test environment, not parameter errors
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout", "Should timeout, not parameter error")
+					assert.Contains(t, err.Error(), "proxy server not available", "Should fail fast when proxy server not available, not parameter error")
 				}
 			})
 		}
@@ -429,9 +429,9 @@ func TestJavaScriptCodeGeneration(t *testing.T) {
 		// In our test environment, it will timeout, but we can verify the parameters are parsed
 		_, err := server.tools["browser_screenshot"].Handler(args)
 
-		// Should timeout (expected behavior in test environment)
+		// Should fail fast (expected behavior in test environment)
 		if err != nil {
-			assert.Contains(t, err.Error(), "timeout", "Expected timeout")
+			assert.Contains(t, err.Error(), "proxy server not available", "Expected proxy server error")
 		}
 	})
 
@@ -444,9 +444,9 @@ func TestJavaScriptCodeGeneration(t *testing.T) {
 		// The handler will try to execute the JavaScript
 		_, err := server.tools["repl_execute"].Handler(args)
 
-		// Should timeout (expected behavior in test environment)
+		// Should fail fast (expected behavior in test environment)
 		if err != nil {
-			assert.Contains(t, err.Error(), "timeout", "Expected timeout")
+			assert.Contains(t, err.Error(), "proxy server not available", "Expected proxy server error")
 		}
 	})
 }

@@ -84,10 +84,10 @@ func TestCriticalBrowserFunctionality(t *testing.T) {
 				args := json.RawMessage(`{"format": "` + format + `"}`)
 				_, err := tool.Handler(args)
 
-				// Should timeout (expected in test environment) not format error
+				// Should fail fast (expected in test environment) not format error
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout",
-						"Should timeout waiting for browser, not fail on format validation")
+					assert.Contains(t, err.Error(), "proxy server not available",
+						"Should fail fast when proxy server not available, not fail on format validation")
 				}
 			})
 		}
@@ -112,10 +112,10 @@ func TestCriticalBrowserFunctionality(t *testing.T) {
 				args := json.RawMessage(tc.args)
 				_, err := tool.Handler(args)
 
-				// Should timeout (expected in test environment) not parameter error
+				// Should fail fast (expected in test environment) not parameter error
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout",
-						"Should timeout waiting for browser response")
+					assert.Contains(t, err.Error(), "proxy server not available",
+						"Should fail fast when proxy server not available")
 				}
 			})
 		}
@@ -141,10 +141,10 @@ func TestCriticalBrowserFunctionality(t *testing.T) {
 				args := json.RawMessage(`{"code": "` + tc.code + `"}`)
 				_, err := tool.Handler(args)
 
-				// Should timeout (expected in test environment) not syntax error
+				// Should fail fast (expected in test environment) not syntax error
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout",
-						"Should timeout waiting for browser response")
+					assert.Contains(t, err.Error(), "proxy server not available",
+						"Should fail fast when proxy server not available")
 				}
 			})
 		}
@@ -206,8 +206,8 @@ func TestCriticalBrowserFunctionality(t *testing.T) {
 				_, err = tool.Handler(json.RawMessage(`{}`))
 				// Should not error on empty JSON (should use defaults)
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout",
-						"Should only timeout, not parameter error")
+					assert.Contains(t, err.Error(), "proxy server not available",
+						"Should fail fast when proxy server not available")
 				}
 			})
 		}
@@ -250,10 +250,10 @@ func TestBrowserToolsE2EWorkflow(t *testing.T) {
 
 		_, err := server.tools["repl_execute"].Handler(args)
 
-		// Should timeout in test environment
+		// Should fail fast in test environment without proxy server
 		if err != nil {
-			assert.Contains(t, err.Error(), "timeout",
-				"Should timeout waiting for browser")
+			assert.Contains(t, err.Error(), "proxy server not available",
+				"Should fail fast when proxy server not available")
 		}
 	})
 
@@ -266,10 +266,10 @@ func TestBrowserToolsE2EWorkflow(t *testing.T) {
 
 		_, err := server.tools["browser_screenshot"].Handler(args)
 
-		// Should timeout in test environment
+		// Should fail fast in test environment without proxy server
 		if err != nil {
-			assert.Contains(t, err.Error(), "timeout",
-				"Should timeout waiting for browser")
+			assert.Contains(t, err.Error(), "proxy server not available",
+				"Should fail fast when proxy server not available")
 		}
 	})
 }
@@ -303,8 +303,8 @@ func TestBrowserToolsPerformance(t *testing.T) {
 					"Tool should timeout within reasonable time")
 
 				if err != nil {
-					assert.Contains(t, err.Error(), "timeout",
-						"Should timeout, not hang indefinitely")
+					assert.Contains(t, err.Error(), "proxy server not available",
+						"Should fail fast when proxy server not available")
 				}
 			})
 		}

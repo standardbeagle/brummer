@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/proxy"
+	"github.com/standardbeagle/brummer/internal/repl"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -1171,7 +1172,7 @@ For detailed documentation and examples, use: about tool="telemetry_events"`,
 			json.Unmarshal(args, &params)
 
 			if s.proxyServer == nil || s.proxyServer.GetTelemetryStore() == nil {
-				return map[string]interface{}{"error": "telemetry not available"}, nil
+				return nil, fmt.Errorf(ErrMsgTelemetryNotAvailable)
 			}
 
 			// Send historical events
@@ -1459,7 +1460,9 @@ func (s *MCPServer) registerREPLTool() {
 		Name: "repl_execute",
 		Description: `Execute JavaScript code in the live browser context for debugging, testing, and interactive development.
 
-Provides browser-based REPL for testing JavaScript and inspecting page state.
+Provides browser-based REPL with access to Brummer's script library (window.brummerLibrary or window.lib). The library includes debugging utilities like getDetails(), componentTree(), traceEvents(), and layout analysis functions.
+
+Use repl_library tool to manage available functions. Library is automatically injected on first use.
 
 For detailed documentation and examples, use: about tool="repl_execute"`,
 		InputSchema: json.RawMessage(`{
@@ -1502,7 +1505,74 @@ For detailed documentation and examples, use: about tool="repl_execute"`,
 				}
 			}
 
-			// Create response ID and register channel
+			// Get library manager (thread-safe initialization)
+			libraryManager := s.getLibraryManager()
+
+			// Early check for proxy server availability
+			if s.proxyServer == nil {
+				return nil, newProxyNotAvailableError(fmt.Sprintf("session %s", params.SessionID))
+			}
+
+			// Check if library is already available in browser
+			checkLibraryCode := "typeof window.brummerLibrary !== 'undefined'"
+
+			// Create response ID and register channel for library check
+			checkResponseID := fmt.Sprintf("lib-check-%d", time.Now().UnixNano())
+			checkResponseChan := s.registerREPLResponse(checkResponseID)
+
+			// Send check command
+			s.proxyServer.BroadcastToWebSockets("command", map[string]interface{}{
+				"action":     "repl",
+				"code":       checkLibraryCode,
+				"sessionId":  params.SessionID,
+				"responseId": checkResponseID,
+			})
+
+			// Wait for library check response
+			libraryAvailable := false
+			select {
+			case response := <-checkResponseChan:
+				if responseMap, ok := response.(map[string]interface{}); ok {
+					if result, ok := responseMap["result"]; ok && result == true {
+						libraryAvailable = true
+					}
+				}
+			case <-time.After(repl.LibraryCheckTimeout):
+				// Timeout on check, assume library needs injection
+			}
+
+			// Clean up the check response channel
+			s.unregisterREPLResponse(checkResponseID)
+
+			// Inject library if not available
+			if !libraryAvailable {
+				injectionCode, err := libraryManager.GenerateLibraryInjectionCode()
+				if err == nil {
+					injectResponseID := fmt.Sprintf("lib-inject-%d", time.Now().UnixNano())
+					injectResponseChan := s.registerREPLResponse(injectResponseID)
+
+					// Send injection command
+					s.proxyServer.BroadcastToWebSockets("command", map[string]interface{}{
+						"action":     "repl",
+						"code":       injectionCode,
+						"sessionId":  params.SessionID,
+						"responseId": injectResponseID,
+					})
+
+					// Wait for injection (don't block too long)
+					select {
+					case <-injectResponseChan:
+						// Library injected successfully
+					case <-time.After(repl.LibraryInjectTimeout):
+						// Continue anyway
+					}
+
+					// Clean up the injection response channel
+					s.unregisterREPLResponse(injectResponseID)
+				}
+			}
+
+			// Create response ID and register channel for actual code execution
 			responseID := fmt.Sprintf("repl-%d", time.Now().UnixNano())
 			responseChan := s.registerREPLResponse(responseID)
 			defer s.unregisterREPLResponse(responseID)
@@ -1516,9 +1586,7 @@ For detailed documentation and examples, use: about tool="repl_execute"`,
 					"responseId": responseID,
 				})
 			} else {
-				return map[string]interface{}{
-					"error": "proxy server not available",
-				}, nil
+				return nil, newProxyNotAvailableError(fmt.Sprintf("session %s", params.SessionID))
 			}
 
 			// Wait for response with timeout
@@ -1552,13 +1620,108 @@ For detailed documentation and examples, use: about tool="repl_execute"`,
 					"sessionId": params.SessionID,
 					"success":   true,
 				}, nil
-			case <-time.After(5 * time.Second):
-				return map[string]interface{}{
-					"error":     "timeout waiting for response",
-					"sessionId": params.SessionID,
-					"success":   false,
-					"hint":      "Make sure a browser window is open with the proxy URL (use browser_open or check active sessions)",
-				}, nil
+			case <-time.After(repl.REPLResponseTimeout):
+				return nil, newTimeoutError(fmt.Sprintf("session %s - make sure a browser window is open with the proxy URL (use browser_open or check active sessions)", params.SessionID))
+			}
+		},
+	}
+
+	// repl_library - Manage and use JavaScript function library
+	s.tools["repl_library"] = MCPTool{
+		Name: "repl_library",
+		Description: `Manage a library of reusable JavaScript functions for debugging and development. 
+
+The library contains utility functions for DOM debugging, component tree analysis, event tracing, layout issue detection, and more. Functions are stored as TypeScript files with metadata in .brum/scripts/ directory.
+
+Library management operations: list (default), add, remove, update, search, categories. The library is automatically injected into browser context as window.brummerLibrary and window.lib for easy access.
+
+For detailed documentation and examples, use: about tool="repl_library"`,
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"operation": {
+					"type": "string",
+					"enum": ["list", "add", "remove", "update", "search", "categories", "get", "inject"],
+					"default": "list",
+					"description": "Library operation to perform"
+				},
+				"name": {
+					"type": "string",
+					"description": "Script name (required for add, remove, update, get operations)"
+				},
+				"code": {
+					"type": "string",
+					"description": "JavaScript/TypeScript code (required for add, update operations)"
+				},
+				"description": {
+					"type": "string",
+					"description": "Script description (required for add, update operations)"
+				},
+				"category": {
+					"type": "string",
+					"description": "Script category (optional for add, update operations)"
+				},
+				"tags": {
+					"type": "array",
+					"items": {"type": "string"},
+					"description": "Script tags (optional for add, update operations)"
+				},
+				"examples": {
+					"type": "array",
+					"items": {"type": "string"},
+					"description": "Usage examples (optional for add, update operations)"
+				},
+				"parameters": {
+					"type": "object",
+					"description": "Parameter descriptions (optional for add, update operations)"
+				},
+				"returnType": {
+					"type": "string",
+					"description": "Return type description (optional for add, update operations)"
+				},
+				"author": {
+					"type": "string",
+					"description": "Script author (optional for add, update operations)"
+				},
+				"version": {
+					"type": "string",
+					"description": "Script version (optional for add, update operations)"
+				},
+				"query": {
+					"type": "string",
+					"description": "Search query (required for search operation)"
+				}
+			}
+		}`),
+		Handler: func(args json.RawMessage) (interface{}, error) {
+			var params LibraryParams
+
+			// Set default operation
+			params.Operation = "list"
+			if err := json.Unmarshal(args, &params); err != nil {
+				return nil, fmt.Errorf("%s: %w", ErrMsgInvalidParameters, err)
+			}
+
+			// Route to appropriate handler method
+			switch params.Operation {
+			case "list":
+				return s.handleLibraryList()
+			case "add":
+				return s.handleLibraryAdd(params)
+			case "remove":
+				return s.handleLibraryRemove(params)
+			case "update":
+				return s.handleLibraryUpdate(params)
+			case "search":
+				return s.handleLibrarySearch(params)
+			case "categories":
+				return s.handleLibraryCategories()
+			case "get":
+				return s.handleLibraryGet(params)
+			case "inject":
+				return s.handleLibraryInject()
+			default:
+				return nil, fmt.Errorf("unknown operation '%s' (supported: list, add, remove, update, search, categories, get, inject)", params.Operation)
 			}
 		},
 	}
@@ -1807,9 +1970,7 @@ For detailed documentation and examples, use: about tool="browser_screenshot"`,
 					"responseId": responseID,
 				})
 			} else {
-				return map[string]interface{}{
-					"error": "proxy server not available",
-				}, nil
+				return nil, newProxyNotAvailableError(fmt.Sprintf("session %s", params.SessionID))
 			}
 
 			// Wait for response with timeout
@@ -1818,18 +1979,13 @@ For detailed documentation and examples, use: about tool="browser_screenshot"`,
 				// Check if response contains error
 				if respMap, ok := response.(map[string]interface{}); ok {
 					if errMsg, ok := respMap["error"].(string); ok {
-						// Provide helpful guidance
-						return map[string]interface{}{
-							"error":      errMsg,
-							"suggestion": "Screenshot capture is limited in browser context. Consider using: 1) Browser DevTools (F12 > Elements > right-click > 'Capture node screenshot'), 2) OS screenshot tools (Windows: Win+Shift+S, Mac: Cmd+Shift+4, Linux: varies), or 3) Browser extensions for full-page capture.",
-						}, nil
+						// Provide helpful guidance in the error message
+						return nil, fmt.Errorf("screenshot capture failed: %s. Suggestions: 1) Browser DevTools (F12 > Elements > right-click > 'Capture node screenshot'), 2) OS screenshot tools (Windows: Win+Shift+S, Mac: Cmd+Shift+4, Linux: varies), or 3) Browser extensions for full-page capture", errMsg)
 					}
 				}
 				return response, nil
 			case <-time.After(5 * time.Second):
-				return map[string]interface{}{
-					"error": "timeout waiting for screenshot response",
-				}, nil
+				return nil, newTimeoutError("screenshot capture")
 			}
 		},
 	}
@@ -1913,19 +2069,13 @@ For specific tool information, use: about tool="toolname"`,
 			if params.OutputFile != "" {
 				// Validate output path for security
 				if err := validateOutputPath(params.OutputFile); err != nil {
-					return map[string]interface{}{
-						"content": aboutContent,
-						"error":   fmt.Sprintf("Invalid output file path: %v", err),
-					}, nil
+					return nil, fmt.Errorf("invalid output file path: %w", err)
 				}
 
 				if err := os.WriteFile(params.OutputFile, []byte(aboutContent), 0644); err != nil {
 					absPath, _ := filepath.Abs(params.OutputFile)
 					cwd, _ := os.Getwd()
-					return map[string]interface{}{
-						"content": aboutContent,
-						"error":   fmt.Sprintf("Failed to write about information to file: %v\nFile path: %s\nAbsolute path: %s\nWorking directory: %s\nContent size: %d bytes", err, params.OutputFile, absPath, cwd, len(aboutContent)),
-					}, nil
+					return nil, fmt.Errorf("failed to write about information to file %s: %w (absolute path: %s, working directory: %s, content size: %d bytes)", params.OutputFile, err, absPath, cwd, len(aboutContent))
 				}
 				result["file_written"] = params.OutputFile
 				result["message"] = fmt.Sprintf("About information written to %s", params.OutputFile)
