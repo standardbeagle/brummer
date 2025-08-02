@@ -222,6 +222,7 @@ type Model struct {
 	processesList     list.Model
 	processViewController *ProcessViewController // New controller for processes view
 	logsViewport      viewport.Model
+	logsViewController *LogsViewController // New controller for logs view
 	errorsViewport    viewport.Model
 	errorsList        list.Model
 	selectedError     *logs.ErrorContext
@@ -1031,6 +1032,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		processViewController: NewProcessViewController(processMgr),
 		settingsList:   settingsList,
 		logsViewport:   viewport.New(0, 0),
+		logsViewController: NewLogsViewController(logStore),
 		errorsViewport: viewport.New(0, 0),
 		urlsViewport:   viewport.New(0, 0),
 		urlsViewController: NewURLsViewController(logStore, mcpServer),
