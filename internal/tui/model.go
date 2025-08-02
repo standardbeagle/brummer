@@ -220,6 +220,7 @@ type Model struct {
 	height      int
 
 	processesList     list.Model
+	processViewController *ProcessViewController // New controller for processes view
 	logsViewport      viewport.Model
 	errorsViewport    viewport.Model
 	errorsList        list.Model
@@ -1027,6 +1028,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		debugMode:      debugMode,
 		currentView:    initialView,
 		processesList:  processesList,
+		processViewController: NewProcessViewController(processMgr),
 		settingsList:   settingsList,
 		logsViewport:   viewport.New(0, 0),
 		errorsViewport: viewport.New(0, 0),
@@ -2054,6 +2056,12 @@ func (m *Model) updateSizes() {
 	contentHeight := m.height - m.headerHeight - m.footerHeight
 
 	m.processesList.SetSize(m.width, contentHeight)
+	
+	// Update process controller if initialized
+	if m.processViewController != nil {
+		m.processViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+	}
+	
 	m.settingsList.SetSize(m.width, contentHeight)
 	m.commandsList.SetSize(m.width, contentHeight)
 	m.errorsList.SetSize(m.width/3, contentHeight) // Split view
@@ -2153,6 +2161,12 @@ func (m *Model) handleEnter() tea.Cmd {
 }
 
 func (m *Model) updateProcessList() {
+	// Delegate to controller
+	if m.processViewController != nil {
+		m.processViewController.UpdateProcessList()
+	}
+	
+	// Also update the main processesList for backward compatibility
 	processes := m.processMgr.GetAllProcesses()
 
 	// Separate and sort processes: running first, then closed
@@ -2550,29 +2564,11 @@ func (m *Model) renderHeader() string {
 }
 
 func (m *Model) renderProcessesView() string {
-	processes := m.processMgr.GetAllProcesses()
-
-	instructions := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
-		Render("Select process: ↑/↓ | Stop: s | Restart: r | Restart All: Ctrl+R | View Logs: Enter")
-
-	if len(processes) == 0 {
-		emptyState := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("245")).
-			Render("No processes running. Use / for commands: /run <script> to start scripts, /restart all, /stop <process>")
-
-		return lipgloss.JoinVertical(lipgloss.Left,
-			instructions,
-			"",
-			emptyState,
-		)
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left,
-		instructions,
-		"",
-		m.processesList.View(),
-	)
+	// Update controller dimensions
+	m.processViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+	
+	// Delegate to controller
+	return m.processViewController.Render()
 }
 
 func (m *Model) renderLogsView() string {
