@@ -69,20 +69,20 @@ func NewErrorsViewController(logStore *logs.Store) *ErrorsViewController {
 	}
 }
 
-// UpdateSize updates the viewport dimensions
-func (v *ErrorsViewController) UpdateSize(width, height, headerHeight, footerHeight int) {
+// UpdateSize updates the viewport dimensions with pre-calculated content height
+func (v *ErrorsViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
 	v.width = width
 	v.height = height
 	v.headerHeight = headerHeight
 	v.footerHeight = footerHeight
 
 	v.errorsViewport.Width = width
-	v.errorsViewport.Height = height - headerHeight - footerHeight
+	v.errorsViewport.Height = contentHeight
 
 	// Update other components
 	v.errorDetailView.Width = width
-	v.errorDetailView.Height = height - headerHeight - footerHeight
-	v.errorsList.SetSize(width, height-headerHeight-footerHeight)
+	v.errorDetailView.Height = contentHeight
+	v.errorsList.SetSize(width, contentHeight)
 }
 
 // GetErrorsViewport returns the errors viewport for direct manipulation

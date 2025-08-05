@@ -32,14 +32,14 @@ func NewURLsViewController(logStore *logs.Store, mcpServer MCPServerInterface) *
 	}
 }
 
-// UpdateSize updates the viewport dimensions
-func (v *URLsViewController) UpdateSize(width, height, headerHeight, footerHeight int) {
+// UpdateSize updates the viewport dimensions with pre-calculated content height
+func (v *URLsViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
 	v.width = width
 	v.height = height
 	v.headerHeight = headerHeight
 	v.footerHeight = footerHeight
 	v.urlsViewport.Width = width
-	v.urlsViewport.Height = height - headerHeight - footerHeight
+	v.urlsViewport.Height = contentHeight
 }
 
 // ToggleMCPHelp toggles the MCP help display

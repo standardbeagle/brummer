@@ -142,12 +142,13 @@ type AICoderController struct {
 	aiCoderPTYView *AICoderPTYView
 
 	// Dependencies
-	logStore     *logs.Store
-	updateChan   chan tea.Msg
-	width        int
-	height       int
-	headerHeight int
-	footerHeight int
+	logStore      *logs.Store
+	updateChan    chan tea.Msg
+	width         int
+	height        int
+	headerHeight  int
+	footerHeight  int
+	contentHeight int // Pre-calculated content height
 
 	// Configuration
 	cfg     *config.Config
@@ -256,16 +257,16 @@ func (c *AICoderController) SetAICoderManager(manager *aicoder.AICoderManager) {
 	}
 }
 
-// UpdateSize updates the controller and PTY view dimensions
-func (c *AICoderController) UpdateSize(width, height, headerHeight, footerHeight int) {
+// UpdateSize updates the controller and PTY view dimensions with pre-calculated content height
+func (c *AICoderController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
 	c.width = width
 	c.height = height
 	c.headerHeight = headerHeight
 	c.footerHeight = footerHeight
+	c.contentHeight = contentHeight
 
 	// Update PTY view size if it exists
 	if c.aiCoderPTYView != nil {
-		contentHeight := height - headerHeight - footerHeight
 		// Directly set the dimensions on the PTY view
 		c.aiCoderPTYView.width = width
 		c.aiCoderPTYView.height = contentHeight
@@ -307,9 +308,8 @@ func (c *AICoderController) Render() string {
 	// Ensure the PTY view has valid dimensions
 	if c.aiCoderPTYView.width <= 0 || c.aiCoderPTYView.height <= 0 {
 		// Force an update with current dimensions
-		if c.width > 0 && c.height > 0 {
-			contentHeight := c.height - c.headerHeight - c.footerHeight
-			c.aiCoderPTYView.Update(windowSizeMsg{Width: c.width, Height: contentHeight})
+		if c.width > 0 && c.height > 0 && c.contentHeight > 0 {
+			c.aiCoderPTYView.Update(windowSizeMsg{Width: c.width, Height: c.contentHeight})
 		}
 	}
 
@@ -497,9 +497,8 @@ func (c *AICoderController) HandleAICommand(providerName string) {
 						c.logStore.Add("system", "System", fmt.Sprintf("Started %s AI coder session", providerName), false)
 
 						// Ensure dimensions are set before switching views
-						if c.width > 0 && c.height > 0 {
-							contentHeight := c.height - c.headerHeight - c.footerHeight
-							c.aiCoderPTYView.Update(windowSizeMsg{Width: c.width, Height: contentHeight})
+						if c.width > 0 && c.height > 0 && c.contentHeight > 0 {
+							c.aiCoderPTYView.Update(windowSizeMsg{Width: c.width, Height: c.contentHeight})
 						}
 
 						// Start monitoring PTY output

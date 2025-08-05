@@ -37,14 +37,20 @@ func (cl *ContentLayout) UpdateDimensions(width, height, headerHeight, footerHei
 	cl.footerHeight = footerHeight
 }
 
-// RenderContent renders content with proper layout
-func (cl *ContentLayout) RenderContent(content string) string {
-	// Calculate available content height
-	// Subtract 1 to account for proper spacing
+// calculateContentHeight returns the available content height with consistent calculation
+func (cl *ContentLayout) calculateContentHeight() int {
+	// Subtract 1 to account for proper spacing between header and content
 	contentHeight := cl.height - cl.headerHeight - cl.footerHeight - 1
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
+	return contentHeight
+}
+
+// RenderContent renders content with proper layout
+func (cl *ContentLayout) RenderContent(content string) string {
+	// Use the centralized height calculation
+	contentHeight := cl.calculateContentHeight()
 
 	// Apply content style with proper dimensions
 	// Must set both Width and Height to constrain content properly

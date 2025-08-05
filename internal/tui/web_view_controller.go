@@ -187,8 +187,8 @@ func NewWebViewController(proxyServer *proxy.Server) *WebViewController {
 	}
 }
 
-// UpdateSize updates the viewport and list dimensions
-func (v *WebViewController) UpdateSize(width, height, headerHeight, footerHeight int) {
+// UpdateSize updates the viewport and list dimensions with pre-calculated content height
+func (v *WebViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
 	v.width = width
 	v.height = height
 	v.headerHeight = headerHeight
@@ -197,8 +197,12 @@ func (v *WebViewController) UpdateSize(width, height, headerHeight, footerHeight
 	// Update sizes based on current layout
 	if width < 100 {
 		// Narrow view - full width list
-		contentHeight := height - headerHeight - footerHeight - 3 // Account for filter headers
-		v.webRequestsList.SetSize(width, contentHeight)
+		// Account for filter headers
+		adjustedHeight := contentHeight - 3
+		if adjustedHeight < 1 {
+			adjustedHeight = 1
+		}
+		v.webRequestsList.SetSize(width, adjustedHeight)
 	} else {
 		// Split view
 		listWidth := int(float64(width) * 0.4)

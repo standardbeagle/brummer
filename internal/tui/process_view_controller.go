@@ -34,11 +34,12 @@ type ProcessViewController struct {
 	selectedProcess string
 
 	// Dependencies injected from parent Model
-	processMgr   *process.Manager
-	width        int
-	height       int
-	headerHeight int
-	footerHeight int
+	processMgr    *process.Manager
+	width         int
+	height        int
+	headerHeight  int
+	footerHeight  int
+	contentHeight int // Pre-calculated content height
 }
 
 // NewProcessViewController creates a new process view controller
@@ -53,14 +54,14 @@ func NewProcessViewController(processMgr *process.Manager) *ProcessViewControlle
 	}
 }
 
-// UpdateSize updates the list dimensions
-func (v *ProcessViewController) UpdateSize(width, height, headerHeight, footerHeight int) {
+// UpdateSize updates the list dimensions with pre-calculated content height
+func (v *ProcessViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
 	v.width = width
 	v.height = height
 	v.headerHeight = headerHeight
 	v.footerHeight = footerHeight
+	v.contentHeight = contentHeight
 
-	contentHeight := height - headerHeight - footerHeight
 	v.processesList.SetSize(width, contentHeight)
 }
 
@@ -87,11 +88,8 @@ func (v *ProcessViewController) UpdateProcessList() {
 	var items []list.Item
 
 	if len(processes) == 0 {
-		// Add a placeholder item for empty state
-		items = append(items, processItem{
-			process:  nil,
-			isHeader: false,
-		})
+		// Don't add placeholder item - let Render handle empty state
+		// The empty state will be shown by the Render method
 	} else {
 		// Group processes by status
 		var running, stopped []*process.Process
@@ -144,12 +142,12 @@ func (v *ProcessViewController) UpdateProcessList() {
 func (v *ProcessViewController) Render() string {
 	processes := v.processMgr.GetAllProcesses()
 	if len(processes) == 0 {
-		// Show empty state centered
+		// Show empty state centered using the pre-calculated content height
 		emptyState := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245")).
 			Align(lipgloss.Center, lipgloss.Center).
 			Width(v.width).
-			Height(v.height - v.headerHeight - v.footerHeight).
+			Height(v.contentHeight).
 			Render("No processes running.\n\nUse / for commands:\n/run <script> to start scripts\n/restart all\n/stop <process>")
 		return emptyState
 	}

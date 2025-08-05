@@ -45,15 +45,15 @@ func NewLogsViewController(logStore *logs.Store) *LogsViewController {
 	}
 }
 
-// UpdateSize updates the viewport dimensions
-func (v *LogsViewController) UpdateSize(width, height, headerHeight, footerHeight int) {
+// UpdateSize updates the viewport dimensions with pre-calculated content height
+func (v *LogsViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
 	v.width = width
 	v.height = height
 	v.headerHeight = headerHeight
 	v.footerHeight = footerHeight
 
 	v.logsViewport.Width = width
-	v.logsViewport.Height = height - headerHeight - footerHeight
+	v.logsViewport.Height = contentHeight
 }
 
 // SetSelectedProcess sets the currently selected process for filtering

@@ -51,15 +51,14 @@ func NewSettingsController(cfg *config.Config, mcpServer MCPServerInterface, pro
 	}
 }
 
-// UpdateSize updates the viewport dimensions
-func (s *SettingsController) UpdateSize(width, height, headerHeight, footerHeight int) {
+// UpdateSize updates the viewport dimensions with pre-calculated content height
+func (s *SettingsController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
 	s.width = width
 	s.height = height
 	s.headerHeight = headerHeight
 	s.footerHeight = footerHeight
 
 	// Update settings list size
-	contentHeight := height - headerHeight - footerHeight
 	s.settingsList.SetSize(width, contentHeight)
 }
 

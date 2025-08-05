@@ -950,19 +950,22 @@ func (m *Model) renderContent() string {
 		return m.commandWindowController.RenderCustomCommandDialog()
 	}
 
+	// Calculate content height once for all views
+	contentHeight := m.calculateContentHeight()
+
 	switch m.currentView() {
 	case ViewProcesses:
 		// Update controller dimensions and render
-		m.processViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.processViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 		return m.processViewController.Render()
 	case ViewLogs:
 		// Update controller dimensions and sync state
-		m.logsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.logsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 		m.logsViewController.SetSelectedProcess(m.selectedProcess)
 		return m.logsViewController.Render()
 	case ViewErrors:
 		// Update controller dimensions and render
-		m.errorsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.errorsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 		// Use content layout for split view if available and screen is wide enough
 		if m.contentLayout != nil && m.width >= 100 {
 			// Calculate split sizes
@@ -989,30 +992,30 @@ func (m *Model) renderContent() string {
 		return m.errorsViewController.Render()
 	case ViewURLs:
 		// Update controller dimensions and render
-		m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 		return m.urlsViewController.Render()
 	case ViewWeb:
 		// Update controller dimensions and render
-		m.webViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.webViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 		return m.webViewController.Render()
 	case ViewSettings:
 		if m.fileBrowserController.IsShowing() {
 			return m.fileBrowserController.Render(m.width, m.height)
 		}
 		// Update controller dimensions and render
-		m.settingsController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.settingsController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 		return m.settingsController.Render()
 	case ViewMCPConnections:
 		if m.debugMode {
 			return m.mcpDebugController.Render(m.width, m.height, m.headerHeight, m.footerHeight)
 		}
 		// Fallback to settings if not in debug mode
-		m.settingsController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.settingsController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 		return m.settingsController.Render()
 	case ViewAICoders:
 		if m.aiCoderController != nil {
 			// Update controller dimensions before rendering
-			m.aiCoderController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+			m.aiCoderController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 			return m.aiCoderController.Render()
 		}
 		return "AI Coder feature is not initialized"
@@ -1077,25 +1080,28 @@ func (m *Model) updateSizes() {
 
 	// processesList sizing now handled by ProcessViewController
 
+	// Calculate content height once for all controllers
+	calculatedContentHeight := m.calculateContentHeight()
+
 	// Update process controller if initialized
 	if m.processViewController != nil {
-		m.processViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.processViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
 	}
 
 	// settingsList sizing now handled by SettingsController
 	m.commandWindowController.GetCommandsList().SetSize(m.width, contentHeight)
-	m.errorsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
-	m.logsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+	m.errorsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
+	m.logsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
 
 	// Update URLs controller if initialized
 	if m.urlsViewController != nil {
-		m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
 	}
 	// Web view sizing handled by WebViewController during rendering
 
 	// Update AI Coder controller size if initialized
 	if m.aiCoderController != nil {
-		m.aiCoderController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
+		m.aiCoderController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
 	}
 
 	// Update command window controller size
@@ -1391,6 +1397,16 @@ func (m *Model) updateErrorsList() {
 func (m *Model) updateErrorDetailView() {
 	// Delegate to ErrorsViewController
 	m.errorsViewController.UpdateErrorDetailView()
+}
+
+// calculateContentHeight returns the available content height with consistent calculation
+func (m *Model) calculateContentHeight() int {
+	// Subtract 1 to account for proper spacing between header and content
+	contentHeight := m.height - m.headerHeight - m.footerHeight - 1
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+	return contentHeight
 }
 
 // renderErrorsViewSplit moved to ErrorsViewController
