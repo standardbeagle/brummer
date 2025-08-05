@@ -45,7 +45,8 @@ func (r *MessageRouter) RegisterHandler(handler MessageHandler) {
 func (r *MessageRouter) Route(msg tea.Msg, model *Model) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
-	// Try each handler until one can handle the message
+	// Try each handler that can handle the message
+	// Multiple handlers may process the same message (e.g., for cross-cutting concerns)
 	for _, handler := range r.handlers {
 		if handler.CanHandle(msg) {
 			newModel, cmd := handler.HandleMessage(msg, model)

@@ -3,6 +3,7 @@ package logs
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -658,14 +659,11 @@ func (s *Store) rebuildURLsList() {
 		}
 	}
 
-	// Sort by timestamp (most recent first)
-	for i := 0; i < len(s.urls)-1; i++ {
-		for j := i + 1; j < len(s.urls); j++ {
-			if s.urls[j].Timestamp.After(s.urls[i].Timestamp) {
-				s.urls[i], s.urls[j] = s.urls[j], s.urls[i]
-			}
-		}
-	}
+	// Sort by timestamp (most recent first) using Go's sort package
+	// This is more efficient and less prone to race conditions than bubble sort
+	sort.Slice(s.urls, func(i, j int) bool {
+		return s.urls[i].Timestamp.After(s.urls[j].Timestamp)
+	})
 
 	// Keep only the most recent 100 URLs
 	if len(s.urls) > 100 {

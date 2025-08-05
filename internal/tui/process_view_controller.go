@@ -88,8 +88,9 @@ func (v *ProcessViewController) UpdateProcessList() {
 	var items []list.Item
 
 	if len(processes) == 0 {
-		// Don't add placeholder item - let Render handle empty state
-		// The empty state will be shown by the Render method
+		// Clear the list when there are no processes
+		v.processesList.SetItems([]list.Item{})
+		return
 	} else {
 		// Group processes by status
 		var running, stopped []*process.Process

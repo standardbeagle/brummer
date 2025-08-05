@@ -797,8 +797,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Continue ticking for periodic updates
 		cmds = append(cmds, m.tickCmd())
 
-		// Update logs view if we're currently viewing logs to ensure real-time updates
-		if m.currentView() == ViewLogs || m.currentView() == ViewURLs {
+		// Update views based on current view to ensure real-time updates
+		switch m.currentView() {
+		case ViewProcesses:
+			m.updateProcessList()
+		case ViewLogs, ViewURLs:
 			m.updateLogsView()
 		}
 
