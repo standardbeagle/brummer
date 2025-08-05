@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -50,6 +51,18 @@ func (v *URLsViewController) ToggleMCPHelp() {
 // Render renders the URLs view
 func (v *URLsViewController) Render() string {
 	urls := v.logStore.GetURLs()
+
+	// Apply stable sort to ensure consistent ordering in UI
+	// Sort by: ProcessName first, then URL, then Timestamp
+	sort.Slice(urls, func(i, j int) bool {
+		if urls[i].ProcessName != urls[j].ProcessName {
+			return urls[i].ProcessName < urls[j].ProcessName
+		}
+		if urls[i].URL != urls[j].URL {
+			return urls[i].URL < urls[j].URL
+		}
+		return urls[i].Timestamp.Before(urls[j].Timestamp)
+	})
 
 	// Separate MCP URLs from regular URLs
 	var mcpURLs []logs.URLEntry
@@ -113,6 +126,8 @@ func (v *URLsViewController) Render() string {
 func (v *URLsViewController) renderSimple(urls []logs.URLEntry) string {
 	var content strings.Builder
 
+	// URLs are already sorted by the Render method, no need to sort again
+	
 	// Header with count
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
 	content.WriteString(headerStyle.Render(fmt.Sprintf("🔗 Detected URLs (%d)", len(urls))) + "\n\n")
@@ -140,7 +155,6 @@ func (v *URLsViewController) renderURLsList(urls []logs.URLEntry) string {
 
 	processStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("214"))
 	urlStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Underline(true)
-	contextStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true)
 	timeStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("102"))
 
 	// Instructions
@@ -156,24 +170,23 @@ func (v *URLsViewController) renderURLsList(urls []logs.URLEntry) string {
 
 		content.WriteString(processStyle.Render(fmt.Sprintf("📦 %s", processName)) + "\n")
 
-		// Deduplicate URLs for display
-		seen := make(map[string]logs.URLEntry)
+		// Deduplicate URLs while maintaining order from sorted input
+		seen := make(map[string]bool)
 		for _, urlEntry := range processURLs {
-			// Use the URL as key to deduplicate, keeping the first occurrence
-			if _, exists := seen[urlEntry.URL]; !exists {
-				seen[urlEntry.URL] = urlEntry
+			// Skip if we've already seen this URL
+			if seen[urlEntry.URL] {
+				continue
 			}
-		}
+			seen[urlEntry.URL] = true
 
-		// Display unique URLs
-		for _, urlEntry := range seen {
 			// Create clickable URL display
 			clickable := fmt.Sprintf("   %s", urlStyle.Render(urlEntry.URL))
 			content.WriteString(clickable)
 
-			// Add context if available
-			if urlEntry.Context != "" {
-				content.WriteString(fmt.Sprintf(" %s", contextStyle.Render(fmt.Sprintf("(%s)", urlEntry.Context))))
+			// Add proxy URL if available (instead of context)
+			if urlEntry.ProxyURL != "" {
+				proxyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("75")).Italic(true)
+				content.WriteString(fmt.Sprintf(" → %s", proxyStyle.Render(urlEntry.ProxyURL)))
 			}
 
 			// Add first seen time
