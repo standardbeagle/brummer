@@ -49,18 +49,21 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 			model.layoutController.UpdateSize(m.Width, m.Height)
 		}
 
-		// Update all view controllers with new size
+		// Calculate content height once for all controllers
+		contentHeight := model.calculateContentHeight()
+		
+		// Update all view controllers with new size including content height
 		if model.processViewController != nil {
-			model.processViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight())
+			model.processViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
 		}
 		if model.logsViewController != nil {
-			model.logsViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight())
+			model.logsViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
 		}
 		if model.webViewController != nil {
-			model.webViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight())
+			model.webViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
 		}
 		if model.settingsController != nil {
-			model.settingsController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight())
+			model.settingsController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
 		}
 
 		// Update overlay controllers
