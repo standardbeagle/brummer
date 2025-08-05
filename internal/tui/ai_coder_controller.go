@@ -395,127 +395,127 @@ func (c *AICoderController) HandleAICommand(providerName string) {
 			// Ensure we reset the flag when done
 			defer c.isCreatingSession.Store(false)
 
-		// Create the AI coder with proper context
-		coder, err := c.aiCoderManager.CreateCoder(c.ctx, aicoder.CreateCoderRequest{
-			Provider: providerName,
-			Task:     "Interactive AI coding session",
-		})
-		if err != nil {
-			errorMsg := fmt.Sprintf("Error creating AI coder with provider '%s': %v", providerName, err)
-			c.logStore.Add("system", "System", errorMsg, true)
-			c.updateChan <- logUpdateMsg{}
-			return
-		}
-
-		// Track coder ID for cleanup
-		coderID := coder.ID
-
-		// Start the AI coder
-		if err := c.aiCoderManager.StartCoder(coderID); err != nil {
-			errorMsg := fmt.Sprintf("Error starting AI coder '%s' (provider: %s): %v", coderID, providerName, err)
-			c.logStore.Add("system", "System", errorMsg, true)
-			// Clean up the created but not started coder
-			if deleteErr := c.aiCoderManager.DeleteCoder(coderID); deleteErr != nil {
-				cleanupError := fmt.Sprintf("Error cleaning up AI coder '%s' after start failure: %v", coderID, deleteErr)
-				c.logStore.Add("system", "System", cleanupError, true)
-			}
-			c.updateChan <- logUpdateMsg{}
-			return
-		}
-
-		// Create a PTY session for the AI coder
-		if c.ptyManager != nil {
-			// Get provider configuration through the adapter
-			adapter := &configAdapter{cfg: c.cfg}
-			providerConfigs := adapter.GetProviderConfigs()
-
-			providerConfig, exists := providerConfigs[providerName]
-			if !exists {
-				// Get available provider names for error message
-				availableProviders := make([]string, 0, len(providerConfigs))
-				for name := range providerConfigs {
-					availableProviders = append(availableProviders, name)
-				}
-				c.logStore.Add("system", "System", fmt.Sprintf("Provider %s not configured. Available: %v", providerName, availableProviders), true)
+			// Create the AI coder with proper context
+			coder, err := c.aiCoderManager.CreateCoder(c.ctx, aicoder.CreateCoderRequest{
+				Provider: providerName,
+				Task:     "Interactive AI coding session",
+			})
+			if err != nil {
+				errorMsg := fmt.Sprintf("Error creating AI coder with provider '%s': %v", providerName, err)
+				c.logStore.Add("system", "System", errorMsg, true)
 				c.updateChan <- logUpdateMsg{}
 				return
 			}
 
-			// Create PTY session with the provider's CLI tool
-			if providerConfig.CLITool != nil {
-				sessionName := fmt.Sprintf("%s AI Coder", providerName)
-				command := providerConfig.CLITool.Command
-				args := providerConfig.CLITool.BaseArgs
-				if args == nil {
-					args = []string{}
+			// Track coder ID for cleanup
+			coderID := coder.ID
+
+			// Start the AI coder
+			if err := c.aiCoderManager.StartCoder(coderID); err != nil {
+				errorMsg := fmt.Sprintf("Error starting AI coder '%s' (provider: %s): %v", coderID, providerName, err)
+				c.logStore.Add("system", "System", errorMsg, true)
+				// Clean up the created but not started coder
+				if deleteErr := c.aiCoderManager.DeleteCoder(coderID); deleteErr != nil {
+					cleanupError := fmt.Sprintf("Error cleaning up AI coder '%s' after start failure: %v", coderID, deleteErr)
+					c.logStore.Add("system", "System", cleanupError, true)
 				}
+				c.updateChan <- logUpdateMsg{}
+				return
+			}
 
-				// Special handling for terminal provider
-				if providerName == "terminal" {
-					// Use bash in interactive mode
-					command = "/bin/bash"
-					args = []string{"-i"}
-				} else {
-					// For other providers, expand environment variables in args
-					mcpURL := fmt.Sprintf("http://localhost:%d/mcp", c.mcpPort)
-					expandedArgs := make([]string, len(args))
-					for i, arg := range args {
-						// Replace ${BRUMMER_MCP_URL} with actual URL
-						expandedArg := strings.ReplaceAll(arg, "${BRUMMER_MCP_URL}", mcpURL)
-						expandedArgs[i] = expandedArg
+			// Create a PTY session for the AI coder
+			if c.ptyManager != nil {
+				// Get provider configuration through the adapter
+				adapter := &configAdapter{cfg: c.cfg}
+				providerConfigs := adapter.GetProviderConfigs()
+
+				providerConfig, exists := providerConfigs[providerName]
+				if !exists {
+					// Get available provider names for error message
+					availableProviders := make([]string, 0, len(providerConfigs))
+					for name := range providerConfigs {
+						availableProviders = append(availableProviders, name)
 					}
-					args = expandedArgs
-				}
-
-				// Set up environment variables
-				envMap := make(map[string]string)
-				envMap["BRUMMER_MCP_URL"] = fmt.Sprintf("http://localhost:%d/mcp", c.mcpPort)
-				envMap["BRUMMER_MCP_PORT"] = fmt.Sprintf("%d", c.mcpPort)
-
-				// Add provider-specific environment variables
-				if providerConfig.CLITool.Environment != nil {
-					for k, v := range providerConfig.CLITool.Environment {
-						envMap[k] = v
-					}
-				}
-
-				session, err := c.ptyManager.CreateSessionWithEnv(sessionName, command, args, envMap)
-				if err != nil {
-					// Provide more helpful error messages
-					if strings.Contains(err.Error(), "executable file not found") {
-						c.logStore.Add("system", "System", fmt.Sprintf("Command '%s' not found. Please install the %s CLI tool.", command, providerName), true)
-					} else {
-						c.logStore.Add("system", "System", fmt.Sprintf("Error creating PTY session: %v", err), true)
-					}
+					c.logStore.Add("system", "System", fmt.Sprintf("Provider %s not configured. Available: %v", providerName, availableProviders), true)
 					c.updateChan <- logUpdateMsg{}
 					return
 				}
 
-				// Set the current session in the PTY view
-				if c.aiCoderPTYView != nil {
-					c.aiCoderPTYView.SetCurrentSession(session)
-					c.logStore.Add("system", "System", fmt.Sprintf("Started %s AI coder session", providerName), false)
-
-					// Ensure dimensions are set before switching views
-					if c.width > 0 && c.height > 0 {
-						contentHeight := c.height - c.headerHeight - c.footerHeight
-						c.aiCoderPTYView.Update(windowSizeMsg{Width: c.width, Height: contentHeight})
+				// Create PTY session with the provider's CLI tool
+				if providerConfig.CLITool != nil {
+					sessionName := fmt.Sprintf("%s AI Coder", providerName)
+					command := providerConfig.CLITool.Command
+					args := providerConfig.CLITool.BaseArgs
+					if args == nil {
+						args = []string{}
 					}
 
-					// Start monitoring PTY output
-					go c.monitorPTYOutput(session)
+					// Special handling for terminal provider
+					if providerName == "terminal" {
+						// Use bash in interactive mode
+						command = "/bin/bash"
+						args = []string{"-i"}
+					} else {
+						// For other providers, expand environment variables in args
+						mcpURL := fmt.Sprintf("http://localhost:%d/mcp", c.mcpPort)
+						expandedArgs := make([]string, len(args))
+						for i, arg := range args {
+							// Replace ${BRUMMER_MCP_URL} with actual URL
+							expandedArg := strings.ReplaceAll(arg, "${BRUMMER_MCP_URL}", mcpURL)
+							expandedArgs[i] = expandedArg
+						}
+						args = expandedArgs
+					}
 
-					// Switch to AI Coders view to show the session
-					c.updateChan <- switchToAICodersMsg{}
-					// Trigger immediate update to show the session
-					c.updateChan <- processUpdateMsg{}
+					// Set up environment variables
+					envMap := make(map[string]string)
+					envMap["BRUMMER_MCP_URL"] = fmt.Sprintf("http://localhost:%d/mcp", c.mcpPort)
+					envMap["BRUMMER_MCP_PORT"] = fmt.Sprintf("%d", c.mcpPort)
+
+					// Add provider-specific environment variables
+					if providerConfig.CLITool.Environment != nil {
+						for k, v := range providerConfig.CLITool.Environment {
+							envMap[k] = v
+						}
+					}
+
+					session, err := c.ptyManager.CreateSessionWithEnv(sessionName, command, args, envMap)
+					if err != nil {
+						// Provide more helpful error messages
+						if strings.Contains(err.Error(), "executable file not found") {
+							c.logStore.Add("system", "System", fmt.Sprintf("Command '%s' not found. Please install the %s CLI tool.", command, providerName), true)
+						} else {
+							c.logStore.Add("system", "System", fmt.Sprintf("Error creating PTY session: %v", err), true)
+						}
+						c.updateChan <- logUpdateMsg{}
+						return
+					}
+
+					// Set the current session in the PTY view
+					if c.aiCoderPTYView != nil {
+						c.aiCoderPTYView.SetCurrentSession(session)
+						c.logStore.Add("system", "System", fmt.Sprintf("Started %s AI coder session", providerName), false)
+
+						// Ensure dimensions are set before switching views
+						if c.width > 0 && c.height > 0 {
+							contentHeight := c.height - c.headerHeight - c.footerHeight
+							c.aiCoderPTYView.Update(windowSizeMsg{Width: c.width, Height: contentHeight})
+						}
+
+						// Start monitoring PTY output
+						go c.monitorPTYOutput(session)
+
+						// Switch to AI Coders view to show the session
+						c.updateChan <- switchToAICodersMsg{}
+						// Trigger immediate update to show the session
+						c.updateChan <- processUpdateMsg{}
+					}
+				} else {
+					c.logStore.Add("system", "System", fmt.Sprintf("Provider %s does not have CLI tool configured", providerName), true)
 				}
-			} else {
-				c.logStore.Add("system", "System", fmt.Sprintf("Provider %s does not have CLI tool configured", providerName), true)
 			}
-		}
 
-		c.updateChan <- processUpdateMsg{}
+			c.updateChan <- processUpdateMsg{}
 		},
 		func(err error) {
 			c.isCreatingSession.Store(false) // Ensure flag is reset on panic

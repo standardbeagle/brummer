@@ -301,32 +301,8 @@ func (v *WebViewController) Render() string {
 		return "\n🔴 Proxy server not running\n\nThe web proxy is currently disabled.\nTo enable it, check your configuration or start it manually."
 	}
 
-	// Build filter header that will be shown above the bordered views
-	var header strings.Builder
-	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
-
-	// Filter tabs
-	filters := []string{"all", "pages", "api", "images", "other"}
-	var filterParts []string
-	for _, filter := range filters {
-		if filter == v.webFilter {
-			filterParts = append(filterParts, activeFilterStyle.Render("["+filter+"]"))
-		} else {
-			filterParts = append(filterParts, filterStyle.Render(filter))
-		}
-	}
-
-	// Filter line with pause indicator
-	filterLine := "Filter: " + strings.Join(filterParts, " ") + " (f)"
-	if !v.webAutoScroll {
-		filterLine += " ⏸"
-	}
-	header.WriteString(filterLine + "\n")
-
-	// Calculate heights accounting for the filter header
-	filterHeaderHeight := 1 // 1 line for filter
-	contentHeight := v.height - v.headerHeight - v.footerHeight - filterHeaderHeight
+	// Calculate heights
+	contentHeight := v.height - v.headerHeight - v.footerHeight
 
 	// Split view: requests list on left, detail on right
 	// Use a more conservative split for better readability
@@ -376,9 +352,8 @@ func (v *WebViewController) Render() string {
 		Height(contentHeight - 2).
 		Render(v.webDetailViewport.View())
 
-	// Combine header with bordered views
-	borderedContent := lipgloss.JoinHorizontal(lipgloss.Top, listView, " ", detailView)
-	return header.String() + borderedContent
+	// Combine bordered views horizontally
+	return lipgloss.JoinHorizontal(lipgloss.Top, listView, " ", detailView)
 }
 
 // renderRequestsList renders the requests list
@@ -435,7 +410,16 @@ func (v *WebViewController) renderRequestsList(requests []proxy.Request, width i
 	// Requests table header
 	headerStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Bold(true)
 	content.WriteString(headerStyle.Render("Time     St Method  URL") + "\n")
-	content.WriteString(strings.Repeat("─", width-4) + "\n")
+	// Use lipgloss border style instead of manual line drawing
+	separatorStyle := lipgloss.NewStyle().
+		Width(width - 4).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderTop(true).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderForeground(lipgloss.Color("240"))
+	content.WriteString(separatorStyle.Render("") + "\n")
 
 	// Show recent requests (limit for performance)
 	startIdx := 0
@@ -735,7 +719,16 @@ func (v *WebViewController) renderNarrow() string {
 	content.WriteString("↑/↓ navigate, Enter select | Indicators: ❌🔐📊\n")
 
 	// Line 3: Separator
-	content.WriteString(strings.Repeat("─", v.width) + "\n")
+	// Use lipgloss border style instead of manual line drawing
+	separatorStyle := lipgloss.NewStyle().
+		Width(v.width).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderTop(true).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderForeground(lipgloss.Color("240"))
+	content.WriteString(separatorStyle.Render("") + "\n")
 
 	// Calculate list height correctly
 	totalContentHeight := v.height - v.headerHeight - v.footerHeight

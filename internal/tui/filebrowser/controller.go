@@ -224,10 +224,6 @@ func (c *Controller) Render(width, height int) string {
 	selectedIndex := c.listModel.Index()
 
 	// Create styles
-	overlayStyle := lipgloss.NewStyle().
-		Width(width).
-		Height(height).
-		Background(lipgloss.Color("0"))
 
 	dialogStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
@@ -291,30 +287,13 @@ func (c *Controller) Render(width, height int) string {
 	// Create dialog
 	dialog := dialogStyle.Render(content.String())
 
-	// Center the dialog
-	dialogLines := strings.Split(dialog, "\n")
-	dialogHeight := len(dialogLines)
-	topPadding := (height - dialogHeight) / 2
-	if topPadding < 0 {
-		topPadding = 0
-	}
-
-	// Build final overlay
-	var overlay strings.Builder
-	for i := 0; i < topPadding; i++ {
-		overlay.WriteString("\n")
-	}
-
-	leftPadding := (width - lipgloss.Width(dialogLines[0])) / 2
-	if leftPadding < 0 {
-		leftPadding = 0
-	}
-
-	for _, line := range dialogLines {
-		overlay.WriteString(strings.Repeat(" ", leftPadding))
-		overlay.WriteString(line)
-		overlay.WriteString("\n")
-	}
-
-	return overlayStyle.Render(overlay.String())
+	// Use lipgloss to center the dialog
+	return lipgloss.Place(
+		width,
+		height,
+		lipgloss.Center,
+		lipgloss.Center,
+		dialog,
+		lipgloss.WithWhitespaceChars(" "),
+	)
 }

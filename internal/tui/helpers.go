@@ -102,7 +102,7 @@ func getTerminalSize() (width, height int, err error) {
 		return width, height, nil
 	}
 	stdoutErr := fmt.Errorf("stdout: %w", err)
-	
+
 	// Fallback to stderr
 	fd = int(os.Stderr.Fd())
 	width, height, err = term.GetSize(fd)
@@ -110,13 +110,13 @@ func getTerminalSize() (width, height int, err error) {
 		return width, height, nil
 	}
 	stderrErr := fmt.Errorf("stderr: %w", err)
-	
+
 	// Fallback to stdin
 	fd = int(os.Stdin.Fd())
 	width, height, err = term.GetSize(fd)
 	if err != nil {
 		// Return error with context about all attempts
-		return 0, 0, fmt.Errorf("failed to get terminal size from any file descriptor: %v, %v, stdin: %w", 
+		return 0, 0, fmt.Errorf("failed to get terminal size from any file descriptor: %v, %v, stdin: %w",
 			stdoutErr, stderrErr, err)
 	}
 	return width, height, nil

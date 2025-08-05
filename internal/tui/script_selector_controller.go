@@ -271,24 +271,20 @@ func (c *ScriptSelectorController) View() string {
 	if !c.visible {
 		return ""
 	}
-	
+
 	// Update autocomplete width based on terminal size
 	c.updateAutocompleteWidth()
-	
+
 	// Get terminal dimensions and max suggestions
 	termWidth, termHeight := c.getTerminalDimensions()
 	maxSuggestions := c.getMaxSuggestions(termHeight)
-	
+
 	// Render input and dropdown components
 	input := c.scriptSelector.View()
 	dropdown := c.scriptSelector.RenderDropdown(maxSuggestions)
-	
-	// Calculate layout dimensions
-	contentHeight := c.calculateContentHeight(dropdown)
-	topPadding := c.calculateTopPadding(termHeight, contentHeight)
-	
-	// Build the complete view
-	return c.buildView(termWidth, termHeight, topPadding, input, dropdown)
+
+	// Build the complete view using Lipgloss centering
+	return c.buildView(termWidth, termHeight, input, dropdown)
 }
 
 // updateAutocompleteWidth sets the width of the autocomplete based on terminal size
@@ -324,37 +320,19 @@ func (c *ScriptSelectorController) getMaxSuggestions(termHeight int) int {
 	return MaxDropdownSuggestions
 }
 
-// calculateContentHeight calculates the total height of the content
-func (c *ScriptSelectorController) calculateContentHeight(dropdown string) int {
-	contentHeight := 2 // input height
-	if dropdown != "" {
-		contentHeight += strings.Count(dropdown, "\n") + 1
-	}
-	return contentHeight
-}
-
-// calculateTopPadding calculates the top padding for vertical centering
-func (c *ScriptSelectorController) calculateTopPadding(termHeight, contentHeight int) int {
-	topPadding := (termHeight - contentHeight - TitleAndHelpTextHeight) / 2
-	if topPadding < 0 {
-		topPadding = 0
-	}
-	return topPadding
-}
-
 // buildView constructs the complete view with all components using Lipgloss layouts
-func (c *ScriptSelectorController) buildView(termWidth, termHeight, topPadding int, input, dropdown string) string {
+func (c *ScriptSelectorController) buildView(termWidth, termHeight int, input, dropdown string) string {
 	// Create base container style
 	containerStyle := lipgloss.NewStyle().
 		Width(termWidth).
 		Height(termHeight).
 		Align(lipgloss.Center, lipgloss.Center)
-	
+
 	// Create content sections
 	title := c.renderTitle(termWidth)
 	content := c.renderContent(termWidth, input, dropdown)
 	helpText := c.renderHelpText(termWidth)
-	
+
 	// Join sections vertically with proper spacing
 	fullContent := lipgloss.JoinVertical(
 		lipgloss.Center,
@@ -362,7 +340,7 @@ func (c *ScriptSelectorController) buildView(termWidth, termHeight, topPadding i
 		content,
 		helpText,
 	)
-	
+
 	// Apply container style for centering
 	return containerStyle.Render(fullContent)
 }
@@ -375,7 +353,7 @@ func (c *ScriptSelectorController) renderTitle(termWidth int) string {
 		Width(termWidth).
 		Align(lipgloss.Center).
 		MarginBottom(1)
-	
+
 	return titleStyle.Render("🐝 Select a Script to Run")
 }
 
@@ -386,27 +364,27 @@ func (c *ScriptSelectorController) renderContent(termWidth int, input, dropdown 
 	if contentWidth > termWidth-10 {
 		contentWidth = termWidth - 10
 	}
-	
+
 	contentStyle := lipgloss.NewStyle().
 		Width(contentWidth).
 		Align(lipgloss.Left)
-	
+
 	// Container for centering content horizontally
 	containerStyle := lipgloss.NewStyle().
 		Width(termWidth).
 		Align(lipgloss.Center)
-	
+
 	// Build content sections
 	var sections []string
-	
+
 	// Add input
 	sections = append(sections, contentStyle.Render(input))
-	
+
 	// Add dropdown if present
 	if dropdown != "" {
 		sections = append(sections, contentStyle.Render(dropdown))
 	}
-	
+
 	// Join sections and center
 	content := lipgloss.JoinVertical(lipgloss.Left, sections...)
 	return containerStyle.Render(content)
@@ -419,7 +397,7 @@ func (c *ScriptSelectorController) renderHelpText(termWidth int) string {
 		Width(termWidth).
 		Align(lipgloss.Center).
 		MarginTop(1)
-	
+
 	return helpStyle.Render("↑/↓ Navigate • Enter Run • Tab Complete • Esc Cancel")
 }
 

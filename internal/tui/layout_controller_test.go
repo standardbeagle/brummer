@@ -74,7 +74,7 @@ func TestLayoutController_RenderMethods(t *testing.T) {
 		// Update some state
 		controller.SetSelectedProcess("test-process")
 		controller.SetCurrentView("Processes")
-		
+
 		footer := controller.RenderFooter()
 		assert.NotEmpty(t, footer, "Footer should not be empty")
 	})
@@ -85,7 +85,7 @@ func TestLayoutController_RenderMethods(t *testing.T) {
 		controller.SetSystemPanelOpen(false)
 		panel := controller.RenderSystemPanel()
 		assert.Empty(t, panel, "System panel should be empty when closed")
-		
+
 		// Test with panel open
 		controller.SetSystemPanelOpen(true)
 		panel = controller.RenderSystemPanel()

@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"strings"
+	"fmt"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -192,7 +192,7 @@ func (c *CommandWindowController) RenderCommandWindow() string {
 		termWidth = c.width
 		termHeight = c.height
 	}
-	
+
 	// Safety check for minimum dimensions - use fallback for small terminals
 	if termWidth < MinTerminalWidth || termHeight < MinTerminalHeight {
 		// Render a minimal command window for small terminals
@@ -304,7 +304,7 @@ func (c *CommandWindowController) RenderCustomCommandDialog() string {
 		termWidth = c.width
 		termHeight = c.height
 	}
-	
+
 	windowWidth := DefaultCommandWindowWidth
 	if termWidth-CommandWindowPadding < windowWidth {
 		windowWidth = termWidth - CommandWindowPadding

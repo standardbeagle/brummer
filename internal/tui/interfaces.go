@@ -6,6 +6,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/tui/navigation"
+	"github.com/standardbeagle/brummer/internal/tui/system"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -173,18 +175,13 @@ type AICoderControllerInterface interface {
 
 // SystemControllerInterface defines system message operations
 type SystemControllerInterface interface {
-	AddMessage(level, message string)
-	GetMessages() []SystemMessage
-	ClearMessages()
-	HasUnreadMessages() bool
-	MarkAllRead()
+	GetUnreadIndicators() map[navigation.View]system.UnreadIndicator
 }
 
 // NotificationsControllerInterface defines notification operations
 type NotificationsControllerInterface interface {
-	HandleMsg(msg tea.Msg) tea.Cmd
-	ShowNotification(title, message string, level NotificationLevel)
-	GetActiveNotifications() []Notification
+	IsActive() bool
+	GetMessage() string
 }
 
 // ErrorsViewControllerInterface defines error view operations

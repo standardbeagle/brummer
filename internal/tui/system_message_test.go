@@ -20,7 +20,7 @@ func TestSystemMessages(t *testing.T) {
 		// Clear any existing messages by creating a fresh update channel
 		updateChan := make(chan tea.Msg, 100)
 		model.updateChan = updateChan
-		
+
 		// Also update the event controller's update channel to match
 		model.eventController.updateChan = updateChan
 
@@ -57,7 +57,7 @@ func TestSystemMessages(t *testing.T) {
 		// Clear channel
 		updateChan := make(chan tea.Msg, 100)
 		model.updateChan = updateChan
-		
+
 		// Also update the event controller's update channel to match
 		model.eventController.updateChan = updateChan
 
@@ -100,15 +100,15 @@ func TestSystemController(t *testing.T) {
 	t.Run("get_messages", func(t *testing.T) {
 		// Clear messages
 		controller = system.NewController(100)
-		
+
 		// Add some messages
 		controller.AddMessage("info", "Test", "Message 1")
 		controller.AddMessage("error", "Test", "Message 2")
 		controller.AddMessage("warn", "Test", "Message 3")
-		
+
 		messages := controller.GetMessages()
 		assert.Len(t, messages, 3, "Should have 3 messages")
-		
+
 		// Most recent should be first
 		assert.Equal(t, "Message 3", messages[0].Message)
 		assert.Equal(t, "Message 2", messages[1].Message)
@@ -117,12 +117,12 @@ func TestSystemController(t *testing.T) {
 
 	t.Run("message_limit", func(t *testing.T) {
 		controller = system.NewController(10) // Small limit for testing
-		
+
 		// Add more than the limit
 		for i := 0; i < 15; i++ {
 			controller.AddMessage("info", "Test", fmt.Sprintf("Message %d", i))
 		}
-		
+
 		messages := controller.GetMessages()
 		assert.Equal(t, 10, len(messages), "Should limit messages to max")
 		// Most recent should be first
@@ -133,10 +133,10 @@ func TestSystemController(t *testing.T) {
 		// Add some messages
 		controller.AddMessage("info", "Test", "Message 1")
 		controller.AddMessage("error", "Test", "Message 2")
-		
+
 		// Clear them
 		controller.Clear()
-		
+
 		messages := controller.GetMessages()
 		assert.Empty(t, messages, "Should have no messages after clear")
 		assert.False(t, controller.IsExpanded(), "Should not be expanded after clear")
@@ -156,11 +156,11 @@ func TestSystemPanelRenderer(t *testing.T) {
 	t.Run("render_with_messages", func(t *testing.T) {
 		// Set dimensions on controller
 		controller.UpdateSize(80, 24, 3, 3)
-		
+
 		// Add some messages
 		controller.AddMessage("info", "Test", "Info message")
 		controller.AddMessage("error", "Test", "Error message")
-		
+
 		// Render panel
 		output := renderer.RenderPanel()
 		assert.NotEmpty(t, output, "Should render content when messages exist")
@@ -172,7 +172,7 @@ func TestSystemPanelRenderer(t *testing.T) {
 			controller.UpdateSize(1, 1, 0, 0)
 			renderer.RenderPanel()
 		}, "Should handle small dimensions without panic")
-		
+
 		// Test with zero dimensions
 		assert.NotPanics(t, func() {
 			controller.UpdateSize(0, 0, 0, 0)

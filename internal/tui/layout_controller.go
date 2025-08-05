@@ -141,7 +141,17 @@ func (lc *LayoutController) RenderFooter() string {
 
 	help := strings.Join(helpKeys, " • ")
 
-	return lc.helpStyle.Width(lc.width).Render(help)
+	// Create footer with top border
+	footerStyle := lc.helpStyle.
+		Width(lc.width).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderTop(true).
+		BorderBottom(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderForeground(lipgloss.Color("240"))
+
+	return footerStyle.Render(help)
 }
 
 // RenderSystemPanel renders the system panel

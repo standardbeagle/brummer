@@ -14,18 +14,18 @@ func TestEventController_SystemMessages(t *testing.T) {
 	// Setup - use real components instead of mocks
 	updateChan := make(chan tea.Msg, 10)
 	eventBus := events.NewEventBus()
-	
+
 	// Create a full test model with real components
 	model := createTestModelWithDefaults()
-	
+
 	// Verify we're using the same eventBus
 	t.Logf("Test eventBus: %p", eventBus)
 	t.Logf("Model eventBus: %p", model.eventBus)
-	
+
 	// Replace model's eventBus with our test eventBus to ensure they're the same
 	model.eventBus = eventBus
 	model.updateChan = updateChan
-	
+
 	// Re-setup event subscriptions with the new eventBus
 	model.eventController.eventBus = eventBus
 	model.eventController.updateChan = updateChan
@@ -100,12 +100,12 @@ func TestEventController_ProcessEvents(t *testing.T) {
 	// Setup - use real components instead of mocks
 	updateChan := make(chan tea.Msg, 10)
 	eventBus := events.NewEventBus()
-	
+
 	// Create a full test model with real components
 	model := createTestModelWithDefaults()
 	model.eventBus = eventBus
 	model.updateChan = updateChan
-	
+
 	// Re-setup event subscriptions and update channel for event controller
 	model.eventController.eventBus = eventBus
 	model.eventController.updateChan = updateChan
@@ -155,12 +155,12 @@ func TestEventController_LogEvents(t *testing.T) {
 	// Setup - use real components instead of mocks
 	updateChan := make(chan tea.Msg, 10)
 	eventBus := events.NewEventBus()
-	
+
 	// Create a full test model with real components
 	model := createTestModelWithDefaults()
 	model.eventBus = eventBus
 	model.updateChan = updateChan
-	
+
 	// Re-setup event subscriptions and update channel for event controller
 	model.eventController.eventBus = eventBus
 	model.eventController.updateChan = updateChan
@@ -196,12 +196,12 @@ func TestEventController_StartupMessage(t *testing.T) {
 	// Setup - use real components instead of mocks
 	updateChan := make(chan tea.Msg, 10)
 	eventBus := events.NewEventBus()
-	
+
 	// Create a full test model with real components
 	model := createTestModelWithDefaults()
 	model.eventBus = eventBus
 	model.updateChan = updateChan
-	
+
 	// Re-setup event subscriptions and update channel for event controller
 	model.eventController.eventBus = eventBus
 	model.eventController.updateChan = updateChan
@@ -226,12 +226,12 @@ func TestEventController_EmptyMessage(t *testing.T) {
 	// Setup - use real components instead of mocks
 	updateChan := make(chan tea.Msg, 10)
 	eventBus := events.NewEventBus()
-	
+
 	// Create a full test model with real components
 	model := createTestModelWithDefaults()
 	model.eventBus = eventBus
 	model.updateChan = updateChan
-	
+
 	// Re-setup event subscriptions and update channel for event controller
 	model.eventController.eventBus = eventBus
 	model.eventController.updateChan = updateChan
@@ -258,15 +258,15 @@ func TestEventController_EmptyMessage(t *testing.T) {
 func TestEventController_EventFlow(t *testing.T) {
 	// This test verifies that events flow properly through the system
 	// without needing to test internal implementation details
-	
+
 	// Setup - use real components
 	model := createTestModelWithDefaults()
 	updateChan := make(chan tea.Msg, 10)
 	model.updateChan = updateChan
-	
+
 	// Also update the event controller's update channel to match
 	model.eventController.updateChan = updateChan
-	
+
 	// Test that process events flow through the system
 	model.eventBus.Publish(events.Event{
 		Type: events.EventType("process.started"),
@@ -275,7 +275,7 @@ func TestEventController_EventFlow(t *testing.T) {
 			"name":      "test-flow",
 		},
 	})
-	
+
 	// Verify we get a process update message
 	msg := waitForMessage[processUpdateMsg](t, updateChan, 100*time.Millisecond)
 	assert.NotNil(t, msg, "Should receive process update message")

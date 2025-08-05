@@ -362,7 +362,9 @@ func (v *ErrorsViewController) RenderErrorsViewSplit() string {
 	v.UpdateErrorsList()
 	v.UpdateErrorDetailView()
 
-	leftWidth := v.width / 2
+	// Use ContentLayout for split view if available
+	splitRatio := DefaultSplitRatio
+	leftWidth := int(float64(v.width) * splitRatio)
 	rightWidth := v.width - leftWidth
 
 	// Update list size for split view
@@ -370,17 +372,21 @@ func (v *ErrorsViewController) RenderErrorsViewSplit() string {
 	v.errorDetailView.Width = rightWidth - 2
 	v.errorDetailView.Height = v.height - v.headerHeight - v.footerHeight
 
+	// Create left panel with border
 	leftPanel := lipgloss.NewStyle().
 		Width(leftWidth).
 		Height(v.height-v.headerHeight-v.footerHeight).
 		Border(lipgloss.NormalBorder(), false, true, false, false).
+		BorderForeground(lipgloss.Color("240")).
 		Render(v.errorsList.View())
 
+	// Create right panel
 	rightPanel := lipgloss.NewStyle().
 		Width(rightWidth).
 		Height(v.height - v.headerHeight - v.footerHeight).
 		Render(v.errorDetailView.View())
 
+	// Join horizontally
 	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 }
 

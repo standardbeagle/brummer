@@ -62,7 +62,7 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 		if model.settingsController != nil {
 			model.settingsController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight())
 		}
-		
+
 		// Update overlay controllers
 		if model.commandWindowController != nil {
 			model.commandWindowController.UpdateSize(m.Width, m.Height)

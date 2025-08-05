@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
@@ -277,38 +275,12 @@ func (s *SettingsController) getCLICommand(configKey string) string {
 
 // Render renders the settings view
 func (s *SettingsController) Render() string {
-	var content strings.Builder
-
-	// Header with branding and description
-	headerStyle := lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("226")).
-		Background(lipgloss.Color("235")).
-		Padding(0, 2).
-		MarginBottom(1).
-		Width(s.width)
-
-	content.WriteString(headerStyle.Render("⚙️  Brummer Settings & Configuration"))
-	content.WriteString("\n")
-
-	// Subtitle with helpful information
-	subtitleStyle := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
-		Italic(true).
-		MarginBottom(1)
-
-	content.WriteString(subtitleStyle.Render("Configure your development environment and server settings • Press Enter to copy URLs"))
-	content.WriteString("\n")
-
-	// Calculate available height for the list
-	localHeaderHeight := 4 // header + subtitle + margins within this view
-	availableHeight := s.height - s.headerHeight - s.footerHeight - localHeaderHeight
+	// Calculate available height for the list - no local headers
+	availableHeight := s.height - s.headerHeight - s.footerHeight
 
 	// Update list size and render
 	s.settingsList.SetSize(s.width, availableHeight)
-	content.WriteString(s.settingsList.View())
-
-	return content.String()
+	return s.settingsList.View()
 }
 
 // Settings item types are defined in model.go to avoid circular dependencies

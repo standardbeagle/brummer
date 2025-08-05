@@ -130,7 +130,7 @@ func TestInputController_CommandModeNavigation(t *testing.T) {
 	// Show command window with some scripts
 	scripts := map[string]string{
 		"start": "npm start",
-		"test": "npm test",
+		"test":  "npm test",
 		"build": "npm run build",
 	}
 	model.commandWindowController.ShowCommandWindow(scripts, nil)

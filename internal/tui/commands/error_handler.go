@@ -9,11 +9,11 @@ import (
 
 // ErrorContext provides context for error handling
 type ErrorContext struct {
-	Operation   string                // What operation was attempted
-	Component   string                // Which component had the error
-	ProcessName string                // Process name if applicable
-	LogStore    LogStoreInterface     // Where to log the error
-	UpdateChan  chan<- tea.Msg        // Channel for UI updates
+	Operation   string            // What operation was attempted
+	Component   string            // Which component had the error
+	ProcessName string            // Process name if applicable
+	LogStore    LogStoreInterface // Where to log the error
+	UpdateChan  chan<- tea.Msg    // Channel for UI updates
 }
 
 // LogStoreInterface defines log storage operations for commands package
@@ -23,14 +23,14 @@ type LogStoreInterface interface {
 
 // StandardErrorHandler provides consistent error handling across the TUI
 type StandardErrorHandler struct {
-	defaultLogStore LogStoreInterface
+	defaultLogStore   LogStoreInterface
 	defaultUpdateChan chan<- tea.Msg
 }
 
 // NewStandardErrorHandler creates a new error handler
 func NewStandardErrorHandler(logStore LogStoreInterface, updateChan chan<- tea.Msg) *StandardErrorHandler {
 	return &StandardErrorHandler{
-		defaultLogStore: logStore,
+		defaultLogStore:   logStore,
 		defaultUpdateChan: updateChan,
 	}
 }

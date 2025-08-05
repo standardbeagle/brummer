@@ -160,17 +160,15 @@ func (r *PanelRenderer) RenderOverlay() string {
 			content.String(),
 		))
 
-	// Calculate position for bottom overlay
-	lines := strings.Split(panel, "\n")
-	bottomPadding := r.controller.height - len(lines) - 2
-	if bottomPadding < 0 {
-		bottomPadding = 0
-	}
-
-	// Create the overlay with proper positioning
-	overlay := strings.Repeat("\n", bottomPadding) + panel
-
-	return overlay
+	// Use lipgloss to position panel at bottom
+	return lipgloss.Place(
+		r.controller.width,
+		r.controller.height,
+		lipgloss.Left,
+		lipgloss.Bottom,
+		panel,
+		lipgloss.WithWhitespaceChars(" "),
+	)
 }
 
 // RenderCompactNotification renders a single-line notification for the status bar

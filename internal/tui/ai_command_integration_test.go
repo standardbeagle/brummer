@@ -67,7 +67,7 @@ func TestAICommandIntegration(t *testing.T) {
 		proxyServer,
 		7777,
 		ViewScriptSelector,
-		false, // debug mode
+		false,           // debug mode
 		mockModelConfig, // config with mock provider
 	)
 
@@ -102,7 +102,7 @@ func TestAICommandIntegration(t *testing.T) {
 
 		// Wait for async operations to complete and messages to be sent
 		time.Sleep(1 * time.Second)
-		
+
 		// Process all available messages
 		messagesReceived := []string{}
 		for {
@@ -111,7 +111,7 @@ func TestAICommandIntegration(t *testing.T) {
 				msgType := fmt.Sprintf("%T", msg)
 				messagesReceived = append(messagesReceived, msgType)
 				t.Logf("Processing message: %T", msg)
-				
+
 				// If it's a BatchMsg, log what's inside
 				if batchMsg, ok := msg.(tea.BatchMsg); ok {
 					t.Logf("BatchMsg contains %d items:", len(batchMsg))
@@ -128,7 +128,7 @@ func TestAICommandIntegration(t *testing.T) {
 								updatedModel, newCmd := model.Update(resultMsg)
 								model = updatedModel.(*Model)
 								t.Logf("  View after processing item %d: %s", i, model.currentView())
-								
+
 								// Execute any returned command
 								if newCmd != nil {
 									go func() {
@@ -148,7 +148,7 @@ func TestAICommandIntegration(t *testing.T) {
 					// Process single message
 					updatedModel, cmd := model.Update(msg)
 					model = updatedModel.(*Model)
-					
+
 					// Execute any returned command
 					if cmd != nil {
 						go func() {
@@ -158,14 +158,14 @@ func TestAICommandIntegration(t *testing.T) {
 						}()
 					}
 				}
-				
+
 			default:
 				// No more messages
 				goto done
 			}
 		}
-		done:
-		
+	done:
+
 		// Wait a bit more and check for additional messages (like switchToAICodersMsg)
 		time.Sleep(500 * time.Millisecond)
 		for {
@@ -174,16 +174,16 @@ func TestAICommandIntegration(t *testing.T) {
 				msgType := fmt.Sprintf("%T", msg)
 				messagesReceived = append(messagesReceived, msgType)
 				t.Logf("Processing additional message: %T", msg)
-				
+
 				// Check if it's the view switch message we're looking for
 				if _, ok := msg.(switchToAICodersMsg); ok {
 					t.Logf("Found switchToAICodersMsg in additional messages!")
 				}
-				
+
 				// Process the message
 				updatedModel, cmd := model.Update(msg)
 				model = updatedModel.(*Model)
-				
+
 				// Execute any returned command
 				if cmd != nil {
 					go func() {
@@ -192,19 +192,19 @@ func TestAICommandIntegration(t *testing.T) {
 						}
 					}()
 				}
-				
+
 			default:
 				// No more messages
 				goto finalCheck
 			}
 		}
-		finalCheck:
-		
+	finalCheck:
+
 		// Check final view state
 		currentView := model.currentView()
 		t.Logf("Final view after processing all messages: %s", currentView)
 		t.Logf("Messages processed: %v", messagesReceived)
-		
+
 		// Get logs to see what happened
 		logs := logStore.GetAll()
 		t.Logf("Log entries: %d", len(logs))
@@ -221,14 +221,14 @@ func TestAICommandIntegration(t *testing.T) {
 		directSwitchModel, _ := model.Update(switchToAICodersMsg{})
 		model = directSwitchModel.(*Model)
 		t.Logf("View after direct switchToAICodersMsg: %s", model.currentView())
-		
+
 		// If direct switching works, the issue is that the message isn't being sent
 		if model.currentView() == ViewAICoders {
 			t.Logf("Direct view switching works - the issue is that switchToAICodersMsg is not being sent from the goroutine")
 		} else {
 			t.Logf("Direct view switching doesn't work - there's an issue with the Update method handling")
 		}
-		
+
 		// For now, test passes if direct switching works (indicating the core functionality is correct)
 		// The async messaging issue is a test setup problem, not a functionality problem
 		assert.Equal(t, ViewAICoders, model.currentView(), "Direct view switching should work")
@@ -266,14 +266,14 @@ func TestAICommandIntegration(t *testing.T) {
 		// Process messages from the update channel
 		timeout := time.After(200 * time.Millisecond)
 		processed := false
-		
+
 		for !processed {
 			select {
 			case msg := <-model.updateChan:
 				// Process the message through the model's Update method
 				updatedModel, cmd := model.Update(msg)
 				model = updatedModel.(*Model)
-				
+
 				// Execute any returned command
 				if cmd != nil {
 					go func() {
@@ -282,10 +282,10 @@ func TestAICommandIntegration(t *testing.T) {
 						}
 					}()
 				}
-				
+
 				// Continue processing until timeout or we get a non-update message
 				processed = true
-				
+
 			case <-timeout:
 				processed = true
 			}
@@ -295,7 +295,7 @@ func TestAICommandIntegration(t *testing.T) {
 		// (The async messaging is a test environment issue, not a functionality issue)
 		directSwitchModel, _ := model.Update(switchToAICodersMsg{})
 		model = directSwitchModel.(*Model)
-		
+
 		// Should be in AI coder view
 		assert.Equal(t, ViewAICoders, model.currentView())
 	})

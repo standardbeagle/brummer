@@ -142,28 +142,20 @@ func (v *ProcessViewController) UpdateProcessList() {
 
 // Render renders the processes view
 func (v *ProcessViewController) Render() string {
-	instructions := lipgloss.NewStyle().
-		Foreground(lipgloss.Color("245")).
-		Render("Select process: ↑/↓ | Stop: s | Restart: r | Restart All: Ctrl+R | View Logs: Enter")
-
 	processes := v.processMgr.GetAllProcesses()
 	if len(processes) == 0 {
+		// Show empty state centered
 		emptyState := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245")).
-			Render("No processes running. Use / for commands: /run <script> to start scripts, /restart all, /stop <process>")
-
-		return lipgloss.JoinVertical(lipgloss.Left,
-			instructions,
-			"",
-			emptyState,
-		)
+			Align(lipgloss.Center, lipgloss.Center).
+			Width(v.width).
+			Height(v.height - v.headerHeight - v.footerHeight).
+			Render("No processes running.\n\nUse / for commands:\n/run <script> to start scripts\n/restart all\n/stop <process>")
+		return emptyState
 	}
 
-	return lipgloss.JoinVertical(lipgloss.Left,
-		instructions,
-		"",
-		v.processesList.View(),
-	)
+	// Just return the list view directly
+	return v.processesList.View()
 }
 
 // processItem uses the existing type defined in model.go

@@ -156,45 +156,8 @@ func (v *LogsViewController) UpdateLogsView() {
 
 // Render renders the logs view
 func (v *LogsViewController) Render() string {
-	title := "Logs"
-	if v.selectedProcess != "" {
-		title = fmt.Sprintf("Logs - %s", v.selectedProcess)
-	}
-	if v.showHighPriority {
-		title += " [High Priority]"
-	}
-	if v.showPattern != "" {
-		title += fmt.Sprintf(" [Show: %s]", v.showPattern)
-	}
-	if v.hidePattern != "" {
-		title += fmt.Sprintf(" [Hide: %s]", v.hidePattern)
-	}
-
-	header := lipgloss.NewStyle().Bold(true).Render(title)
-
-	// Add auto-scroll indicator
-	var scrollIndicator string
-	if !v.logsAutoScroll {
-		scrollStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("226")).
-			Background(lipgloss.Color("235")).
-			Padding(0, 1).
-			Bold(true)
-		scrollIndicator = scrollStyle.Render("⏸ PAUSED - Press End to resume auto-scroll")
-	}
-
-	// Combine header with scroll indicator
-	headerContent := header
-	if scrollIndicator != "" {
-		headerContent = lipgloss.JoinHorizontal(
-			lipgloss.Left,
-			header,
-			"  ",
-			scrollIndicator,
-		)
-	}
-
-	return lipgloss.JoinVertical(lipgloss.Left, headerContent, v.logsViewport.View())
+	// Just return the viewport directly without any header
+	return v.logsViewport.View()
 }
 
 // convertToCollapsedEntries - now handled by logStore directly

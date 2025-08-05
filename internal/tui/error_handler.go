@@ -8,23 +8,23 @@ import (
 
 // ErrorContext provides context for error handling
 type ErrorContext struct {
-	Operation   string                // What operation was attempted
-	Component   string                // Which component had the error
-	ProcessName string                // Process name if applicable
-	LogStore    LogStoreInterface     // Where to log the error
-	UpdateChan  chan tea.Msg          // Channel for UI updates
+	Operation   string            // What operation was attempted
+	Component   string            // Which component had the error
+	ProcessName string            // Process name if applicable
+	LogStore    LogStoreInterface // Where to log the error
+	UpdateChan  chan tea.Msg      // Channel for UI updates
 }
 
 // StandardErrorHandler provides consistent error handling across the TUI
 type StandardErrorHandler struct {
-	defaultLogStore LogStoreInterface
+	defaultLogStore   LogStoreInterface
 	defaultUpdateChan chan tea.Msg
 }
 
 // NewStandardErrorHandler creates a new error handler
 func NewStandardErrorHandler(logStore LogStoreInterface, updateChan chan tea.Msg) *StandardErrorHandler {
 	return &StandardErrorHandler{
-		defaultLogStore: logStore,
+		defaultLogStore:   logStore,
 		defaultUpdateChan: updateChan,
 	}
 }
@@ -136,9 +136,9 @@ func ScriptStartContext(scriptName, component string, logStore LogStoreInterface
 // CommandExecutionContext creates an error context for command execution
 func CommandExecutionContext(command, component string, logStore LogStoreInterface, updateChan chan tea.Msg) ErrorContext {
 	return ErrorContext{
-		Operation:   fmt.Sprintf("executing command '%s'", command),
-		Component:   component,
-		LogStore:    logStore,
-		UpdateChan:  updateChan,
+		Operation:  fmt.Sprintf("executing command '%s'", command),
+		Component:  component,
+		LogStore:   logStore,
+		UpdateChan: updateChan,
 	}
 }

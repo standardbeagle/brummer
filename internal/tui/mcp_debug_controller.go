@@ -125,13 +125,13 @@ func (c *MCPDebugController) GetMemoryStats() map[string]interface{} {
 	}
 
 	return map[string]interface{}{
-		"connections":               len(c.connections),
-		"maxConnections":           c.maxConnections,
-		"totalActivities":          totalActivities,
-		"maxActivitiesPerConn":     c.maxActivitiesPerConn,
-		"lastCleanup":              c.lastCleanup,
-		"cleanupInterval":          c.cleanupInterval,
-		"memoryUsagePercent":       float64(len(c.connections)) / float64(c.maxConnections) * 100,
+		"connections":          len(c.connections),
+		"maxConnections":       c.maxConnections,
+		"totalActivities":      totalActivities,
+		"maxActivitiesPerConn": c.maxActivitiesPerConn,
+		"lastCleanup":          c.lastCleanup,
+		"cleanupInterval":      c.cleanupInterval,
+		"memoryUsagePercent":   float64(len(c.connections)) / float64(c.maxConnections) * 100,
 	}
 }
 
@@ -145,7 +145,7 @@ func (c *MCPDebugController) cleanupOldData() {
 	defer c.mu.Unlock()
 
 	now := time.Now()
-	
+
 	// Only cleanup if enough time has passed
 	if now.Sub(c.lastCleanup) < c.cleanupInterval {
 		return
@@ -190,7 +190,7 @@ func (c *MCPDebugController) cleanupOldData() {
 			sessionId := connsWithTime[i].sessionId
 			delete(c.connections, sessionId)
 			delete(c.activities, sessionId)
-			
+
 			// If we're removing the selected client, clear the selection
 			if c.selectedClient == sessionId {
 				c.selectedClient = ""
@@ -204,13 +204,13 @@ func (c *MCPDebugController) performMemoryManagement() {
 	if !c.debugMode {
 		return
 	}
-	
+
 	// Check if cleanup is needed (non-blocking check)
 	c.mu.RLock()
-	needsCleanup := len(c.connections) > c.maxConnections || 
+	needsCleanup := len(c.connections) > c.maxConnections ||
 		time.Since(c.lastCleanup) > c.cleanupInterval
 	c.mu.RUnlock()
-	
+
 	if needsCleanup {
 		c.cleanupOldData()
 	}

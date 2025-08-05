@@ -138,8 +138,9 @@ type Model struct {
 	eventController         *EventController         // New controller for event handling
 
 	// System message controller
-	systemController    *system.Controller
-	systemPanelRenderer *system.PanelRenderer
+	systemController      *system.Controller
+	systemPanelRenderer   *system.PanelRenderer
+	systemOverlayRenderer *system.OverlayRenderer
 
 	selectedProcess string // Shared state - used by multiple views
 
@@ -151,8 +152,12 @@ type Model struct {
 
 	// Script selector controller
 	scriptSelectorController *ScriptSelectorController
-	headerHeight             int // Calculated height of the header
-	footerHeight             int // Calculated height of the footer
+
+	// Layout components
+	tabsComponent *TabsComponent
+	contentLayout *ContentLayout
+	headerHeight  int // Calculated height of the header
+	footerHeight  int // Calculated height of the footer
 
 	keys keyMap
 
@@ -367,8 +372,16 @@ func (i processItem) Title() string {
 }
 func (i processItem) Description() string {
 	if i.isHeader {
-		// Return separator line for headers
-		return strings.Repeat("─", 40)
+		// Return separator line for headers using lipgloss
+		separatorStyle := lipgloss.NewStyle().
+			Width(40).
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderTop(true).
+			BorderBottom(false).
+			BorderLeft(false).
+			BorderRight(false).
+			BorderForeground(lipgloss.Color("240"))
+		return separatorStyle.Render("")
 	}
 
 	// Safety check for nil process
@@ -581,7 +594,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 
 	// INITIALIZATION ORDER IS CRITICAL - DO NOT CHANGE WITHOUT CAREFUL REVIEW
 	// The following controllers have dependencies and must be initialized in this specific order:
-	
+
 	// 1. Initialize file browser controller first
 	//    - Required by: SettingsController (for file selection dialogs)
 	//    - Dependencies: None
@@ -610,7 +623,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	//    - Required by: View switching, unread indicators
 	//    - Dependencies: None initially, but callbacks reference systemController (created next)
 	m.navController = navigation.NewController(initialView, debugMode)
-	
+
 	// Note: These callbacks reference systemController which doesn't exist yet!
 	// This works because the callbacks are stored but not executed until after
 	// systemController is created in step 6
@@ -635,6 +648,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	//    - Dependencies: None
 	m.systemController = system.NewController(SystemPanelMaxMessages)
 	m.systemPanelRenderer = system.NewPanelRenderer(m.systemController)
+	m.systemOverlayRenderer = system.NewOverlayRenderer(m.systemController)
 
 	// 7. Initialize layout controller
 	//    - Required by: View rendering
@@ -686,17 +700,27 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	navAdapter := NewNavigationAdapter(m.navController)
 	m.scriptSelectorController = NewScriptSelectorController(scripts, processMgr, logStore, m.updateChan, navAdapter)
 
-	// 15. Initialize message router
+	// 15. Initialize tabs component
+	//     - Required by: Header rendering
+	//     - Dependencies: processMgr, notificationsController, systemController
+	m.tabsComponent = NewTabsComponent(processMgr, m.notificationsController, m.systemController, debugMode)
+
+	// 16. Initialize content layout
+	//     - Required by: Content area rendering
+	//     - Dependencies: None
+	m.contentLayout = NewContentLayout()
+
+	// 17. Initialize message router
 	//     - Required by: Message routing and handling
 	//     - Dependencies: None
 	m.messageRouter = NewMessageRouter()
 
-	// 16. Set model reference for data provider and debug forwarder
+	// 18. Set model reference for data provider and debug forwarder
 	//     - Required by: AI coder data access
 	//     - Dependencies: aiCoderController must be initialized, full model must be constructed
 	m.aiCoderController.SetModelReference(&m)
 
-	// 17. Set up event subscriptions immediately in constructor (not in Init)
+	// 19. Set up event subscriptions immediately in constructor (not in Init)
 	//     - Required by: Event handling
 	//     - Dependencies: eventController must be initialized
 	//     - Critical: This ensures subscriptions are active before MCP server starts
@@ -811,6 +835,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Always trigger a view update when PTY events arrive
 		cmds = append(cmds, m.waitForUpdates())
+
+	default:
+		// Handle generic update messages (including nil messages from script selector)
+		if msg == nil {
+			// This is a generic update request - refresh views
+			m.updateProcessList()
+			m.updateLogsView()
+			cmds = append(cmds, m.waitForUpdates())
+		}
 	}
 
 	return m, tea.Batch(cmds...)
@@ -851,36 +884,46 @@ func (m *Model) renderLayout(content string) string {
 	m.layoutController.SetSystemPanelOpen(m.systemController.IsExpanded())
 	m.layoutController.SetSelectedProcess(m.selectedProcess)
 
+	// Update tabs component
+	if m.tabsComponent != nil {
+		m.tabsComponent.SetActiveView(m.currentView())
+		m.tabsComponent.SetWidth(m.width)
+	}
+
 	// Get header and footer heights from layout controller
 	m.headerHeight = m.layoutController.GetHeaderHeight()
 	m.footerHeight = m.layoutController.GetFooterHeight()
 
-	// Calculate content height based on actual header and footer heights
-	contentHeight := m.height - m.headerHeight - m.footerHeight
+	// Update content layout dimensions
+	if m.contentLayout != nil {
+		m.contentLayout.UpdateDimensions(m.width, m.height, m.headerHeight, m.footerHeight)
+	}
 
 	// If system panel is expanded, show it instead of main content
 	if m.systemController.IsExpanded() && m.systemController.HasMessages() {
 		// Full screen mode - system panel takes most of the space
+		contentHeight := m.height - m.headerHeight - m.footerHeight
 		m.systemController.UpdateSize(m.width, contentHeight, 0, 0)
 		content = m.systemPanelRenderer.RenderPanel()
-	} else {
-		// Normal content - always use full height and width
-		// Ensure content fills the entire area to prevent bleed-through
-		contentLines := strings.Count(content, "\n") + 1
-		if contentLines < contentHeight {
-			// Pad with empty lines to fill the space
-			padding := strings.Repeat("\n", contentHeight-contentLines)
-			content = content + padding
+		if m.contentLayout != nil {
+			content = m.contentLayout.RenderContent(content)
 		}
-		contentStyle := lipgloss.NewStyle().Height(contentHeight).Width(m.width)
-		content = contentStyle.Render(content)
+	} else if m.contentLayout != nil {
+		// Use content layout for proper rendering
+		content = m.contentLayout.RenderContent(content)
 	}
 
 	// Build the complete view
 	var parts []string
 
-	// Keep using model's renderHeader for now due to complex state dependencies
-	parts = append(parts, m.renderHeader())
+	// Use tabs component for header
+	if m.tabsComponent != nil {
+		parts = append(parts, m.tabsComponent.Render())
+		m.headerHeight = m.tabsComponent.GetHeight()
+	} else {
+		// Fallback to old header rendering
+		parts = append(parts, m.renderHeader())
+	}
 	parts = append(parts, content)
 	// Add footer via layout controller
 	if m.layoutController != nil {
@@ -920,7 +963,30 @@ func (m *Model) renderContent() string {
 	case ViewErrors:
 		// Update controller dimensions and render
 		m.errorsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
-		return m.errorsViewController.RenderErrorsViewSplit()
+		// Use content layout for split view if available and screen is wide enough
+		if m.contentLayout != nil && m.width >= 100 {
+			// Calculate split sizes
+			leftWidth := int(float64(m.width) * DefaultSplitRatio)
+			rightWidth := m.width - leftWidth
+			contentHeight := m.height - m.headerHeight - m.footerHeight
+
+			// Update view sizes for split layout
+			m.errorsViewController.GetErrorsList().SetSize(leftWidth-4, contentHeight-2)
+			m.errorsViewController.GetErrorDetailView().Width = rightWidth - 4
+			m.errorsViewController.GetErrorDetailView().Height = contentHeight - 2
+
+			// Update the views
+			m.errorsViewController.UpdateErrorsList()
+			m.errorsViewController.UpdateErrorDetailView()
+
+			leftContent := m.errorsViewController.GetErrorsList().View()
+			rightContent := m.errorsViewController.GetErrorDetailView().View()
+
+			// Use content layout for split view
+			return m.contentLayout.RenderSplitView(leftContent, rightContent, DefaultSplitRatio)
+		}
+		// Fall back to regular rendering for narrow screens
+		return m.errorsViewController.Render()
 	case ViewURLs:
 		// Update controller dimensions and render
 		m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight)
@@ -1156,12 +1222,23 @@ func (m *Model) renderHeader() string {
 
 	tabBar := lipgloss.JoinHorizontal(lipgloss.Left, tabs...)
 
-	header := lipgloss.JoinVertical(
+	// Use Lipgloss border instead of manual line
+	headerStyle := lipgloss.NewStyle().
+		Width(m.width).
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderBottom(true).
+		BorderTop(false).
+		BorderLeft(false).
+		BorderRight(false).
+		BorderForeground(lipgloss.Color("240"))
+
+	headerContent := lipgloss.JoinVertical(
 		lipgloss.Left,
 		title,
 		tabBar,
-		strings.Repeat("─", m.width),
 	)
+
+	header := headerStyle.Render(headerContent)
 
 	// Store header height for layout calculations
 	m.headerHeight = strings.Count(header, "\n") + 1
@@ -1473,7 +1550,11 @@ func (m *Model) showCommandWindow() {
 
 // overlaySystemPanel overlays the system panel on top of the main content
 func (m *Model) overlaySystemPanel(mainContent string) string {
-	// Delegate to system controller
+	// Use the new overlay renderer if available
+	if m.systemOverlayRenderer != nil {
+		return m.systemOverlayRenderer.RenderOverlay(mainContent, m.width, m.height)
+	}
+	// Fallback to old implementation
 	return m.systemController.OverlaySystemPanel(mainContent)
 }
 
