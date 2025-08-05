@@ -574,26 +574,46 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		webViewController:       NewWebViewController(proxyServer),
 		commandWindowController: NewCommandWindowController(processMgr),
 		keys:                    keys,
-		updateChan:              make(chan tea.Msg, 100),
+		updateChan:              make(chan tea.Msg, UpdateChannelBufferSize),
 	}
 
 	// Note: Log callback is registered in main.go to avoid duplication
 
-	// Initialize settings controller first (needed for UpdateSettingsList)
+	// INITIALIZATION ORDER IS CRITICAL - DO NOT CHANGE WITHOUT CAREFUL REVIEW
+	// The following controllers have dependencies and must be initialized in this specific order:
+	
+	// 1. Initialize file browser controller first
+	//    - Required by: SettingsController (for file selection dialogs)
+	//    - Dependencies: None
+	m.fileBrowserController = filebrowser.NewController()
+
+	// 2. Initialize settings controller second
+	//    - Required by: UpdateSettingsList() call below
+	//    - Dependencies: fileBrowserController (passed as parameter)
 	workingDir, _ := os.Getwd()
 	m.settingsController = NewSettingsController(cfg, mcpServer, processMgr, workingDir, m.fileBrowserController, logStore, proxyServer)
 	// settingsController now owns its own settingsList
 
-	// Initialize settings list
+	// 3. Initialize settings list
+	//    - Required by: UI display
+	//    - Dependencies: settingsController must be initialized
 	m.settingsController.UpdateSettingsList()
 
-	// Initialize process list with current processes
+	// 4. Initialize process list with current processes
+	//    - Required by: Process view display
+	//    - Dependencies: processViewController already initialized
 	m.updateProcessList()
 
 	// Error list and detail view now managed by ErrorsViewController
 
-	// Initialize navigation controller
+	// 5. Initialize navigation controller
+	//    - Required by: View switching, unread indicators
+	//    - Dependencies: None initially, but callbacks reference systemController (created next)
 	m.navController = navigation.NewController(initialView, debugMode)
+	
+	// Note: These callbacks reference systemController which doesn't exist yet!
+	// This works because the callbacks are stored but not executed until after
+	// systemController is created in step 6
 	m.navController.SetOnViewChange(func(from, to navigation.View) {
 		// Clear unread indicators when switching views
 		m.systemController.ClearUnreadIndicator(to)
@@ -610,58 +630,76 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		m.mcpDebugController.UpdateConnectionsList()
 	})
 
-	// Initialize system message controller
-	m.systemController = system.NewController(100)
+	// 6. Initialize system message controller
+	//    - Required by: Navigation callbacks (step 5), system messages
+	//    - Dependencies: None
+	m.systemController = system.NewController(SystemPanelMaxMessages)
 	m.systemPanelRenderer = system.NewPanelRenderer(m.systemController)
 
-	// Initialize file browser controller
-	m.fileBrowserController = filebrowser.NewController()
-	// fileBrowserList initialization moved to fileBrowserController
-
-	// Settings controller already initialized above
-
-	// Initialize layout controller
+	// 7. Initialize layout controller
+	//    - Required by: View rendering
+	//    - Dependencies: All data sources (processMgr, logStore, mcpServer, proxyServer)
 	version := "1.0.0" // TODO: Get from build info
 	m.layoutController = NewLayoutController(processMgr, logStore, mcpServer, proxyServer, version, workingDir)
 
-	// Initialize input controller
+	// 8. Initialize input controller
+	//    - Required by: Keyboard handling
+	//    - Dependencies: Full model reference (uses &m)
 	m.inputController = NewInputController(&m, keys, viewConfigs, debugMode)
 
-	// Initialize event controller
+	// 9. Initialize event controller
+	//    - Required by: Event bus integration
+	//    - Dependencies: Full model reference, eventBus, updateChan
 	m.eventController = NewEventController(&m, eventBus, m.updateChan, debugMode)
 
-	// Initialize notifications controller
+	// 10. Initialize notifications controller
+	//     - Required by: User notifications
+	//     - Dependencies: None
 	m.notificationsController = notifications.NewController()
 
 	// Unread indicators now managed by system controller
 
-	// Initialize MCP debug controller
+	// 11. Initialize MCP debug controller
+	//     - Required by: MCP debugging features
+	//     - Dependencies: debugMode flag
 	m.mcpDebugController = NewMCPDebugController(debugMode)
 
 	// Check for monorepo on startup - this will be handled by command window controller when needed
 
 	// Script selector is now handled by ScriptSelectorController
 
-	// Initialize MCP connections list on first view if in debug mode
+	// 12. Initialize MCP connections list on first view if in debug mode
+	//     - Required by: Debug view
+	//     - Dependencies: mcpDebugController must be initialized
 	if debugMode && initialView == ViewMCPConnections {
 		m.mcpDebugController.UpdateConnectionsList()
 	}
 
-	// Initialize AI Coder controller
+	// 13. Initialize AI Coder controller
+	//     - Required by: AI coder features
+	//     - Dependencies: cfg, eventBus, logStore, updateChan
 	m.aiCoderController = NewAICoderController(cfg, eventBus, logStore, m.updateChan)
 
-	// Initialize script selector controller with navigation adapter
+	// 14. Initialize script selector controller with navigation adapter
+	//     - Required by: Script selection UI
+	//     - Dependencies: navController (for navigation adapter)
 	navAdapter := NewNavigationAdapter(m.navController)
 	m.scriptSelectorController = NewScriptSelectorController(scripts, processMgr, logStore, m.updateChan, navAdapter)
 
-	// Initialize message router
+	// 15. Initialize message router
+	//     - Required by: Message routing and handling
+	//     - Dependencies: None
 	m.messageRouter = NewMessageRouter()
 
-	// Set model reference for data provider and debug forwarder
+	// 16. Set model reference for data provider and debug forwarder
+	//     - Required by: AI coder data access
+	//     - Dependencies: aiCoderController must be initialized, full model must be constructed
 	m.aiCoderController.SetModelReference(&m)
 
-	// Set up event subscriptions immediately in constructor (not in Init)
-	// This ensures subscriptions are active before MCP server starts
+	// 17. Set up event subscriptions immediately in constructor (not in Init)
+	//     - Required by: Event handling
+	//     - Dependencies: eventController must be initialized
+	//     - Critical: This ensures subscriptions are active before MCP server starts
 	m.setupEventSubscriptions()
 
 	return &m
@@ -784,6 +822,10 @@ func (m *Model) View() string {
 
 	// Special views that take over the entire screen
 	if m.currentView() == ViewScriptSelector && m.scriptSelectorController != nil {
+		// Ensure the script selector is shown when this view is active
+		if !m.scriptSelectorController.IsVisible() {
+			m.scriptSelectorController.Show(false)
+		}
 		return m.scriptSelectorController.View()
 	}
 	if m.commandWindowController.IsShowingCommandWindow() {
@@ -1240,15 +1282,18 @@ func (m *Model) handleRunCommand() tea.Cmd {
 	}
 
 	// Handle regular command execution
-	go func() {
-		_, err := m.processMgr.StartCommand(selectedCommand.Name, selectedCommand.Command, selectedCommand.Args)
-		if err != nil {
-			errorMsg := fmt.Sprintf("Error starting command '%s' (cmd: '%s', args: %v): %v",
-				selectedCommand.Name, selectedCommand.Command, selectedCommand.Args, err)
-			m.logStore.Add("system", "System", errorMsg, true)
-			m.updateChan <- logUpdateMsg{}
-		}
-	}()
+	errorHandler := NewStandardErrorHandler(m.logStore, m.updateChan)
+	SafeGoroutine(
+		fmt.Sprintf("start command '%s'", selectedCommand.Name),
+		func() error {
+			_, err := m.processMgr.StartCommand(selectedCommand.Name, selectedCommand.Command, selectedCommand.Args)
+			return err
+		},
+		func(err error) {
+			ctx := ProcessStartContext(selectedCommand.Name, "Command Window", m.logStore, m.updateChan)
+			errorHandler.HandleError(err, ctx)
+		},
+	)
 	m.navController.SwitchTo(ViewProcesses)
 	m.updateProcessList()
 	return m.waitForUpdates()

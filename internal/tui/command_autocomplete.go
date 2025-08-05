@@ -577,3 +577,8 @@ func (c CommandAutocomplete) GetErrorMessage() string {
 func (c *CommandAutocomplete) ClearError() {
 	c.errorMessage = ""
 }
+
+// SetError sets an error message
+func (c *CommandAutocomplete) SetError(message string) {
+	c.errorMessage = message
+}

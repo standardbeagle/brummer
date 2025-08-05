@@ -54,8 +54,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored `repl_library` handler into separate methods to reduce complexity
 - Made timeout values configurable via environment variables:
   - `BRUMMER_LIBRARY_CHECK_TIMEOUT` (default: 1 second)
-  - `BRUMMER_LIBRARY_INJECT_TIMEOUT` (default: 2 seconds)
+  - `BRUMMER_LIBRARY_INJECT_TIMEOUT` (default: 2 seconds)  
   - `BRUMMER_REPL_RESPONSE_TIMEOUT` (default: 5 seconds)
+
+### Refactored
+- TUI script selector and command window to use proper Bubble Tea patterns:
+  - Replaced manual padding calculations with Lipgloss layout features
+  - Created constants.go for all UI magic numbers
+  - Improved code organization with smaller, focused methods
+  - Added comprehensive documentation for critical initialization order
+  - Enhanced error handling with nil checks and standardized error messages
+  - Fixed terminal size detection for overlay windows
+  - Created ScriptSelectorModel as proper tea.Model implementation
 
 ### Security
 - Implemented comprehensive path traversal protection in script file operations
