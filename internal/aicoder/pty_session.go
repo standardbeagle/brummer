@@ -147,7 +147,8 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 		return nil, fmt.Errorf("failed to start PTY: %w", err)
 	}
 
-	// Create vt10x terminal emulator
+	// Create vt10x terminal emulator with proper size
+	// Note: VT10x needs to match the PTY size for proper rendering
 	terminal := vt10x.New(vt10x.WithSize(80, 24))
 
 	session := &PTYSession{
@@ -224,13 +225,17 @@ func (s *PTYSession) readLoop() {
 					s.processStreamJSON(data)
 				} else {
 					// Write to vt10x terminal emulator
-					// vt10x handles all ANSI escape sequences including:
-					// - Cursor positioning (\033[Y;XH)
-					// - Colors (8-bit, 256-color, and 24-bit true color)
-					// - Screen clearing (\033[2J)
-					// - Text attributes (bold, italic, underline, etc.)
 					s.mu.Lock()
-					s.Terminal.Write(data)
+					if s.Terminal != nil {
+						n, err := s.Terminal.Write(data)
+						if err != nil {
+							fmt.Printf("[PTY DEBUG] Error writing to terminal: %v\n", err)
+						} else if n != len(data) {
+							fmt.Printf("[PTY DEBUG] Partial write to terminal: %d/%d bytes\n", n, len(data))
+						}
+					} else {
+						fmt.Printf("[PTY DEBUG] Terminal is nil for session %s!\n", s.ID)
+					}
 					s.mu.Unlock()
 				}
 

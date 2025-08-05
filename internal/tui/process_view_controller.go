@@ -1,20 +1,42 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
+	"time"
+
 	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/process"
 )
+
+// Message types for process operations
+type processUpdateMsg struct{}
+
+type restartProcessMsg struct {
+	processName string
+	message     string
+	isError     bool
+	clearLogs   bool
+}
+
+type restartAllMsg struct {
+	message   string
+	isError   bool
+	clearLogs bool
+	restarted int
+}
 
 // ProcessViewController manages the processes view state and rendering
 type ProcessViewController struct {
 	processesList   list.Model
 	selectedProcess string
-	
+
 	// Dependencies injected from parent Model
-	processMgr *process.Manager
-	width      int
-	height     int
+	processMgr   *process.Manager
+	width        int
+	height       int
 	headerHeight int
 	footerHeight int
 }
@@ -24,7 +46,7 @@ func NewProcessViewController(processMgr *process.Manager) *ProcessViewControlle
 	processesList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	processesList.Title = "Running Processes"
 	processesList.SetShowStatusBar(false)
-	
+
 	return &ProcessViewController{
 		processesList: processesList,
 		processMgr:    processMgr,
@@ -37,7 +59,7 @@ func (v *ProcessViewController) UpdateSize(width, height, headerHeight, footerHe
 	v.height = height
 	v.headerHeight = headerHeight
 	v.footerHeight = footerHeight
-	
+
 	contentHeight := height - headerHeight - footerHeight
 	v.processesList.SetSize(width, contentHeight)
 }
@@ -60,10 +82,10 @@ func (v *ProcessViewController) GetProcessesList() *list.Model {
 // UpdateProcessList refreshes the process list with current data
 func (v *ProcessViewController) UpdateProcessList() {
 	processes := v.processMgr.GetAllProcesses()
-	
+
 	// Convert processes to list items
 	var items []list.Item
-	
+
 	if len(processes) == 0 {
 		// Add a placeholder item for empty state
 		items = append(items, processItem{
@@ -80,7 +102,7 @@ func (v *ProcessViewController) UpdateProcessList() {
 				stopped = append(stopped, proc)
 			}
 		}
-		
+
 		// Add running processes first
 		if len(running) > 0 {
 			items = append(items, processItem{
@@ -93,7 +115,7 @@ func (v *ProcessViewController) UpdateProcessList() {
 				})
 			}
 		}
-		
+
 		// Add stopped processes
 		if len(stopped) > 0 {
 			if len(running) > 0 {
@@ -114,7 +136,7 @@ func (v *ProcessViewController) UpdateProcessList() {
 			}
 		}
 	}
-	
+
 	v.processesList.SetItems(items)
 }
 
@@ -145,3 +167,94 @@ func (v *ProcessViewController) Render() string {
 }
 
 // processItem uses the existing type defined in model.go
+
+// HandleRestartProcess creates a command to restart a specific process
+func (v *ProcessViewController) HandleRestartProcess(proc *process.Process) tea.Cmd {
+	return func() tea.Msg {
+		// Check if process is still running before trying to stop it
+		if proc.GetStatus() == process.StatusRunning {
+			// Stop the process and wait for it to terminate completely
+			timeout := 5 * time.Second
+			if err := v.processMgr.StopProcessAndWait(proc.ID, timeout); err != nil {
+				return restartProcessMsg{
+					processName: proc.Name,
+					message:     fmt.Sprintf("Error stopping process %s: %v", proc.Name, err),
+					isError:     true,
+					clearLogs:   false,
+				}
+			}
+		}
+
+		// Clean up any finished processes before starting new one
+		v.processMgr.CleanupFinishedProcesses()
+
+		// Also clean up any processes that might be using development ports
+		if proc.Name == "server" || proc.Name == "dev" || proc.Name == "start" {
+			v.processMgr.KillProcessesByPort()
+			// Give a moment for ports to be freed
+			time.Sleep(500 * time.Millisecond)
+		}
+
+		// Now start it again
+		_, err := v.processMgr.StartScript(proc.Name)
+		if err != nil {
+			return restartProcessMsg{
+				processName: proc.Name,
+				message:     fmt.Sprintf("Error restarting script %s: %v", proc.Name, err),
+				isError:     true,
+				clearLogs:   true,
+			}
+		}
+
+		return restartProcessMsg{
+			processName: proc.Name,
+			message:     fmt.Sprintf("🔄 Restarted process: %s (logs cleared)", proc.Name),
+			isError:     false,
+			clearLogs:   true,
+		}
+	}
+}
+
+// HandleRestartAll creates a command to restart all processes
+func (v *ProcessViewController) HandleRestartAll() tea.Cmd {
+	return func() tea.Msg {
+		processes := v.processMgr.GetAllProcesses()
+		restarted := 0
+		var errors []string
+
+		for _, proc := range processes {
+			if proc.GetStatus() == process.StatusRunning {
+				// Stop the process
+				if err := v.processMgr.StopProcess(proc.ID); err != nil {
+					errors = append(errors, fmt.Sprintf("Error stopping process %s: %v", proc.Name, err))
+					continue
+				}
+
+				// Start it again
+				_, err := v.processMgr.StartScript(proc.Name)
+				if err != nil {
+					errors = append(errors, fmt.Sprintf("Error restarting script %s: %v", proc.Name, err))
+				} else {
+					restarted++
+				}
+			}
+		}
+
+		var message string
+		var isError bool
+		if len(errors) > 0 {
+			message = fmt.Sprintf("🔄 Restarted %d processes with %d errors (logs cleared): %s", restarted, len(errors), strings.Join(errors, "; "))
+			isError = true
+		} else {
+			message = fmt.Sprintf("🔄 Restarted %d processes (logs cleared)", restarted)
+			isError = false
+		}
+
+		return restartAllMsg{
+			message:   message,
+			isError:   isError,
+			clearLogs: true,
+			restarted: restarted,
+		}
+	}
+}

@@ -68,14 +68,19 @@ func (h *DialogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 				if len(parts) > 0 {
 					cmdName := parts[0]
 					args := parts[1:]
-					go func() {
-						_, err := model.processMgr.StartCommand(command, cmdName, args)
-						if err != nil {
-							errorMsg := fmt.Sprintf("Error starting command '%s' with args %v: %v", cmdName, args, err)
-							model.logStore.Add("system", "System", errorMsg, true)
-							model.updateChan <- logUpdateMsg{}
-						}
-					}()
+					// Create error handler for consistent error handling
+					errorHandler := NewStandardErrorHandler(model.logStore, model.updateChan)
+					SafeGoroutine(
+						fmt.Sprintf("start custom command '%s'", cmdName),
+						func() error {
+							_, err := model.processMgr.StartCommand(command, cmdName, args)
+							return err
+						},
+						func(err error) {
+							ctx := CommandExecutionContext(cmdName, "Dialog", model.logStore, model.updateChan)
+							errorHandler.HandleError(err, ctx)
+						},
+					)
 					model.navController.SwitchTo(ViewProcesses)
 					model.updateProcessList()
 					return model, model.waitForUpdates()

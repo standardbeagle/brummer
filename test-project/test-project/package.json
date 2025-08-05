@@ -1,0 +1,1 @@
+{"name": "test-project", "scripts": {"dev": "echo Starting dev server...", "test": "echo Running tests..."}}

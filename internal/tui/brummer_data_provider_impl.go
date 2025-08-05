@@ -1,7 +1,7 @@
 package tui
 
 import (
-	"sync"
+	"sync/atomic"
 
 	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/logs"
@@ -11,27 +11,29 @@ import (
 // TUIDataProvider implements aicoder.BrummerDataProvider interface
 // It provides thread-safe access to TUI model data for PTY sessions
 type TUIDataProvider struct {
-	model *Model
-	mu    sync.RWMutex
+	model atomic.Value // stores *Model
 }
 
 // NewTUIDataProvider creates a new TUI data provider
 func NewTUIDataProvider(model *Model) aicoder.BrummerDataProvider {
-	return &TUIDataProvider{
-		model: model,
-	}
+	p := &TUIDataProvider{}
+	p.model.Store(model)
+	return p
+}
+
+// SetModel sets the model reference for the data provider
+func (p *TUIDataProvider) SetModel(model *Model) {
+	p.model.Store(model)
 }
 
 // GetLastError returns the most recent error context
 func (p *TUIDataProvider) GetLastError() *logs.ErrorContext {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.model == nil || p.model.logStore == nil {
+	model, ok := p.model.Load().(*Model)
+	if !ok || model == nil || model.logStore == nil {
 		return nil
 	}
 
-	contexts := p.model.logStore.GetErrorContexts()
+	contexts := model.logStore.GetErrorContexts()
 	if len(contexts) > 0 {
 		return &contexts[0]
 	}
@@ -40,14 +42,12 @@ func (p *TUIDataProvider) GetLastError() *logs.ErrorContext {
 
 // GetRecentLogs returns recent log entries
 func (p *TUIDataProvider) GetRecentLogs(count int) []logs.LogEntry {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.model == nil || p.model.logStore == nil {
+	model, ok := p.model.Load().(*Model)
+	if !ok || model == nil || model.logStore == nil {
 		return []logs.LogEntry{}
 	}
 
-	allLogs := p.model.logStore.GetAll()
+	allLogs := model.logStore.GetAll()
 	if len(allLogs) <= count {
 		return allLogs
 	}
@@ -58,16 +58,14 @@ func (p *TUIDataProvider) GetRecentLogs(count int) []logs.LogEntry {
 
 // GetTestFailures returns test failure information
 func (p *TUIDataProvider) GetTestFailures() interface{} {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.model == nil || p.model.logStore == nil {
+	model, ok := p.model.Load().(*Model)
+	if !ok || model == nil || model.logStore == nil {
 		return nil
 	}
 
 	// Get test-related errors
 	var testFailures []logs.ErrorContext
-	contexts := p.model.logStore.GetErrorContexts()
+	contexts := model.logStore.GetErrorContexts()
 
 	// Get last 10 test-related errors
 	count := 0
@@ -84,16 +82,14 @@ func (p *TUIDataProvider) GetTestFailures() interface{} {
 
 // GetBuildOutput returns recent build output
 func (p *TUIDataProvider) GetBuildOutput() string {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.model == nil || p.model.logStore == nil {
+	model, ok := p.model.Load().(*Model)
+	if !ok || model == nil || model.logStore == nil {
 		return ""
 	}
 
 	// Get logs from build-related processes
 	var buildOutput string
-	logs := p.model.logStore.GetAll()
+	logs := model.logStore.GetAll()
 
 	// Look for build-related logs in the last 50 entries
 	start := len(logs) - 50
@@ -116,14 +112,12 @@ func (p *TUIDataProvider) GetBuildOutput() string {
 
 // GetProcessInfo returns information about running processes
 func (p *TUIDataProvider) GetProcessInfo() interface{} {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.model == nil || p.model.processMgr == nil {
+	model, ok := p.model.Load().(*Model)
+	if !ok || model == nil || model.processMgr == nil {
 		return nil
 	}
 
-	processes := p.model.processMgr.GetAllProcesses()
+	processes := model.processMgr.GetAllProcesses()
 
 	// Create a simplified process info structure
 	type ProcessInfo struct {
@@ -162,26 +156,22 @@ func (p *TUIDataProvider) GetProcessInfo() interface{} {
 
 // GetDetectedURLs returns URLs detected in process logs
 func (p *TUIDataProvider) GetDetectedURLs() []logs.URLEntry {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.model == nil || p.model.logStore == nil {
+	model, ok := p.model.Load().(*Model)
+	if !ok || model == nil || model.logStore == nil {
 		return []logs.URLEntry{}
 	}
 
-	return p.model.logStore.GetURLs()
+	return model.logStore.GetURLs()
 }
 
 // GetRecentProxyRequests returns recent proxy requests
 func (p *TUIDataProvider) GetRecentProxyRequests(count int) []*proxy.Request {
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-
-	if p.model == nil || p.model.proxyServer == nil {
+	model, ok := p.model.Load().(*Model)
+	if !ok || model == nil || model.proxyServer == nil {
 		return []*proxy.Request{}
 	}
 
-	allRequests := p.model.proxyServer.GetRequests()
+	allRequests := model.proxyServer.GetRequests()
 	if len(allRequests) <= count {
 		// Convert to pointer slice
 		result := make([]*proxy.Request, len(allRequests))

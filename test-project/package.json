@@ -1,0 +1,9 @@
+{
+  "name": "test-project",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "node test-script.js",
+    "test": "echo 'Running tests...' && sleep 2 && echo 'Tests passed!'",
+    "build": "echo 'Building project...' && sleep 3 && echo 'Build complete!'"
+  }
+}

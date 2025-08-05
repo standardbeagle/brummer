@@ -187,8 +187,8 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 		}
 		return v, nil
 
-	case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+p"))):
-		// Previous session
+	case key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+shift+p"))):
+		// Previous session (using shift to avoid conflict with data injection)
 		if session, err := v.ptyManager.PreviousSession(); err == nil {
 			v.currentSession = session
 		}
@@ -222,7 +222,13 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 		if key.Matches(msg, key.NewBinding(key.WithKeys(binding.Key))) {
 			if err := v.ptyManager.InjectDataToCurrent(binding.DataType); err == nil {
 				// Show brief feedback
+				v.statusMessage = fmt.Sprintf("✅ Injected: %s", binding.Description)
+				v.statusTime = time.Now()
 				return v, v.showDataInjectionFeedback(binding.Description)
+			} else if err != nil {
+				// Show error feedback
+				v.statusMessage = fmt.Sprintf("❌ Failed to inject data: %v", err)
+				v.statusTime = time.Now()
 			}
 			return v, nil
 		}
@@ -519,7 +525,42 @@ func (v *AICoderPTYView) showDataInjectionFeedback(description string) tea.Cmd {
 func (v *AICoderPTYView) View() string {
 	// Ensure we have valid dimensions before rendering
 	if v.width <= 0 || v.height <= 0 {
-		return "Initializing AI Coder view..."
+		return fmt.Sprintf("Initializing AI Coder view... (dimensions: %dx%d)", v.width, v.height)
+	}
+
+	// Add debug info about current session
+	if v.currentSession == nil {
+		// Try to get current session from PTY manager
+		if v.ptyManager != nil {
+			if currentSession, exists := v.ptyManager.GetCurrentSession(); exists {
+				v.currentSession = currentSession
+				// Resize to current dimensions
+				termWidth, termHeight := v.getTerminalSize()
+				v.currentSession.Resize(termWidth, termHeight)
+			}
+		}
+
+		// If still no session, show appropriate message
+		if v.currentSession == nil {
+			// Check if there are any sessions available
+			sessions := []string{}
+			hasPTYManager := v.ptyManager != nil
+			sessionCount := 0
+			if v.ptyManager != nil {
+				allSessions := v.ptyManager.ListSessions()
+				sessionCount = len(allSessions)
+				for _, s := range allSessions {
+					sessions = append(sessions, fmt.Sprintf("%s (Active: %v, Terminal: %v)", s.ID, s.IsActive, s.Terminal != nil))
+				}
+			}
+
+			debugInfo := fmt.Sprintf("PTY Manager: %v, Session Count: %d", hasPTYManager, sessionCount)
+
+			if len(sessions) > 0 {
+				return fmt.Sprintf("No AI Coder session selected (dimensions: %dx%d)\n%s\nAvailable sessions: %v\n\nUse /ai <provider> to start a session", v.width, v.height, debugInfo, sessions)
+			}
+			return fmt.Sprintf("No AI Coder session active (dimensions: %dx%d)\n%s\n\nUse /ai <provider> to start a session", v.width, v.height, debugInfo)
+		}
 	}
 
 	if v.isFullScreen {
@@ -641,9 +682,11 @@ func (v *AICoderPTYView) renderWindowed() string {
 		content.WriteString(v.renderHelp())
 	} else {
 		// Brief controls
-		controls := "/ (start of line): Brummer Commands | F11: Full Screen | F12: Debug Mode | Ctrl+H: Help | Enter: Focus Terminal"
+		controls := "F11: Full Screen | F12: Debug Mode | Ctrl+H: Help"
 		if v.terminalFocused {
-			controls = "Ctrl+Q: Unfocus | " + controls
+			controls = "Terminal Focused | Ctrl+Q: Unfocus | Ctrl+E/L/T/B/P/U/R: Inject Data | " + controls
+		} else {
+			controls = "Terminal Not Focused | Enter: Focus Terminal | / (start of line): Brummer Commands | " + controls
 		}
 		if v.scrollOffset > 0 {
 			controls = fmt.Sprintf("[Scrolled ↑ %d] ", v.scrollOffset) + controls + " | Mouse/PgUp/PgDn: Scroll"
@@ -696,7 +739,8 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 	// Get the terminal emulator which has already parsed the PTY output
 	terminal := v.currentSession.GetTerminal()
 	if terminal == nil {
-		return "Waiting for terminal..."
+		return fmt.Sprintf("Waiting for terminal... (session: %s, active: %v, has output: %v)",
+			v.currentSession.ID, v.currentSession.IsActive, len(v.currentSession.GetOutputHistory()) > 0)
 	}
 
 	// Build the visible content from the terminal buffer
@@ -1209,7 +1253,7 @@ func (v *AICoderPTYView) renderHelp() string {
 
 	help.WriteString(v.helpStyle.Render("🔥 AI Coder PTY Controls:\n"))
 	help.WriteString(v.helpStyle.Render("Navigation: F11 (Full Screen) | F12 (Debug Mode) | Enter (Focus) | Ctrl+Q (Unfocus) | ESC (Exit Full Screen)\n"))
-	help.WriteString(v.helpStyle.Render("Sessions: Ctrl+N (Next) | Ctrl+P (Previous) | Ctrl+D (Detach)\n"))
+	help.WriteString(v.helpStyle.Render("Sessions: Ctrl+N (Next) | Ctrl+Shift+P (Previous) | Ctrl+D (Detach)\n"))
 	help.WriteString(v.helpStyle.Render("\n🔹 Data Injection Keys:\n"))
 
 	for _, binding := range v.keyBindings {
@@ -1270,6 +1314,13 @@ func (v *AICoderPTYView) SetCurrentSession(session *aicoder.PTYSession) {
 		// Resize to current dimensions
 		termWidth, termHeight := v.getTerminalSize()
 		session.Resize(termWidth, termHeight)
+
+		// Set status message to confirm session is set
+		v.statusMessage = fmt.Sprintf("✅ AI Coder session started: %s", session.Name)
+		v.statusTime = time.Now()
+
+		// Auto-focus the terminal when a new session is set
+		v.terminalFocused = true
 	}
 }
 
@@ -1298,9 +1349,8 @@ func (v *AICoderPTYView) ShouldInterceptSlashCommand() bool {
 		return true
 	}
 
-	// CRITICAL FIX: If terminal IS focused, DON'T intercept slash commands
-	// This allows slash commands to be sent to the AI coder as regular input
-	// Only intercept when terminal is not focused
+	// When terminal is focused, slash commands should go to the AI agent
+	// This allows AI agents to handle "/" as regular input
 	return false
 }
 

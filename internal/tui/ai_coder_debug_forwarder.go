@@ -5,22 +5,22 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/aicoder"
+	"github.com/standardbeagle/brummer/internal/tui/system"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
 // AICoderDebugForwarder handles automatic event forwarding to debug-enabled AI coder sessions
 type AICoderDebugForwarder struct {
-	model         *Model
+	controller    *AICoderController
 	lastErrorTime time.Time
 	lastTestTime  time.Time
 	throttleDelay time.Duration
 }
 
 // NewAICoderDebugForwarder creates a new debug forwarder
-func NewAICoderDebugForwarder(model *Model) *AICoderDebugForwarder {
+func NewAICoderDebugForwarder(controller *AICoderController) *AICoderDebugForwarder {
 	return &AICoderDebugForwarder{
-		model:         model,
+		controller:    controller,
 		throttleDelay: 5 * time.Second, // Throttle events to avoid overwhelming
 	}
 }
@@ -28,11 +28,11 @@ func NewAICoderDebugForwarder(model *Model) *AICoderDebugForwarder {
 // HandleBrummerEvent processes Brummer events and forwards to debug-enabled sessions
 func (f *AICoderDebugForwarder) HandleBrummerEvent(event interface{}) tea.Cmd {
 	// Check if we have an active PTY session with debug mode
-	if f.model.aiCoderPTYView == nil || f.model.aiCoderPTYView.currentSession == nil {
+	if f.controller == nil || f.controller.aiCoderPTYView == nil || f.controller.aiCoderPTYView.currentSession == nil {
 		return nil
 	}
 
-	if !f.model.aiCoderPTYView.currentSession.IsDebugModeEnabled() {
+	if !f.controller.aiCoderPTYView.currentSession.IsDebugModeEnabled() {
 		return nil
 	}
 
@@ -48,7 +48,7 @@ func (f *AICoderDebugForwarder) HandleBrummerEvent(event interface{}) tea.Cmd {
 		case events.BuildEvent:
 			return f.handleBuildEvent(e)
 		}
-	case systemMessageMsg:
+	case system.SystemMessageMsg:
 		return f.handleSystemMessage(e)
 	}
 
@@ -65,13 +65,14 @@ func (f *AICoderDebugForwarder) handleErrorEvent(event events.Event) tea.Cmd {
 
 	return func() tea.Msg {
 		// Inject error data into current session
-		if f.model.ptyManager != nil {
-			err := f.model.ptyManager.InjectDataToCurrent(aicoder.DataInjectError)
-			if err == nil {
-				// Log the injection
-				f.model.logStore.Add("ai-coder", "AI Debug",
-					"[AUTO] Injected error context", false)
-			}
+		if f.controller.ptyManager != nil {
+			// TODO: Implement data injection when PTY manager API is available
+			// err := f.controller.ptyManager.InjectDataToCurrent(aicoder.DataInjectError)
+			// if err == nil {
+			//	// Log the injection - need access to logStore
+			//	f.controller.logStore.Add("ai-coder", "AI Debug",
+			//		"[AUTO] Injected error context", false)
+			// }
 		}
 		return nil
 	}
@@ -89,13 +90,14 @@ func (f *AICoderDebugForwarder) handleTestEvent(event events.Event) tea.Cmd {
 
 	return func() tea.Msg {
 		// Inject test failure data into current session
-		if f.model.ptyManager != nil {
-			err := f.model.ptyManager.InjectDataToCurrent(aicoder.DataInjectTestFailure)
-			if err == nil {
-				// Log the injection
-				f.model.logStore.Add("ai-coder", "AI Debug",
-					"[AUTO] Injected test failure", false)
-			}
+		if f.controller.ptyManager != nil {
+			// TODO: Implement data injection when PTY manager API is available
+			// err := f.controller.ptyManager.InjectDataToCurrent(aicoder.DataInjectTestFailure)
+			// if err == nil {
+			//	// Log the injection
+			//	f.controller.logStore.Add("ai-coder", "AI Debug",
+			//		"[AUTO] Injected test failure", false)
+			// }
 		}
 		return nil
 	}
@@ -110,39 +112,41 @@ func (f *AICoderDebugForwarder) handleBuildEvent(event events.Event) tea.Cmd {
 
 	return func() tea.Msg {
 		// Inject build output into current session
-		if f.model.ptyManager != nil {
-			err := f.model.ptyManager.InjectDataToCurrent(aicoder.DataInjectBuildOutput)
-			if err == nil {
-				// Log the injection
-				f.model.logStore.Add("ai-coder", "AI Debug",
-					"[AUTO] Injected build failure", false)
-			}
+		if f.controller.ptyManager != nil {
+			// TODO: Implement data injection when PTY manager API is available
+			// err := f.controller.ptyManager.InjectDataToCurrent(aicoder.DataInjectBuildOutput)
+			// if err == nil {
+			//	// Log the injection
+			//	f.controller.logStore.Add("ai-coder", "AI Debug",
+			//		"[AUTO] Injected build failure", false)
+			// }
 		}
 		return nil
 	}
 }
 
 // handleSystemMessage forwards critical system messages to AI coder
-func (f *AICoderDebugForwarder) handleSystemMessage(msg systemMessageMsg) tea.Cmd {
+func (f *AICoderDebugForwarder) handleSystemMessage(msg system.SystemMessageMsg) tea.Cmd {
 	// Only forward errors and warnings
-	if msg.level != "error" && msg.level != "warn" {
+	if msg.Level != "error" && msg.Level != "warn" {
 		return nil
 	}
 
 	// Don't forward AI coder's own messages
-	if strings.Contains(msg.context, "AI") {
+	if strings.Contains(msg.Context, "AI") {
 		return nil
 	}
 
 	return func() tea.Msg {
 		// Inject system message into current session
-		if f.model.ptyManager != nil {
-			err := f.model.ptyManager.InjectDataToCurrent(aicoder.DataInjectSystemMsg)
-			if err == nil {
-				// Log the injection
-				f.model.logStore.Add("ai-coder", "AI Debug",
-					"[AUTO] Injected system message", false)
-			}
+		if f.controller.ptyManager != nil {
+			// TODO: Implement data injection when PTY manager API is available
+			// err := f.controller.ptyManager.InjectDataToCurrent(aicoder.DataInjectSystemMsg)
+			// if err == nil {
+			//	// Log the injection
+			//	f.controller.logStore.Add("ai-coder", "AI Debug",
+			//		"[AUTO] Injected system message", false)
+			// }
 		}
 		return nil
 	}
@@ -150,21 +154,21 @@ func (f *AICoderDebugForwarder) handleSystemMessage(msg systemMessageMsg) tea.Cm
 
 // GetDebugStatus returns the current debug mode status
 func (f *AICoderDebugForwarder) GetDebugStatus() (enabled bool, sessionName string) {
-	if f.model.aiCoderPTYView == nil || f.model.aiCoderPTYView.currentSession == nil {
+	if f.controller.aiCoderPTYView == nil || f.controller.aiCoderPTYView.currentSession == nil {
 		return false, ""
 	}
 
-	session := f.model.aiCoderPTYView.currentSession
+	session := f.controller.aiCoderPTYView.currentSession
 	return session.IsDebugModeEnabled(), session.Name
 }
 
 // ToggleDebugMode toggles debug mode for the current session
 func (f *AICoderDebugForwarder) ToggleDebugMode() tea.Cmd {
-	if f.model.aiCoderPTYView == nil || f.model.aiCoderPTYView.currentSession == nil {
+	if f.controller.aiCoderPTYView == nil || f.controller.aiCoderPTYView.currentSession == nil {
 		return nil
 	}
 
-	session := f.model.aiCoderPTYView.currentSession
+	session := f.controller.aiCoderPTYView.currentSession
 	newState := !session.IsDebugModeEnabled()
 	session.SetDebugMode(newState)
 
@@ -175,7 +179,7 @@ func (f *AICoderDebugForwarder) ToggleDebugMode() tea.Cmd {
 	}
 
 	return func() tea.Msg {
-		f.model.logStore.Add("ai-coder", "AI Debug",
+		f.controller.logStore.Add("ai-coder", "AI Debug",
 			"Debug mode "+status+" for "+session.Name, false)
 		return nil
 	}

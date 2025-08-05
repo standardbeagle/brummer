@@ -69,7 +69,13 @@ prompt = "--prompt"
 [ai_coders.providers.terminal]
 [ai_coders.providers.terminal.cli_tool]
 command = "bash"
-base_args = ["-c"]
+base_args = ["-i"]
+
+# Test provider that simulates Claude (for testing without Claude CLI)
+[ai_coders.providers.test-claude]
+[ai_coders.providers.test-claude.cli_tool]
+command = "/bin/bash"
+base_args = ["-c", "echo 'Claude AI Coder (Test Mode)'; echo 'MCP URL: $BRUMMER_MCP_URL'; echo 'Ready for input...'; exec bash -i"]
 
 # Note: API-based providers (that don't use CLI tools) have been removed
 # All configured providers above use their respective CLI tools

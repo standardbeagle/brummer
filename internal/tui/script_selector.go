@@ -144,7 +144,7 @@ func (m *Model) renderScriptSelector() string {
 			Width(contentWidth).
 			Align(lipgloss.Center)
 
-		if m.scriptSelector.arbitraryMode {
+		if m.scriptSelectorController.GetScriptSelector().arbitraryMode {
 			if containerWidth < 60 {
 				skipSection = skipStyle.Render("🚀 Arbitrary Command Mode")
 			} else {
@@ -167,7 +167,7 @@ func (m *Model) renderScriptSelector() string {
 		Align(lipgloss.Center)
 
 	var instructions string
-	if m.scriptSelector.arbitraryMode {
+	if m.scriptSelectorController.GetScriptSelector().arbitraryMode {
 		if containerWidth < 50 {
 			instructions = instructionStyle.Render("Enter: run command • Esc: exit")
 		} else {
@@ -186,16 +186,16 @@ func (m *Model) renderScriptSelector() string {
 		Width(contentWidth).
 		MarginBottom(1)
 
-	inputView := inputStyle.Render(m.scriptSelector.View())
+	inputView := inputStyle.Render(m.scriptSelectorController.GetScriptSelector().View())
 
 	// Dropdown suggestions with proper width (hide in arbitrary mode)
 	var dropdownView string
-	if !m.scriptSelector.arbitraryMode {
-		dropdownView = m.scriptSelector.RenderScriptSelectorDropdownWithWidth(6, contentWidth) // Reduced from 10 to 6
+	if !m.scriptSelectorController.GetScriptSelector().arbitraryMode {
+		dropdownView = m.scriptSelectorController.GetScriptSelector().RenderScriptSelectorDropdownWithWidth(6, contentWidth) // Reduced from 10 to 6
 	}
 
 	// Error message if any
-	errorMsg := m.scriptSelector.GetErrorMessage()
+	errorMsg := m.scriptSelectorController.GetScriptSelector().GetErrorMessage()
 	errorView := ""
 	if errorMsg != "" {
 		errorStyle := lipgloss.NewStyle().

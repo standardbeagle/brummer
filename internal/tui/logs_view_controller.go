@@ -21,14 +21,14 @@ type LogsViewController struct {
 	hidePattern      string // Regex pattern for /hide command
 	logsAutoScroll   bool
 	logsAtBottom     bool
-	
+
 	// Dependencies injected from parent Model
-	logStore       *logs.Store
+	logStore        *logs.Store
 	selectedProcess string
-	width          int
-	height         int
-	headerHeight   int
-	footerHeight   int
+	width           int
+	height          int
+	headerHeight    int
+	footerHeight    int
 }
 
 // NewLogsViewController creates a new logs view controller
@@ -36,7 +36,7 @@ func NewLogsViewController(logStore *logs.Store) *LogsViewController {
 	searchInput := textinput.New()
 	searchInput.Placeholder = "Commands: /show <pattern> | /hide <pattern>"
 	searchInput.Focus()
-	
+
 	return &LogsViewController{
 		logsViewport:   viewport.New(0, 0),
 		searchInput:    searchInput,
@@ -51,7 +51,7 @@ func (v *LogsViewController) UpdateSize(width, height, headerHeight, footerHeigh
 	v.height = height
 	v.headerHeight = headerHeight
 	v.footerHeight = footerHeight
-	
+
 	v.logsViewport.Width = width
 	v.logsViewport.Height = height - headerHeight - footerHeight
 }
@@ -76,6 +76,41 @@ func (v *LogsViewController) SetShowHighPriority(show bool) {
 	v.showHighPriority = show
 }
 
+// ToggleHighPriority toggles the high priority filter
+func (v *LogsViewController) ToggleHighPriority() {
+	v.showHighPriority = !v.showHighPriority
+}
+
+// GetShowPatternPtr returns a pointer to the show pattern
+func (v *LogsViewController) GetShowPatternPtr() *string {
+	return &v.showPattern
+}
+
+// GetHidePatternPtr returns a pointer to the hide pattern
+func (v *LogsViewController) GetHidePatternPtr() *string {
+	return &v.hidePattern
+}
+
+// GetSearchResultsPtr returns a pointer to the search results
+func (v *LogsViewController) GetSearchResultsPtr() *[]logs.LogEntry {
+	return &v.searchResults
+}
+
+// GetShowPattern returns the current show pattern
+func (v *LogsViewController) GetShowPattern() string {
+	return v.showPattern
+}
+
+// GetHidePattern returns the current hide pattern
+func (v *LogsViewController) GetHidePattern() string {
+	return v.hidePattern
+}
+
+// GetSearchResults returns the current search results
+func (v *LogsViewController) GetSearchResults() []logs.LogEntry {
+	return v.searchResults
+}
+
 // ToggleAutoScroll toggles auto-scroll behavior
 func (v *LogsViewController) ToggleAutoScroll() {
 	v.logsAutoScroll = !v.logsAutoScroll
@@ -94,7 +129,7 @@ func (v *LogsViewController) GetLogsViewport() *viewport.Model {
 // UpdateLogsView refreshes the logs view with current data
 func (v *LogsViewController) UpdateLogsView() {
 	var collapsedEntries []logs.CollapsedLogEntry
-	
+
 	if v.selectedProcess != "" {
 		// Show logs for specific process
 		collapsedEntries = v.logStore.GetByProcessCollapsed(v.selectedProcess)
@@ -102,16 +137,16 @@ func (v *LogsViewController) UpdateLogsView() {
 		// Show all logs
 		collapsedEntries = v.logStore.GetAllCollapsed()
 	}
-	
+
 	// Apply filters
 	collapsedEntries = v.applyFilters(collapsedEntries)
-	
+
 	// Format for display
 	content := v.formatLogsForDisplay(collapsedEntries)
-	
+
 	// Update viewport
 	v.logsViewport.SetContent(content)
-	
+
 	// Auto-scroll to bottom if enabled
 	if v.logsAutoScroll {
 		v.logsViewport.GotoBottom()
@@ -169,59 +204,59 @@ func (v *LogsViewController) Render() string {
 // applyFilters applies show/hide patterns and priority filters
 func (v *LogsViewController) applyFilters(entries []logs.CollapsedLogEntry) []logs.CollapsedLogEntry {
 	var filtered []logs.CollapsedLogEntry
-	
+
 	for _, entry := range entries {
 		// Apply high priority filter
 		if v.showHighPriority && entry.LogEntry.Priority <= 50 {
 			continue
 		}
-		
+
 		// Apply show pattern
 		if v.showPattern != "" {
 			if matched, _ := regexp.MatchString(v.showPattern, entry.LogEntry.Content); !matched {
 				continue
 			}
 		}
-		
+
 		// Apply hide pattern
 		if v.hidePattern != "" {
 			if matched, _ := regexp.MatchString(v.hidePattern, entry.LogEntry.Content); matched {
 				continue
 			}
 		}
-		
+
 		filtered = append(filtered, entry)
 	}
-	
+
 	return filtered
 }
 
 // formatLogsForDisplay formats collapsed log entries for display
 func (v *LogsViewController) formatLogsForDisplay(entries []logs.CollapsedLogEntry) string {
 	var content strings.Builder
-	
+
 	for _, entry := range entries {
 		// Format timestamp
 		timestamp := entry.LogEntry.Timestamp.Format("15:04:05")
-		
+
 		// Format process name
 		processName := entry.LogEntry.ProcessName
 		if len(processName) > 12 {
 			processName = processName[:12]
 		}
-		
+
 		// Get log style
 		logStyle := v.getLogStyle(entry.LogEntry)
-		
+
 		// Format content
 		cleanContent := v.cleanLogContent(entry.LogEntry.Content)
-		
+
 		// Add collapse indicator if needed
 		var collapseIndicator string
 		if entry.IsCollapsed {
 			collapseIndicator = fmt.Sprintf(" (×%d)", entry.Count)
 		}
-		
+
 		// Build log line
 		logLine := fmt.Sprintf("[%s] %s: %s%s",
 			timestamp,
@@ -229,10 +264,10 @@ func (v *LogsViewController) formatLogsForDisplay(entries []logs.CollapsedLogEnt
 			cleanContent,
 			collapseIndicator,
 		)
-		
+
 		content.WriteString(logStyle.Render(logLine) + "\n")
 	}
-	
+
 	return content.String()
 }
 

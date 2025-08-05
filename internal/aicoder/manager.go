@@ -39,28 +39,35 @@ func NewAICoderManager(config Config, eventBus EventBus) (*AICoderManager, error
 	// Create provider registry
 	providerReg := NewProviderRegistry()
 
-	// Register Claude provider
-	claudeProvider := NewClaudeProvider("", "")
-	if err := providerReg.Register("claude", claudeProvider); err != nil {
-		return nil, fmt.Errorf("failed to register claude provider: %w", err)
+	// Get provider configurations to check which ones have CLI tools
+	providerConfigs := config.GetProviderConfigs()
+
+	// Register built-in providers only if they don't have CLI tool configurations
+	if _, hasCLI := providerConfigs["claude"]; !hasCLI {
+		claudeProvider := NewClaudeProvider("", "")
+		if err := providerReg.Register("claude", claudeProvider); err != nil {
+			return nil, fmt.Errorf("failed to register claude provider: %w", err)
+		}
 	}
 
-	// Register OpenAI provider
+	// Register OpenAI provider (always register as no CLI config exists)
 	openaiProvider := NewOpenAIProvider("", "")
 	if err := providerReg.Register("openai", openaiProvider); err != nil {
 		return nil, fmt.Errorf("failed to register openai provider: %w", err)
 	}
 
-	// Register Gemini provider
-	geminiProvider := NewGeminiProvider("", "")
-	if err := providerReg.Register("gemini", geminiProvider); err != nil {
-		return nil, fmt.Errorf("failed to register gemini provider: %w", err)
+	if _, hasCLI := providerConfigs["gemini"]; !hasCLI {
+		geminiProvider := NewGeminiProvider("", "")
+		if err := providerReg.Register("gemini", geminiProvider); err != nil {
+			return nil, fmt.Errorf("failed to register gemini provider: %w", err)
+		}
 	}
 
-	// Register Terminal provider
-	terminalProvider := NewTerminalProvider("")
-	if err := providerReg.Register("terminal", terminalProvider); err != nil {
-		return nil, fmt.Errorf("failed to register terminal provider: %w", err)
+	if _, hasCLI := providerConfigs["terminal"]; !hasCLI {
+		terminalProvider := NewTerminalProvider("")
+		if err := providerReg.Register("terminal", terminalProvider); err != nil {
+			return nil, fmt.Errorf("failed to register terminal provider: %w", err)
+		}
 	}
 
 	// Register CLI tool providers based on configuration

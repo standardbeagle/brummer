@@ -13,12 +13,12 @@ import (
 type URLsViewController struct {
 	urlsViewport   viewport.Model
 	ShowingMCPHelp bool // Exported for access from Model
-	
+
 	// Dependencies injected from parent Model
-	logStore  *logs.Store
-	mcpServer MCPServerInterface
-	width     int
-	height    int
+	logStore     *logs.Store
+	mcpServer    MCPServerInterface
+	width        int
+	height       int
 	headerHeight int
 	footerHeight int
 }
