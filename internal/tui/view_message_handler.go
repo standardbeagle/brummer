@@ -51,7 +51,7 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 
 		// Calculate content height once for all controllers
 		contentHeight := model.calculateContentHeight()
-		
+
 		// Update all view controllers with new size including content height
 		if model.processViewController != nil {
 			model.processViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)

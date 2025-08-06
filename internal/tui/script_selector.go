@@ -152,9 +152,9 @@ func (m *Model) renderScriptSelector() string {
 			}
 		} else {
 			if containerWidth < 60 {
-				skipSection = skipStyle.Render("💡 Ctrl+S: skip • Ctrl+N: arbitrary • /: commands")
+				skipSection = skipStyle.Render("💡 Ctrl+S: skip • Ctrl+N: cmd • Ctrl+A: AI • /: palette")
 			} else {
-				skipSection = skipStyle.Render("💡 Skip Scripts: Ctrl+S to skip, Ctrl+N for arbitrary commands, or / for command palette")
+				skipSection = skipStyle.Render("💡 Shortcuts: Ctrl+S skip startup, Ctrl+N arbitrary commands, Ctrl+A AI coder, / command palette")
 			}
 		}
 	}

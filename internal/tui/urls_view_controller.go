@@ -127,7 +127,7 @@ func (v *URLsViewController) renderSimple(urls []logs.URLEntry) string {
 	var content strings.Builder
 
 	// URLs are already sorted by the Render method, no need to sort again
-	
+
 	// Header with count
 	headerStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("39"))
 	content.WriteString(headerStyle.Render(fmt.Sprintf("🔗 Detected URLs (%d)", len(urls))) + "\n\n")

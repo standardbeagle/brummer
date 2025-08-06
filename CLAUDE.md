@@ -2,79 +2,28 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Current Execution Status
+## Current Development Status
 
 ⚠️ **CRITICAL INSTRUCTION**: Always update this section when working on tasks to maintain continuity between sessions.
 
-- **Phase**: Message Router Implementation - COMPLETED ✅
-- **Current Task**: Message Router pattern for Model.Update method refactoring
-- **Stage**: COMPLETED - Message Router successfully implemented and integrated
-- **Started**: August 4, 2025
-- **Completed**: August 4, 2025
-- **Branch**: refactor/split-model-file
-- **Log File**: execution-log.md
-- **Results**: 
-  - Successfully split massive 545-line Update method into clean Message Router pattern
-  - Created 6 specialized message handlers (System, Process, Log, MCP, AI Coder, View)
-  - Reduced Model complexity and improved separation of concerns
-  - All compilation errors resolved - build successful
-  - Message routing now delegates to appropriate controllers
+- **Current State**: Stable codebase with comprehensive architecture
+- **Recent Work**: Message Router refactoring and lock-free architecture optimizations completed
+- **Architecture**: Event-driven with Process Manager, Hub System, and Proxy Server integration
+- **Branch**: main (stable)
 
-### Phase 1 Results - View Controllers & Renderers:
-1. ✅ **COMPLETED**: Enhanced WebViewController (470 → 852 lines)
-2. ✅ **COMPLETED**: Created SettingsController (~380 lines)
-3. ✅ **COMPLETED**: Created LayoutController (~315 lines)
-4. ✅ **COMPLETED**: Updated model.go with delegations
-5. ✅ **COMPLETED**: All compilation errors resolved
-
-### Phase 2 Results - Input & Event Controllers:
-1. ✅ **COMPLETED**: Created InputController (~392 lines) - all keyboard handling
-2. ✅ **COMPLETED**: Created EventController (~157 lines) - event subscriptions
-3. ✅ **COMPLETED**: CommandWindowController already properly separated
-4. ✅ **COMPLETED**: Removed duplicate methods from model.go
-5. ✅ **COMPLETED**: Update method now delegates cleanly
-
-### Phase 1 Results - AI Coder Foundation:
-1. ✅ **COMPLETED**: Created comprehensive subtask plan with 8 atomic tasks
-2. ✅ **COMPLETED**: Generated context package with architecture analysis
-3. ✅ **COMPLETED**: Documented tmux-style interactive AI coder design
-4. ✅ **COMPLETED**: Updated CLAUDE.md with full AI coder documentation
-5. ✅ **COMPLETED**: Task 01 - Core Service (AICoderManager implementation)
-6. ✅ **COMPLETED**: Task 02 - MCP Tools (6 AI coder control tools)
-7. ✅ **COMPLETED**: Task 03 - Configuration System (TOML config)
-8. ⏳ **PENDING**: Phase 2 execution (tasks 04-06: TUI, process integration, events)
-9. ⏳ **PENDING**: Phase 3 execution (tasks 07-08: testing, documentation)
-
-### AI Coder Design Vision:
-"This design makes AI coders feel like pair programming sessions where Brummer acts as the development environment providing real-time feedback to both the human and AI."
+### Major Completed Work:
+- ✅ Message Router pattern implementation for TUI model refactoring
+- ✅ Lock-free architecture with atomic operations (30-300x performance improvement)
+- ✅ AI Coder foundation with tmux-style interactive coding sessions
+- ✅ Hub mode for multi-instance coordination via MCP
+- ✅ Comprehensive MCP server with browser automation and telemetry
 
 ### Next Agent Instructions:
 - **ALWAYS check this status section first** to understand current work context
 - **ALWAYS update this section** when starting/completing tasks
-- **Follow the subtask execution guide** at `/requests/agentic-ai-coders/subtasks-execute.md`
-- **Use worktrees for parallel development** to avoid merge conflicts
-
-## Current Execution Status
-- **Phase**: Lock-Free Architecture - Prototype-First Execution Complete
-- **Current Task**: Ready for Phase 3 Implementation with Atomic Operations
-- **Stage**: PROTOTYPE_VALIDATED
-- **Started**: January 31, 2025
-- **Completed**: January 31, 2025
-- **Method**: Assumption Testing → Plan Adjustment → Validated Approach
-- **Result**: Atomic operations validated as 30-300x faster than mutexes
-
-### Lock-Free Architecture Results:
-1. ✅ **COMPLETED**: Phase 1 - Fixed race conditions in scripts_status
-2. ✅ **COMPLETED**: Phase 2 - ProcessSnapshot pattern (65% improvement)
-3. ✅ **COMPLETED**: Assumption Testing - Channels failed (15-67x slower)
-4. ✅ **COMPLETED**: Alternative Testing - Atomics succeeded (30-300x faster)
-5. ✅ **COMPLETED**: Plan Updated - Pivot to atomic operations approach
-6. ⏳ **PENDING**: Phase 3A - Implement atomic ProcessState
-7. ⏳ **PENDING**: Phase 3B - Migrate to sync.Map registry
-8. ⏳ **PENDING**: Phase 3C - Integration and optimization
-
-### Key Discovery:
-Prototype-first methodology saved weeks - discovered channels are wrong tool for shared state. Atomic operations with immutable structs provide massive performance gains.
+- **Run `make test-race` before any concurrency changes** to verify thread safety
+- **Prefer atomic operations over mutexes** for shared state (see concurrency patterns)
+- **Follow event-driven architecture** - use EventBus for component communication
 
 ## Commands
 
@@ -99,16 +48,29 @@ make install                 # System-wide install (requires sudo)
 
 ### Testing and Quality
 ```bash
-# Run tests
-make test                    # or: go test -v ./...
-go test -v ./internal/logs   # Test specific package
+# Unit tests (fast, reliable packages)
+make test                    # Core unit tests
+make test-fast              # Fastest unit tests only
+make test-verbose           # Unit tests with verbose output
+
+# Concurrency testing (CRITICAL for race conditions)
+make test-race              # Race detection on core packages
+make test-race-all          # Comprehensive race detection
+CGO_ENABLED=1 go test -race -timeout 10m ./...  # Manual race detection
+
+# Regression testing
+make test-regression        # Full integration test suite
+make test-mcp              # MCP-specific tests
+make test-proxy            # Proxy server tests
+make test-processes        # Process management tests
 
 # Code quality
-make fmt                     # Format code with go fmt
-make lint                    # Run golangci-lint
+make fmt                   # Format code with go fmt
+make lint                  # Run golangci-lint
+make test-coverage         # Coverage report (coverage.html)
 
 # Build for all platforms
-make build-all               # Creates binaries in ./dist/
+make build-all             # Creates binaries in ./dist/
 ```
 
 ### CLI Usage
@@ -131,7 +93,27 @@ brum --settings > .brum.example.toml  # Create example config file
 
 ## Architecture
 
-For detailed architecture documentation, see:
+### High-Level System Design
+Brummer consists of three integrated systems:
+- **Process Manager**: Script execution, log capture, URL discovery (`internal/process/`)
+- **Hub System**: Multi-instance coordination, MCP routing (`internal/mcp/`) 
+- **Proxy Server**: HTTP interception, browser automation (`internal/proxy/`)
+
+Components communicate via **event-driven architecture** using EventBus (`pkg/events/events.go`).
+
+### Critical Concurrency Patterns
+**Lock-Free Philosophy**: Prefer atomic operations over mutexes for performance
+- Use `sync.Map` for concurrent map operations
+- Use atomic operations with immutable structs for shared state
+- **TUI Components**: ONLY modify model state in BubbleTea Update() method
+- **EventBus**: Use bounded worker pools, never unlimited goroutines
+
+**Testing Requirements**:
+- ALWAYS run `make test-race` before commits involving concurrency
+- Race detection is integrated in CI/CD pipeline
+- Use message-passing via tea.Cmd for TUI state changes
+
+For detailed patterns, see:
 - [Architecture Overview](/docs/architecture/overview.md) - Core components and integration patterns
 - [Concurrency Patterns](/docs/architecture/concurrency-patterns.md) - Race condition prevention and safe concurrent programming
 

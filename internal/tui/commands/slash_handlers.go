@@ -103,13 +103,28 @@ func HandleSlashCommand(ctx *SlashCommandContext, input string) {
 	case "/term":
 		ctx.ShowTerminal()
 
+	case "/docker-up":
+		handleDockerUpCommand(ctx, parts)
+
+	case "/docker-down":
+		handleDockerDownCommand(ctx, parts)
+
+	case "/docker-build":
+		handleDockerBuildCommand(ctx, parts)
+
+	case "/compose-up":
+		handleComposeUpCommand(ctx, parts)
+
+	case "/compose-down":
+		handleComposeDownCommand(ctx, parts)
+
 	case "/help":
 		*ctx.CurrentView = "help"
 
 	default:
 		// Unknown command - show error
 		ctx.LogStore.Add("system", "System", fmt.Sprintf("❌ Unknown command: %s", command), true)
-		ctx.LogStore.Add("system", "System", "Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /help", false)
+		ctx.LogStore.Add("system", "System", "Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help", false)
 	}
 }
 
@@ -289,6 +304,154 @@ func handleStopCommand(ctx *SlashCommandContext, parts []string) {
 			},
 		)
 	}
+	*ctx.CurrentView = "processes"
+}
+
+func handleDockerUpCommand(ctx *SlashCommandContext, parts []string) {
+	container := ""
+	if len(parts) >= 2 {
+		container = parts[1]
+	}
+
+	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
+	SafeGoroutine(
+		fmt.Sprintf("docker up '%s'", container),
+		func() error {
+			args := []string{"run", "-d"}
+			if container != "" {
+				args = append(args, container)
+			} else {
+				// Default behavior - try to find and run first available container
+				args = append(args, "--rm", "-it", "ubuntu:latest")
+			}
+			_, err := ctx.ProcessManager.StartCommand("docker", "docker", args)
+			if err == nil {
+				ctx.UpdateChan <- processUpdateMsg{}
+			}
+			return err
+		},
+		func(err error) {
+			errorCtx := ScriptStartContext("docker", "Docker Up", ctx.LogStore, ctx.UpdateChan)
+			errorHandler.HandleError(err, errorCtx)
+		},
+	)
+
+	*ctx.CurrentView = "logs"
+}
+
+func handleDockerDownCommand(ctx *SlashCommandContext, parts []string) {
+	container := ""
+	if len(parts) >= 2 {
+		container = parts[1]
+	}
+
+	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
+	SafeGoroutine(
+		fmt.Sprintf("docker down '%s'", container),
+		func() error {
+			args := []string{"stop"}
+			if container != "" {
+				args = append(args, container)
+			} else {
+				// Stop all containers
+				args = append(args, "$(docker ps -q)")
+			}
+			_, err := ctx.ProcessManager.StartCommand("docker", "docker", args)
+			if err == nil {
+				ctx.UpdateChan <- processUpdateMsg{}
+			}
+			return err
+		},
+		func(err error) {
+			errorCtx := ScriptStartContext("docker", "Docker Down", ctx.LogStore, ctx.UpdateChan)
+			errorHandler.HandleError(err, errorCtx)
+		},
+	)
+
+	*ctx.CurrentView = "processes"
+}
+
+func handleDockerBuildCommand(ctx *SlashCommandContext, parts []string) {
+	tag := "latest"
+	if len(parts) >= 2 {
+		tag = parts[1]
+	}
+
+	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
+	SafeGoroutine(
+		fmt.Sprintf("docker build '%s'", tag),
+		func() error {
+			args := []string{"build", "-t", tag, "."}
+			_, err := ctx.ProcessManager.StartCommand("docker-build", "docker", args)
+			if err == nil {
+				ctx.UpdateChan <- processUpdateMsg{}
+			}
+			return err
+		},
+		func(err error) {
+			errorCtx := ScriptStartContext("docker-build", "Docker Build", ctx.LogStore, ctx.UpdateChan)
+			errorHandler.HandleError(err, errorCtx)
+		},
+	)
+
+	*ctx.CurrentView = "logs"
+}
+
+func handleComposeUpCommand(ctx *SlashCommandContext, parts []string) {
+	service := ""
+	if len(parts) >= 2 {
+		service = parts[1]
+	}
+
+	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
+	SafeGoroutine(
+		fmt.Sprintf("compose up '%s'", service),
+		func() error {
+			args := []string{"up", "-d"}
+			if service != "" {
+				args = append(args, service)
+			}
+			_, err := ctx.ProcessManager.StartCommand("docker-compose", "docker-compose", args)
+			if err == nil {
+				ctx.UpdateChan <- processUpdateMsg{}
+			}
+			return err
+		},
+		func(err error) {
+			errorCtx := ScriptStartContext("docker-compose", "Compose Up", ctx.LogStore, ctx.UpdateChan)
+			errorHandler.HandleError(err, errorCtx)
+		},
+	)
+
+	*ctx.CurrentView = "logs"
+}
+
+func handleComposeDownCommand(ctx *SlashCommandContext, parts []string) {
+	service := ""
+	if len(parts) >= 2 {
+		service = parts[1]
+	}
+
+	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
+	SafeGoroutine(
+		fmt.Sprintf("compose down '%s'", service),
+		func() error {
+			args := []string{"down"}
+			if service != "" {
+				args = append(args, service)
+			}
+			_, err := ctx.ProcessManager.StartCommand("docker-compose", "docker-compose", args)
+			if err == nil {
+				ctx.UpdateChan <- processUpdateMsg{}
+			}
+			return err
+		},
+		func(err error) {
+			errorCtx := ScriptStartContext("docker-compose", "Compose Down", ctx.LogStore, ctx.UpdateChan)
+			errorHandler.HandleError(err, errorCtx)
+		},
+	)
+
 	*ctx.CurrentView = "processes"
 }
 

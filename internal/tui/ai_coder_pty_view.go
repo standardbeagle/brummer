@@ -528,9 +528,8 @@ func (v *AICoderPTYView) View() string {
 		return fmt.Sprintf("Initializing AI Coder view... (dimensions: %dx%d)", v.width, v.height)
 	}
 
-	// Add debug info about current session
+	// Try to get current session from PTY manager if none is set
 	if v.currentSession == nil {
-		// Try to get current session from PTY manager
 		if v.ptyManager != nil {
 			if currentSession, exists := v.ptyManager.GetCurrentSession(); exists {
 				v.currentSession = currentSession
@@ -538,28 +537,6 @@ func (v *AICoderPTYView) View() string {
 				termWidth, termHeight := v.getTerminalSize()
 				v.currentSession.Resize(termWidth, termHeight)
 			}
-		}
-
-		// If still no session, show appropriate message
-		if v.currentSession == nil {
-			// Check if there are any sessions available
-			sessions := []string{}
-			hasPTYManager := v.ptyManager != nil
-			sessionCount := 0
-			if v.ptyManager != nil {
-				allSessions := v.ptyManager.ListSessions()
-				sessionCount = len(allSessions)
-				for _, s := range allSessions {
-					sessions = append(sessions, fmt.Sprintf("%s (Active: %v, Terminal: %v)", s.ID, s.IsActive, s.Terminal != nil))
-				}
-			}
-
-			debugInfo := fmt.Sprintf("PTY Manager: %v, Session Count: %d", hasPTYManager, sessionCount)
-
-			if len(sessions) > 0 {
-				return fmt.Sprintf("No AI Coder session selected (dimensions: %dx%d)\n%s\nAvailable sessions: %v\n\nUse /ai <provider> to start a session", v.width, v.height, debugInfo, sessions)
-			}
-			return fmt.Sprintf("No AI Coder session active (dimensions: %dx%d)\n%s\n\nUse /ai <provider> to start a session", v.width, v.height, debugInfo)
 		}
 	}
 
@@ -739,8 +716,7 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 	// Get the terminal emulator which has already parsed the PTY output
 	terminal := v.currentSession.GetTerminal()
 	if terminal == nil {
-		return fmt.Sprintf("Waiting for terminal... (session: %s, active: %v, has output: %v)",
-			v.currentSession.ID, v.currentSession.IsActive, len(v.currentSession.GetOutputHistory()) > 0)
+		return "Starting AI session..."
 	}
 
 	// Build the visible content from the terminal buffer

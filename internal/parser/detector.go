@@ -12,18 +12,20 @@ import (
 type ProjectType string
 
 const (
-	ProjectTypeNode     ProjectType = "node"
-	ProjectTypeGo       ProjectType = "go"
-	ProjectTypeRust     ProjectType = "rust"
-	ProjectTypeJava     ProjectType = "java"
-	ProjectTypeDotNet   ProjectType = "dotnet"
-	ProjectTypePython   ProjectType = "python"
-	ProjectTypeRuby     ProjectType = "ruby"
-	ProjectTypePhp      ProjectType = "php"
-	ProjectTypeWails    ProjectType = "wails"
-	ProjectTypeElectron ProjectType = "electron"
-	ProjectTypeFlutter  ProjectType = "flutter"
-	ProjectTypeMonorepo ProjectType = "monorepo"
+	ProjectTypeNode         ProjectType = "node"
+	ProjectTypeGo           ProjectType = "go"
+	ProjectTypeRust         ProjectType = "rust"
+	ProjectTypeJava         ProjectType = "java"
+	ProjectTypeDotNet       ProjectType = "dotnet"
+	ProjectTypePython       ProjectType = "python"
+	ProjectTypeRuby         ProjectType = "ruby"
+	ProjectTypePhp          ProjectType = "php"
+	ProjectTypeWails        ProjectType = "wails"
+	ProjectTypeElectron     ProjectType = "electron"
+	ProjectTypeFlutter      ProjectType = "flutter"
+	ProjectTypeMonorepo     ProjectType = "monorepo"
+	ProjectTypeDocker       ProjectType = "docker"
+	ProjectTypeDevcontainer ProjectType = "devcontainer"
 )
 
 // ExecutableCommand represents a detected runnable command
@@ -132,6 +134,25 @@ func DetectProjectCommands(projectPath string) []ExecutableCommand {
 	// Check for Flutter
 	if _, err := os.Stat(filepath.Join(projectPath, "pubspec.yaml")); err == nil {
 		commands = append(commands, flutterCommands()...)
+	}
+
+	// Check for Docker
+	if _, err := os.Stat(filepath.Join(projectPath, "Dockerfile")); err == nil {
+		commands = append(commands, dockerCommands()...)
+	}
+
+	// Check for Docker Compose
+	composeFiles := []string{"docker-compose.yml", "docker-compose.yaml", "compose.yml", "compose.yaml"}
+	for _, file := range composeFiles {
+		if _, err := os.Stat(filepath.Join(projectPath, file)); err == nil {
+			commands = append(commands, dockerComposeCommands(file)...)
+			break
+		}
+	}
+
+	// Check for .devcontainer
+	if _, err := os.Stat(filepath.Join(projectPath, ".devcontainer")); err == nil {
+		commands = append(commands, devcontainerCommands()...)
 	}
 
 	// Add VS Code tasks if available
@@ -660,6 +681,129 @@ func flutterCommands() []ExecutableCommand {
 			Description: "Run Flutter tests",
 			Category:    "Flutter",
 			ProjectType: ProjectTypeFlutter,
+			Priority:    85,
+		},
+	}
+}
+
+func dockerCommands() []ExecutableCommand {
+	return []ExecutableCommand{
+		{
+			Name:        "docker build .",
+			Command:     "docker",
+			Args:        []string{"build", "."},
+			Description: "Build Docker image",
+			Category:    "Docker",
+			ProjectType: ProjectTypeDocker,
+			Priority:    95,
+		},
+		{
+			Name:        "docker build -t app .",
+			Command:     "docker",
+			Args:        []string{"build", "-t", "app", "."},
+			Description: "Build Docker image with tag 'app'",
+			Category:    "Docker",
+			ProjectType: ProjectTypeDocker,
+			Priority:    93,
+		},
+		{
+			Name:        "docker run app",
+			Command:     "docker",
+			Args:        []string{"run", "app"},
+			Description: "Run Docker container from 'app' image",
+			Category:    "Docker",
+			ProjectType: ProjectTypeDocker,
+			Priority:    90,
+		},
+		{
+			Name:        "docker run -p 3000:3000 app",
+			Command:     "docker",
+			Args:        []string{"run", "-p", "3000:3000", "app"},
+			Description: "Run Docker container with port 3000 exposed",
+			Category:    "Docker",
+			ProjectType: ProjectTypeDocker,
+			Priority:    88,
+		},
+	}
+}
+
+func dockerComposeCommands(filename string) []ExecutableCommand {
+	return []ExecutableCommand{
+		{
+			Name:        "docker-compose up",
+			Command:     "docker-compose",
+			Args:        []string{"-f", filename, "up"},
+			Description: "Start all services defined in " + filename,
+			Category:    "Docker Compose",
+			ProjectType: ProjectTypeDocker,
+			Priority:    95,
+		},
+		{
+			Name:        "docker-compose up -d",
+			Command:     "docker-compose",
+			Args:        []string{"-f", filename, "up", "-d"},
+			Description: "Start services in background",
+			Category:    "Docker Compose",
+			ProjectType: ProjectTypeDocker,
+			Priority:    93,
+		},
+		{
+			Name:        "docker-compose build",
+			Command:     "docker-compose",
+			Args:        []string{"-f", filename, "build"},
+			Description: "Build all services",
+			Category:    "Docker Compose",
+			ProjectType: ProjectTypeDocker,
+			Priority:    90,
+		},
+		{
+			Name:        "docker-compose down",
+			Command:     "docker-compose",
+			Args:        []string{"-f", filename, "down"},
+			Description: "Stop and remove containers",
+			Category:    "Docker Compose",
+			ProjectType: ProjectTypeDocker,
+			Priority:    85,
+		},
+		{
+			Name:        "docker-compose logs -f",
+			Command:     "docker-compose",
+			Args:        []string{"-f", filename, "logs", "-f"},
+			Description: "Follow logs from all services",
+			Category:    "Docker Compose",
+			ProjectType: ProjectTypeDocker,
+			Priority:    80,
+		},
+	}
+}
+
+func devcontainerCommands() []ExecutableCommand {
+	return []ExecutableCommand{
+		{
+			Name:        "devcontainer up",
+			Command:     "devcontainer",
+			Args:        []string{"up", "--workspace-folder", "."},
+			Description: "Start development container",
+			Category:    "Dev Container",
+			ProjectType: ProjectTypeDevcontainer,
+			Priority:    95,
+		},
+		{
+			Name:        "devcontainer build",
+			Command:     "devcontainer",
+			Args:        []string{"build", "--workspace-folder", "."},
+			Description: "Build development container",
+			Category:    "Dev Container",
+			ProjectType: ProjectTypeDevcontainer,
+			Priority:    90,
+		},
+		{
+			Name:        "devcontainer exec",
+			Command:     "devcontainer",
+			Args:        []string{"exec", "--workspace-folder", ".", "bash"},
+			Description: "Execute shell in development container",
+			Category:    "Dev Container",
+			ProjectType: ProjectTypeDevcontainer,
 			Priority:    85,
 		},
 	}

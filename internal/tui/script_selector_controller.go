@@ -82,6 +82,42 @@ func (c *ScriptSelectorController) EnterArbitraryMode() {
 	c.scriptSelector.arbitraryMode = true
 }
 
+// EnterAICoderMode starts an AI coder session
+func (c *ScriptSelectorController) EnterAICoderMode() {
+	c.Hide()
+
+	// Start AI coder session
+	SafeGoroutine(
+		"start AI coder session",
+		func() error {
+			if c.processMgr == nil {
+				return fmt.Errorf(ErrProcessManagerNotInitialized)
+			}
+
+			// Start AI coder with default provider (can be configured)
+			_, err := c.processMgr.StartCommand("ai-coder", "ai-coder", []string{"start"})
+			if err == nil && c.navController != nil {
+				// Success - switch to logs view to see AI coder output
+				c.navController.SwitchTo(ViewLogs)
+				if c.updateChan != nil {
+					c.updateChan <- tea.Msg(nil)
+				}
+			}
+			return err
+		},
+		func(err error) {
+			errorMsg := fmt.Sprintf("Failed to start AI coder: %v", err)
+			c.scriptSelector.errorMessage = errorMsg
+			if c.logStore != nil {
+				c.logStore.Add("system", "System", errorMsg, true)
+			}
+			if c.updateChan != nil {
+				c.updateChan <- tea.Msg(nil)
+			}
+		},
+	)
+}
+
 // HandleKeyMsg processes keyboard input for the script selector
 func (c *ScriptSelectorController) HandleKeyMsg(msg tea.KeyMsg) (bool, tea.Cmd) {
 	if c == nil || !c.visible {
@@ -93,8 +129,23 @@ func (c *ScriptSelectorController) HandleKeyMsg(msg tea.KeyMsg) (bool, tea.Cmd) 
 		c.Hide()
 		return true, nil
 
+	case "ctrl+s":
+		// Skip startup screen - go directly to AI coder screen
+		c.Hide()
+		if c.navController != nil {
+			c.navController.SwitchTo(ViewAICoders)
+			if c.updateChan != nil {
+				c.updateChan <- tea.Msg(nil)
+			}
+		}
+		return true, nil
+
 	case "ctrl+n":
 		c.EnterArbitraryMode()
+		return true, nil
+
+	case "ctrl+a":
+		c.EnterAICoderMode()
 		return true, nil
 
 	case "enter":

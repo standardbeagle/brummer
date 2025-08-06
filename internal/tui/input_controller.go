@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/process"
@@ -14,6 +16,10 @@ type InputController struct {
 	keys        keyMap
 	viewConfigs map[View]ViewConfig
 	debugMode   bool
+
+	// Double-press quit tracking
+	lastQuitPress time.Time
+	quitTimeout   time.Duration
 }
 
 // NewInputController creates a new input controller
@@ -23,6 +29,7 @@ func NewInputController(model *Model, keys keyMap, viewConfigs map[View]ViewConf
 		keys:        keys,
 		viewConfigs: viewConfigs,
 		debugMode:   debugMode,
+		quitTimeout: 2 * time.Second, // 2 second window for double Ctrl+C
 	}
 }
 
@@ -61,8 +68,7 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 	if ic.model.currentView() == ViewAICoders && ic.model.aiCoderController != nil {
 		// Route all input to the AI Coder controller when in AI Coders view
 		// It will handle Enter to focus, keys when focused, etc.
-		var cmd tea.Cmd
-		cmd = ic.model.aiCoderController.Update(msg)
+		cmd := ic.model.aiCoderController.Update(msg)
 		// Only mark as handled if we're focused or it's a key the PTY view handles
 		if ic.model.aiCoderController.IsTerminalFocused() {
 			return ic.model, cmd, true
@@ -106,30 +112,7 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 func (ic *InputController) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	switch {
 	case key.Matches(msg, ic.keys.Quit):
-		// Check if there are running processes
-		runningProcesses := 0
-		for _, proc := range ic.model.processMgr.GetAllProcesses() {
-			if proc.GetStatus() == process.StatusRunning {
-				runningProcesses++
-			}
-		}
-
-		if runningProcesses > 0 {
-			return ic.model, tea.Sequence(
-				tea.Printf("Stopping %d running processes...\n", runningProcesses),
-				func() tea.Msg {
-					_ = ic.model.processMgr.Cleanup() // Ignore cleanup errors during shutdown
-					return tea.Msg(nil)
-				},
-				tea.Printf("%s", renderExitScreen()),
-				tea.Quit,
-			), true
-		} else {
-			return ic.model, tea.Sequence(
-				tea.Printf("%s", renderExitScreen()),
-				tea.Quit,
-			), true
-		}
+		return ic.handleQuit()
 
 	case key.Matches(msg, ic.keys.Tab):
 		ic.model.cycleView()
@@ -277,4 +260,42 @@ func (ic *InputController) handleCommandWindow(msg tea.KeyMsg) (tea.Model, tea.C
 	*commandAutocomplete = newAuto
 
 	return ic.model, cmd, true
+}
+
+// handleQuit handles the quit functionality requiring double Ctrl+C
+func (ic *InputController) handleQuit() (tea.Model, tea.Cmd, bool) {
+	now := time.Now()
+
+	// Check if this is within the timeout window of the last quit press
+	if !ic.lastQuitPress.IsZero() && now.Sub(ic.lastQuitPress) <= ic.quitTimeout {
+		// Second Ctrl+C within timeout - actually quit
+		runningProcesses := 0
+		for _, proc := range ic.model.processMgr.GetAllProcesses() {
+			if proc.GetStatus() == process.StatusRunning {
+				runningProcesses++
+			}
+		}
+
+		if runningProcesses > 0 {
+			return ic.model, tea.Sequence(
+				tea.Printf("Stopping %d running processes...\n", runningProcesses),
+				func() tea.Msg {
+					_ = ic.model.processMgr.Cleanup() // Ignore cleanup errors during shutdown
+					return tea.Msg(nil)
+				},
+				tea.Printf("%s", renderExitScreen()),
+				tea.Quit,
+			), true
+		} else {
+			return ic.model, tea.Sequence(
+				tea.Printf("%s", renderExitScreen()),
+				tea.Quit,
+			), true
+		}
+	} else {
+		// First Ctrl+C - set timestamp and show warning
+		ic.lastQuitPress = now
+		ic.model.logStore.Add("system", "System", "Press Ctrl+C again within 2 seconds to exit", false)
+		return ic.model, nil, true
+	}
 }
