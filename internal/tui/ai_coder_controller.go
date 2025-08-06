@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -166,6 +167,9 @@ type AICoderController struct {
 
 	// Goroutine tracking
 	activeMonitors atomic.Int32
+	
+	// PTY monitoring state (prevents duplicate goroutines)
+	monitoringRegistry sync.Map // sessionID -> *monitorState
 }
 
 // NewAICoderController creates a new AI Coder controller
@@ -501,8 +505,8 @@ func (c *AICoderController) HandleAICommand(providerName string) {
 							c.aiCoderPTYView.Update(windowSizeMsg{Width: c.width, Height: c.contentHeight})
 						}
 
-						// Start monitoring PTY output
-						go c.monitorPTYOutput(session)
+						// Start monitoring PTY output (with leak prevention)
+						c.startPTYMonitoring(session)
 
 						// Switch to AI Coders view to show the session
 						c.updateChan <- switchToAICodersMsg{}
@@ -575,14 +579,128 @@ func (c *AICoderController) CreateTerminalSession() error {
 	// Attach to the new session
 	if c.aiCoderPTYView != nil {
 		c.aiCoderPTYView.SetCurrentSession(session)
-		// Start monitoring PTY output
-		go c.monitorPTYOutput(session)
+		// Start monitoring PTY output (with leak prevention)
+		c.startPTYMonitoring(session)
 	}
 
 	return nil
 }
 
-// monitorPTYOutput monitors PTY output and triggers view updates
+// monitorState tracks PTY monitoring goroutine state
+type monitorState struct {
+	sessionID  string
+	active     atomic.Bool
+	stopChan   chan struct{}
+}
+
+// startPTYMonitoring starts PTY monitoring with duplicate prevention
+func (c *AICoderController) startPTYMonitoring(session *aicoder.PTYSession) {
+	// Check if already monitoring this session
+	if existing, loaded := c.monitoringRegistry.LoadOrStore(session.ID, &monitorState{
+		sessionID: session.ID,
+		stopChan:  make(chan struct{}),
+	}); loaded {
+		// Already monitoring this session
+		state := existing.(*monitorState)
+		if state.active.Load() {
+			c.logStore.Add("system", "System", fmt.Sprintf("PTY monitoring already active for session %s", session.ID), false)
+			return
+		}
+	}
+	
+	// Get the monitoring state
+	stateInterface, _ := c.monitoringRegistry.Load(session.ID)
+	state := stateInterface.(*monitorState)
+	
+	// Atomically set as active
+	if !state.active.CompareAndSwap(false, true) {
+		// Another goroutine beat us to it
+		return
+	}
+	
+	// Start the monitoring goroutine
+	go c.monitorPTYOutputSafe(session, state)
+}
+
+// monitorPTYOutputSafe is the safe version that prevents leaks
+func (c *AICoderController) monitorPTYOutputSafe(session *aicoder.PTYSession, state *monitorState) {
+	// Track this goroutine
+	c.activeMonitors.Add(1)
+	defer c.activeMonitors.Add(-1)
+	
+	// Ensure state cleanup
+	defer func() {
+		state.active.Store(false)
+		c.monitoringRegistry.Delete(session.ID)
+	}()
+	
+	// Log monitor start for debugging
+	c.logStore.Add("system", "System", fmt.Sprintf("Started PTY output monitor for session %s (active monitors: %d)",
+		session.ID, c.activeMonitors.Load()), false)
+	
+	defer func() {
+		c.logStore.Add("system", "System", fmt.Sprintf("Stopped PTY output monitor for session %s (active monitors: %d)",
+			session.ID, c.activeMonitors.Load()), false)
+	}()
+	
+	// Monitor PTY output with proper lifecycle management
+	c.monitorPTYOutputLoop(session, state.stopChan)
+}
+
+// monitorPTYOutputLoop is the main monitoring loop
+func (c *AICoderController) monitorPTYOutputLoop(session *aicoder.PTYSession, stopChan chan struct{}) {
+	for {
+		select {
+		case <-c.ctx.Done():
+			// Controller is shutting down
+			return
+		
+		case <-stopChan:
+			// Explicit stop requested
+			return
+			
+		case output, ok := <-session.OutputChan:
+			if !ok {
+				// Channel closed, session ended
+				return
+			}
+			
+			// Non-blocking send to prevent deadlock (emergency fix)
+			select {
+			case c.updateChan <- PTYOutputMsg{
+				SessionID: session.ID,
+				Data:      output,
+			}:
+				// Message sent successfully
+			default:
+				// Channel full - drop message to prevent deadlock
+				// TODO: Implement lock-free ring buffer for proper backpressure
+			}
+			
+		case event := <-session.EventChan:
+			// Handle PTY events
+			switch event.Type {
+			case aicoder.PTYEventClose:
+				// Send event to PTY view (non-blocking)
+				select {
+				case c.updateChan <- PTYEventMsg{Event: event}:
+				default:
+					// Channel full - event lost but prevents deadlock
+				}
+				return
+			case aicoder.PTYEventResize:
+				// Send event to PTY view (non-blocking)
+				select {
+				case c.updateChan <- PTYEventMsg{Event: event}:
+				default:
+					// Channel full - event lost but prevents deadlock
+				}
+			}
+		}
+	}
+}
+
+// monitorPTYOutput monitors PTY output and triggers view updates (DEPRECATED - use startPTYMonitoring)
 func (c *AICoderController) monitorPTYOutput(session *aicoder.PTYSession) {
 	// Track this goroutine
 	c.activeMonitors.Add(1)
