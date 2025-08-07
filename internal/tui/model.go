@@ -827,6 +827,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Always trigger a view update when PTY output arrives
 		cmds = append(cmds, m.waitForUpdates())
+		
+	case BatchPTYMsg:
+		// Handle batched PTY messages from lock-free architecture (Phase 3)
+		if m.currentView() == ViewAICoders && m.aiCoderController != nil {
+			// Process each message in the batch
+			for _, batchedMsg := range msg.Messages {
+				if cmd := m.aiCoderController.Update(batchedMsg); cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
+		}
+		// Single view update for entire batch (more efficient)
+		cmds = append(cmds, m.waitForUpdates())
 
 	case PTYEventMsg:
 		// Handle PTY events - update AI Coder view if it's active

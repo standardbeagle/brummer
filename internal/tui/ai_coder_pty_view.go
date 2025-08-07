@@ -30,11 +30,8 @@ type AICoderPTYView struct {
 	statusMessage   string
 	statusTime      time.Time
 
-	// Scrollback history
-	scrollbackBuffer []string
-	scrollOffset     int
-	maxScrollback    int
-	useRawHistory    bool // Use raw output history with ANSI codes
+	// Viewport scrolling for large vt10x terminal
+	scrollOffset int // Current scroll position in viewport
 
 	// Key bindings
 	keyBindings []aicoder.KeyBinding
@@ -60,15 +57,12 @@ type PTYEventMsg struct {
 // NewAICoderPTYView creates a new AI coder PTY view
 func NewAICoderPTYView(ptyManager *aicoder.PTYManager) *AICoderPTYView {
 	view := &AICoderPTYView{
-		ptyManager:       ptyManager,
-		isFullScreen:     false,
-		terminalFocused:  false,
-		showHelp:         false,
-		keyBindings:      aicoder.GetDefaultKeyBindings(),
-		scrollbackBuffer: make([]string, 0),
-		scrollOffset:     0,
-		maxScrollback:    10000, // Keep 10k lines of history
-		useRawHistory:    true,  // Use raw output with ANSI codes
+		ptyManager:      ptyManager,
+		isFullScreen:    false,
+		terminalFocused: false,
+		showHelp:        false,
+		keyBindings:     aicoder.GetDefaultKeyBindings(),
+		scrollOffset:    0,
 	}
 
 	view.setupStyles()
@@ -117,18 +111,17 @@ func (v *AICoderPTYView) Update(msg tea.Msg) (*AICoderPTYView, tea.Cmd) {
 		if v.currentSession != nil {
 			switch msg.Type {
 			case tea.MouseWheelUp:
-				// Scroll up
-				v.scrollOffset += 3 // Scroll 3 lines at a time
-				// Limit scroll to available history
+				// Scroll up in terminal viewport (show earlier content)
+				v.scrollOffset += 3
+				// Limit scrolling to available content
 				if v.currentSession != nil {
-					history := v.currentSession.GetOutputHistory()
-					if len(history) > 0 {
-						historyLines := len(strings.Split(string(history), "\n"))
-						_, termHeight := v.getTerminalSize()
-						maxScroll := historyLines - termHeight
-						if maxScroll < 0 {
-							maxScroll = 0
-						}
+					terminal := v.currentSession.GetTerminal()
+					if terminal != nil {
+						cursor := terminal.Cursor()
+						_, viewHeight := v.getTerminalSize()
+						naturalViewportTop := max(0, cursor.Y-viewHeight+3)
+						// Max scroll is when viewport reaches top of terminal
+						maxScroll := naturalViewportTop
 						if v.scrollOffset > maxScroll {
 							v.scrollOffset = maxScroll
 						}
@@ -137,7 +130,7 @@ func (v *AICoderPTYView) Update(msg tea.Msg) (*AICoderPTYView, tea.Cmd) {
 				return v, nil
 
 			case tea.MouseWheelDown:
-				// Scroll down
+				// Scroll down in terminal viewport (show later content)
 				v.scrollOffset -= 3
 				if v.scrollOffset < 0 {
 					v.scrollOffset = 0
@@ -151,12 +144,31 @@ func (v *AICoderPTYView) Update(msg tea.Msg) (*AICoderPTYView, tea.Cmd) {
 		return v.handleKeyPress(msg)
 
 	case PTYOutputMsg:
-		// Terminal output received - add to scrollback buffer
+		// Terminal output received - auto-scroll to bottom when new content arrives
 		if v.currentSession != nil && msg.SessionID == v.currentSession.ID {
-			v.addToScrollback(string(msg.Data))
-			// Auto-scroll to bottom when new content arrives (unless user is actively scrolling)
-			if v.scrollOffset > 0 && v.scrollOffset < 10 {
+			if v.scrollOffset <= 3 {
 				v.scrollOffset = 0
+			}
+		}
+		return v, nil
+
+	case BatchPTYMsg:
+		// Handle batched PTY messages from lock-free architecture (Phase 3)
+		if v.currentSession != nil {
+			for _, batchedMsg := range msg.Messages {
+				// Process each message type in the batch
+				switch typedMsg := batchedMsg.(type) {
+				case PTYOutputMsg:
+					if typedMsg.SessionID == v.currentSession.ID {
+						// Auto-scroll to bottom when new content arrives
+						if v.scrollOffset <= 3 {
+							v.scrollOffset = 0
+						}
+					}
+				case PTYEventMsg:
+					// Handle PTY events in batch
+					// This will be processed by the PTYEventMsg handler
+				}
 			}
 		}
 		return v, nil
@@ -234,7 +246,7 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 		}
 	}
 
-	// If terminal is focused, send input to PTY
+	// If terminal is focused, handle scroll keys first, then send other input to PTY
 	if v.terminalFocused && v.currentSession != nil {
 		// Check for Ctrl+Q to unfocus terminal (ESC is used by AI agents)
 		if key.Matches(msg, key.NewBinding(key.WithKeys("ctrl+q"))) {
@@ -242,10 +254,44 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 			return v, nil
 		}
 
+		// Handle scroll keys even when terminal is focused
+		switch msg.Type {
+		case tea.KeyPgUp:
+			// Page Up - scroll up by viewport height
+			_, viewHeight := v.getTerminalSize()
+			v.scrollOffset += viewHeight
+			// Limit scrolling to available content
+			if v.currentSession != nil {
+				terminal := v.currentSession.GetTerminal()
+				if terminal != nil {
+					cursor := terminal.Cursor()
+					maxScroll := cursor.Y - viewHeight + 3
+					if maxScroll < 0 {
+						maxScroll = 0
+					}
+					if v.scrollOffset > maxScroll {
+						v.scrollOffset = maxScroll
+					}
+				}
+			}
+			return v, nil
+
+		case tea.KeyPgDown:
+			// Page Down - scroll down by viewport height
+			_, viewHeight := v.getTerminalSize()
+			v.scrollOffset -= viewHeight
+			if v.scrollOffset < 0 {
+				v.scrollOffset = 0
+			}
+			return v, nil
+		}
+
 		// Convert key message to bytes and send to PTY
 		input := v.keyMsgToBytes(msg)
+
 		if len(input) > 0 {
-			if err := v.currentSession.WriteInput(input); err != nil {
+			// PERFORMANCE CRITICAL: Use non-blocking write to prevent typing lag
+			if err := v.currentSession.WriteInputNonBlocking(input); err != nil {
 				// Session is closed or input buffer is full - silently handle
 				v.terminalFocused = false
 				return v, nil
@@ -272,15 +318,15 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 		return v, nil
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("pgup"))):
-		// Scroll up
+		// Scroll up through terminal viewport
 		if v.currentSession != nil {
-			_, termHeight := v.getTerminalSize()
-			v.scrollOffset += termHeight / 2
-			// Limit scroll to available history
-			history := v.currentSession.GetOutputHistory()
-			if len(history) > 0 {
-				historyLines := len(strings.Split(string(history), "\n"))
-				maxScroll := historyLines - termHeight
+			_, viewHeight := v.getTerminalSize()
+			v.scrollOffset += viewHeight / 2
+			// Apply same scroll limits as mouse wheel
+			terminal := v.currentSession.GetTerminal()
+			if terminal != nil {
+				cursor := terminal.Cursor()
+				maxScroll := cursor.Y - viewHeight + 3
 				if maxScroll < 0 {
 					maxScroll = 0
 				}
@@ -292,10 +338,10 @@ func (v *AICoderPTYView) handleKeyPress(msg tea.KeyMsg) (*AICoderPTYView, tea.Cm
 		return v, nil
 
 	case key.Matches(msg, key.NewBinding(key.WithKeys("pgdown"))):
-		// Scroll down
+		// Scroll down through terminal viewport
 		if v.currentSession != nil {
-			_, termHeight := v.getTerminalSize()
-			v.scrollOffset -= termHeight / 2
+			_, viewHeight := v.getTerminalSize()
+			v.scrollOffset -= viewHeight / 2
 			if v.scrollOffset < 0 {
 				v.scrollOffset = 0
 			}
@@ -338,24 +384,7 @@ func (v *AICoderPTYView) toggleFullScreen() tea.Cmd {
 	return tea.ExitAltScreen
 }
 
-// addToScrollback adds output to the scrollback buffer
-func (v *AICoderPTYView) addToScrollback(data string) {
-	// Split data into lines and add to buffer
-	lines := strings.Split(data, "\n")
-	for _, line := range lines {
-		if line != "" || len(lines) > 1 {
-			v.scrollbackBuffer = append(v.scrollbackBuffer, line)
-
-			// Trim buffer if it exceeds max size
-			if len(v.scrollbackBuffer) > v.maxScrollback {
-				v.scrollbackBuffer = v.scrollbackBuffer[len(v.scrollbackBuffer)-v.maxScrollback:]
-			}
-		}
-	}
-
-	// Auto-scroll to bottom when new content arrives
-	v.scrollOffset = 0
-}
+// No more addToScrollback - we use the large vt10x terminal directly
 
 // getTerminalSize calculates the available terminal size based on view mode and constraints
 //
@@ -441,7 +470,7 @@ func (v *AICoderPTYView) getTerminalSize() (int, int) {
 	if v.isFullScreen {
 		// FULL SCREEN MODE:
 		// Use maximum available space minus border/padding constraints
-		// Height constraint is minimal (header + footer + border)
+		// Account for header, footer, AND border rendering space
 		width := v.width - BORDER_AND_PADDING_WIDTH
 		height := v.height - 4 // Header (1) + footer (1) + top/bottom borders (2)
 
@@ -708,243 +737,83 @@ func (v *AICoderPTYView) renderTerminalContent() string {
 		return ""
 	}
 
-	// If we're scrolled up, render from history
-	if v.scrollOffset > 0 {
-		return v.renderScrolledView()
-	}
-
-	// Get the terminal emulator which has already parsed the PTY output
+	// Get the terminal emulator which handles its own scrolling
 	terminal := v.currentSession.GetTerminal()
 	if terminal == nil {
 		return "Starting AI session..."
 	}
 
-	// Build the visible content from the terminal buffer
-	var content strings.Builder
-
-	// Lock terminal while reading to ensure consistency
-	terminal.Lock()
-	defer terminal.Unlock()
-
-	// Get our available rendering dimensions
+	// Get our display dimensions
 	termWidth, termHeight := v.getTerminalSize()
 
-	// Get the actual terminal buffer dimensions
-	// The terminal may be larger than our display area
-	width, height := terminal.Size()
-
-	// Limit to our available display space
-	if height > termHeight {
-		height = termHeight
-	}
-	// Ensure content fits within our calculated display constraints
-	// termWidth already accounts for border and padding, so use it directly
-	if width > termWidth {
-		width = termWidth
-	}
-
-	// Track the current text style as we scan across cells
-	// This allows us to minimize ANSI code generation by only
-	// emitting codes when the style changes
-	currentFG := vt10x.DefaultFG
-	currentBG := vt10x.DefaultBG
-	var currentMode int16
-	styleActive := false
-
-	for y := 0; y < height; y++ {
-		lineBuffer := strings.Builder{}
-
-		for x := 0; x < width; x++ {
-			// Get the cell at this position
-			// Each cell contains: character, foreground color, background color, and text attributes
-			cell := terminal.Cell(x, y)
-
-			// Check if this cell's style differs from the current style
-			// This optimization prevents generating redundant ANSI codes
-			if cell.FG != currentFG || cell.BG != currentBG || cell.Mode != currentMode {
-				// Reset previous style if one was active
-				// This ensures a clean slate before applying new attributes
-				if styleActive {
-					lineBuffer.WriteString("\033[0m")
-					styleActive = false
-				}
-
-				// Check if this cell needs any styling
-				// DefaultFG/DefaultBG are special values meaning "use terminal default"
-				if cell.FG != vt10x.DefaultFG || cell.BG != vt10x.DefaultBG || cell.Mode != 0 {
-					// Build ANSI escape sequence codes
-					codes := []string{}
-
-					// Text attribute codes (Mode is a bitmask)
-					// These must come before color codes in the ANSI sequence
-					if cell.Mode&(1<<2) != 0 { // Bold (bit 2)
-						codes = append(codes, "1")
-					}
-					if cell.Mode&(1<<1) != 0 { // Underline (bit 1)
-						codes = append(codes, "4")
-					}
-					if cell.Mode&(1<<0) != 0 { // Reverse video (bit 0)
-						codes = append(codes, "7")
-					}
-					if cell.Mode&(1<<5) != 0 { // Blink (bit 5)
-						codes = append(codes, "5")
-					}
-					if cell.Mode&(1<<4) != 0 { // Italic (bit 4)
-						codes = append(codes, "3")
-					}
-
-					// Foreground color handling
-					// vt10x uses a clever Color encoding scheme:
-					// - 0-7: Standard ANSI colors
-					// - 8-15: Bright ANSI colors
-					// - 16-255: 256-color palette
-					// - 256-16777215: 24-bit true color (RGB packed)
-					// - 16777216+: Special values (DefaultFG, DefaultBG)
-					if cell.FG != vt10x.DefaultFG {
-						if cell.FG < 8 {
-							// Standard ANSI colors (black, red, green, yellow, blue, magenta, cyan, white)
-							// Use codes 30-37
-							codes = append(codes, fmt.Sprintf("3%d", cell.FG))
-						} else if cell.FG < 16 {
-							// Bright ANSI colors
-							// Use codes 90-97 (bright black through bright white)
-							codes = append(codes, fmt.Sprintf("9%d", cell.FG-8))
-						} else if cell.FG < 256 {
-							// 256-color palette
-							// Use ESC[38;5;{n}m format
-							codes = append(codes, fmt.Sprintf("38;5;%d", cell.FG))
-						} else if cell.FG < vt10x.DefaultFG {
-							// 24-bit true color (RGB)
-							// vt10x packs RGB values into a single uint32:
-							// Color = (R << 16) | (G << 8) | B
-							// We need to extract and use ESC[38;2;{r};{g};{b}m format
-							r := (cell.FG >> 16) & 0xFF
-							g := (cell.FG >> 8) & 0xFF
-							b := cell.FG & 0xFF
-							codes = append(codes, fmt.Sprintf("38;2;%d;%d;%d", r, g, b))
-						}
-					}
-
-					// Background color handling (same scheme as foreground)
-					if cell.BG != vt10x.DefaultBG {
-						if cell.BG < 8 {
-							// Standard ANSI background colors
-							// Use codes 40-47
-							codes = append(codes, fmt.Sprintf("4%d", cell.BG))
-						} else if cell.BG < 16 {
-							// Bright ANSI background colors
-							// Use codes 100-107
-							codes = append(codes, fmt.Sprintf("10%d", cell.BG-8))
-						} else if cell.BG < 256 {
-							// 256-color palette background
-							// Use ESC[48;5;{n}m format
-							codes = append(codes, fmt.Sprintf("48;5;%d", cell.BG))
-						} else if cell.BG < vt10x.DefaultBG {
-							// 24-bit true color background (RGB)
-							// Use ESC[48;2;{r};{g};{b}m format
-							r := (cell.BG >> 16) & 0xFF
-							g := (cell.BG >> 8) & 0xFF
-							b := cell.BG & 0xFF
-							codes = append(codes, fmt.Sprintf("48;2;%d;%d;%d", r, g, b))
-						}
-					}
-
-					// Generate the complete ANSI escape sequence
-					if len(codes) > 0 {
-						// ESC[{code1};{code2};...m format
-						ansiCode := fmt.Sprintf("\033[%sm", strings.Join(codes, ";"))
-						lineBuffer.WriteString(ansiCode)
-						styleActive = true
-					}
-				}
-
-				// Update our tracking variables
-				currentFG = cell.FG
-				currentBG = cell.BG
-				currentMode = cell.Mode
-			}
-
-			// Write the character
-			if cell.Char != 0 && cell.Char != '\n' && cell.Char != '\r' {
-				lineBuffer.WriteRune(cell.Char)
-			} else {
-				lineBuffer.WriteRune(' ')
-			}
-		}
-
-		// Reset style at end of line if needed
-		if styleActive {
-			lineBuffer.WriteString("\033[0m")
-		}
-
-		content.WriteString(lineBuffer.String())
-		if y < height-1 {
-			content.WriteString("\n")
-		}
-	}
-
-	return content.String()
+	// Get the large vt10x terminal (1000 lines) and extract a viewport
+	return v.renderViewportFromTerminal(terminal, termWidth, termHeight)
 }
 
-// renderScrolledView renders the terminal with scroll offset applied
-func (v *AICoderPTYView) renderScrolledView() string {
-	if v.currentSession == nil {
-		return ""
+// REMOVED: Local echo functions that caused typing lag on last character
+// The PTY handles all echoing directly, providing consistent terminal behavior
+// without conflicts between local echo and PTY output
+
+// renderViewportFromTerminal renders a viewport window from the large vt10x terminal
+func (v *AICoderPTYView) renderViewportFromTerminal(terminal vt10x.Terminal, viewWidth, viewHeight int) string {
+	// Get terminal size (should be 80x1000)
+	termCols, termRows := terminal.Size()
+
+	// Find the cursor position to determine the "bottom" of content
+	cursor := terminal.Cursor()
+
+	// Calculate viewport position
+	// Natural position: ensure cursor is visible (prefer near bottom)
+	// If cursor.Y < viewHeight, start from 0. Otherwise, show cursor near bottom.
+	naturalViewportTop := max(0, cursor.Y-viewHeight+3) // +3 to ensure cursor line is always visible
+
+	// Apply scroll offset: positive scrollOffset means scrolling UP (showing earlier content)
+	// So we SUBTRACT scrollOffset to move viewport up in the terminal
+	viewportTop := naturalViewportTop - v.scrollOffset
+
+	// Keep viewport in bounds
+	if viewportTop < 0 {
+		viewportTop = 0
 	}
-
-	// Get the output history
-	history := v.currentSession.GetOutputHistory()
-	if len(history) == 0 {
-		return "No history available"
-	}
-
-	// Convert history to string and split into lines
-	historyStr := string(history)
-	allLines := strings.Split(historyStr, "\n")
-
-	// Get terminal dimensions
-	_, height := v.getTerminalSize()
-
-	// Calculate which lines to show
-	// We want to show 'height' lines, ending 'scrollOffset' lines from the bottom
-	totalLines := len(allLines)
-	endLine := totalLines - v.scrollOffset
-	if endLine < 0 {
-		endLine = 0
-	}
-	if endLine > totalLines {
-		endLine = totalLines
-	}
-
-	startLine := endLine - height
-	if startLine < 0 {
-		startLine = 0
-	}
-
-	// Extract the visible lines
-	var visibleLines []string
-	if startLine < endLine && endLine <= totalLines {
-		visibleLines = allLines[startLine:endLine]
-	}
-
-	// Join and return
-	result := strings.Join(visibleLines, "\n")
-
-	// Add scroll indicator
-	if v.scrollOffset > 0 {
-		scrollInfo := fmt.Sprintf(" [Scrolled up %d lines] ", v.scrollOffset)
-		// Prepend to first line if there is one
-		lines := strings.Split(result, "\n")
-		if len(lines) > 0 {
-			lines[0] = scrollInfo + lines[0]
-			result = strings.Join(lines, "\n")
-		} else {
-			result = scrollInfo
+	if viewportTop+viewHeight > termRows {
+		viewportTop = termRows - viewHeight
+		if viewportTop < 0 {
+			viewportTop = 0
 		}
+	}
+
+	// Extract viewport content line by line
+	var viewportLines []string
+	for row := viewportTop; row < viewportTop+viewHeight && row < termRows; row++ {
+		var lineBuilder strings.Builder
+		for col := 0; col < min(termCols, viewWidth); col++ {
+			cell := terminal.Cell(col, row)
+			if cell.Char != 0 {
+				lineBuilder.WriteRune(cell.Char)
+			} else {
+				lineBuilder.WriteRune(' ')
+			}
+		}
+		line := lineBuilder.String()
+		// Trim trailing spaces
+		line = strings.TrimRight(line, " ")
+		viewportLines = append(viewportLines, line)
+	}
+
+
+	result := strings.Join(viewportLines, "\n")
+
+	// Add scroll indicator if scrolled
+	if v.scrollOffset > 0 {
+		scrollInfo := fmt.Sprintf("╭─ Scrolled up %d lines (cursor at %d,%d, viewport: %d-%d) ─╮",
+			v.scrollOffset, cursor.X, cursor.Y, viewportTop, viewportTop+viewHeight-1)
+		result = scrollInfo + "\n" + result
 	}
 
 	return result
 }
+
+// min helper function already exists in helpers.go
 
 // renderFromHistory renders content from the raw output history
 func (v *AICoderPTYView) renderFromHistory() string {
@@ -1290,6 +1159,9 @@ func (v *AICoderPTYView) SetCurrentSession(session *aicoder.PTYSession) {
 		// Resize to current dimensions
 		termWidth, termHeight := v.getTerminalSize()
 		session.Resize(termWidth, termHeight)
+
+		// Reset scroll offset for new session
+		v.scrollOffset = 0
 
 		// Set status message to confirm session is set
 		v.statusMessage = fmt.Sprintf("✅ AI Coder session started: %s", session.Name)

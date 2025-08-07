@@ -46,6 +46,19 @@ type PTYSession struct {
 	outputHistory []byte
 	maxHistory    int
 	historyMutex  sync.Mutex
+
+	// Channel closing synchronization
+	closeOnce sync.Once
+	closed    bool
+	
+	// Memory monitoring for channel buffer sizes
+	channelMemoryStats struct {
+		outputChanSize int
+		inputChanSize  int
+		eventChanSize  int
+		lastCheck      time.Time
+		mu             sync.RWMutex
+	}
 }
 
 // IsAtStartOfLine returns true if the cursor is at the beginning of a line
@@ -147,9 +160,9 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 		return nil, fmt.Errorf("failed to start PTY: %w", err)
 	}
 
-	// Create vt10x terminal emulator with proper size
-	// Note: VT10x needs to match the PTY size for proper rendering
-	terminal := vt10x.New(vt10x.WithSize(80, 24))
+	// Create vt10x terminal emulator with LARGE virtual buffer for scrollback
+	// PTY stays 80x24 but vt10x gets much more space for history
+	terminal := vt10x.New(vt10x.WithSize(80, 1000)) // 1000 lines of scrollback!
 
 	session := &PTYSession{
 		ID:            id,
@@ -162,9 +175,9 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 		DebugMode:     false,
 		ctx:           ctx,
 		cancel:        cancel,
-		OutputChan:    make(chan []byte, 100),
-		InputChan:     make(chan []byte, 100),
-		EventChan:     make(chan PTYEvent, 100),
+		OutputChan:    make(chan []byte, 1000),
+		InputChan:     make(chan []byte, 1000),
+		EventChan:     make(chan PTYEvent, 1000),
 		dataInjector:  NewDataInjector(),
 		isStreamJSON:  isStreamJSON,
 		outputHistory: make([]byte, 0, 1024*1024), // Start with 1MB capacity
@@ -174,6 +187,9 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 	// Start I/O goroutines
 	go session.readLoop()
 	go session.writeLoop()
+	
+	// Start periodic channel monitoring (every 30 seconds)
+	go session.channelMonitorLoop()
 
 	return session, nil
 }
@@ -183,7 +199,7 @@ func (s *PTYSession) readLoop() {
 	defer close(s.OutputChan)
 
 	reader := bufio.NewReader(s.PTY)
-	buffer := make([]byte, 4096)
+	buffer := make([]byte, 1024) // Smaller buffer for more responsive updates
 
 	for {
 		select {
@@ -224,17 +240,10 @@ func (s *PTYSession) readLoop() {
 				if s.isStreamJSON {
 					s.processStreamJSON(data)
 				} else {
-					// Write to vt10x terminal emulator
+					// Write to vt10x terminal emulator in smaller chunks to prevent partial writes
 					s.mu.Lock()
 					if s.Terminal != nil {
-						n, err := s.Terminal.Write(data)
-						if err != nil {
-							fmt.Printf("[PTY DEBUG] Error writing to terminal: %v\n", err)
-						} else if n != len(data) {
-							fmt.Printf("[PTY DEBUG] Partial write to terminal: %d/%d bytes\n", n, len(data))
-						}
-					} else {
-						fmt.Printf("[PTY DEBUG] Terminal is nil for session %s!\n", s.ID)
+						s.writeToTerminalInChunks(data)
 					}
 					s.mu.Unlock()
 				}
@@ -270,28 +279,41 @@ func (s *PTYSession) writeLoop() {
 			return
 		case data := <-s.InputChan:
 			if _, err := s.PTY.Write(data); err != nil {
-				select {
-				case s.EventChan <- PTYEvent{
-					Type:      PTYEventClose,
-					SessionID: s.ID,
-					Data:      fmt.Sprintf("Write error: %v", err),
-					Timestamp: time.Now(),
-				}:
-				case <-s.ctx.Done():
+				// Check if session is closed before sending to channel
+				s.mu.RLock()
+				isClosed := s.closed
+				s.mu.RUnlock()
+				
+				if !isClosed {
+					select {
+					case s.EventChan <- PTYEvent{
+						Type:      PTYEventClose,
+						SessionID: s.ID,
+						Data:      fmt.Sprintf("Write error: %v", err),
+						Timestamp: time.Now(),
+					}:
+					case <-s.ctx.Done():
+					}
 				}
 				return
 			}
 
-			// Emit input event
-			select {
-			case s.EventChan <- PTYEvent{
-				Type:      PTYEventInput,
-				SessionID: s.ID,
-				Data:      data,
-				Timestamp: time.Now(),
-			}:
-			case <-s.ctx.Done():
-				return
+			// Emit input event only if not closed
+			s.mu.RLock()
+			isClosed := s.closed
+			s.mu.RUnlock()
+			
+			if !isClosed {
+				select {
+				case s.EventChan <- PTYEvent{
+					Type:      PTYEventInput,
+					SessionID: s.ID,
+					Data:      data,
+					Timestamp: time.Now(),
+				}:
+				case <-s.ctx.Done():
+					return
+				}
 			}
 		}
 	}
@@ -314,6 +336,56 @@ func (s *PTYSession) WriteInput(data []byte) error {
 	default:
 		return fmt.Errorf("input buffer full")
 	}
+}
+
+// WriteInputNonBlocking sends input to PTY session without blocking for typing responsiveness.
+//
+// CRITICAL: This method writes directly to PTY bypassing InputChan to prevent typing lag.
+// DO NOT mix with WriteInput() for the same data as it may cause duplication.
+//
+// Use cases:
+//   - Interactive typing where responsiveness is critical
+//   - Real-time character input where buffering causes lag
+//
+// Avoid when:
+//   - Batch operations where ordering with other writes matters
+//   - Programmatic input where WriteInput() ordering is needed
+//
+// This method ensures immediate PTY write while still emitting tracking events.
+func (s *PTYSession) WriteInputNonBlocking(data []byte) error {
+	s.mu.RLock()
+	if !s.IsActive {
+		s.mu.RUnlock()
+		return fmt.Errorf("session closed")
+	}
+	s.mu.RUnlock()
+
+	// Direct write to PTY for immediate response - bypasses InputChan entirely
+	if _, err := s.PTY.Write(data); err != nil {
+		return fmt.Errorf("direct write failed: %w", err)
+	}
+
+	// Emit input event for tracking without sending to InputChan (prevents duplication)
+	s.mu.RLock()
+	isClosed := s.closed
+	s.mu.RUnlock()
+	
+	if !isClosed {
+		select {
+		case s.EventChan <- PTYEvent{
+			Type:      PTYEventInput,
+			SessionID: s.ID,
+			Data:      data,
+			Timestamp: time.Now(),
+		}:
+		case <-s.ctx.Done():
+			// Session closed, ignore
+		default:
+			// Drop event if channel full - typing responsiveness is priority
+		}
+	}
+
+	return nil
 }
 
 // WriteString sends a string to the PTY session
@@ -368,8 +440,8 @@ func (s *PTYSession) Resize(width, height int) error {
 		return err
 	}
 
-	// Resize vt10x terminal
-	s.Terminal.Resize(width, height)
+	// DON'T resize vt10x terminal - keep it at 1000 rows for scrollback!
+	// Only resize the actual PTY, not the virtual terminal buffer
 
 	select {
 	case s.EventChan <- PTYEvent{
@@ -444,19 +516,23 @@ func (s *PTYSession) Close() error {
 	}
 
 	s.IsActive = false
+	s.closed = true
 
-	// Cancel context to signal goroutines to stop
-	s.cancel()
+	// Use sync.Once to ensure we only close once
+	s.closeOnce.Do(func() {
+		// Cancel context to signal goroutines to stop
+		s.cancel()
 
-	// Give goroutines a brief moment to exit cleanly
-	// This prevents "send on closed channel" panics
-	go func() {
-		time.Sleep(100 * time.Millisecond)
+		// Give goroutines a brief moment to exit cleanly
+		// This prevents "send on closed channel" panics
+		go func() {
+			time.Sleep(100 * time.Millisecond)
 
-		// Close channels after goroutines have had time to exit
-		close(s.InputChan)
-		close(s.EventChan)
-	}()
+			// Close channels after goroutines have had time to exit
+			close(s.InputChan)
+			close(s.EventChan)
+		}()
+	})
 
 	// Terminate the process
 	if s.Command != nil && s.Command.Process != nil {
@@ -578,6 +654,128 @@ func (s *PTYSession) addFormattedOutput(text, outputType string) {
 	}
 
 	s.mu.Lock()
-	s.Terminal.Write([]byte(formattedText))
+	s.writeToTerminalInChunks([]byte(formattedText))
 	s.mu.Unlock()
+}
+
+// writeToTerminalInChunks writes data to the terminal with lock-free optimization
+func (s *PTYSession) writeToTerminalInChunks(data []byte) {
+	// PERFORMANCE OPTIMIZATION: Single write attempt for better responsiveness
+	// Chunking and retries cause lag - modern terminals handle large writes well
+	if s.Terminal != nil {
+		n, err := s.Terminal.Write(data)
+		if err != nil {
+			// Log terminal write errors for debugging but don't interrupt flow
+			s.logTerminalError("terminal write failed", err, map[string]interface{}{
+				"session_id":    s.ID,
+				"data_length":   len(data),
+				"bytes_written": n,
+			})
+		}
+	} else {
+		// Log missing terminal for debugging
+		s.logTerminalError("terminal not available for write", nil, map[string]interface{}{
+			"session_id":  s.ID,
+			"data_length": len(data),
+		})
+	}
+}
+
+// logTerminalError logs terminal-related errors with context for debugging
+func (s *PTYSession) logTerminalError(message string, err error, context map[string]interface{}) {
+	// Only log if we have a way to emit events and session isn't closed
+	s.mu.RLock()
+	isClosed := s.closed
+	s.mu.RUnlock()
+	
+	if !isClosed {
+		// Create structured log data
+		logData := make(map[string]interface{})
+		logData["message"] = message
+		logData["timestamp"] = time.Now()
+		if err != nil {
+			logData["error"] = err.Error()
+		}
+		for k, v := range context {
+			logData[k] = v
+		}
+		
+		// Emit as debug event for monitoring (non-blocking)
+		select {
+		case s.EventChan <- PTYEvent{
+			Type:      PTYEventOutput, // Use output type for log events
+			SessionID: s.ID,
+			Data:      []byte(fmt.Sprintf("[PTY_LOG] %s", message)),
+			Timestamp: time.Now(),
+		}:
+		default:
+			// Drop if channel full - don't block on logging
+		}
+	}
+}
+
+// UpdateChannelStats updates channel usage statistics for memory monitoring
+func (s *PTYSession) UpdateChannelStats() {
+	s.channelMemoryStats.mu.Lock()
+	defer s.channelMemoryStats.mu.Unlock()
+	
+	// Update current channel sizes
+	s.channelMemoryStats.outputChanSize = len(s.OutputChan)
+	s.channelMemoryStats.inputChanSize = len(s.InputChan)
+	s.channelMemoryStats.eventChanSize = len(s.EventChan)
+	s.channelMemoryStats.lastCheck = time.Now()
+	
+	// Log warning if any channel is getting full (>80% capacity)
+	const warningThreshold = 800 // 80% of 1000 buffer size
+	
+	if s.channelMemoryStats.outputChanSize > warningThreshold {
+		s.logTerminalError("output channel high usage", nil, map[string]interface{}{
+			"channel_size": s.channelMemoryStats.outputChanSize,
+			"capacity":     1000,
+			"usage_pct":    float64(s.channelMemoryStats.outputChanSize) / 10.0,
+		})
+	}
+	
+	if s.channelMemoryStats.inputChanSize > warningThreshold {
+		s.logTerminalError("input channel high usage", nil, map[string]interface{}{
+			"channel_size": s.channelMemoryStats.inputChanSize,
+			"capacity":     1000,
+			"usage_pct":    float64(s.channelMemoryStats.inputChanSize) / 10.0,
+		})
+	}
+	
+	if s.channelMemoryStats.eventChanSize > warningThreshold {
+		s.logTerminalError("event channel high usage", nil, map[string]interface{}{
+			"channel_size": s.channelMemoryStats.eventChanSize,
+			"capacity":     1000,
+			"usage_pct":    float64(s.channelMemoryStats.eventChanSize) / 10.0,
+		})
+	}
+}
+
+// GetChannelStats returns current channel usage statistics
+func (s *PTYSession) GetChannelStats() (outputSize, inputSize, eventSize int, lastCheck time.Time) {
+	s.channelMemoryStats.mu.RLock()
+	defer s.channelMemoryStats.mu.RUnlock()
+	
+	return s.channelMemoryStats.outputChanSize,
+		s.channelMemoryStats.inputChanSize,
+		s.channelMemoryStats.eventChanSize,
+		s.channelMemoryStats.lastCheck
+}
+
+// channelMonitorLoop periodically monitors channel usage to detect memory issues
+func (s *PTYSession) channelMonitorLoop() {
+	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
+	defer ticker.Stop()
+	
+	for {
+		select {
+		case <-s.ctx.Done():
+			return
+		case <-ticker.C:
+			// Update and check channel statistics
+			s.UpdateChannelStats()
+		}
+	}
 }

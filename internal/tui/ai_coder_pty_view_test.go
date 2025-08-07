@@ -314,7 +314,15 @@ func TestAICoderPTYView_ScrollFunctionality(t *testing.T) {
 		view.scrollOffset = 10
 
 		// Simulate new content arriving (this typically resets scroll)
-		view.addToScrollback("New content line")
+		// Create a mock session to test with
+		mockSession := &aicoder.PTYSession{ID: "test-session"}
+		view.currentSession = mockSession
+		
+		// Simulate PTY output message
+		view, _ = view.Update(PTYOutputMsg{
+			SessionID: "test-session",
+			Data:      []byte("New content line"),
+		})
 
 		// Auto-scroll should reset offset to 0 when new content arrives
 		assert.Equal(t, 0, view.scrollOffset, "new content should trigger auto-scroll to bottom")
