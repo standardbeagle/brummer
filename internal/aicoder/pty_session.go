@@ -29,6 +29,9 @@ type PTYSession struct {
 	mu           sync.RWMutex
 	ctx          context.Context
 	cancel       context.CancelFunc
+	
+	// Terminal configuration state for cleanup
+	terminalState *terminalState
 
 	// Event channels
 	OutputChan chan []byte
@@ -160,6 +163,16 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 		return nil, fmt.Errorf("failed to start PTY: %w", err)
 	}
 
+	// Fix 1-second input delay: Configure PTY for immediate output (no line buffering)
+	// This solves the issue where the last typed character has ~1 second delay
+	terminalState, err := configurePTYForResponsiveness(ptmx)
+	if err != nil {
+		// Log warning but don't fail - PTY will still work with default buffering
+		// Note: In a production system, this should use the project's logging framework
+		fmt.Fprintf(os.Stderr, "Warning: Could not configure PTY for optimal responsiveness: %v\n", err)
+		terminalState = nil // Ensure we don't try to restore invalid state
+	}
+
 	// Create vt10x terminal emulator with LARGE virtual buffer for scrollback
 	// PTY stays 80x24 but vt10x gets much more space for history
 	terminal := vt10x.New(vt10x.WithSize(80, 1000)) // 1000 lines of scrollback!
@@ -182,6 +195,7 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 		isStreamJSON:  isStreamJSON,
 		outputHistory: make([]byte, 0, 1024*1024), // Start with 1MB capacity
 		maxHistory:    10 * 1024 * 1024,           // 10MB max history
+		terminalState: terminalState,              // Store for cleanup
 	}
 
 	// Start I/O goroutines
@@ -440,8 +454,10 @@ func (s *PTYSession) Resize(width, height int) error {
 		return err
 	}
 
-	// DON'T resize vt10x terminal - keep it at 1000 rows for scrollback!
-	// Only resize the actual PTY, not the virtual terminal buffer
+	// Resize the vt10x terminal WIDTH to match display, but keep 1000 rows for scrollback
+	if s.Terminal != nil {
+		s.Terminal.Resize(width, 1000) // Match width, preserve scrollback height
+	}
 
 	select {
 	case s.EventChan <- PTYEvent{
@@ -520,6 +536,14 @@ func (s *PTYSession) Close() error {
 
 	// Use sync.Once to ensure we only close once
 	s.closeOnce.Do(func() {
+		// Restore terminal state before closing
+		if s.terminalState != nil {
+			if err := restoreTerminalState(s.terminalState); err != nil {
+				// Log error but don't fail the close operation
+				fmt.Fprintf(os.Stderr, "Warning: Failed to restore terminal state: %v\n", err)
+			}
+		}
+
 		// Cancel context to signal goroutines to stop
 		s.cancel()
 
@@ -779,3 +803,4 @@ func (s *PTYSession) channelMonitorLoop() {
 		}
 	}
 }
+

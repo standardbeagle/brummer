@@ -24,6 +24,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Global access via `window.brummerLibrary` and `window.lib` aliases
 
 ### Fixed
+- PTY terminal responsiveness optimization with cross-platform support
+  - Fixed 1-second input delay in AI coder PTY sessions using non-canonical terminal mode
+  - Added platform-specific terminal configuration (Unix/Windows) with proper build constraints
+  - Implemented terminal state preservation and restoration for clean session lifecycle
+  - Enhanced PTY file descriptor validation to prevent unsafe operations
+  - Added graceful fallback when terminal optimization fails
 - MCP error handling now returns proper Go errors instead of success responses with error fields
   - All MCP tools updated to follow JSON-RPC 2.0 error response standards
   - `about` tool file write failures now return detailed error context
