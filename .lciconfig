@@ -1,0 +1,35 @@
+  version: 1
+  project:
+    root: "."
+    name: "brummer"
+  index:
+    max_file_size: 5242880        # 5MB per file
+    max_total_size_mb: 100        # 100MB total
+    max_file_count: 5000          # 5k files max
+    smart_size_control: true
+    priority_mode: "important"
+  include:
+    - "*.go"
+    - "go.mod"
+    - "go.sum"
+  exclude:
+    - "**/test-projects/**"
+    - "**/docs/**"
+    - "**/website/**"
+    - "**/.docusaurus/**"
+    - "**/node_modules/**"
+    - "**/vendor/**"
+    - "**/.git/**"
+    - "**/build/**"
+    - "**/dist/**"
+    - "**/bin/**"
+    - "**/coverage/**"
+    - "**/testdata/**"
+    - "**/examples/**"
+    - "**/demo/**"
+    - "**/*.log"
+  performance:
+    max_memory_mb: 200
+  search:
+    max_results: 100
+    max_context_lines: 20
