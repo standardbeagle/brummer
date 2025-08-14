@@ -1,3 +1,9 @@
+// @lci:labels[core,mcp-server,ai-integration,websocket,http-server]
+// @lci:category[server]
+// @lci:deps[process:manager:read,proxy:server:read,logs:store:read,events:bus:write]
+// @lci:tags[component=mcp-server,protocol=websocket,integration=ai-assistant]
+// @lci:metrics[concurrency=high,availability=critical]
+// @lci:propagate[attr=ai-integration,dir=bidirectional,decay=0.8]
 package mcp
 
 import (

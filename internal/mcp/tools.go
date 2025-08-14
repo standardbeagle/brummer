@@ -1,3 +1,9 @@
+// @lci:labels[mcp-tools,tool-implementation,security,validation]
+// @lci:category[tools]
+// @lci:deps[proxy:server:read,repl:manager:read,events:bus:write]
+// @lci:tags[component=mcp-tools,security=path-validation,scope=single-instance]
+// @lci:metrics[security=high,validation=strict]
+// @lci:propagate[attr=tool-security,dir=downstream,decay=0.9]
 package mcp
 
 import (

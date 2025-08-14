@@ -1,3 +1,9 @@
+// @lci:labels[aicoder,manager,ai-integration,interactive-sessions,tmux-style]
+// @lci:category[manager]
+// @lci:deps[workspace:manager:write,provider:registry:read,process:manager:write,pty:manager:write]
+// @lci:tags[component=aicoder-manager,feature=interactive-ai,pattern=tmux-sessions]
+// @lci:metrics[concurrency=managed,sessions=multiple]
+// @lci:propagate[attr=ai-coding,dir=downstream,decay=0.9]
 package aicoder
 
 import (

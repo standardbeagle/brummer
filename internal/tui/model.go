@@ -1,3 +1,9 @@
+// @lci:labels[core,tui-model,terminal-ui,state-management,bubbletea]
+// @lci:category[model]
+// @lci:deps[process:manager:read,logs:store:read,mcp:server:read,proxy:server:read,events:bus:read]
+// @lci:tags[component=tui-model,pattern=mvc,framework=bubbletea,interface=terminal]
+// @lci:metrics[responsiveness=high,complexity=moderate]
+// @lci:propagate[attr=ui-state,dir=bidirectional,decay=0.8]
 package tui
 
 import (
@@ -971,17 +977,14 @@ func (m *Model) renderContent() string {
 
 	switch m.currentView() {
 	case ViewProcesses:
-		// Update controller dimensions and render
-		m.processViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.processViewController.Render()
+		// Render with calculated content dimensions
+		return m.processViewController.Render(m.width, contentHeight)
 	case ViewLogs:
-		// Update controller dimensions and sync state
-		m.logsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		// Sync state and render with calculated dimensions
 		m.logsViewController.SetSelectedProcess(m.selectedProcess)
-		return m.logsViewController.Render()
+		return m.logsViewController.Render(m.width, contentHeight)
 	case ViewErrors:
-		// Update controller dimensions and render
-		m.errorsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		// Render with calculated dimensions
 		// Use content layout for split view if available and screen is wide enough
 		if m.contentLayout != nil && m.width >= 100 {
 			// Calculate split sizes
@@ -1005,34 +1008,35 @@ func (m *Model) renderContent() string {
 			return m.contentLayout.RenderSplitView(leftContent, rightContent, DefaultSplitRatio)
 		}
 		// Fall back to regular rendering for narrow screens
-		return m.errorsViewController.Render()
+		return m.errorsViewController.Render(m.width, contentHeight)
 	case ViewURLs:
-		// Update controller dimensions and render
-		m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.urlsViewController.Render()
+		// Render with calculated dimensions
+		return m.urlsViewController.Render(m.width, contentHeight)
 	case ViewWeb:
 		// Update controller dimensions and render
-		m.webViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.webViewController.Render()
+		return m.webViewController.Render(m.width, contentHeight)
 	case ViewSettings:
 		if m.fileBrowserController.IsShowing() {
 			return m.fileBrowserController.Render(m.width, m.height)
 		}
 		// Update controller dimensions and render
-		m.settingsController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.settingsController.Render()
+		return m.settingsController.Render(m.width, contentHeight)
 	case ViewMCPConnections:
 		if m.debugMode {
 			return m.mcpDebugController.Render(m.width, m.height, m.headerHeight, m.footerHeight)
 		}
 		// Fallback to settings if not in debug mode
-		m.settingsController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.settingsController.Render()
+		return m.settingsController.Render(m.width, contentHeight)
 	case ViewAICoders:
 		if m.aiCoderController != nil {
-			// Update controller dimensions before rendering
-			m.aiCoderController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-			return m.aiCoderController.Render()
+			// Use three-pane layout with vertical tabs for wide screens
+			if m.contentLayout != nil && m.width >= AICoderMinTerminalWidth {
+				// Use multi-terminal layout with tabs, constrained terminal, and info panel
+				return m.aiCoderController.RenderThreePaneLayout(m.contentLayout, m.width, contentHeight)
+			} else {
+				// Fall back to single pane for narrow screens
+				return m.aiCoderController.RenderWindowed(m.width, contentHeight)
+			}
 		}
 		return "AI Coder feature is not initialized"
 	case ViewFilters:
@@ -1097,28 +1101,19 @@ func (m *Model) updateSizes() {
 	// processesList sizing now handled by ProcessViewController
 
 	// Calculate content height once for all controllers
-	calculatedContentHeight := m.calculateContentHeight()
+	// (Used directly as contentHeight above)
 
-	// Update process controller if initialized
-	if m.processViewController != nil {
-		m.processViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
-	}
+	// Process controller no longer stores dimensions - they are passed during rendering
 
 	// settingsList sizing now handled by SettingsController
 	m.commandWindowController.GetCommandsList().SetSize(m.width, contentHeight)
-	m.errorsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
-	m.logsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
+	// Errors controller no longer stores dimensions - passed during rendering
+	// Logs controller no longer stores dimensions - passed during rendering
 
-	// Update URLs controller if initialized
-	if m.urlsViewController != nil {
-		m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
-	}
+	// URLs controller no longer stores dimensions - passed during rendering
 	// Web view sizing handled by WebViewController during rendering
 
-	// Update AI Coder controller size if initialized
-	if m.aiCoderController != nil {
-		m.aiCoderController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, calculatedContentHeight)
-	}
+	// AI Coder controller no longer stores dimensions - they are passed during rendering
 
 	// Update command window controller size
 	m.commandWindowController.UpdateSize(m.width, m.height)
@@ -1445,6 +1440,7 @@ func (m *Model) handleSlashCommand(input string) {
 		UpdateLogsView: func() { m.updateLogsView() },
 		ClearLogs:      func(target string) { m.handleClearCommand(target) },
 		SetProxyURL:    func(urlStr string) { m.handleProxyCommand(urlStr) },
+		ListProxies:    func() { m.listProxies() },
 		ToggleProxy:    func() { m.toggleProxyMode() },
 		StartAICoder:   func(providerName string) { m.handleAICommand(providerName) },
 		ShowTerminal:   func() { m.showTerminal() },
@@ -1498,14 +1494,61 @@ func (m *Model) handleProxyCommand(urlStr string) {
 	}
 
 	// Validate URL
-	_, err := url.Parse(urlStr)
+	parsedURL, err := url.Parse(urlStr)
 	if err != nil {
 		m.logStore.Add("system", "System", fmt.Sprintf("Invalid URL: %v", err), true)
 		return
 	}
 
-	// In reverse proxy mode, URLs are automatically detected and mapped
-	m.logStore.Add("system", "System", fmt.Sprintf("🔗 URLs starting with %s will be proxied when detected", urlStr), false)
+	// Ensure URL has a scheme
+	if parsedURL.Scheme == "" {
+		urlStr = "http://" + urlStr
+		parsedURL, err = url.Parse(urlStr)
+		if err != nil {
+			m.logStore.Add("system", "System", fmt.Sprintf("Invalid URL after adding scheme: %v", err), true)
+			return
+		}
+	}
+
+	// Register the URL with the proxy server
+	proxyURL := m.proxyServer.RegisterURL(urlStr, "manual")
+	if proxyURL == urlStr {
+		// Registration failed (likely port allocation issue)
+		m.logStore.Add("system", "System", fmt.Sprintf("⚠️ Failed to register proxy for %s (port allocation failed)", urlStr), true)
+		return
+	}
+
+	// Log successful registration
+	m.logStore.Add("system", "System", fmt.Sprintf("🚀 Proxy registered: %s → %s", urlStr, proxyURL), false)
+	m.logStore.Add("system", "System", fmt.Sprintf("🔗 Access your app at: %s", proxyURL), false)
+	
+	// Switch to web view to show the new proxy
+	m.navController.SwitchTo(ViewWeb)
+}
+
+func (m *Model) listProxies() {
+	if m.proxyServer == nil {
+		m.logStore.Add("system", "System", "Error: Proxy server is not enabled", true)
+		return
+	}
+
+	mappings := m.proxyServer.GetURLMappings()
+	if len(mappings) == 0 {
+		m.logStore.Add("system", "System", "📋 No active proxy mappings", false)
+		m.logStore.Add("system", "System", "Use '/proxy <URL>' to register a new proxy", false)
+		return
+	}
+
+	m.logStore.Add("system", "System", fmt.Sprintf("📋 Active Proxy Mappings (%d):", len(mappings)), false)
+	for i, mapping := range mappings {
+		label := mapping.Label
+		if label == "" || label == mapping.ProcessName {
+			label = mapping.ProcessName
+		}
+		m.logStore.Add("system", "System", fmt.Sprintf("  %d. %s → %s [%s]", i+1, mapping.TargetURL, mapping.ProxyURL, label), false)
+	}
+	
+	// Switch to web view to show proxy mappings
 	m.navController.SwitchTo(ViewWeb)
 }
 

@@ -1,3 +1,9 @@
+// @lci:labels[logs,store,persistence,filtering,error-detection]
+// @lci:category[store]
+// @lci:deps[events:bus:write,filters:manager:read]
+// @lci:tags[component=log-store,pattern=repository,feature=filtering]
+// @lci:metrics[throughput=high,retention=configurable,filtering=advanced]
+// @lci:propagate[attr=log-management,dir=downstream,decay=0.8]
 package logs
 
 import (

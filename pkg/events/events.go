@@ -1,3 +1,8 @@
+// @lci:labels[core,event-system,event-bus,message-passing,observer-pattern]
+// @lci:category[system]
+// @lci:tags[component=event-bus,pattern=observer,concurrency=worker-pool,distribution=lock-free]
+// @lci:metrics[throughput=high,latency=low,concurrency=bounded-workers]
+// @lci:propagate[attr=event-communication,dir=bidirectional,decay=1.0]
 package events
 
 import (

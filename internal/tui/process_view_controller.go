@@ -1,3 +1,9 @@
+// @lci:labels[tui-controller,process-view,ui-management,real-time-updates]
+// @lci:category[controller]
+// @lci:deps[process:manager:read,bubbletea:list:write]
+// @lci:tags[component=process-view-controller,ui=terminal,pattern=mvc]
+// @lci:metrics[responsiveness=high,updates=real-time]
+// @lci:propagate[attr=process-ui,dir=upstream,decay=0.8]
 package tui
 
 import (
@@ -34,12 +40,7 @@ type ProcessViewController struct {
 	selectedProcess string
 
 	// Dependencies injected from parent Model
-	processMgr    *process.Manager
-	width         int
-	height        int
-	headerHeight  int
-	footerHeight  int
-	contentHeight int // Pre-calculated content height
+	processMgr *process.Manager
 }
 
 // NewProcessViewController creates a new process view controller
@@ -54,16 +55,6 @@ func NewProcessViewController(processMgr *process.Manager) *ProcessViewControlle
 	}
 }
 
-// UpdateSize updates the list dimensions with pre-calculated content height
-func (v *ProcessViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
-	v.width = width
-	v.height = height
-	v.headerHeight = headerHeight
-	v.footerHeight = footerHeight
-	v.contentHeight = contentHeight
-
-	v.processesList.SetSize(width, contentHeight)
-}
 
 // SetSelectedProcess sets the currently selected process
 func (v *ProcessViewController) SetSelectedProcess(processID string) {
@@ -140,20 +131,21 @@ func (v *ProcessViewController) UpdateProcessList() {
 }
 
 // Render renders the processes view
-func (v *ProcessViewController) Render() string {
+func (v *ProcessViewController) Render(width, height int) string {
 	processes := v.processMgr.GetAllProcesses()
 	if len(processes) == 0 {
-		// Show empty state centered using the pre-calculated content height
+		// Show empty state centered using the provided dimensions
 		emptyState := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245")).
 			Align(lipgloss.Center, lipgloss.Center).
-			Width(v.width).
-			Height(v.contentHeight).
+			Width(width).
+			Height(height).
 			Render("No processes running.\n\nUse / for commands:\n/run <script> to start scripts\n/restart all\n/stop <process>")
 		return emptyState
 	}
 
-	// Just return the list view directly
+	// Set list size and return view
+	v.processesList.SetSize(width, height)
 	return v.processesList.View()
 }
 

@@ -1,3 +1,9 @@
+// @lci:labels[core,proxy-server,http-interception,browser-automation,telemetry]
+// @lci:category[server]
+// @lci:deps[events:bus:write,ports:manager:read]
+// @lci:tags[component=proxy-server,protocol=http,feature=automation,monitoring=telemetry]
+// @lci:metrics[throughput=high,latency=low,monitoring=comprehensive]
+// @lci:propagate[attr=http-monitoring,dir=upstream,decay=0.7]
 package proxy
 
 import (

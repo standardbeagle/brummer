@@ -1,3 +1,9 @@
+// @lci:labels[core,process-manager,execution,lifecycle]
+// @lci:category[manager]
+// @lci:deps[parser:package_json:read,events:bus:write,aicoder:manager:write]
+// @lci:tags[component=process-manager,performance=critical,concurrency=lock-free]
+// @lci:metrics[performance=high,concurrency=atomic]
+// @lci:propagate[attr=process-management,dir=downstream,decay=0.9]
 package process
 
 import (
@@ -22,6 +28,10 @@ import (
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
+// @lci:labels[process,atomic-state,execution,lock-free]
+// @lci:category[struct]
+// @lci:tags[concurrency=atomic,performance=30x-300x-faster,safety=thread-safe]
+// @lci:metrics[read-performance=extreme,concurrency=lock-free]
 type Process struct {
 	ID        string
 	Name      string

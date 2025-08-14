@@ -1,3 +1,10 @@
+// @lci:labels[discovery,instance-registry,file-watching,metadata,thread-safe]
+// @lci:category[discovery]
+// @lci:deps[fsnotify:watcher:read]
+// @lci:tags[component=discovery,pattern=registry,storage=file-based,safety=thread-safe]
+// @lci:metrics[performance=watch-based,concurrency=safe]
+// @lci:propagate[attr=instance-discovery,dir=downstream,decay=0.9]
+//
 // Package discovery provides file-based instance discovery for brummer.
 // It watches a directory for JSON files containing instance metadata and
 // maintains an in-memory registry of running instances.

@@ -1,3 +1,9 @@
+// @lci:labels[hub-tools,multi-instance,coordination,routing,distributed]
+// @lci:category[tools]
+// @lci:deps[mcp:server:write,connection:manager:read]
+// @lci:tags[component=hub-tools,pattern=proxy,architecture=distributed]
+// @lci:metrics[scalability=high,coordination=complex]
+// @lci:propagate[attr=hub-coordination,dir=downstream,decay=0.9]
 package mcp
 
 import (
@@ -9,7 +15,11 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
-// RegisterHubTools registers all hub proxy tools that include an instance_id parameter
+// @lci:labels[hub-registration,tool-registration,central-registry]
+// @lci:category[registration]
+// @lci:deps[mcp:server:write,connection:manager:read]
+// @lci:tags[function=registration,scope=all-tools,pattern=factory]
+// @lci:propagate[attr=tool-availability,dir=downstream,decay=1.0]
 func RegisterHubTools(srv *server.MCPServer, connMgr *ConnectionManager) {
 	// Script management tools
 	registerHubScriptTools(srv, connMgr)
