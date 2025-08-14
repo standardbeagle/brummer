@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -1000,6 +1001,139 @@ For detailed documentation and examples, use: about tool="proxy_requests"`,
 			}
 
 			return result, nil
+		},
+	}
+
+	// proxy_register - Register a URL for proxying
+	s.tools["proxy_register"] = MCPTool{
+		Name: "proxy_register",
+		Description: `Register a URL for proxying to create a shareable proxy URL.
+
+Registers any URL with the proxy server and returns the proxy URL that can be shared. 
+Automatically handles scheme detection and port allocation.
+
+For detailed documentation and examples, use: about tool="proxy_register"`,
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {
+				"url": {
+					"type": "string",
+					"description": "URL to register for proxying (e.g., 'https://example.com', 'localhost:3000')"
+				},
+				"processName": {
+					"type": "string",
+					"default": "manual",
+					"description": "Process name to associate with this URL"
+				}
+			},
+			"required": ["url"]
+		}`),
+		Handler: func(args json.RawMessage) (interface{}, error) {
+			var params struct {
+				URL         string `json:"url"`
+				ProcessName string `json:"processName"`
+			}
+			params.ProcessName = "manual"
+			json.Unmarshal(args, &params)
+
+			if s.proxyServer == nil {
+				return map[string]interface{}{
+					"error": "Proxy server is not enabled",
+				}, nil
+			}
+
+			// Validate URL
+			urlStr := params.URL
+			parsedURL, err := url.Parse(urlStr)
+			if err != nil {
+				return map[string]interface{}{
+					"error": fmt.Sprintf("Invalid URL: %v", err),
+				}, nil
+			}
+
+			// Add scheme if missing
+			if parsedURL.Scheme == "" {
+				urlStr = "http://" + urlStr
+				parsedURL, err = url.Parse(urlStr)
+				if err != nil {
+					return map[string]interface{}{
+						"error": fmt.Sprintf("Invalid URL after adding scheme: %v", err),
+					}, nil
+				}
+			}
+
+			// Register URL with proxy server
+			proxyURL := s.proxyServer.RegisterURL(urlStr, params.ProcessName)
+			if proxyURL == urlStr {
+				// Registration failed (likely port allocation issue)
+				return map[string]interface{}{
+					"error":      "Failed to register proxy (port allocation failed)",
+					"targetUrl":  urlStr,
+					"registered": false,
+				}, nil
+			}
+
+			return map[string]interface{}{
+				"targetUrl":  urlStr,
+				"proxyUrl":   proxyURL,
+				"processName": params.ProcessName,
+				"registered": true,
+				"message":    fmt.Sprintf("Proxy registered: %s → %s", urlStr, proxyURL),
+			}, nil
+		},
+	}
+
+	// proxy_list - List all active proxy mappings
+	s.tools["proxy_list"] = MCPTool{
+		Name: "proxy_list",
+		Description: `List all active proxy URL mappings with target URLs, proxy URLs, and process names.
+
+Shows all currently registered proxy mappings, including automatically detected URLs and manually registered ones.
+
+For detailed documentation and examples, use: about tool="proxy_list"`,
+		InputSchema: json.RawMessage(`{
+			"type": "object",
+			"properties": {}
+		}`),
+		Handler: func(args json.RawMessage) (interface{}, error) {
+			if s.proxyServer == nil {
+				return map[string]interface{}{
+					"mappings": []interface{}{},
+					"count":    0,
+					"message":  "Proxy server is not enabled",
+				}, nil
+			}
+
+			mappings := s.proxyServer.GetURLMappings()
+			if len(mappings) == 0 {
+				return map[string]interface{}{
+					"mappings": []interface{}{},
+					"count":    0,
+					"message":  "No active proxy mappings",
+				}, nil
+			}
+
+			// Convert mappings to a more detailed format for API consumers
+			mappingDetails := make([]map[string]interface{}, len(mappings))
+			for i, mapping := range mappings {
+				label := mapping.Label
+				if label == "" || label == mapping.ProcessName {
+					label = mapping.ProcessName
+				}
+				mappingDetails[i] = map[string]interface{}{
+					"targetUrl":   mapping.TargetURL,
+					"proxyUrl":    mapping.ProxyURL,
+					"processName": mapping.ProcessName,
+					"label":       label,
+					"createdAt":   mapping.CreatedAt,
+				}
+			}
+
+			return map[string]interface{}{
+				"mappings": mappingDetails,
+				"count":    len(mappings),
+				"message":  fmt.Sprintf("Found %d active proxy mappings", len(mappings)),
+			}, nil
 		},
 	}
 

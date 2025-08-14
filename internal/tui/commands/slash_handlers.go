@@ -26,6 +26,7 @@ type SlashCommandContext struct {
 	UpdateLogsView func()
 	ClearLogs      func(target string)
 	SetProxyURL    func(urlStr string)
+	ListProxies    func()
 	ToggleProxy    func()
 	StartAICoder   func(providerName string)
 	ShowTerminal   func()
@@ -84,10 +85,22 @@ func HandleSlashCommand(ctx *SlashCommandContext, input string) {
 
 	case "/proxy":
 		if len(parts) < 2 {
+			// Show usage help
+			ctx.LogStore.Add("system", "System", "📋 Proxy Commands:", false)
+			ctx.LogStore.Add("system", "System", "  /proxy <URL>     - Register a URL for proxying", false)
+			ctx.LogStore.Add("system", "System", "  /proxy list      - List all active proxy mappings", false)
+			ctx.LogStore.Add("system", "System", "Example: /proxy https://stgeorge.sbdev.io", false)
 			return
 		}
-		urlStr := strings.Join(parts[1:], " ")
-		ctx.SetProxyURL(urlStr)
+		
+		subcommand := parts[1]
+		if subcommand == "list" {
+			ctx.ListProxies()
+		} else {
+			// Treat the rest as a URL
+			urlStr := strings.Join(parts[1:], " ")
+			ctx.SetProxyURL(urlStr)
+		}
 
 	case "/toggle-proxy":
 		ctx.ToggleProxy()

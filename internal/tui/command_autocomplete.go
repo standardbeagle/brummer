@@ -256,13 +256,25 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 			return c.filterSuggestions(patterns, currentText)
 
 		case "/proxy":
-			// URL format suggestions
-			urlExamples := []string{"http://localhost:3000", "http://localhost:8080", "https://example.com"}
-			currentText := ""
-			if c.currentIndex < len(c.segments) {
-				currentText = c.segments[c.currentIndex]
+			// First argument: subcommands or URL suggestions
+			if c.currentIndex == 1 {
+				subcommands := []string{"list", "http://localhost:3000", "http://localhost:8080", "https://example.com"}
+				currentText := ""
+				if c.currentIndex < len(c.segments) {
+					currentText = c.segments[c.currentIndex]
+				}
+				return c.filterSuggestions(subcommands, currentText)
 			}
-			return c.filterSuggestions(urlExamples, currentText)
+			// For subsequent arguments, suggest URL formats if not "list"
+			if len(c.segments) > 1 && c.segments[1] != "list" {
+				urlExamples := []string{"http://localhost:3000", "http://localhost:8080", "https://example.com"}
+				currentText := ""
+				if c.currentIndex < len(c.segments) {
+					currentText = c.segments[c.currentIndex]
+				}
+				return c.filterSuggestions(urlExamples, currentText)
+			}
+			return []string{}
 
 		case "/ai":
 			// Return available AI providers
@@ -484,12 +496,21 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 
 	case "/proxy":
 		if len(parts) < 2 {
-			return false, "Please specify a URL (e.g. /proxy http://localhost:3000)"
+			return false, "Please specify a subcommand or URL (e.g. /proxy list or /proxy http://localhost:3000)"
 		}
 
-		urlStr := parts[1]
+		subcommand := parts[1]
+		if subcommand == "list" {
+			return true, ""
+		}
+
+		// Validate as URL
+		urlStr := strings.Join(parts[1:], " ")
 		if !strings.HasPrefix(urlStr, "http://") && !strings.HasPrefix(urlStr, "https://") {
-			return false, "URL must start with http:// or https://"
+			// Allow URLs without scheme - we'll add http:// automatically
+			if strings.Contains(urlStr, "://") {
+				return false, "URL must start with http:// or https://"
+			}
 		}
 		return true, ""
 
