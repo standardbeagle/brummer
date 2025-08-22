@@ -575,12 +575,39 @@ func runApp(cmd *cobra.Command, args []string) {
 			cfg = &config.Config{}
 		}
 
-		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, initialView, debugMode, cfg)
+		// Check if component system should be enabled
+		useComponents := os.Getenv("BRUMMER_USE_COMPONENTS") == "true"
+		if useComponents {
+			fmt.Println("🎨 Component system enabled - using new UI architecture")
+		}
 
-		// Set AI coder manager in MCP server if available
-		if mcpSrv, ok := mcpServer.(*mcp.MCPServer); ok {
-			if aiCoderManager := model.GetAICoderManager(); aiCoderManager != nil {
-				mcpSrv.SetAICoderManager(aiCoderManager)
+		// Create model with or without components based on flag
+		var model tea.Model
+		if useComponents {
+			// Use the new component-based model
+			model = tui.CreateModelWithComponentFlag(
+				processMgr,
+				logStore,
+				eventBus,
+				mcpServer,
+				proxyServer,
+				mcpPort,
+				cfg,
+				true, // Enable components
+			)
+		} else {
+			// Use the traditional model
+			model = tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, initialView, debugMode, cfg)
+		}
+
+		// Set AI coder manager in MCP server if available (only for traditional model)
+		if !useComponents {
+			if mcpSrv, ok := mcpServer.(*mcp.MCPServer); ok {
+				if tuiModel, ok := model.(*tui.Model); ok {
+					if aiCoderManager := tuiModel.GetAICoderManager(); aiCoderManager != nil {
+						mcpSrv.SetAICoderManager(aiCoderManager)
+					}
+				}
 			}
 		}
 

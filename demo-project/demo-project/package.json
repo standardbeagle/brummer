@@ -1,0 +1,9 @@
+{
+  "name": "brummer-test",
+  "version": "1.0.0", 
+  "scripts": {
+    "dev": "echo 'Dev server on http://localhost:3000' && sleep 10",
+    "test": "echo 'Running tests...' && sleep 2 && echo 'Tests passed'",
+    "build": "echo 'Building...' && sleep 3 && echo 'Build complete'"
+  }
+}

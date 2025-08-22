@@ -18,10 +18,6 @@ type URLsViewController struct {
 	// Dependencies injected from parent Model
 	logStore     *logs.Store
 	mcpServer    MCPServerInterface
-	width        int
-	height       int
-	headerHeight int
-	footerHeight int
 }
 
 // NewURLsViewController creates a new URLs view controller
@@ -33,15 +29,6 @@ func NewURLsViewController(logStore *logs.Store, mcpServer MCPServerInterface) *
 	}
 }
 
-// UpdateSize updates the viewport dimensions with pre-calculated content height
-func (v *URLsViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
-	v.width = width
-	v.height = height
-	v.headerHeight = headerHeight
-	v.footerHeight = footerHeight
-	v.urlsViewport.Width = width
-	v.urlsViewport.Height = contentHeight
-}
 
 // ToggleMCPHelp toggles the MCP help display
 func (v *URLsViewController) ToggleMCPHelp() {
@@ -49,7 +36,10 @@ func (v *URLsViewController) ToggleMCPHelp() {
 }
 
 // Render renders the URLs view
-func (v *URLsViewController) Render() string {
+func (v *URLsViewController) Render(width, height int) string {
+	// Update viewport size
+	v.urlsViewport.Width = width
+	v.urlsViewport.Height = height
 	urls := v.logStore.GetURLs()
 
 	// Apply stable sort to ensure consistent ordering in UI
@@ -77,14 +67,14 @@ func (v *URLsViewController) Render() string {
 	}
 
 	// Split layout: regular URLs on left, MCP connection box on right
-	if v.width < 100 {
+	if width < 100 {
 		// For narrow screens, use simple single column
 		return v.renderSimple(urls)
 	}
 
-	leftWidth := v.width * 2 / 3
-	rightWidth := v.width - leftWidth - 3
-	contentHeight := v.height - v.headerHeight - v.footerHeight
+	leftWidth := width * 2 / 3
+	rightWidth := width - leftWidth - 3
+	contentHeight := height
 
 	// Create left panel content (regular URLs)
 	var leftContent strings.Builder

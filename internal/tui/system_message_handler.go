@@ -34,7 +34,7 @@ func (h *SystemMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 	// Add system message to the system controller
 	if model.systemController != nil {
 		model.systemController.AddMessage(sysMsg.Level, sysMsg.Context, sysMsg.Message)
-		model.systemController.UpdateSize(model.width, model.height, model.headerHeight, model.footerHeight)
+		// Size is passed via Render parameters now
 
 		// Debug log to verify system messages are being received
 		if strings.Contains(sysMsg.Message, "MCP") {

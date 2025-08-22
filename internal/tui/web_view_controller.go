@@ -162,10 +162,6 @@ type WebViewController struct {
 
 	// Dependencies injected from parent Model
 	proxyServer  *proxy.Server
-	width        int
-	height       int
-	headerHeight int
-	footerHeight int
 }
 
 // NewWebViewController creates a new web view controller
@@ -187,33 +183,6 @@ func NewWebViewController(proxyServer *proxy.Server) *WebViewController {
 	}
 }
 
-// UpdateSize updates the viewport and list dimensions with pre-calculated content height
-func (v *WebViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
-	v.width = width
-	v.height = height
-	v.headerHeight = headerHeight
-	v.footerHeight = footerHeight
-
-	// Update sizes based on current layout
-	if width < 100 {
-		// Narrow view - full width list
-		// Account for filter headers
-		adjustedHeight := contentHeight - 3
-		if adjustedHeight < 1 {
-			adjustedHeight = 1
-		}
-		v.webRequestsList.SetSize(width, adjustedHeight)
-	} else {
-		// Split view
-		listWidth := int(float64(width) * 0.4)
-		detailWidth := width - listWidth - 3
-		contentHeight := height - headerHeight - footerHeight - 1
-
-		v.webRequestsList.SetSize(listWidth-2, contentHeight-2)
-		v.webDetailViewport.Width = detailWidth - 2
-		v.webDetailViewport.Height = contentHeight - 2
-	}
-}
 
 // SetWebFilter sets the current web filter
 func (v *WebViewController) SetWebFilter(filter string) {
@@ -294,10 +263,10 @@ func (v *WebViewController) UpdateWebView() (unreadCount int, hasError bool) {
 }
 
 // Render renders the web view
-func (v *WebViewController) Render() string {
-	if v.width < 100 {
+func (v *WebViewController) Render(width, height int) string {
+	if width < 100 {
 		// For narrow screens, use the simple view
-		return v.renderNarrow()
+		return v.renderNarrow(width, height)
 	}
 
 	// Check if proxy server is running - if not, show appropriate message
@@ -306,12 +275,12 @@ func (v *WebViewController) Render() string {
 	}
 
 	// Calculate heights
-	contentHeight := v.height - v.headerHeight - v.footerHeight
+	contentHeight := height
 
 	// Split view: requests list on left, detail on right
 	// Use a more conservative split for better readability
-	listWidth := int(float64(v.width) * 0.4) // 40% for list
-	detailWidth := v.width - listWidth - 3   // Rest for detail
+	listWidth := int(float64(width) * 0.4) // 40% for list
+	detailWidth := width - listWidth - 3   // Rest for detail
 
 	// Ensure minimum widths
 	if listWidth < 40 {
@@ -680,7 +649,7 @@ func (v *WebViewController) formatStatus(status int) string {
 }
 
 // renderNarrow renders a narrow view for small screens
-func (v *WebViewController) renderNarrow() string {
+func (v *WebViewController) renderNarrow(width, height int) string {
 	var content strings.Builder
 
 	// Compact header: combine status + filter on one line, help + indicators on another
@@ -725,7 +694,7 @@ func (v *WebViewController) renderNarrow() string {
 	// Line 3: Separator
 	// Use lipgloss border style instead of manual line drawing
 	separatorStyle := lipgloss.NewStyle().
-		Width(v.width).
+		Width(width).
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderTop(true).
 		BorderBottom(false).
@@ -735,12 +704,12 @@ func (v *WebViewController) renderNarrow() string {
 	content.WriteString(separatorStyle.Render("") + "\n")
 
 	// Calculate list height correctly
-	totalContentHeight := v.height - v.headerHeight - v.footerHeight
+	totalContentHeight := height
 	filterHeaderLines := 3 // status+filter + help+indicators + separator (compact)
 	listHeight := totalContentHeight - filterHeaderLines
 
 	// Setup list size and update with filtered requests
-	v.webRequestsList.SetSize(v.width, listHeight)
+	v.webRequestsList.SetSize(width, listHeight)
 	requests := v.getFilteredRequests()
 	v.updateWebRequestsList(requests)
 	v.updateSelectedRequestFromList()

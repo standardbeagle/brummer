@@ -49,6 +49,9 @@ const (
 	ViewFilters        = navigation.ViewFilters
 	ViewScriptSelector = navigation.ViewScriptSelector
 	ViewAICoders       = navigation.ViewAICoders
+	
+	// AICoderMinTerminalWidth is the minimum width needed for three-pane layout
+	AICoderMinTerminalWidth = 120
 )
 
 // ViewConfig holds configuration for each view
@@ -901,7 +904,7 @@ func (m *Model) View() string {
 // renderLayout provides consistent layout for all views
 func (m *Model) renderLayout(content string) string {
 	// Update layout controller state
-	m.layoutController.UpdateSize(m.width, m.height)
+	// Size is passed via Render parameters now
 	m.layoutController.SetCurrentView(string(m.currentView()))
 	m.layoutController.SetSystemPanelOpen(m.systemController.IsExpanded())
 	m.layoutController.SetSelectedProcess(m.selectedProcess)
@@ -924,8 +927,7 @@ func (m *Model) renderLayout(content string) string {
 	// If system panel is expanded, show it instead of main content
 	if m.systemController.IsExpanded() && m.systemController.HasMessages() {
 		// Full screen mode - system panel takes most of the space
-		contentHeight := m.height - m.headerHeight - m.footerHeight
-		m.systemController.UpdateSize(m.width, contentHeight, 0, 0)
+		// Size is passed via Render parameters now
 		content = m.systemPanelRenderer.RenderPanel()
 		if m.contentLayout != nil {
 			content = m.contentLayout.RenderContent(content)
@@ -1029,14 +1031,7 @@ func (m *Model) renderContent() string {
 		return m.settingsController.Render(m.width, contentHeight)
 	case ViewAICoders:
 		if m.aiCoderController != nil {
-			// Use three-pane layout with vertical tabs for wide screens
-			if m.contentLayout != nil && m.width >= AICoderMinTerminalWidth {
-				// Use multi-terminal layout with tabs, constrained terminal, and info panel
-				return m.aiCoderController.RenderThreePaneLayout(m.contentLayout, m.width, contentHeight)
-			} else {
-				// Fall back to single pane for narrow screens
-				return m.aiCoderController.RenderWindowed(m.width, contentHeight)
-			}
+			return m.aiCoderController.Render()
 		}
 		return "AI Coder feature is not initialized"
 	case ViewFilters:
@@ -1116,7 +1111,7 @@ func (m *Model) updateSizes() {
 	// AI Coder controller no longer stores dimensions - they are passed during rendering
 
 	// Update command window controller size
-	m.commandWindowController.UpdateSize(m.width, m.height)
+	// Size is passed via Render parameters now
 }
 
 func (m *Model) cycleView() {

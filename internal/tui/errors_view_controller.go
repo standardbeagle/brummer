@@ -48,10 +48,6 @@ type ErrorsViewController struct {
 
 	// Dependencies injected from parent Model
 	logStore     *logs.Store
-	width        int
-	height       int
-	headerHeight int
-	footerHeight int
 }
 
 // NewErrorsViewController creates a new errors view controller
@@ -69,21 +65,6 @@ func NewErrorsViewController(logStore *logs.Store) *ErrorsViewController {
 	}
 }
 
-// UpdateSize updates the viewport dimensions with pre-calculated content height
-func (v *ErrorsViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
-	v.width = width
-	v.height = height
-	v.headerHeight = headerHeight
-	v.footerHeight = footerHeight
-
-	v.errorsViewport.Width = width
-	v.errorsViewport.Height = contentHeight
-
-	// Update other components
-	v.errorDetailView.Width = width
-	v.errorDetailView.Height = contentHeight
-	v.errorsList.SetSize(width, contentHeight)
-}
 
 // GetErrorsViewport returns the errors viewport for direct manipulation
 func (v *ErrorsViewController) GetErrorsViewport() *viewport.Model {
@@ -173,7 +154,10 @@ func (v *ErrorsViewController) UpdateErrorsView() {
 }
 
 // Render renders the errors view
-func (v *ErrorsViewController) Render() string {
+func (v *ErrorsViewController) Render(width, height int) string {
+	// Update viewport size
+	v.errorsViewport.Width = width
+	v.errorsViewport.Height = height
 	// Update content with latest errors
 	v.UpdateErrorsView()
 
@@ -352,10 +336,10 @@ func (v *ErrorsViewController) HandleCopyError() tea.Cmd {
 }
 
 // RenderErrorsViewSplit renders a split view with error list and details
-func (v *ErrorsViewController) RenderErrorsViewSplit() string {
-	if v.width < 100 {
+func (v *ErrorsViewController) RenderErrorsViewSplit(width, height, headerHeight, footerHeight int) string {
+	if width < 100 {
 		// For narrow screens, use the old view
-		return v.Render()
+		return v.Render(width, height)
 	}
 
 	// Update both views
@@ -364,18 +348,19 @@ func (v *ErrorsViewController) RenderErrorsViewSplit() string {
 
 	// Use ContentLayout for split view if available
 	splitRatio := DefaultSplitRatio
-	leftWidth := int(float64(v.width) * splitRatio)
-	rightWidth := v.width - leftWidth
+	leftWidth := int(float64(width) * splitRatio)
+	rightWidth := width - leftWidth
+	contentHeight := height - headerHeight - footerHeight
 
 	// Update list size for split view
-	v.errorsList.SetSize(leftWidth-2, v.height-v.headerHeight-v.footerHeight)
+	v.errorsList.SetSize(leftWidth-2, contentHeight)
 	v.errorDetailView.Width = rightWidth - 2
-	v.errorDetailView.Height = v.height - v.headerHeight - v.footerHeight
+	v.errorDetailView.Height = contentHeight
 
 	// Create left panel with border
 	leftPanel := lipgloss.NewStyle().
 		Width(leftWidth).
-		Height(v.height-v.headerHeight-v.footerHeight).
+		Height(contentHeight).
 		Border(lipgloss.NormalBorder(), false, true, false, false).
 		BorderForeground(lipgloss.Color("240")).
 		Render(v.errorsList.View())
@@ -383,7 +368,7 @@ func (v *ErrorsViewController) RenderErrorsViewSplit() string {
 	// Create right panel
 	rightPanel := lipgloss.NewStyle().
 		Width(rightWidth).
-		Height(v.height - v.headerHeight - v.footerHeight).
+		Height(contentHeight).
 		Render(v.errorDetailView.View())
 
 	// Join horizontally

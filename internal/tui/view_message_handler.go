@@ -44,32 +44,7 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 		model.width = m.Width
 		model.height = m.Height
 
-		// Update layout controller
-		if model.layoutController != nil {
-			model.layoutController.UpdateSize(m.Width, m.Height)
-		}
-
-		// Calculate content height once for all controllers
-		contentHeight := model.calculateContentHeight()
-
-		// Update all view controllers with new size including content height
-		if model.processViewController != nil {
-			model.processViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
-		}
-		if model.logsViewController != nil {
-			model.logsViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
-		}
-		if model.webViewController != nil {
-			model.webViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
-		}
-		if model.settingsController != nil {
-			model.settingsController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
-		}
-
-		// Update overlay controllers
-		if model.commandWindowController != nil {
-			model.commandWindowController.UpdateSize(m.Width, m.Height)
-		}
+		// View controllers now get size via Render parameters, no need to update size here
 		// Note: ScriptSelectorController gets size directly via getTerminalSize()
 		// to ensure proper sizing for overlay rendering
 

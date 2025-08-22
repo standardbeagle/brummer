@@ -25,10 +25,6 @@ type LogsViewController struct {
 	// Dependencies injected from parent Model
 	logStore        *logs.Store
 	selectedProcess string
-	width           int
-	height          int
-	headerHeight    int
-	footerHeight    int
 }
 
 // NewLogsViewController creates a new logs view controller
@@ -45,15 +41,10 @@ func NewLogsViewController(logStore *logs.Store) *LogsViewController {
 	}
 }
 
-// UpdateSize updates the viewport dimensions with pre-calculated content height
-func (v *LogsViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
-	v.width = width
-	v.height = height
-	v.headerHeight = headerHeight
-	v.footerHeight = footerHeight
-
+// SetViewportSize updates the viewport dimensions - should be called from Update, not Render
+func (v *LogsViewController) SetViewportSize(width, height int) {
 	v.logsViewport.Width = width
-	v.logsViewport.Height = contentHeight
+	v.logsViewport.Height = height
 }
 
 // SetSelectedProcess sets the currently selected process for filtering
@@ -154,9 +145,10 @@ func (v *LogsViewController) UpdateLogsView() {
 	}
 }
 
-// Render renders the logs view
-func (v *LogsViewController) Render() string {
-	// Just return the viewport directly without any header
+// Render renders the logs view - pure function, no mutations
+func (v *LogsViewController) Render(width, height int) string {
+	// Note: viewport size should be set via SetViewportSize in Update method
+	// This just returns the current view without any mutations
 	return v.logsViewport.View()
 }
 

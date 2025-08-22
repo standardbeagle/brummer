@@ -25,12 +25,6 @@ type SettingsController struct {
 	settingsList list.Model
 	logStore     *logs.Store
 	proxyServer  *proxy.Server
-
-	// View state
-	width        int
-	height       int
-	headerHeight int
-	footerHeight int
 }
 
 // NewSettingsController creates a new settings controller
@@ -51,16 +45,6 @@ func NewSettingsController(cfg *config.Config, mcpServer MCPServerInterface, pro
 	}
 }
 
-// UpdateSize updates the viewport dimensions with pre-calculated content height
-func (s *SettingsController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
-	s.width = width
-	s.height = height
-	s.headerHeight = headerHeight
-	s.footerHeight = footerHeight
-
-	// Update settings list size
-	s.settingsList.SetSize(width, contentHeight)
-}
 
 // GetSettingsListPointer returns a pointer to the settings list (for backward compatibility)
 func (s *SettingsController) GetSettingsListPointer() *list.Model {
@@ -273,12 +257,9 @@ func (s *SettingsController) getCLICommand(configKey string) string {
 }
 
 // Render renders the settings view
-func (s *SettingsController) Render() string {
-	// Calculate available height for the list - no local headers
-	availableHeight := s.height - s.headerHeight - s.footerHeight
-
+func (s *SettingsController) Render(width, height int) string {
 	// Update list size and render
-	s.settingsList.SetSize(s.width, availableHeight)
+	s.settingsList.SetSize(width, height)
 	return s.settingsList.View()
 }
 
