@@ -90,7 +90,9 @@ func (m *RefactoredModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	
 	// Let component tree handle UI updates
 	newRoot, cmd := m.root.Update(msg)
-	m.root = newRoot
+	if c, ok := newRoot.(components.Component); ok {
+		m.root = c
+	}
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}

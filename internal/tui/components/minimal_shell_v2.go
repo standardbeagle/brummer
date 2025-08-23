@@ -70,7 +70,7 @@ func (t *TabBar) PrevTab() {
 }
 
 // Update handles tab bar updates
-func (t *TabBar) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (t *TabBar) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return t, nil
 }
 
@@ -179,7 +179,7 @@ type SimpleTextView struct {
 	style    lipgloss.Style
 }
 
-func (s *SimpleTextView) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (s *SimpleTextView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return s, nil
 }
 

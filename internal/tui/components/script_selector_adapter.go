@@ -226,7 +226,7 @@ func (s *ScriptSelectorComponent) parseEnvFromCommand(command string) map[string
 }
 
 // Update handles messages
-func (s *ScriptSelectorComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle component-specific messages

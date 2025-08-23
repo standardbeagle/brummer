@@ -105,7 +105,7 @@ func (l *LogsViewComponent) initStyles() {
 }
 
 // Update handles messages
-func (l *LogsViewComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (l *LogsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle component-specific messages

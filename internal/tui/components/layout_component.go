@@ -126,7 +126,7 @@ func (l *LayoutComponent) SetCommandPalette(c Component) {
 }
 
 // Update handles messages
-func (l *LayoutComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (l *LayoutComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle layout-specific messages
@@ -194,7 +194,7 @@ func (l *LayoutComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
 	case LayoutModeFull:
 		if l.main != nil {
 			newMain, cmd := l.main.Update(msg)
-			l.main = newMain
+			if c, ok := newMain.(Component); ok { l.main = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -203,14 +203,14 @@ func (l *LayoutComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
 	case LayoutModeSidebar:
 		if l.sidebar != nil && l.sidebarVisible {
 			newSidebar, cmd := l.sidebar.Update(msg)
-			l.sidebar = newSidebar
+			if c, ok := newSidebar.(Component); ok { l.sidebar = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 		}
 		if l.main != nil {
 			newMain, cmd := l.main.Update(msg)
-			l.main = newMain
+			if c, ok := newMain.(Component); ok { l.main = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -219,21 +219,21 @@ func (l *LayoutComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
 	case LayoutModeHeaderFooter:
 		if l.header != nil && l.headerVisible {
 			newHeader, cmd := l.header.Update(msg)
-			l.header = newHeader
+			if c, ok := newHeader.(Component); ok { l.header = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 		}
 		if l.main != nil {
 			newMain, cmd := l.main.Update(msg)
-			l.main = newMain
+			if c, ok := newMain.(Component); ok { l.main = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 		}
 		if l.footer != nil && l.footerVisible {
 			newFooter, cmd := l.footer.Update(msg)
-			l.footer = newFooter
+			if c, ok := newFooter.(Component); ok { l.footer = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -243,28 +243,28 @@ func (l *LayoutComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
 		// Update all visible components
 		if l.header != nil && l.headerVisible {
 			newHeader, cmd := l.header.Update(msg)
-			l.header = newHeader
+			if c, ok := newHeader.(Component); ok { l.header = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 		}
 		if l.sidebar != nil && l.sidebarVisible {
 			newSidebar, cmd := l.sidebar.Update(msg)
-			l.sidebar = newSidebar
+			if c, ok := newSidebar.(Component); ok { l.sidebar = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 		}
 		if l.main != nil {
 			newMain, cmd := l.main.Update(msg)
-			l.main = newMain
+			if c, ok := newMain.(Component); ok { l.main = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 		}
 		if l.footer != nil && l.footerVisible {
 			newFooter, cmd := l.footer.Update(msg)
-			l.footer = newFooter
+			if c, ok := newFooter.(Component); ok { l.footer = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -275,7 +275,7 @@ func (l *LayoutComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
 	if l.notifications != nil {
 		if visible, ok := l.notifications.(Visible); !ok || visible.IsVisible() {
 			newNotif, cmd := l.notifications.Update(msg)
-			l.notifications = newNotif
+			if c, ok := newNotif.(Component); ok { l.notifications = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -285,7 +285,7 @@ func (l *LayoutComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
 	if l.commandPalette != nil {
 		if visible, ok := l.commandPalette.(Visible); !ok || visible.IsVisible() {
 			newCmd, cmd := l.commandPalette.Update(msg)
-			l.commandPalette = newCmd
+			if c, ok := newCmd.(Component); ok { l.commandPalette = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}

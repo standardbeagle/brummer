@@ -134,7 +134,7 @@ func (n *NotificationComponent) mapEventLevel(level string) NotificationLevel {
 }
 
 // Update handles messages
-func (n *NotificationComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (n *NotificationComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	switch msg := msg.(type) {

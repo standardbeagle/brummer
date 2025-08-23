@@ -106,8 +106,13 @@ func (e *ErrorsViewComponent) initializeList() {
 	)
 }
 
+// Init implements tea.Model interface
+func (e *ErrorsViewComponent) Init() tea.Cmd {
+	return nil
+}
+
 // Update handles messages
-func (e *ErrorsViewComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (e *ErrorsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle component-specific messages

@@ -32,7 +32,7 @@ func (f *FocusChain) Add(component Component) {
 }
 
 // Update handles focus cycling and delegates to focused component
-func (f *FocusChain) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (f *FocusChain) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if len(f.components) == 0 {
 		return f, nil
 	}
@@ -64,7 +64,10 @@ func (f *FocusChain) Update(msg tea.Msg) (Component, tea.Cmd) {
 	for i, comp := range f.components {
 		if i == f.focusIndex || !isInputMessage(msg) {
 			newComp, cmd := comp.Update(msg)
-			f.components[i] = newComp
+			// Type assert back to Component
+			if c, ok := newComp.(Component); ok {
+				f.components[i] = c
+			}
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}

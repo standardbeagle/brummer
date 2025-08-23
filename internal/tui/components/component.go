@@ -6,13 +6,9 @@ import (
 )
 
 // Component is the base interface for all UI components in the system.
-// Components handle their own updates, rendering, and focus management.
+// Components are tea.Model with additional focus management.
 type Component interface {
-	// Update handles messages and returns updated component and command
-	Update(msg tea.Msg) (Component, tea.Cmd)
-	
-	// View renders the component to a string
-	View() string
+	tea.Model // Standard Bubble Tea model interface
 	
 	// Focus management
 	Focus() tea.Cmd
@@ -88,8 +84,13 @@ func (b *BaseComponent) IsVisible() bool {
 	return b.visible
 }
 
+// Init provides a default no-op init
+func (b *BaseComponent) Init() tea.Cmd {
+	return nil
+}
+
 // Update provides a default no-op update
-func (b *BaseComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (b *BaseComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return b, nil
 }
 

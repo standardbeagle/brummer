@@ -58,7 +58,7 @@ func (v *ViewSwitcher) CurrentView() string {
 }
 
 // Update delegates to the current view
-func (v *ViewSwitcher) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (v *ViewSwitcher) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle resize
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -71,8 +71,10 @@ func (v *ViewSwitcher) Update(msg tea.Msg) (Component, tea.Cmd) {
 	// Update current view
 	if v.current != nil {
 		newCurrent, cmd := v.current.Update(msg)
-		v.views[v.currentView] = newCurrent
-		v.current = newCurrent
+		if c, ok := newCurrent.(Component); ok {
+			v.views[v.currentView] = c
+			v.current = c
+		}
 		return v, cmd
 	}
 	

@@ -39,7 +39,7 @@ func (b *BoxLayout) AddChild(child Component, weight float64) {
 }
 
 // Update propagates updates to children
-func (b *BoxLayout) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (b *BoxLayout) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle resize
@@ -53,7 +53,10 @@ func (b *BoxLayout) Update(msg tea.Msg) (Component, tea.Cmd) {
 	for i, child := range b.children {
 		if child.Focused() || !isInputMessage(msg) {
 			newChild, cmd := child.Update(msg)
-			b.children[i] = newChild
+			// Type assert back to Component
+			if comp, ok := newChild.(Component); ok {
+				b.children[i] = comp
+			}
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -149,3 +152,5 @@ func isInputMessage(msg tea.Msg) bool {
 	}
 	return false
 }
+// Init implements tea.Model interface for BoxLayout
+func (*BoxLayout) Init() tea.Cmd { return nil }

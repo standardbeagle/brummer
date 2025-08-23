@@ -75,7 +75,7 @@ func NewMigratedProcessView() *MigratedProcessView {
 }
 
 // Update handles process view updates
-func (v *MigratedProcessView) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (v *MigratedProcessView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Could handle process-specific messages here
 	// For now, delegate to layout
 	newLayout, cmd := v.layout.Update(msg)
@@ -168,7 +168,7 @@ func NewMigratedLogsView() *MigratedLogsView {
 }
 
 // Update handles logs view updates
-func (v *MigratedLogsView) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (v *MigratedLogsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Delegate to layout
 	newLayout, cmd := v.layout.Update(msg)
 	v.layout = newLayout.(*BoxLayout)
@@ -204,7 +204,7 @@ type viewportAdapter struct {
 	viewport *viewport.Model
 }
 
-func (a *viewportAdapter) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (a *viewportAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newVP, cmd := a.viewport.Update(msg)
 	a.viewport = &newVP
 	return a, cmd
@@ -294,7 +294,7 @@ func NewMigratedErrorsView() *MigratedErrorsView {
 }
 
 // Update handles errors view updates
-func (v *MigratedErrorsView) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (v *MigratedErrorsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Delegate to layout
 	newLayout, cmd := v.layout.Update(msg)
 	v.layout = newLayout.(*BoxLayout)
@@ -330,7 +330,7 @@ type listAdapter struct {
 	list *list.Model
 }
 
-func (a *listAdapter) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (a *listAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newList, cmd := a.list.Update(msg)
 	a.list = &newList
 	return a, cmd

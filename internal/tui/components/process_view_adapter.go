@@ -90,7 +90,7 @@ func (p *ProcessViewComponent) initializeList() {
 }
 
 // Update handles messages
-func (p *ProcessViewComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (p *ProcessViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle component-specific messages

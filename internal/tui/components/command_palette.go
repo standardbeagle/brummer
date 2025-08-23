@@ -82,8 +82,13 @@ func (c *CommandPalette) Hide() {
 	c.suggestions = []string{}
 }
 
+// Init implements tea.Model interface
+func (c *CommandPalette) Init() tea.Cmd {
+	return nil
+}
+
 // Update handles command palette updates
-func (c *CommandPalette) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (c *CommandPalette) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !c.visible {
 		return c, nil
 	}

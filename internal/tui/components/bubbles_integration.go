@@ -36,7 +36,7 @@ func NewBubblesListAdapter(title string, items []list.Item) *BubblesListAdapter 
 }
 
 // Update delegates to the Bubbles list
-func (a *BubblesListAdapter) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (a *BubblesListAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Bubbles components handle their own sizing
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -110,7 +110,7 @@ func NewBubblesTableAdapter(columns []table.Column, rows []table.Row) *BubblesTa
 }
 
 // Update delegates to the Bubbles table
-func (a *BubblesTableAdapter) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (a *BubblesTableAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newTable, cmd := a.table.Update(msg)
 	a.table = newTable
 	return a, cmd
@@ -155,7 +155,7 @@ func (a *BubblesViewportAdapter) SetContent(content string) {
 }
 
 // Update delegates to the Bubbles viewport
-func (a *BubblesViewportAdapter) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (a *BubblesViewportAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		a.SetSize(msg.Width, msg.Height)
@@ -203,7 +203,7 @@ func NewBubblesTextInputAdapter(placeholder string, onSubmit func(string) tea.Cm
 }
 
 // Update delegates to the Bubbles text input
-func (a *BubblesTextInputAdapter) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (a *BubblesTextInputAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle enter key for submission
 	if key, ok := msg.(tea.KeyMsg); ok && key.String() == "enter" {
 		if a.onSubmit != nil && a.input.Value() != "" {
@@ -260,7 +260,7 @@ func NewBubblesSpinnerAdapter(message string) *BubblesSpinnerAdapter {
 }
 
 // Update delegates to the Bubbles spinner
-func (a *BubblesSpinnerAdapter) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (a *BubblesSpinnerAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newSpinner, cmd := a.spinner.Update(msg)
 	a.spinner = newSpinner
 	return a, cmd
@@ -304,7 +304,7 @@ func (a *BubblesProgressAdapter) SetPercent(percent float64) {
 }
 
 // Update handles progress updates
-func (a *BubblesProgressAdapter) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (a *BubblesProgressAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Progress bars typically update via external commands
 	// This is a simplified version
 	return a, nil
@@ -325,6 +325,9 @@ func (a *BubblesProgressAdapter) SetSize(width, height int) {
 	a.BaseComponent.SetSize(width, height)
 	a.progress.Width = width - 10 // Leave room for percentage
 }
+
+// Init implements tea.Model interface for BubblesProgressAdapter
+func (*BubblesProgressAdapter) Init() tea.Cmd { return nil }
 
 // CompositeExample shows how to compose multiple Bubbles components
 type CompositeExample struct {
@@ -366,7 +369,7 @@ func NewCompositeExample() *CompositeExample {
 }
 
 // Update delegates to the layout
-func (c *CompositeExample) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (c *CompositeExample) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	newLayout, cmd := c.layout.Update(msg)
 	c.layout = newLayout.(*BoxLayout)
 	return c, cmd
@@ -382,6 +385,9 @@ func (c *CompositeExample) SetSize(width, height int) {
 	c.BaseComponent.SetSize(width, height)
 	c.layout.SetSize(width, height)
 }
+
+// Init implements tea.Model interface for CompositeExample
+func (*CompositeExample) Init() tea.Cmd { return nil }
 
 // simpleItem is a simple list item for examples
 type simpleItem string
@@ -487,3 +493,14 @@ func ExampleBubblesInOverlay() Component {
 	
 	return stack
 }
+// Init implements tea.Model interface for BubblesListAdapter
+func (*BubblesListAdapter) Init() tea.Cmd { return nil }
+
+// Init implements tea.Model interface for BubblesTableAdapter
+func (*BubblesTableAdapter) Init() tea.Cmd { return nil }
+
+// Init implements tea.Model interface for BubblesTextInputAdapter
+func (*BubblesTextInputAdapter) Init() tea.Cmd { return nil }
+
+// Init implements tea.Model interface for BubblesViewportAdapter
+func (*BubblesViewportAdapter) Init() tea.Cmd { return nil }

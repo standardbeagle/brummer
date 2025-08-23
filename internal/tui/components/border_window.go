@@ -112,7 +112,7 @@ func (b *BorderWindow) updateContentSize() {
 }
 
 // Update handles messages
-func (b *BorderWindow) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (b *BorderWindow) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle window sizing
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -122,7 +122,10 @@ func (b *BorderWindow) Update(msg tea.Msg) (Component, tea.Cmd) {
 	// Forward to content
 	if b.content != nil {
 		newContent, cmd := b.content.Update(msg)
-		b.content = newContent
+		// Type assert back to Component
+		if comp, ok := newContent.(Component); ok {
+			b.content = comp
+		}
 		return b, cmd
 	}
 	
@@ -197,4 +200,8 @@ func (b *BorderWindow) Blur() tea.Cmd {
 // Focused returns whether the window is focused
 func (b *BorderWindow) Focused() bool {
 	return b.focused
+}
+// Init implements tea.Model interface
+func (b *BorderWindow) Init() tea.Cmd {
+	return nil
 }

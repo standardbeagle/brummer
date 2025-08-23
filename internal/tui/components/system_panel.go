@@ -46,7 +46,7 @@ func NewSystemPanel(renderer SystemPanelRenderer) *SystemPanel {
 }
 
 // Update handles system panel specific updates
-func (s *SystemPanel) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (s *SystemPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Check if we should show/hide based on renderer state
 	if s.renderer != nil {
 		if s.renderer.HasMessages() && !s.visible {
@@ -132,7 +132,7 @@ type systemPanelContent struct {
 	renderer SystemPanelRenderer
 }
 
-func (c *systemPanelContent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (c *systemPanelContent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// System panel handles its own updates through the renderer
 	return c, nil
 }

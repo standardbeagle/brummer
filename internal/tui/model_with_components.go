@@ -67,11 +67,14 @@ func NewModelWithComponents(
 				mwc.componentBridge = components.NewMinimalShell()
 			}
 		} else {
-			// Create data provider that adapts the Model
-			mwc.dataProvider = NewBrummerDataProvider(baseModel)
-			
-			// Create component bridge
-			mwc.componentBridge = components.NewModelBridge(mwc.dataProvider)
+			// Use IntegratedShell directly with the process manager
+			// Skip the overcomplicated ModelBridge entirely
+			if baseModel.processMgr != nil {
+				mwc.componentBridge = components.NewIntegratedShell(baseModel.processMgr)
+			} else {
+				// Fallback to minimal shell if no process manager
+				mwc.componentBridge = components.NewMinimalShell()
+			}
 		}
 	}
 	
@@ -80,48 +83,31 @@ func NewModelWithComponents(
 
 // Init initializes the model
 func (m *ModelWithComponents) Init() tea.Cmd {
-	var cmds []tea.Cmd
-	
-	// Always initialize base model for data
-	if cmd := m.baseModel.Init(); cmd != nil {
-		cmds = append(cmds, cmd)
-	}
-	
-	// Initialize component system if enabled
 	if m.useComponents && m.componentBridge != nil {
-		if cmd := m.componentBridge.Init(); cmd != nil {
-			cmds = append(cmds, cmd)
-		}
+		// When using components, ONLY initialize component system
+		return m.componentBridge.Init()
 	}
 	
-	return tea.Batch(cmds...)
+	// Fallback to base model when not using components
+	return m.baseModel.Init()
 }
 
 // Update handles all messages
 func (m *ModelWithComponents) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-	
-	// Always update base model for data changes
-	newModel, modelCmd := m.baseModel.Update(msg)
-	m.baseModel = newModel.(*Model)
-	if modelCmd != nil {
-		cmds = append(cmds, modelCmd)
-	}
-	
-	// If using components, let component system handle UI
 	if m.useComponents && m.componentBridge != nil {
-		_, compCmd := m.componentBridge.Update(msg)
-		if compCmd != nil {
-			cmds = append(cmds, compCmd)
+		// When using components, ONLY use the component system
+		// IntegratedShell handles everything (data, UI, process management)
+		newBridge, cmd := m.componentBridge.Update(msg)
+		if comp, ok := newBridge.(tea.Model); ok {
+			m.componentBridge = comp
 		}
-		
-		// Send data updates to components when needed
-		if dataCmd := m.syncDataToComponents(); dataCmd != nil {
-			cmds = append(cmds, dataCmd)
-		}
+		return m, cmd
 	}
 	
-	return m, tea.Batch(cmds...)
+	// Fallback to original model when not using components
+	newModel, cmd := m.baseModel.Update(msg)
+	m.baseModel = newModel.(*Model)
+	return m, cmd
 }
 
 // View renders the UI
@@ -208,6 +194,14 @@ type BrummerDataProvider struct {
 // NewBrummerDataProvider creates a data provider for the Brummer model
 func NewBrummerDataProvider(model *Model) *BrummerDataProvider {
 	return &BrummerDataProvider{model: model}
+}
+
+// GetProcessManager returns the process manager from the model
+func (p *BrummerDataProvider) GetProcessManager() *process.Manager {
+	if p.model != nil {
+		return p.model.processMgr
+	}
+	return nil
 }
 
 // GetProcesses returns process information

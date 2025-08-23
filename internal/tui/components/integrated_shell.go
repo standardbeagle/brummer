@@ -1,0 +1,639 @@
+package components
+
+import (
+	"fmt"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/standardbeagle/brummer/internal/process"
+)
+
+// IntegratedShell combines all components into a working shell
+type IntegratedShell struct {
+	width  int
+	height int
+	quit   bool
+	
+	// View management
+	currentView ViewType
+	views       map[ViewType]*ViewInfo
+	viewOrder   []ViewType
+	
+	// Components
+	processView *ProcessViewNew
+	// Future: logsView, errorsView, urlsView, webView
+	
+	// Process manager
+	processMgr *process.Manager
+	
+	// Width calculator
+	widthCalc *TabWidthCalculator
+	
+	// Styles
+	titleStyle       lipgloss.Style
+	activeTabStyle   lipgloss.Style
+	inactiveTabStyle lipgloss.Style
+	errorBadgeStyle  lipgloss.Style
+	warnBadgeStyle   lipgloss.Style
+	infoBadgeStyle   lipgloss.Style
+	separatorStyle   lipgloss.Style
+}
+
+// NewIntegratedShell creates a shell with real components
+func NewIntegratedShell(processMgr *process.Manager) *IntegratedShell {
+	// ALWAYS initialize colors first
+	MustInitColors()
+	
+	shell := &IntegratedShell{
+		width:       80,
+		height:      24,
+		currentView: ViewProcesses,
+		views:       make(map[ViewType]*ViewInfo),
+		processMgr:  processMgr,
+	}
+	
+	// Initialize components
+	shell.processView = NewProcessViewNew(processMgr)
+	
+	// Initialize views
+	shell.initializeViews()
+	
+	// Initialize styles
+	shell.initializeStyles()
+	
+	// Create width calculator
+	shell.widthCalc = NewTabWidthCalculator(shell.width, len(shell.viewOrder))
+	
+	return shell
+}
+
+// initializeViews sets up all view metadata
+func (s *IntegratedShell) initializeViews() {
+	s.views[ViewProcesses] = &ViewInfo{
+		Title:      "Processes",
+		Icon:       "🏃",
+		KeyBinding: "1",
+	}
+	
+	s.views[ViewLogs] = &ViewInfo{
+		Title:      "Logs",
+		Icon:       "📄",
+		KeyBinding: "2",
+	}
+	
+	s.views[ViewErrors] = &ViewInfo{
+		Title:      "Errors",
+		Icon:       "❌",
+		KeyBinding: "3",
+	}
+	
+	s.views[ViewURLs] = &ViewInfo{
+		Title:      "URLs",
+		Icon:       "🔗",
+		KeyBinding: "4",
+	}
+	
+	s.views[ViewWeb] = &ViewInfo{
+		Title:      "Web",
+		Icon:       "🌐",
+		KeyBinding: "5",
+	}
+	
+	s.viewOrder = []ViewType{
+		ViewProcesses,
+		ViewLogs,
+		ViewErrors,
+		ViewURLs,
+		ViewWeb,
+	}
+}
+
+// initializeStyles sets up all styles
+func (s *IntegratedShell) initializeStyles() {
+	s.titleStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("226")).
+		Background(lipgloss.Color("235")).
+		Padding(0, 1)
+	
+	s.activeTabStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("226")).
+		Background(lipgloss.Color("236"))
+	
+	s.inactiveTabStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245"))
+	
+	s.errorBadgeStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("196")).
+		Background(lipgloss.Color("52"))
+	
+	s.warnBadgeStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("214")).
+		Background(lipgloss.Color("94"))
+	
+	s.infoBadgeStyle = lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("39")).
+		Background(lipgloss.Color("17"))
+	
+	s.separatorStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("240"))
+}
+
+// Init initializes the shell
+func (s *IntegratedShell) Init() tea.Cmd {
+	var cmds []tea.Cmd
+	
+	// Initialize window size
+	cmds = append(cmds, func() tea.Msg {
+		return tea.WindowSizeMsg{
+			Width:  s.width,
+			Height: s.height,
+		}
+	})
+	
+	// Initialize process view
+	if s.processView != nil {
+		cmds = append(cmds, s.processView.Init())
+	}
+	
+	return tea.Batch(cmds...)
+}
+
+// Update handles messages (implements tea.Model interface)
+func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		s.width = msg.Width
+		s.height = msg.Height
+		s.widthCalc = NewTabWidthCalculator(s.width, len(s.viewOrder))
+		
+		// Update all components
+		if s.processView != nil {
+			_, cmd := s.processView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		
+	case tea.KeyMsg:
+		// ALWAYS handle global exit keys first
+		switch msg.String() {
+		case "ctrl+c":
+			s.quit = true
+			return s, tea.Quit
+			
+		case "q":
+			// Only quit if not in an input field
+			if !s.isInputFocused() {
+				s.quit = true
+				return s, tea.Quit
+			}
+			
+		case "1", "2", "3", "4", "5":
+			// Number keys always switch views (unless in input field)
+			if !s.isInputFocused() {
+				for _, view := range s.viewOrder {
+					if s.views[view].KeyBinding == msg.String() {
+						cmd := s.switchToView(view)
+						if cmd != nil {
+							cmds = append(cmds, cmd)
+						}
+						break
+					}
+				}
+				return s, tea.Batch(cmds...)
+			}
+			
+		case "left", "alt+left":
+			// Previous view with arrow keys
+			if !s.isInputFocused() {
+				cmd := s.previousView()
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				return s, tea.Batch(cmds...)
+			}
+			
+		case "right", "alt+right":
+			// Next view with arrow keys  
+			if !s.isInputFocused() {
+				cmd := s.nextView()
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				return s, tea.Batch(cmds...)
+			}
+		}
+		
+		// Pass all other keys (including Tab) to current view component
+		cmd := s.handleViewInput(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		
+	default:
+		// Pass message to active component
+		cmd := s.updateActiveComponent(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	}
+	
+	// Update notification counts
+	s.updateNotifications()
+	
+	return s, tea.Batch(cmds...)
+}
+
+// View renders the shell
+func (s *IntegratedShell) View() string {
+	// Render header
+	header := s.renderHeader()
+	
+	// Calculate dimensions
+	headerHeight := lipgloss.Height(header)
+	footerHeight := 1
+	contentHeight := s.height - headerHeight - footerHeight - 2 // -2 for border
+	contentWidth := CalculateAvailableWidth(s.width, true) // true = has border
+	
+	// Render current view content
+	content := s.renderCurrentView()
+	
+	// Apply border
+	contentStyle := lipgloss.NewStyle().
+		Width(contentWidth).
+		Height(contentHeight).
+		Border(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240"))
+	
+	contentBox := contentStyle.Render(content)
+	
+	// Render footer
+	footer := s.renderFooter()
+	
+	// Combine all parts
+	return lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		contentBox,
+		footer,
+	)
+}
+
+// renderHeader renders the header with title and tabs
+func (s *IntegratedShell) renderHeader() string {
+	// Title
+	titleText := "🎯 Brummer Process Manager"
+	title := s.titleStyle.Render(titleText)
+	
+	titleLine := lipgloss.NewStyle().
+		Width(s.width).
+		Align(lipgloss.Center).
+		Render(title)
+	
+	// Tabs - left aligned with padding
+	tabs := s.renderTabs()
+	tabLine := lipgloss.NewStyle().
+		Width(s.width).
+		PaddingLeft(2). // Small left padding for better appearance
+		Render(tabs)
+	
+	return lipgloss.JoinVertical(lipgloss.Left, titleLine, tabLine)
+}
+
+// renderTabs renders the tab bar with notifications
+func (s *IntegratedShell) renderTabs() string {
+	var tabs []string
+	
+	for _, viewType := range s.viewOrder {
+		view := s.views[viewType]
+		tab := s.renderTab(viewType, view)
+		tabs = append(tabs, tab)
+	}
+	
+	separator := s.separatorStyle.Render(" │ ")
+	return strings.Join(tabs, separator)
+}
+
+// renderTab renders a single tab
+func (s *IntegratedShell) renderTab(viewType ViewType, view *ViewInfo) string {
+	// Build label based on width mode
+	var label string
+	
+	switch s.widthCalc.Mode {
+	case "minimal":
+		label = view.KeyBinding
+		if view.HasNotif {
+			label += "•"
+		}
+		
+	case "compact":
+		label = fmt.Sprintf("%s %s", view.Icon, view.KeyBinding)
+		if view.HasNotif && view.NotifIcon != "" {
+			label += fmt.Sprintf(" %s", view.NotifIcon)
+		}
+		
+	case "normal":
+		abbrev := s.getAbbreviation(view.Title)
+		label = fmt.Sprintf("%s %s.%s", view.Icon, view.KeyBinding, abbrev)
+		if view.HasNotif && view.NotifCount > 0 {
+			label += fmt.Sprintf(" %s %d", view.NotifIcon, view.NotifCount)
+		}
+		
+	default: // "full"
+		label = fmt.Sprintf("%s %s.%s", view.Icon, view.KeyBinding, view.Title)
+		if view.HasNotif && view.NotifCount > 0 {
+			if view.NotifCount > 99 {
+				label += fmt.Sprintf(" %s 99+", view.NotifIcon)
+			} else {
+				label += fmt.Sprintf(" %s %d", view.NotifIcon, view.NotifCount)
+			}
+		}
+	}
+	
+	// Add selection indicator or reserve space
+	var indicator string
+	if viewType == s.currentView {
+		indicator = "▶"
+	} else {
+		indicator = " " // Reserve space for alignment
+	}
+	
+	// Combine indicator and label (no extra spacing in indicator)
+	fullLabel := indicator + label
+	
+	// Apply appropriate style
+	if viewType == s.currentView {
+		return s.activeTabStyle.Render(fullLabel)
+	}
+	
+	return s.inactiveTabStyle.Render(fullLabel)
+}
+
+// renderCurrentView renders the content of the current view
+func (s *IntegratedShell) renderCurrentView() string {
+	switch s.currentView {
+	case ViewProcesses:
+		if s.processView != nil {
+			// Set size for the component
+			s.processView.width = CalculateAvailableWidth(s.width, true)
+			s.processView.height = s.height - 5 // Account for header/footer
+			return s.processView.View()
+		}
+		
+	case ViewLogs:
+		return s.renderPlaceholder("Logs View", "📄 Log output will appear here")
+		
+	case ViewErrors:
+		return s.renderPlaceholder("Errors View", "❌ Errors will be displayed here")
+		
+	case ViewURLs:
+		return s.renderPlaceholder("URLs View", "🔗 Discovered URLs will be listed here")
+		
+	case ViewWeb:
+		return s.renderPlaceholder("Web View", "🌐 Browser automation controls")
+	}
+	
+	return "Unknown view"
+}
+
+// renderPlaceholder renders a placeholder for unimplemented views
+func (s *IntegratedShell) renderPlaceholder(title, description string) string {
+	style := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Align(lipgloss.Center, lipgloss.Center).
+		Width(CalculateAvailableWidth(s.width, true)).
+		Height(s.height - 5)
+	
+	content := fmt.Sprintf("%s\n\n%s\n\n(Component not yet implemented)", title, description)
+	return style.Render(content)
+}
+
+// renderFooter renders the footer with help text
+func (s *IntegratedShell) renderFooter() string {
+	help := "1-5: Switch views | ←→: Navigate | "
+	
+	// Add context-sensitive help
+	switch s.currentView {
+	case ViewProcesses:
+		help += "r: Restart | s: Stop | R: Restart All | "
+	}
+	
+	help += "q: Quit"
+	
+	// Truncate if too wide
+	if SafeStringWidth(help) > s.width {
+		help = SafeTruncateWithEllipsis(help, s.width-4)
+	}
+	
+	footerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Background(lipgloss.Color("235")).
+		Width(s.width).
+		Align(lipgloss.Center).
+		Padding(0, 1)
+	
+	return footerStyle.Render(help)
+}
+
+// switchToView switches to a specific view
+func (s *IntegratedShell) switchToView(view ViewType) tea.Cmd {
+	oldView := s.currentView
+	s.currentView = view
+	
+	// Clear notifications for the new view
+	if info := s.views[view]; info.HasNotif {
+		info.HasNotif = false
+		info.NotifCount = 0
+	}
+	
+	var cmds []tea.Cmd
+	
+	// Blur old component
+	if cmd := s.blurComponent(oldView); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	
+	// Focus new component
+	if cmd := s.focusComponent(view); cmd != nil {
+		cmds = append(cmds, cmd)
+	}
+	
+	return tea.Batch(cmds...)
+}
+
+// nextView switches to the next view
+func (s *IntegratedShell) nextView() tea.Cmd {
+	currentIndex := 0
+	for i, v := range s.viewOrder {
+		if v == s.currentView {
+			currentIndex = i
+			break
+		}
+	}
+	
+	nextIndex := (currentIndex + 1) % len(s.viewOrder)
+	return s.switchToView(s.viewOrder[nextIndex])
+}
+
+// previousView switches to the previous view
+func (s *IntegratedShell) previousView() tea.Cmd {
+	currentIndex := 0
+	for i, v := range s.viewOrder {
+		if v == s.currentView {
+			currentIndex = i
+			break
+		}
+	}
+	
+	prevIndex := currentIndex - 1
+	if prevIndex < 0 {
+		prevIndex = len(s.viewOrder) - 1
+	}
+	return s.switchToView(s.viewOrder[prevIndex])
+}
+
+// focusComponent focuses the component for a view
+func (s *IntegratedShell) focusComponent(view ViewType) tea.Cmd {
+	switch view {
+	case ViewProcesses:
+		if s.processView != nil {
+			return s.processView.Focus()
+		}
+	}
+	return nil
+}
+
+// blurComponent blurs the component for a view
+func (s *IntegratedShell) blurComponent(view ViewType) tea.Cmd {
+	switch view {
+	case ViewProcesses:
+		if s.processView != nil {
+			return s.processView.Blur()
+		}
+	}
+	return nil
+}
+
+// handleViewInput passes input to the current view component
+func (s *IntegratedShell) handleViewInput(key tea.KeyMsg) tea.Cmd {
+	switch s.currentView {
+	case ViewProcesses:
+		if s.processView != nil && s.processView.Focused() {
+			_, cmd := s.processView.Update(key)
+			return cmd
+		}
+	}
+	return nil
+}
+
+// updateActiveComponent updates the active component with a message
+func (s *IntegratedShell) updateActiveComponent(msg tea.Msg) tea.Cmd {
+	switch s.currentView {
+	case ViewProcesses:
+		if s.processView != nil {
+			_, cmd := s.processView.Update(msg)
+			return cmd
+		}
+	}
+	return nil
+}
+
+// updateNotifications updates notification counts from components
+func (s *IntegratedShell) updateNotifications() {
+	// Update process view notifications
+	if s.processView != nil {
+		errors, warnings, info := s.processView.GetNotificationCount()
+		
+		processInfo := s.views[ViewProcesses]
+		if errors > 0 {
+			processInfo.HasNotif = true
+			processInfo.NotifCount = errors
+			processInfo.NotifIcon = "🔴"
+			processInfo.NotifSeverity = "error"
+		} else if warnings > 0 {
+			processInfo.HasNotif = true
+			processInfo.NotifCount = warnings
+			processInfo.NotifIcon = "🟡"
+			processInfo.NotifSeverity = "warning"
+		} else if info > 0 {
+			processInfo.HasNotif = true
+			processInfo.NotifCount = info
+			processInfo.NotifIcon = "🔵"
+			processInfo.NotifSeverity = "info"
+		} else {
+			processInfo.HasNotif = false
+			processInfo.NotifCount = 0
+		}
+		
+		// Don't show notifications for current view
+		if s.currentView == ViewProcesses {
+			processInfo.HasNotif = false
+			processInfo.NotifCount = 0
+		}
+	}
+}
+
+// getAbbreviation returns abbreviated form of title
+func (s *IntegratedShell) getAbbreviation(title string) string {
+	abbreviations := map[string]string{
+		"Processes": "Proc",
+		"Logs":      "Log",
+		"Errors":    "Err",
+		"URLs":      "URL",
+		"Web":       "Web",
+	}
+	
+	if abbr, ok := abbreviations[title]; ok {
+		return abbr
+	}
+	
+	return SafeTruncate(title, 4)
+}
+
+// isInputFocused checks if an input field is currently focused
+func (s *IntegratedShell) isInputFocused() bool {
+	// Check if command input or any text input is focused
+	return false
+}
+
+// Quit returns whether the shell should quit
+func (s *IntegratedShell) Quit() bool {
+	return s.quit
+}
+
+// SetSize sets the shell size
+func (s *IntegratedShell) SetSize(width, height int) {
+	s.width = width
+	s.height = height
+	s.widthCalc = NewTabWidthCalculator(s.width, len(s.viewOrder))
+}
+
+// Focus sets the component focus (implements Component interface)
+func (s *IntegratedShell) Focus() tea.Cmd {
+	// Focus the current view's component
+	return s.focusComponent(s.currentView)
+}
+
+// Blur removes focus (implements Component interface)
+func (s *IntegratedShell) Blur() tea.Cmd {
+	// Blur the current view's component
+	return s.blurComponent(s.currentView)
+}
+
+// Focused returns if the shell is focused (implements Component interface)
+func (s *IntegratedShell) Focused() bool {
+	// Check if the current view's component is focused
+	switch s.currentView {
+	case ViewProcesses:
+		if s.processView != nil {
+			return s.processView.Focused()
+		}
+	}
+	return false
+}
+

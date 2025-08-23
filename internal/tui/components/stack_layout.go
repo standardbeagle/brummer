@@ -36,8 +36,13 @@ func (s *StackLayout) RemoveTopLayer() Component {
 	return layer
 }
 
+// Init implements tea.Model interface
+func (s *StackLayout) Init() tea.Cmd {
+	return nil
+}
+
 // Update propagates updates to layers
-func (s *StackLayout) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (s *StackLayout) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle resize
@@ -61,7 +66,9 @@ func (s *StackLayout) Update(msg tea.Msg) (Component, tea.Cmd) {
 			
 			// Let this layer handle the input
 			newLayer, cmd := s.layers[i].Update(msg)
-			s.layers[i] = newLayer
+			if c, ok := newLayer.(Component); ok { 
+				s.layers[i] = c 
+			}
 			if cmd != nil {
 				return s, cmd // Top layer consumed the input
 			}
@@ -70,7 +77,7 @@ func (s *StackLayout) Update(msg tea.Msg) (Component, tea.Cmd) {
 		// Non-input messages go to all layers
 		for i, layer := range s.layers {
 			newLayer, cmd := layer.Update(msg)
-			s.layers[i] = newLayer
+			if c, ok := newLayer.(Component); ok { s.layers[i] = c }
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}

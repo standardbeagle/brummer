@@ -133,7 +133,7 @@ func (w *WebViewComponent) initializeRequestList() {
 }
 
 // Update handles messages
-func (w *WebViewComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (w *WebViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle component-specific messages

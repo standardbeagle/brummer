@@ -304,7 +304,7 @@ func (app *ExampleApp) simulateActivity() tea.Cmd {
 
 // Header component implementation
 
-func (h *ExampleHeaderComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (h *ExampleHeaderComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		h.width = msg.Width
@@ -340,7 +340,7 @@ func (h *ExampleHeaderComponent) Focused() bool {
 
 // Footer component implementation
 
-func (f *ExampleFooterComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (f *ExampleFooterComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		f.width = msg.Width

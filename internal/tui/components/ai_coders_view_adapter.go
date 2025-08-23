@@ -155,7 +155,12 @@ func (a *AICodersViewComponent) initializeSessionList() {
 }
 
 // Update handles messages
-func (a *AICodersViewComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+// Init implements tea.Model interface
+func (a *AICodersViewComponent) Init() tea.Cmd {
+	return nil
+}
+
+func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle component-specific messages

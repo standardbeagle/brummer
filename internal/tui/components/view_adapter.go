@@ -31,7 +31,7 @@ func NewViewAdapter(name string, view ViewRenderer) *ViewAdapter {
 }
 
 // Update handles updates if the view supports it
-func (v *ViewAdapter) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (v *ViewAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle resize
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

@@ -3,6 +3,8 @@ package components
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+	"github.com/standardbeagle/brummer/internal/process"
 	// "github.com/standardbeagle/brummer/internal/tui/navigation"
 )
 
@@ -27,6 +29,9 @@ type ModelBridge struct {
 	
 	// Data provider interface (implemented by existing Model)
 	dataProvider DataProvider
+	
+	// Flag to indicate if using IntegratedShell (to avoid duplicate key handling)
+	usingIntegratedShell bool
 }
 
 // DataProvider interface that the existing Model implements
@@ -54,6 +59,9 @@ type DataProvider interface {
 
 // NewModelBridge creates a bridge between existing Model and component system
 func NewModelBridge(dataProvider DataProvider) *ModelBridge {
+	// Force color output for terminal UI
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	
 	bridge := &ModelBridge{
 		dataProvider: dataProvider,
 		router:       NewMessageRouter(),
@@ -70,6 +78,19 @@ func NewModelBridge(dataProvider DataProvider) *ModelBridge {
 
 // buildComponentTree constructs the UI component hierarchy
 func (b *ModelBridge) buildComponentTree() {
+	// For now, use IntegratedShell directly if we have a process manager
+	if provider, ok := b.dataProvider.(interface{ GetProcessManager() *process.Manager }); ok {
+		// Use the IntegratedShell with real process manager
+		if processMgr := provider.GetProcessManager(); processMgr != nil {
+			shell := NewIntegratedShell(processMgr)
+			shell.SetSize(b.width, b.height)
+			b.root = shell
+			b.usingIntegratedShell = true // Flag to skip duplicate key handling
+			return
+		}
+	}
+	
+	// Fallback to the old component tree structure
 	// Create main layout with initial size
 	mainLayout := NewBoxLayout(Vertical)
 	mainLayout.SetSize(b.width, b.height)
@@ -223,31 +244,29 @@ func (b *ModelBridge) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		
 	case tea.KeyMsg:
-		// Handle global keyboard shortcuts
-		switch msg.String() {
-		case "q", "ctrl+c":
-			// Quit the application
-			return b, tea.Quit
-			
-		case "ctrl+p":
-			// Show command palette
-			return b, SendShow("command_palette")
-			
-		case "ctrl+s":
-			// Toggle system panel
-			if panel, ok := b.components["system_panel"].(*SystemPanel); ok {
-				panel.Toggle()
+		// If using IntegratedShell, let it handle ALL keyboard input
+		// to avoid duplicate processing
+		if !b.usingIntegratedShell {
+			// Only handle truly global keyboard shortcuts here
+			// Let IntegratedShell handle view switching and Tab navigation
+			switch msg.String() {
+			case "ctrl+c":
+				// Always quit on Ctrl+C
+				return b, tea.Quit
+				
+			case "ctrl+p":
+				// Show command palette (global action)
+				return b, SendShow("command_palette")
+				
+			case "ctrl+s":
+				// Toggle system panel (global action)
+				if panel, ok := b.components["system_panel"].(*SystemPanel); ok {
+					panel.Toggle()
+				}
+				return b, nil
 			}
-			return b, nil
-			
-		case "tab":
-			// Tab navigation
-			return b, b.handleTabNavigation(true)
-			
-		case "shift+tab":
-			// Reverse tab navigation
-			return b, b.handleTabNavigation(false)
 		}
+		// Pass through to IntegratedShell or other root component
 		
 	case ViewChangeMsg:
 		// Handle view changes
@@ -269,7 +288,9 @@ func (b *ModelBridge) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	
 	// Let component tree handle the message
 	newRoot, cmd := b.root.Update(msg)
-	b.root = newRoot
+	if c, ok := newRoot.(Component); ok { 
+		b.root = c 
+	}
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
@@ -379,7 +400,7 @@ type HeaderComponent struct {
 	title string
 }
 
-func (h *HeaderComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (h *HeaderComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return h, nil
 }
 
@@ -399,7 +420,7 @@ type FooterComponent struct {
 	bridge *ModelBridge
 }
 
-func (f *FooterComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (f *FooterComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return f, nil
 }
 
@@ -415,7 +436,7 @@ type SettingsComponent struct {
 	bridge *ModelBridge
 }
 
-func (s *SettingsComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (s *SettingsComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle settings updates
 	return s, nil
 }

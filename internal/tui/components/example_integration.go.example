@@ -1,0 +1,504 @@
+package components
+
+import (
+	"fmt"
+	"strings"
+	"time"
+	
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+	// "github.com/standardbeagle/brummer/internal/process"
+)
+
+// RealProcessView demonstrates a real-world component that displays actual process data
+type RealProcessView struct {
+	BaseComponent
+	manager   *process.Manager
+	processes []process.ProcessInfo
+	selected  int
+}
+
+// NewRealProcessView creates a process view connected to the actual process manager
+func NewRealProcessView(manager *process.Manager) *RealProcessView {
+	// Force color output
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	
+	return &RealProcessView{
+		BaseComponent: BaseComponent{
+			width:  80,
+			height: 24,
+		},
+		manager: manager,
+	}
+}
+
+// Init initializes the view and starts listening for process updates
+func (v *RealProcessView) Init() tea.Cmd {
+	// Start polling for process updates
+	return tea.Batch(
+		v.BaseComponent.Init(),
+		v.tickCmd(),
+	)
+}
+
+// tickCmd creates a command that updates process list periodically
+func (v *RealProcessView) tickCmd() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return ProcessRefreshMsg{Time: t}
+	})
+}
+
+// Update handles messages and updates the component state
+func (v *RealProcessView) Update(msg tea.Msg) (Component, tea.Cmd) {
+	switch msg := msg.(type) {
+	case ProcessRefreshMsg:
+		// Refresh process list from manager
+		v.refreshProcesses()
+		return v, v.tickCmd()
+		
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "up", "k":
+			if v.selected > 0 {
+				v.selected--
+			}
+		case "down", "j":
+			if v.selected < len(v.processes)-1 {
+				v.selected++
+			}
+		case "enter":
+			// Switch to logs view for selected process
+			if v.selected < len(v.processes) {
+				return v, func() tea.Msg {
+					return ViewLogsMsg{ProcessID: v.processes[v.selected].ID}
+				}
+			}
+		case "s":
+			// Stop selected process
+			if v.selected < len(v.processes) {
+				proc := v.processes[v.selected]
+				v.manager.StopProcess(proc.ID)
+				v.refreshProcesses()
+			}
+		case "r":
+			// Restart selected process
+			if v.selected < len(v.processes) {
+				proc := v.processes[v.selected]
+				v.manager.StopProcess(proc.ID)
+				// Would need script name to restart properly
+				v.refreshProcesses()
+			}
+		}
+		
+	case tea.WindowSizeMsg:
+		v.SetSize(msg.Width, msg.Height)
+		return v, nil
+	}
+	
+	// Handle base component updates
+	base, cmd := v.BaseComponent.Update(msg)
+	v.BaseComponent = base.(BaseComponent)
+	return v, cmd
+}
+
+// View renders the process list
+func (v *RealProcessView) View() string {
+	if len(v.processes) == 0 {
+		emptyStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("241")).
+			Align(lipgloss.Center).
+			Width(v.width).
+			Height(v.height)
+		return emptyStyle.Render("No processes running\n\nPress 'h' for help")
+	}
+	
+	// Header
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("205")).
+		BorderBottom(true).
+		BorderStyle(lipgloss.NormalBorder()).
+		Width(v.width)
+	
+	header := headerStyle.Render("  PID   │ Name              │ Status    │ CPU  │ Memory │ Uptime")
+	
+	// Process rows
+	var rows []string
+	for i, proc := range v.processes {
+		// Style for selected row
+		rowStyle := lipgloss.NewStyle().Width(v.width)
+		if i == v.selected {
+			rowStyle = rowStyle.
+				Background(lipgloss.Color("236")).
+				Foreground(lipgloss.Color("205"))
+		}
+		
+		// Status color
+		statusColor := "82" // green
+		if proc.Status == "stopped" {
+			statusColor = "196" // red
+		} else if proc.Status == "error" {
+			statusColor = "214" // orange
+		}
+		
+		status := lipgloss.NewStyle().
+			Foreground(lipgloss.Color(statusColor)).
+			Render(fmt.Sprintf("%-10s", proc.Status))
+		
+		// Format row
+		row := fmt.Sprintf(" %5s │ %-17s │ %s │ %3d%% │ %6s │ %s",
+			proc.PID,
+			truncate(proc.Name, 17),
+			status,
+			proc.CPU,
+			formatMemory(proc.Memory),
+			formatUptime(proc.Uptime),
+		)
+		
+		rows = append(rows, rowStyle.Render(row))
+	}
+	
+	// Footer with help
+	footerStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		BorderTop(true).
+		BorderStyle(lipgloss.NormalBorder()).
+		Width(v.width).
+		Padding(0, 1)
+	
+	footer := footerStyle.Render("↑/↓: Navigate │ Enter: View Logs │ s: Stop │ r: Restart │ q: Quit")
+	
+	// Combine all parts
+	content := lipgloss.JoinVertical(lipgloss.Left,
+		header,
+		strings.Join(rows, "\n"),
+	)
+	
+	// Calculate remaining height for spacing
+	usedHeight := strings.Count(content, "\n") + 2 // +2 for footer
+	remainingHeight := v.height - usedHeight
+	if remainingHeight > 0 {
+		spacer := strings.Repeat("\n", remainingHeight)
+		content = content + spacer
+	}
+	
+	return lipgloss.JoinVertical(lipgloss.Left, content, footer)
+}
+
+// refreshProcesses updates the process list from the manager
+func (v *RealProcessView) refreshProcesses() {
+	if v.manager != nil {
+		// Get actual processes from manager
+		processes := v.manager.GetProcesses()
+		v.processes = make([]process.ProcessInfo, 0, len(processes))
+		
+		for _, proc := range processes {
+			v.processes = append(v.processes, process.ProcessInfo{
+				ID:     proc.ID,
+				Name:   proc.Name,
+				PID:    fmt.Sprintf("%d", proc.PID),
+				Status: string(proc.Status),
+				CPU:    0, // Would need actual metrics
+				Memory: 0, // Would need actual metrics
+				Uptime: time.Since(proc.StartTime),
+			})
+		}
+		
+		// Adjust selection if needed
+		if v.selected >= len(v.processes) && len(v.processes) > 0 {
+			v.selected = len(v.processes) - 1
+		}
+	}
+}
+
+// Helper functions
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max-3] + "..."
+}
+
+func formatMemory(bytes int64) string {
+	if bytes < 1024 {
+		return fmt.Sprintf("%dB", bytes)
+	} else if bytes < 1024*1024 {
+		return fmt.Sprintf("%dK", bytes/1024)
+	} else if bytes < 1024*1024*1024 {
+		return fmt.Sprintf("%dM", bytes/(1024*1024))
+	}
+	return fmt.Sprintf("%.1fG", float64(bytes)/(1024*1024*1024))
+}
+
+func formatUptime(d time.Duration) string {
+	if d < time.Minute {
+		return fmt.Sprintf("%ds", int(d.Seconds()))
+	} else if d < time.Hour {
+		return fmt.Sprintf("%dm", int(d.Minutes()))
+	} else if d < 24*time.Hour {
+		return fmt.Sprintf("%dh", int(d.Hours()))
+	}
+	return fmt.Sprintf("%dd", int(d.Hours()/24))
+}
+
+// Message types for process view
+type ProcessRefreshMsg struct {
+	Time time.Time
+}
+
+type ViewLogsMsg struct {
+	ProcessID string
+}
+
+// IntegratedShell demonstrates full integration with real Brummer functionality
+type IntegratedShell struct {
+	BaseComponent
+	manager      *process.Manager
+	mainLayout   *BoxLayout
+	viewSwitcher *ViewSwitcher
+	currentView  string
+	quit         bool
+}
+
+// NewIntegratedShell creates a shell with real process management
+func NewIntegratedShell(manager *process.Manager) *IntegratedShell {
+	// Force color output
+	lipgloss.SetColorProfile(termenv.ANSI256)
+	
+	shell := &IntegratedShell{
+		BaseComponent: BaseComponent{
+			width:  80,
+			height: 24,
+		},
+		manager:     manager,
+		currentView: "processes",
+	}
+	
+	shell.buildUI()
+	return shell
+}
+
+// buildUI constructs the component tree with real views
+func (s *IntegratedShell) buildUI() {
+	// Main vertical layout
+	s.mainLayout = NewBoxLayout(Vertical)
+	s.mainLayout.SetSize(s.width, s.height)
+	
+	// Header with branding and tabs
+	header := s.createHeader()
+	s.mainLayout.AddChild(header, 0.1) // 10% height
+	
+	// View switcher with real views
+	s.viewSwitcher = NewViewSwitcher()
+	
+	// Add real process view
+	processView := NewRealProcessView(s.manager)
+	s.viewSwitcher.AddView("processes", processView)
+	
+	// Add placeholder for other views (would be real implementations)
+	s.viewSwitcher.AddView("logs", NewPlaceholderView("Logs", "Process output would appear here"))
+	s.viewSwitcher.AddView("errors", NewPlaceholderView("Errors", "Error messages would appear here"))
+	s.viewSwitcher.AddView("urls", NewPlaceholderView("URLs", "Discovered URLs would appear here"))
+	
+	// Set initial view
+	s.viewSwitcher.SetActiveView("processes")
+	
+	// Add view switcher to layout
+	borderWindow := NewBorderWindow(s.viewSwitcher)
+	borderWindow.SetBorderStyle(lipgloss.NormalBorder())
+	borderWindow.SetBorderColor(lipgloss.Color("240"))
+	s.mainLayout.AddChild(borderWindow, 0.8) // 80% height
+	
+	// Footer with help
+	footer := s.createFooter()
+	s.mainLayout.AddChild(footer, 0.1) // 10% height
+}
+
+// createHeader creates the header with tabs
+func (s *IntegratedShell) createHeader() Component {
+	return &StaticComponent{
+		renderFunc: func(width, height int) string {
+			// Title
+			titleStyle := lipgloss.NewStyle().
+				Bold(true).
+				Foreground(lipgloss.Color("205")).
+				Background(lipgloss.Color("235")).
+				Width(width).
+				Align(lipgloss.Center)
+			
+			title := titleStyle.Render("🎯 Brummer Process Manager - Integrated")
+			
+			// Tab indicators
+			tabs := []string{"[1] Processes", "[2] Logs", "[3] Errors", "[4] URLs"}
+			viewNames := []string{"processes", "logs", "errors", "urls"}
+			
+			var tabLine []string
+			for i, tab := range tabs {
+				style := lipgloss.NewStyle().Padding(0, 1)
+				if viewNames[i] == s.currentView {
+					style = style.Bold(true).
+						Foreground(lipgloss.Color("205")).
+						Background(lipgloss.Color("236"))
+				} else {
+					style = style.Foreground(lipgloss.Color("241"))
+				}
+				tabLine = append(tabLine, style.Render(tab))
+			}
+			
+			tabsStr := lipgloss.JoinHorizontal(lipgloss.Top, tabLine...)
+			tabsStyle := lipgloss.NewStyle().
+				Width(width).
+				Align(lipgloss.Center)
+			
+			return lipgloss.JoinVertical(lipgloss.Left,
+				title,
+				tabsStyle.Render(tabsStr),
+			)
+		},
+	}
+}
+
+// createFooter creates the footer with help text
+func (s *IntegratedShell) createFooter() Component {
+	return &StaticComponent{
+		renderFunc: func(width, height int) string {
+			help := "1-4: Switch views | Tab: Navigate | q: Quit | h: Help"
+			
+			footerStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("241")).
+				Background(lipgloss.Color("235")).
+				Width(width).
+				Align(lipgloss.Center).
+				Padding(0, 1)
+			
+			return footerStyle.Render(help)
+		},
+	}
+}
+
+// Update handles messages and updates the shell
+func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "q", "ctrl+c":
+			s.quit = true
+			return s, tea.Quit
+			
+		case "1", "2", "3", "4":
+			views := []string{"processes", "logs", "errors", "urls"}
+			idx := int(msg.String()[0] - '1')
+			if idx < len(views) {
+				s.currentView = views[idx]
+				s.viewSwitcher.SetActiveView(s.currentView)
+				// Rebuild UI to update header
+				s.buildUI()
+			}
+			
+		case "tab":
+			views := []string{"processes", "logs", "errors", "urls"}
+			for i, v := range views {
+				if v == s.currentView {
+					s.currentView = views[(i+1)%len(views)]
+					s.viewSwitcher.SetActiveView(s.currentView)
+					s.buildUI()
+					break
+				}
+			}
+		}
+		
+	case tea.WindowSizeMsg:
+		s.SetSize(msg.Width, msg.Height)
+		s.mainLayout.SetSize(msg.Width, msg.Height)
+		return s, nil
+		
+	case ViewLogsMsg:
+		// Switch to logs view and filter by process
+		s.currentView = "logs"
+		s.viewSwitcher.SetActiveView("logs")
+		s.buildUI()
+		// Would pass process ID to logs view
+		return s, nil
+	}
+	
+	// Pass update to main layout
+	if s.mainLayout != nil {
+		updated, cmd := s.mainLayout.Update(msg)
+		s.mainLayout = updated.(*BoxLayout)
+		return s, cmd
+	}
+	
+	return s, nil
+}
+
+// View renders the integrated shell
+func (s *IntegratedShell) View() string {
+	if s.mainLayout != nil {
+		return s.mainLayout.View()
+	}
+	return "Initializing..."
+}
+
+// Init initializes the shell
+func (s *IntegratedShell) Init() tea.Cmd {
+	if s.mainLayout != nil {
+		return s.mainLayout.Init()
+	}
+	return nil
+}
+
+// Quit returns whether the shell should quit
+func (s *IntegratedShell) Quit() bool {
+	return s.quit
+}
+
+// PlaceholderView is a simple view for demonstration
+type PlaceholderView struct {
+	BaseComponent
+	title   string
+	content string
+}
+
+func NewPlaceholderView(title, content string) *PlaceholderView {
+	return &PlaceholderView{
+		BaseComponent: BaseComponent{
+			width:  80,
+			height: 24,
+		},
+		title:   title,
+		content: content,
+	}
+}
+
+func (p *PlaceholderView) View() string {
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("205")).
+		Width(p.width).
+		Align(lipgloss.Center).
+		MarginBottom(1)
+	
+	contentStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("241")).
+		Width(p.width).
+		Align(lipgloss.Center)
+	
+	return lipgloss.JoinVertical(lipgloss.Center,
+		titleStyle.Render(p.title),
+		contentStyle.Render(p.content),
+	)
+}
+
+// StaticComponent renders static content
+type StaticComponent struct {
+	BaseComponent
+	renderFunc func(width, height int) string
+}
+
+func (s *StaticComponent) View() string {
+	if s.renderFunc != nil {
+		return s.renderFunc(s.width, s.height)
+	}
+	return ""
+}

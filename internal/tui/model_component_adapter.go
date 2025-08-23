@@ -228,7 +228,9 @@ func (a *ModelComponentAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update root component first to handle sizing
 		if a.rootComponent != nil {
 			newRoot, cmd := a.rootComponent.Update(msg)
-			a.rootComponent = newRoot
+			if c, ok := newRoot.(components.Component); ok {
+				a.rootComponent = c
+			}
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
@@ -675,7 +677,7 @@ type simpleHeaderComponent struct {
 	adapter *ModelComponentAdapter
 }
 
-func (h *simpleHeaderComponent) Update(msg tea.Msg) (components.Component, tea.Cmd) {
+func (h *simpleHeaderComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return h, nil
 }
 
@@ -697,7 +699,7 @@ type simpleFooterComponent struct {
 	adapter *ModelComponentAdapter
 }
 
-func (f *simpleFooterComponent) Update(msg tea.Msg) (components.Component, tea.Cmd) {
+func (f *simpleFooterComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return f, nil
 }
 

@@ -35,7 +35,7 @@ func NewHeader(renderer HeaderRenderer) *Header {
 }
 
 // Update handles header updates
-func (h *Header) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (h *Header) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Headers typically don't handle input
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -91,7 +91,7 @@ func NewFooter(renderer FooterRenderer) *Footer {
 }
 
 // Update handles footer updates
-func (f *Footer) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (f *Footer) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Footers typically don't handle input
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:

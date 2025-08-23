@@ -331,7 +331,11 @@ func (m *mockFocusable) Focused() bool {
 	return m.focused
 }
 
-func (m *mockFocusable) Update(msg tea.Msg) (components.Component, tea.Cmd) {
+func (m *mockFocusable) Init() tea.Cmd {
+	return nil
+}
+
+func (m *mockFocusable) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
@@ -343,7 +347,11 @@ type mockComponent struct {
 	id string
 }
 
-func (m *mockComponent) Update(msg tea.Msg) (components.Component, tea.Cmd) {
+func (m *mockComponent) Init() tea.Cmd {
+	return nil
+}
+
+func (m *mockComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 

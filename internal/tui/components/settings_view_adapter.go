@@ -128,7 +128,7 @@ func (s *SettingsViewComponent) loadDefaultSettings() {
 }
 
 // Update handles messages
-func (s *SettingsViewComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (s *SettingsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle component-specific messages

@@ -6,9 +6,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ⚠️ **CRITICAL INSTRUCTION**: Always update this section when working on tasks to maintain continuity between sessions.
 
-- **Current State**: Stable codebase with comprehensive architecture
-- **Recent Work**: Message Router refactoring and lock-free architecture optimizations completed
-- **Architecture**: Event-driven with Process Manager, Hub System, and Proxy Server integration
+- **Current State**: Stable codebase with component-based TUI system
+- **Recent Work**: Component system implementation with tab navigation and visual highlighting
+- **Architecture**: Event-driven with Process Manager, Hub System, Proxy Server, and Component-based TUI
 - **Branch**: main (stable)
 
 ### Major Completed Work:
@@ -17,6 +17,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - ✅ AI Coder foundation with tmux-style interactive coding sessions
 - ✅ Hub mode for multi-instance coordination via MCP
 - ✅ Comprehensive MCP server with browser automation and telemetry
+- ✅ Component-based TUI system with gradual migration support
 
 ### Next Agent Instructions:
 - **ALWAYS check this status section first** to understand current work context
@@ -24,6 +25,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **Run `make test-race` before any concurrency changes** to verify thread safety
 - **Prefer atomic operations over mutexes** for shared state (see concurrency patterns)
 - **Follow event-driven architecture** - use EventBus for component communication
+- **Force color output in TUI components** - use `lipgloss.SetColorProfile(termenv.ANSI256)`
 
 ## Commands
 
@@ -101,6 +103,36 @@ Brummer consists of three integrated systems:
 
 Components communicate via **event-driven architecture** using EventBus (`pkg/events/events.go`).
 
+### Component-Based TUI System
+
+**Enable Component System**: Set `BRUMMER_USE_COMPONENTS=true` to use the new architecture
+- Components run alongside existing Model during migration
+- Gradual migration path from monolithic to component-based
+- See [Component Migration Guide](/docs/component-migration-guide.md)
+
+**Component Development Guidelines**:
+- **ALWAYS force color output**: `lipgloss.SetColorProfile(termenv.ANSI256)` in constructors
+- **Border sizing**: Lipgloss adds borders OUTSIDE width - use `BorderWindow` component
+- **Message passing**: Use tea.Cmd for state changes, never direct mutation
+- **Size handling**: Always handle `tea.WindowSizeMsg` in Update()
+- **Tab navigation**: Implement Tab/Shift+Tab for accessibility
+
+**Component Files**:
+- `internal/tui/components/` - Component implementations
+- `minimal_shell.go` - Standalone test shell with tab navigation and notifications
+- `enhanced_shell.go` - Advanced shell with full notification system
+- `border_window.go` - Handles border-box sizing correctly
+- `model_integration.go` - Bridge between Model and components
+- `example_integration.go` - Real-world usage examples
+- `notification_example.go` - Notification integration patterns
+
+**Tab Notification System**:
+- **Emoji icons**: Each tab has a unique emoji (🏃 📄 ❌ 🔗 🌐 🤖 ⚙️)
+- **Notification badges**: Color-coded severity (🔴 error, 🟡 warning, 🔵 info, 🟢 success)
+- **Auto-clear**: Notifications clear when switching to a tab
+- **Counters**: Show notification count (up to 99+)
+- **Responsive**: Adapts to terminal width (minimal/compact/normal/full modes)
+
 ### Critical Concurrency Patterns
 **Lock-Free Philosophy**: Prefer atomic operations over mutexes for performance
 - Use `sync.Map` for concurrent map operations
@@ -116,6 +148,7 @@ Components communicate via **event-driven architecture** using EventBus (`pkg/ev
 For detailed patterns, see:
 - [Architecture Overview](/docs/architecture/overview.md) - Core components and integration patterns
 - [Concurrency Patterns](/docs/architecture/concurrency-patterns.md) - Race condition prevention and safe concurrent programming
+- [Component Migration Guide](/docs/component-migration-guide.md) - Migrating to component-based TUI
 
 ## MCP (Model Context Protocol) Integration
 

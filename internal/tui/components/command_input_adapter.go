@@ -132,8 +132,13 @@ func (c *CommandInputComponent) loadDefaultSuggestions() {
 	}
 }
 
+// Init implements tea.Model interface
+func (c *CommandInputComponent) Init() tea.Cmd {
+	return nil
+}
+
 // Update handles messages
-func (c *CommandInputComponent) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (c *CommandInputComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	
 	// Handle component-specific messages

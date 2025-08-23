@@ -100,8 +100,13 @@ func (w *Window) IsModal() bool {
 	return w.modal && w.visible
 }
 
+// Init implements tea.Model interface
+func (w *Window) Init() tea.Cmd {
+	return nil
+}
+
 // Update handles window-specific messages
-func (w *Window) Update(msg tea.Msg) (Component, tea.Cmd) {
+func (w *Window) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle window-specific keys when visible
 	if w.visible {
 		switch msg := msg.(type) {
@@ -119,14 +124,14 @@ func (w *Window) Update(msg tea.Msg) (Component, tea.Cmd) {
 	// If modal and visible, consume all input
 	if w.IsModal() && w.content != nil {
 		newContent, cmd := w.content.Update(msg)
-		w.content = newContent
+		if c, ok := newContent.(Component); ok { w.content = c }
 		return w, cmd
 	}
 	
 	// If not modal but visible, pass through to content
 	if w.visible && w.content != nil {
 		newContent, cmd := w.content.Update(msg)
-		w.content = newContent
+		if c, ok := newContent.(Component); ok { w.content = c }
 		return w, cmd
 	}
 	
