@@ -2,34 +2,70 @@ package components
 
 import (
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/process"
+	"golang.org/x/term"
 )
 
+// getTerminalSize attempts to get the actual terminal size
+func getTerminalSize() (int, int, error) {
+	// Try to get terminal size from stdout
+	if width, height, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+		return width, height, nil
+	}
+
+	// Try stderr if stdout fails
+	if width, height, err := term.GetSize(int(os.Stderr.Fd())); err == nil {
+		return width, height, nil
+	}
+
+	// Try stdin as last resort
+	if width, height, err := term.GetSize(int(os.Stdin.Fd())); err == nil {
+		return width, height, nil
+	}
+
+	// Return error if all attempts fail
+	return 0, 0, fmt.Errorf("unable to get terminal size")
+}
+
 // IntegratedShell combines all components into a working shell
+//
+// Performance optimizations:
+// - Process name cache using sync.Map for O(1) non-blocking lookups
+// - Event-driven log updates with debouncing instead of polling
+// - Automatic terminal size detection on startup
 type IntegratedShell struct {
 	width  int
 	height int
 	quit   bool
-	
+
 	// View management
 	currentView ViewType
 	views       map[ViewType]*ViewInfo
 	viewOrder   []ViewType
-	
+
 	// Components
 	processView *ProcessViewNew
-	// Future: logsView, errorsView, urlsView, webView
-	
+	logsView    *LogsViewComponent
+	// Future: errorsView, urlsView, webView
+
+	// Data stores
+	logStore         *logs.Store
+	logSub           *DebouncedLogSubscription // Event-driven log updates with debouncing
+	processNameCache *sync.Map                 // Cache process ID -> name for fast lookups
+
 	// Process manager
 	processMgr *process.Manager
-	
+
 	// Width calculator
 	widthCalc *TabWidthCalculator
-	
+
 	// Styles
 	titleStyle       lipgloss.Style
 	activeTabStyle   lipgloss.Style
@@ -44,27 +80,68 @@ type IntegratedShell struct {
 func NewIntegratedShell(processMgr *process.Manager) *IntegratedShell {
 	// ALWAYS initialize colors first
 	MustInitColors()
-	
-	shell := &IntegratedShell{
-		width:       80,
-		height:      24,
-		currentView: ViewProcesses,
-		views:       make(map[ViewType]*ViewInfo),
-		processMgr:  processMgr,
+
+	// Create log store with reasonable defaults
+	logStore := logs.NewStore(10000, nil)
+
+	// Use terminal size if available, otherwise use reasonable defaults
+	// Most modern terminals are at least 120x30
+	initialWidth := 120
+	initialHeight := 30
+
+	// Try to get actual terminal size if possible
+	// Note: This is just for a better initial size, the real size comes from WindowSizeMsg
+	if width, height, err := getTerminalSize(); err == nil && width > 0 && height > 0 {
+		initialWidth = width
+		initialHeight = height
 	}
-	
+
+	shell := &IntegratedShell{
+		width:            initialWidth,
+		height:           initialHeight,
+		currentView:      ViewProcesses,
+		views:            make(map[ViewType]*ViewInfo),
+		processMgr:       processMgr,
+		logStore:         logStore,
+		logSub:           NewDebouncedLogSubscription(logStore), // Event-driven subscription
+		processNameCache: &sync.Map{},
+	}
+
 	// Initialize components
 	shell.processView = NewProcessViewNew(processMgr)
-	
+	shell.logsView = NewLogsViewComponent(logStore)
+
+	// Populate initial process name cache
+	if processMgr != nil {
+		for _, proc := range processMgr.GetAllProcesses() {
+			shell.processNameCache.Store(proc.ID, proc.Name)
+		}
+	}
+
+	// Register log callback to capture process output
+	if processMgr != nil {
+		processMgr.AddLogCallback(func(processID, line string, isError bool) {
+			// Get process name from cache (non-blocking)
+			processName := "Unknown"
+			if cached, ok := shell.processNameCache.Load(processID); ok {
+				processName = cached.(string)
+			}
+			logStore.Add(processID, processName, line, isError)
+
+			// Trigger debounced update (non-blocking)
+			shell.logSub.NotifyNewLogs()
+		})
+	}
+
 	// Initialize views
 	shell.initializeViews()
-	
+
 	// Initialize styles
 	shell.initializeStyles()
-	
+
 	// Create width calculator
 	shell.widthCalc = NewTabWidthCalculator(shell.width, len(shell.viewOrder))
-	
+
 	return shell
 }
 
@@ -75,31 +152,31 @@ func (s *IntegratedShell) initializeViews() {
 		Icon:       "🏃",
 		KeyBinding: "1",
 	}
-	
+
 	s.views[ViewLogs] = &ViewInfo{
 		Title:      "Logs",
 		Icon:       "📄",
 		KeyBinding: "2",
 	}
-	
+
 	s.views[ViewErrors] = &ViewInfo{
 		Title:      "Errors",
 		Icon:       "❌",
 		KeyBinding: "3",
 	}
-	
+
 	s.views[ViewURLs] = &ViewInfo{
 		Title:      "URLs",
 		Icon:       "🔗",
 		KeyBinding: "4",
 	}
-	
+
 	s.views[ViewWeb] = &ViewInfo{
 		Title:      "Web",
 		Icon:       "🌐",
 		KeyBinding: "5",
 	}
-	
+
 	s.viewOrder = []ViewType{
 		ViewProcesses,
 		ViewLogs,
@@ -116,30 +193,30 @@ func (s *IntegratedShell) initializeStyles() {
 		Foreground(lipgloss.Color("226")).
 		Background(lipgloss.Color("235")).
 		Padding(0, 1)
-	
+
 	s.activeTabStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226")).
 		Background(lipgloss.Color("236"))
-	
+
 	s.inactiveTabStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245"))
-	
+
 	s.errorBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("196")).
 		Background(lipgloss.Color("52"))
-	
+
 	s.warnBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("214")).
 		Background(lipgloss.Color("94"))
-	
+
 	s.infoBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("39")).
 		Background(lipgloss.Color("17"))
-	
+
 	s.separatorStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240"))
 }
@@ -147,53 +224,60 @@ func (s *IntegratedShell) initializeStyles() {
 // Init initializes the shell
 func (s *IntegratedShell) Init() tea.Cmd {
 	var cmds []tea.Cmd
-	
-	// Initialize window size
-	cmds = append(cmds, func() tea.Msg {
-		return tea.WindowSizeMsg{
-			Width:  s.width,
-			Height: s.height,
-		}
-	})
-	
-	// Initialize process view
+
+	// Don't send an initial window size - wait for Bubble Tea to send the actual size
+	// This prevents the initial 80x24 hardcoded size from being used
+
+	// Initialize components
 	if s.processView != nil {
 		cmds = append(cmds, s.processView.Init())
 	}
-	
+	if s.logsView != nil {
+		cmds = append(cmds, s.logsView.Init())
+	}
+
+	// Start log subscription (incremental updates)
+	if s.logSub != nil {
+		cmds = append(cmds, s.logSub.Subscribe())
+	}
+
 	return tea.Batch(cmds...)
 }
 
 // Update handles messages (implements tea.Model interface)
 func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		s.width = msg.Width
 		s.height = msg.Height
 		s.widthCalc = NewTabWidthCalculator(s.width, len(s.viewOrder))
-		
+
 		// Update all components
 		if s.processView != nil {
 			_, cmd := s.processView.Update(msg)
 			cmds = append(cmds, cmd)
 		}
-		
+		if s.logsView != nil {
+			_, cmd := s.logsView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
 	case tea.KeyMsg:
 		// ALWAYS handle global exit keys first
 		switch msg.String() {
 		case "ctrl+c":
 			s.quit = true
 			return s, tea.Quit
-			
+
 		case "q":
 			// Only quit if not in an input field
 			if !s.isInputFocused() {
 				s.quit = true
 				return s, tea.Quit
 			}
-			
+
 		case "1", "2", "3", "4", "5":
 			// Number keys always switch views (unless in input field)
 			if !s.isInputFocused() {
@@ -208,7 +292,7 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return s, tea.Batch(cmds...)
 			}
-			
+
 		case "left", "alt+left":
 			// Previous view with arrow keys
 			if !s.isInputFocused() {
@@ -218,9 +302,9 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return s, tea.Batch(cmds...)
 			}
-			
+
 		case "right", "alt+right":
-			// Next view with arrow keys  
+			// Next view with arrow keys
 			if !s.isInputFocused() {
 				cmd := s.nextView()
 				if cmd != nil {
@@ -229,13 +313,50 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return s, tea.Batch(cmds...)
 			}
 		}
-		
+
 		// Pass all other keys (including Tab) to current view component
 		cmd := s.handleViewInput(msg)
 		if cmd != nil {
 			cmds = append(cmds, cmd)
 		}
-		
+
+	case ProcessUpdateMsg:
+		// Update process name cache when processes change
+		if msg.Process != nil {
+			switch msg.UpdateType {
+			case ProcessStarted:
+				// Add new process to cache
+				s.processNameCache.Store(msg.Process.ID, msg.Process.Name)
+			case ProcessStopped:
+				// Optionally remove from cache (we keep it for historical logs)
+				// s.processNameCache.Delete(msg.Process.ID)
+			}
+		}
+		// Pass to process view
+		cmd := s.updateActiveComponent(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	case LogsUpdateMsg:
+		// Forward to logs view regardless of which view is active
+		if s.logsView != nil {
+			_, cmd := s.logsView.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		// Re-subscribe for more updates
+		if s.logSub != nil {
+			cmds = append(cmds, s.logSub.Subscribe())
+		}
+
+	case ContinueLogSubscriptionMsg:
+		// Re-subscribe without processing (no new logs)
+		if s.logSub != nil {
+			cmds = append(cmds, s.logSub.Subscribe())
+		}
+
 	default:
 		// Pass message to active component
 		cmd := s.updateActiveComponent(msg)
@@ -243,10 +364,10 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	}
-	
+
 	// Update notification counts
 	s.updateNotifications()
-	
+
 	return s, tea.Batch(cmds...)
 }
 
@@ -254,28 +375,28 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (s *IntegratedShell) View() string {
 	// Render header
 	header := s.renderHeader()
-	
+
 	// Calculate dimensions
 	headerHeight := lipgloss.Height(header)
 	footerHeight := 1
 	contentHeight := s.height - headerHeight - footerHeight - 2 // -2 for border
-	contentWidth := CalculateAvailableWidth(s.width, true) // true = has border
-	
+	contentWidth := CalculateAvailableWidth(s.width, true)      // true = has border
+
 	// Render current view content
-	content := s.renderCurrentView()
-	
+	content := s.renderCurrentView(contentWidth, contentHeight)
+
 	// Apply border
 	contentStyle := lipgloss.NewStyle().
 		Width(contentWidth).
 		Height(contentHeight).
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("240"))
-	
+
 	contentBox := contentStyle.Render(content)
-	
+
 	// Render footer
 	footer := s.renderFooter()
-	
+
 	// Combine all parts
 	return lipgloss.JoinVertical(lipgloss.Left,
 		header,
@@ -289,32 +410,32 @@ func (s *IntegratedShell) renderHeader() string {
 	// Title
 	titleText := "🎯 Brummer Process Manager"
 	title := s.titleStyle.Render(titleText)
-	
+
 	titleLine := lipgloss.NewStyle().
 		Width(s.width).
 		Align(lipgloss.Center).
 		Render(title)
-	
+
 	// Tabs - left aligned with padding
 	tabs := s.renderTabs()
 	tabLine := lipgloss.NewStyle().
 		Width(s.width).
 		PaddingLeft(2). // Small left padding for better appearance
 		Render(tabs)
-	
+
 	return lipgloss.JoinVertical(lipgloss.Left, titleLine, tabLine)
 }
 
 // renderTabs renders the tab bar with notifications
 func (s *IntegratedShell) renderTabs() string {
 	var tabs []string
-	
+
 	for _, viewType := range s.viewOrder {
 		view := s.views[viewType]
 		tab := s.renderTab(viewType, view)
 		tabs = append(tabs, tab)
 	}
-	
+
 	separator := s.separatorStyle.Render(" │ ")
 	return strings.Join(tabs, separator)
 }
@@ -323,27 +444,27 @@ func (s *IntegratedShell) renderTabs() string {
 func (s *IntegratedShell) renderTab(viewType ViewType, view *ViewInfo) string {
 	// Build label based on width mode
 	var label string
-	
+
 	switch s.widthCalc.Mode {
 	case "minimal":
 		label = view.KeyBinding
 		if view.HasNotif {
 			label += "•"
 		}
-		
+
 	case "compact":
 		label = fmt.Sprintf("%s %s", view.Icon, view.KeyBinding)
 		if view.HasNotif && view.NotifIcon != "" {
 			label += fmt.Sprintf(" %s", view.NotifIcon)
 		}
-		
+
 	case "normal":
 		abbrev := s.getAbbreviation(view.Title)
 		label = fmt.Sprintf("%s %s.%s", view.Icon, view.KeyBinding, abbrev)
 		if view.HasNotif && view.NotifCount > 0 {
 			label += fmt.Sprintf(" %s %d", view.NotifIcon, view.NotifCount)
 		}
-		
+
 	default: // "full"
 		label = fmt.Sprintf("%s %s.%s", view.Icon, view.KeyBinding, view.Title)
 		if view.HasNotif && view.NotifCount > 0 {
@@ -354,7 +475,7 @@ func (s *IntegratedShell) renderTab(viewType ViewType, view *ViewInfo) string {
 			}
 		}
 	}
-	
+
 	// Add selection indicator or reserve space
 	var indicator string
 	if viewType == s.currentView {
@@ -362,53 +483,57 @@ func (s *IntegratedShell) renderTab(viewType ViewType, view *ViewInfo) string {
 	} else {
 		indicator = " " // Reserve space for alignment
 	}
-	
+
 	// Combine indicator and label (no extra spacing in indicator)
 	fullLabel := indicator + label
-	
+
 	// Apply appropriate style
 	if viewType == s.currentView {
 		return s.activeTabStyle.Render(fullLabel)
 	}
-	
+
 	return s.inactiveTabStyle.Render(fullLabel)
 }
 
 // renderCurrentView renders the content of the current view
-func (s *IntegratedShell) renderCurrentView() string {
+func (s *IntegratedShell) renderCurrentView(contentWidth, contentHeight int) string {
 	switch s.currentView {
 	case ViewProcesses:
 		if s.processView != nil {
 			// Set size for the component
-			s.processView.width = CalculateAvailableWidth(s.width, true)
-			s.processView.height = s.height - 5 // Account for header/footer
+			s.processView.width = contentWidth
+			s.processView.height = contentHeight
 			return s.processView.View()
 		}
-		
+
 	case ViewLogs:
-		return s.renderPlaceholder("Logs View", "📄 Log output will appear here")
-		
+		if s.logsView != nil {
+			// Set size for the component
+			s.logsView.SetSize(contentWidth, contentHeight)
+			return s.logsView.View()
+		}
+
 	case ViewErrors:
-		return s.renderPlaceholder("Errors View", "❌ Errors will be displayed here")
-		
+		return s.renderPlaceholder("Errors View", "❌ Errors will be displayed here", contentWidth, contentHeight)
+
 	case ViewURLs:
-		return s.renderPlaceholder("URLs View", "🔗 Discovered URLs will be listed here")
-		
+		return s.renderPlaceholder("URLs View", "🔗 Discovered URLs will be listed here", contentWidth, contentHeight)
+
 	case ViewWeb:
-		return s.renderPlaceholder("Web View", "🌐 Browser automation controls")
+		return s.renderPlaceholder("Web View", "🌐 Browser automation controls", contentWidth, contentHeight)
 	}
-	
+
 	return "Unknown view"
 }
 
 // renderPlaceholder renders a placeholder for unimplemented views
-func (s *IntegratedShell) renderPlaceholder(title, description string) string {
+func (s *IntegratedShell) renderPlaceholder(title, description string, width, height int) string {
 	style := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
 		Align(lipgloss.Center, lipgloss.Center).
-		Width(CalculateAvailableWidth(s.width, true)).
-		Height(s.height - 5)
-	
+		Width(width).
+		Height(height)
+
 	content := fmt.Sprintf("%s\n\n%s\n\n(Component not yet implemented)", title, description)
 	return style.Render(content)
 }
@@ -416,27 +541,27 @@ func (s *IntegratedShell) renderPlaceholder(title, description string) string {
 // renderFooter renders the footer with help text
 func (s *IntegratedShell) renderFooter() string {
 	help := "1-5: Switch views | ←→: Navigate | "
-	
+
 	// Add context-sensitive help
 	switch s.currentView {
 	case ViewProcesses:
 		help += "r: Restart | s: Stop | R: Restart All | "
 	}
-	
+
 	help += "q: Quit"
-	
+
 	// Truncate if too wide
 	if SafeStringWidth(help) > s.width {
 		help = SafeTruncateWithEllipsis(help, s.width-4)
 	}
-	
+
 	footerStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Background(lipgloss.Color("235")).
 		Width(s.width).
 		Align(lipgloss.Center).
 		Padding(0, 1)
-	
+
 	return footerStyle.Render(help)
 }
 
@@ -444,25 +569,25 @@ func (s *IntegratedShell) renderFooter() string {
 func (s *IntegratedShell) switchToView(view ViewType) tea.Cmd {
 	oldView := s.currentView
 	s.currentView = view
-	
+
 	// Clear notifications for the new view
 	if info := s.views[view]; info.HasNotif {
 		info.HasNotif = false
 		info.NotifCount = 0
 	}
-	
+
 	var cmds []tea.Cmd
-	
+
 	// Blur old component
 	if cmd := s.blurComponent(oldView); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	
+
 	// Focus new component
 	if cmd := s.focusComponent(view); cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	
+
 	return tea.Batch(cmds...)
 }
 
@@ -475,7 +600,7 @@ func (s *IntegratedShell) nextView() tea.Cmd {
 			break
 		}
 	}
-	
+
 	nextIndex := (currentIndex + 1) % len(s.viewOrder)
 	return s.switchToView(s.viewOrder[nextIndex])
 }
@@ -489,7 +614,7 @@ func (s *IntegratedShell) previousView() tea.Cmd {
 			break
 		}
 	}
-	
+
 	prevIndex := currentIndex - 1
 	if prevIndex < 0 {
 		prevIndex = len(s.viewOrder) - 1
@@ -504,6 +629,10 @@ func (s *IntegratedShell) focusComponent(view ViewType) tea.Cmd {
 		if s.processView != nil {
 			return s.processView.Focus()
 		}
+	case ViewLogs:
+		if s.logsView != nil {
+			return s.logsView.Focus()
+		}
 	}
 	return nil
 }
@@ -515,6 +644,10 @@ func (s *IntegratedShell) blurComponent(view ViewType) tea.Cmd {
 		if s.processView != nil {
 			return s.processView.Blur()
 		}
+	case ViewLogs:
+		if s.logsView != nil {
+			return s.logsView.Blur()
+		}
 	}
 	return nil
 }
@@ -525,6 +658,11 @@ func (s *IntegratedShell) handleViewInput(key tea.KeyMsg) tea.Cmd {
 	case ViewProcesses:
 		if s.processView != nil && s.processView.Focused() {
 			_, cmd := s.processView.Update(key)
+			return cmd
+		}
+	case ViewLogs:
+		if s.logsView != nil && s.logsView.Focused() {
+			_, cmd := s.logsView.Update(key)
 			return cmd
 		}
 	}
@@ -539,6 +677,11 @@ func (s *IntegratedShell) updateActiveComponent(msg tea.Msg) tea.Cmd {
 			_, cmd := s.processView.Update(msg)
 			return cmd
 		}
+	case ViewLogs:
+		if s.logsView != nil {
+			_, cmd := s.logsView.Update(msg)
+			return cmd
+		}
 	}
 	return nil
 }
@@ -548,7 +691,7 @@ func (s *IntegratedShell) updateNotifications() {
 	// Update process view notifications
 	if s.processView != nil {
 		errors, warnings, info := s.processView.GetNotificationCount()
-		
+
 		processInfo := s.views[ViewProcesses]
 		if errors > 0 {
 			processInfo.HasNotif = true
@@ -569,7 +712,7 @@ func (s *IntegratedShell) updateNotifications() {
 			processInfo.HasNotif = false
 			processInfo.NotifCount = 0
 		}
-		
+
 		// Don't show notifications for current view
 		if s.currentView == ViewProcesses {
 			processInfo.HasNotif = false
@@ -587,11 +730,11 @@ func (s *IntegratedShell) getAbbreviation(title string) string {
 		"URLs":      "URL",
 		"Web":       "Web",
 	}
-	
+
 	if abbr, ok := abbreviations[title]; ok {
 		return abbr
 	}
-	
+
 	return SafeTruncate(title, 4)
 }
 
@@ -633,7 +776,19 @@ func (s *IntegratedShell) Focused() bool {
 		if s.processView != nil {
 			return s.processView.Focused()
 		}
+	case ViewLogs:
+		if s.logsView != nil {
+			return s.logsView.Focused()
+		}
 	}
 	return false
 }
 
+// Cleanup releases resources when the shell is shutting down
+func (s *IntegratedShell) Cleanup() {
+	if s.logSub != nil {
+		s.logSub.Stop()
+	}
+}
+
+// Removed streamLogs - now using subscription pattern for incremental updates

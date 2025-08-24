@@ -291,6 +291,11 @@ func (m *Manager) GetScripts() map[string]string {
 	return m.packageJSON.Scripts
 }
 
+// GetPackageJSON returns the package.json data
+func (m *Manager) GetPackageJSON() *parser.PackageJSON {
+	return m.packageJSON
+}
+
 // GetDetectedCommands returns all detected executable commands
 func (m *Manager) GetDetectedCommands() []parser.ExecutableCommand {
 	return parser.DetectProjectCommands(m.workDir)
