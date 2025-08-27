@@ -2,29 +2,29 @@ package components
 
 import (
 	"fmt"
-	"strings"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"strings"
 )
 
 // MinimalShellV2 is an improved minimal shell using proper components
 type MinimalShellV2 struct {
 	BaseComponent
-	
+
 	// Current state
 	currentView string
 	views       map[string]Component
 	quit        bool
-	
+
 	// Layout components
-	mainLayout   *BoxLayout      // Vertical layout for header/content/footer
+	mainLayout   *BoxLayout // Vertical layout for header/content/footer
 	header       Component
-	contentArea  *BorderWindow   // Border window for main content
-	viewSwitcher *ViewSwitcher   // Manages different views
+	contentArea  *BorderWindow // Border window for main content
+	viewSwitcher *ViewSwitcher // Manages different views
 	footer       Component
-	
+
 	// Tab bar
-	tabBar       *TabBar
+	tabBar *TabBar
 }
 
 // TabBar component for view navigation
@@ -79,7 +79,7 @@ func (t *TabBar) View() string {
 	if !t.visible {
 		return ""
 	}
-	
+
 	var tabs []string
 	for i, tab := range t.tabs {
 		style := t.tabStyle
@@ -88,7 +88,7 @@ func (t *TabBar) View() string {
 		}
 		tabs = append(tabs, style.Render(fmt.Sprintf("[%d] %s", i+1, tab)))
 	}
-	
+
 	return lipgloss.JoinHorizontal(lipgloss.Top, tabs...)
 }
 
@@ -103,10 +103,10 @@ func NewMinimalShellV2() *MinimalShellV2 {
 		currentView: "processes",
 		views:       make(map[string]Component),
 	}
-	
+
 	// Initialize components
 	shell.initializeComponents()
-	
+
 	return shell
 }
 
@@ -115,25 +115,25 @@ func (m *MinimalShellV2) initializeComponents() {
 	// Create main vertical layout
 	m.mainLayout = NewBoxLayout(Vertical)
 	m.mainLayout.SetSize(m.width, m.height)
-	
+
 	// Create header
 	m.header = m.createHeader()
-	
+
 	// Create tab bar
 	m.tabBar = NewTabBar([]string{"Processes", "Logs", "Errors", "URLs", "Web"})
-	
+
 	// Create view switcher with empty views
 	m.viewSwitcher = NewViewSwitcher()
 	m.createViews()
-	
+
 	// Create content area with border
 	m.contentArea = NewBorderWindow(m.viewSwitcher)
 	m.contentArea.SetBorderStyle(lipgloss.NormalBorder())
 	m.contentArea.SetBorderColor(lipgloss.Color("240"))
-	
+
 	// Create footer
 	m.footer = m.createFooter()
-	
+
 	// Add components to layout
 	// Header: ~2 lines
 	m.mainLayout.AddChild(m.header, 0)
@@ -155,7 +155,7 @@ func (m *MinimalShellV2) createViews() {
 		"urls":      "URLs View\n\nNo URLs discovered\n\nURLs will appear when processes output them",
 		"web":       "Web View\n\nNo web content\n\nPress 'o' to open a URL",
 	}
-	
+
 	for name, content := range views {
 		view := &SimpleTextView{
 			BaseComponent: BaseComponent{visible: true},
@@ -165,7 +165,7 @@ func (m *MinimalShellV2) createViews() {
 		m.views[name] = view
 		m.viewSwitcher.AddView(name, view)
 	}
-	
+
 	// Set initial view
 	m.viewSwitcher.SwitchTo("processes")
 }
@@ -187,31 +187,31 @@ func (s *SimpleTextView) View() string {
 	if !s.visible {
 		return ""
 	}
-	
+
 	content := s.content
-	
+
 	// Add debug info if we have a name
 	if s.name != "" {
 		debugInfo := fmt.Sprintf("\n\n---\nView: %s | Size: %dx%d", s.name, s.width, s.height)
 		content = s.content + debugInfo
 	}
-	
+
 	// Start with the component's style or create new
 	style := s.style
-	
+
 	// Always set width to component width
 	style = style.Width(s.width)
-	
+
 	// Center if requested
 	if s.centered {
 		style = style.Align(lipgloss.Center)
 	}
-	
+
 	// Only set height and padding for content views
 	if s.name != "" {
 		style = style.Height(s.height).Padding(1)
 	}
-	
+
 	return style.Render(content)
 }
 
@@ -266,25 +266,25 @@ func (m *MinimalShellV2) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 		m.mainLayout.SetSize(msg.Width, msg.Height)
 		return m, nil
-		
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.quit = true
 			return m, tea.Quit
-			
+
 		case "tab":
 			// Next tab
 			m.tabBar.NextTab()
 			m.switchToTab(m.tabBar.GetActiveTab())
 			return m, nil
-			
+
 		case "shift+tab":
 			// Previous tab
 			m.tabBar.PrevTab()
 			m.switchToTab(m.tabBar.GetActiveTab())
 			return m, nil
-			
+
 		case "1", "2", "3", "4", "5":
 			// Direct tab selection
 			if index := int(msg.String()[0] - '1'); index >= 0 && index < 5 {
@@ -294,14 +294,14 @@ func (m *MinimalShellV2) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 	}
-	
+
 	// Update main layout (which propagates to all children)
 	if m.mainLayout != nil {
 		newLayout, cmd := m.mainLayout.Update(msg)
 		m.mainLayout = newLayout.(*BoxLayout)
 		return m, cmd
 	}
-	
+
 	return m, nil
 }
 
@@ -319,11 +319,11 @@ func (m *MinimalShellV2) View() string {
 	if m.quit {
 		return "Goodbye!\n"
 	}
-	
+
 	if m.mainLayout != nil {
 		return m.mainLayout.View()
 	}
-	
+
 	return "Initializing..."
 }
 

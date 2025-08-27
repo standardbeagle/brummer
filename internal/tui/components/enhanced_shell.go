@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -25,12 +25,12 @@ const (
 
 // ViewInfo contains information about each view
 type ViewInfo struct {
-	Title       string
-	Icon        string
-	KeyBinding  string
-	HasNotif    bool
-	NotifCount  int
-	NotifIcon   string
+	Title         string
+	Icon          string
+	KeyBinding    string
+	HasNotif      bool
+	NotifCount    int
+	NotifIcon     string
 	NotifSeverity string
 }
 
@@ -49,23 +49,23 @@ type EnhancedShell struct {
 	views       map[ViewType]*ViewInfo
 	viewOrder   []ViewType
 	quit        bool
-	
+
 	// Styles
-	titleStyle        lipgloss.Style
-	activeTabStyle    lipgloss.Style
-	inactiveTabStyle  lipgloss.Style
-	notifBadgeStyle   lipgloss.Style
-	errorBadgeStyle   lipgloss.Style
-	warnBadgeStyle    lipgloss.Style
-	infoBadgeStyle    lipgloss.Style
-	separatorStyle    lipgloss.Style
+	titleStyle       lipgloss.Style
+	activeTabStyle   lipgloss.Style
+	inactiveTabStyle lipgloss.Style
+	notifBadgeStyle  lipgloss.Style
+	errorBadgeStyle  lipgloss.Style
+	warnBadgeStyle   lipgloss.Style
+	infoBadgeStyle   lipgloss.Style
+	separatorStyle   lipgloss.Style
 }
 
 // NewEnhancedShell creates an enhanced shell with notifications
 func NewEnhancedShell() *EnhancedShell {
 	// Force color output
 	lipgloss.SetColorProfile(termenv.ANSI256)
-	
+
 	shell := &EnhancedShell{
 		width:       80,
 		height:      24,
@@ -73,16 +73,16 @@ func NewEnhancedShell() *EnhancedShell {
 		views:       make(map[ViewType]*ViewInfo),
 		viewOrder:   []ViewType{},
 	}
-	
+
 	// Initialize views with icons
 	shell.initializeViews()
-	
+
 	// Initialize styles
 	shell.initializeStyles()
-	
+
 	// Add some demo notifications
 	shell.addDemoNotifications()
-	
+
 	return shell
 }
 
@@ -93,43 +93,43 @@ func (s *EnhancedShell) initializeViews() {
 		Icon:       "🏃",
 		KeyBinding: "1",
 	}
-	
+
 	s.views[ViewLogs] = &ViewInfo{
 		Title:      "Logs",
 		Icon:       "📄",
 		KeyBinding: "2",
 	}
-	
+
 	s.views[ViewErrors] = &ViewInfo{
 		Title:      "Errors",
 		Icon:       "❌",
 		KeyBinding: "3",
 	}
-	
+
 	s.views[ViewURLs] = &ViewInfo{
 		Title:      "URLs",
 		Icon:       "🔗",
 		KeyBinding: "4",
 	}
-	
+
 	s.views[ViewWeb] = &ViewInfo{
 		Title:      "Web",
 		Icon:       "🌐",
 		KeyBinding: "5",
 	}
-	
+
 	s.views[ViewAICoders] = &ViewInfo{
 		Title:      "AI Coders",
 		Icon:       "🤖",
 		KeyBinding: "6",
 	}
-	
+
 	s.views[ViewSettings] = &ViewInfo{
 		Title:      "Settings",
 		Icon:       "⚙️",
 		KeyBinding: "7",
 	}
-	
+
 	// Set view order
 	s.viewOrder = []ViewType{
 		ViewProcesses,
@@ -150,40 +150,40 @@ func (s *EnhancedShell) initializeStyles() {
 		Foreground(lipgloss.Color("226")). // Bright yellow
 		Background(lipgloss.Color("235")).
 		Padding(0, 1)
-	
+
 	// Active tab style
 	s.activeTabStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226")).
 		Background(lipgloss.Color("236")).
 		Padding(0, 1)
-	
+
 	// Inactive tab style
 	s.inactiveTabStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
 		Padding(0, 1)
-	
+
 	// Notification badge styles
 	s.errorBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("196")). // Red
-		Background(lipgloss.Color("52"))    // Dark red background
-	
+		Background(lipgloss.Color("52"))   // Dark red background
+
 	s.warnBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("214")). // Orange
-		Background(lipgloss.Color("94"))    // Dark orange background
-	
+		Background(lipgloss.Color("94"))   // Dark orange background
+
 	s.infoBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("39")).  // Blue
-		Background(lipgloss.Color("17"))    // Dark blue background
-	
+		Foreground(lipgloss.Color("39")). // Blue
+		Background(lipgloss.Color("17"))  // Dark blue background
+
 	s.notifBadgeStyle = lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("82")).  // Green
-		Background(lipgloss.Color("22"))    // Dark green background
-	
+		Foreground(lipgloss.Color("82")). // Green
+		Background(lipgloss.Color("22"))  // Dark green background
+
 	// Separator style
 	s.separatorStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240"))
@@ -196,13 +196,13 @@ func (s *EnhancedShell) addDemoNotifications() {
 	s.views[ViewErrors].NotifCount = 3
 	s.views[ViewErrors].NotifSeverity = "error"
 	s.views[ViewErrors].NotifIcon = "🔴"
-	
+
 	// Add info notification to Logs tab
 	s.views[ViewLogs].HasNotif = true
 	s.views[ViewLogs].NotifCount = 12
 	s.views[ViewLogs].NotifSeverity = "info"
 	s.views[ViewLogs].NotifIcon = "🔵"
-	
+
 	// Add warning notification to URLs tab
 	s.views[ViewURLs].HasNotif = true
 	s.views[ViewURLs].NotifCount = 1
@@ -238,13 +238,13 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		s.width = msg.Width
 		s.height = msg.Height
 		return s, nil
-		
+
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			s.quit = true
 			return s, tea.Quit
-			
+
 		// Number keys for view switching
 		case "1", "2", "3", "4", "5", "6", "7":
 			for _, view := range s.viewOrder {
@@ -258,7 +258,7 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					break
 				}
 			}
-			
+
 		// Tab navigation
 		case "tab":
 			currentIndex := 0
@@ -270,14 +270,14 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			nextIndex := (currentIndex + 1) % len(s.viewOrder)
 			nextView := s.viewOrder[nextIndex]
-			
+
 			// Clear notifications when switching
 			if s.views[nextView].HasNotif {
 				s.views[nextView].HasNotif = false
 				s.views[nextView].NotifCount = 0
 			}
 			s.currentView = nextView
-			
+
 		case "shift+tab":
 			currentIndex := 0
 			for i, v := range s.viewOrder {
@@ -291,7 +291,7 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				prevIndex = len(s.viewOrder) - 1
 			}
 			prevView := s.viewOrder[prevIndex]
-			
+
 			// Clear notifications when switching
 			if s.views[prevView].HasNotif {
 				s.views[prevView].HasNotif = false
@@ -299,7 +299,7 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			s.currentView = prevView
 		}
-		
+
 	case NotificationUpdate:
 		// Update notification for the specified view
 		if view, ok := s.views[msg.View]; ok {
@@ -307,7 +307,7 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if s.currentView != msg.View {
 				view.HasNotif = true
 				view.NotifCount += msg.Count
-				
+
 				// Set notification icon based on severity
 				switch msg.Severity {
 				case "error":
@@ -325,7 +325,7 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		
+
 		// Continue ticker for demo
 		return s, tea.Tick(time.Second*3, func(t time.Time) tea.Msg {
 			// Rotate through different views for demo
@@ -333,7 +333,7 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			view := views[int(t.Unix())%len(views)]
 			severities := []string{"error", "warning", "info", "success"}
 			severity := severities[int(t.Unix()/3)%len(severities)]
-			
+
 			return NotificationUpdate{
 				View:     view,
 				Count:    1,
@@ -341,7 +341,7 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		})
 	}
-	
+
 	return s, nil
 }
 
@@ -349,27 +349,27 @@ func (s *EnhancedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (s *EnhancedShell) View() string {
 	// Render header with tabs
 	header := s.renderHeader()
-	
+
 	// Render content
 	content := s.renderContent()
-	
+
 	// Calculate content height
 	headerLines := strings.Count(header, "\n") + 1
 	footerLines := 1
 	contentHeight := s.height - headerLines - footerLines - 2 // -2 for borders
-	
+
 	// Apply border to content
 	contentStyle := lipgloss.NewStyle().
 		Width(s.width - 2). // -2 for border
 		Height(contentHeight).
 		Border(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("240"))
-	
+
 	contentBox := contentStyle.Render(content)
-	
+
 	// Render footer
 	footer := s.renderFooter()
-	
+
 	// Combine all parts
 	return lipgloss.JoinVertical(lipgloss.Left,
 		header,
@@ -386,14 +386,14 @@ func (s *EnhancedShell) renderHeader() string {
 		Width(s.width).
 		Align(lipgloss.Center).
 		Render(title)
-	
+
 	// Render tabs based on width
 	tabs := s.renderTabs()
 	tabLine := lipgloss.NewStyle().
 		Width(s.width).
 		Align(lipgloss.Center).
 		Render(tabs)
-	
+
 	return lipgloss.JoinVertical(lipgloss.Left, titleLine, tabLine)
 }
 
@@ -401,16 +401,16 @@ func (s *EnhancedShell) renderHeader() string {
 func (s *EnhancedShell) renderTabs() string {
 	mode := s.getTabRenderMode()
 	var tabs []string
-	
+
 	for _, viewType := range s.viewOrder {
 		view := s.views[viewType]
 		tab := s.renderTab(viewType, view, mode)
 		tabs = append(tabs, tab)
 	}
-	
+
 	// Join tabs with separators
 	tabsJoined := strings.Join(tabs, s.separatorStyle.Render(" │ "))
-	
+
 	return tabsJoined
 }
 
@@ -429,7 +429,7 @@ func (s *EnhancedShell) getTabRenderMode() string {
 // renderTab renders a single tab with notifications
 func (s *EnhancedShell) renderTab(viewType ViewType, view *ViewInfo, mode string) string {
 	var label string
-	
+
 	// Build label based on mode
 	switch mode {
 	case "minimal":
@@ -438,27 +438,27 @@ func (s *EnhancedShell) renderTab(viewType ViewType, view *ViewInfo, mode string
 		if view.HasNotif {
 			label += "•"
 		}
-		
+
 	case "compact":
 		// Icon and number
 		label = fmt.Sprintf("%s %s", view.Icon, view.KeyBinding)
-		
+
 	case "normal":
 		// Icon, number, abbreviated name
 		abbrev := s.getAbbreviation(view.Title)
 		label = fmt.Sprintf("%s %s.%s", view.Icon, view.KeyBinding, abbrev)
-		
+
 	default: // "full"
 		// Icon, number, full name
 		label = fmt.Sprintf("%s %s.%s", view.Icon, view.KeyBinding, view.Title)
 	}
-	
+
 	// Add notification badge if present
 	if view.HasNotif && mode != "minimal" {
 		badge := s.renderNotificationBadge(view)
 		label = label + " " + badge
 	}
-	
+
 	// Apply appropriate style
 	if viewType == s.currentView {
 		// Active tab with arrow indicator
@@ -468,7 +468,7 @@ func (s *EnhancedShell) renderTab(viewType ViewType, view *ViewInfo, mode string
 		}
 		return s.activeTabStyle.Render(indicator + label)
 	}
-	
+
 	return s.inactiveTabStyle.Render(label)
 }
 
@@ -486,7 +486,7 @@ func (s *EnhancedShell) renderNotificationBadge(view *ViewInfo) string {
 	default:
 		badgeStyle = s.notifBadgeStyle
 	}
-	
+
 	// Format badge content
 	var badge string
 	if view.NotifCount > 99 {
@@ -496,7 +496,7 @@ func (s *EnhancedShell) renderNotificationBadge(view *ViewInfo) string {
 	} else {
 		badge = view.NotifIcon
 	}
-	
+
 	return badgeStyle.Render(badge)
 }
 
@@ -511,11 +511,11 @@ func (s *EnhancedShell) getAbbreviation(title string) string {
 		"AI Coders": "AI",
 		"Settings":  "Set",
 	}
-	
+
 	if abbr, ok := abbreviations[title]; ok {
 		return abbr
 	}
-	
+
 	// Default: first 3 characters
 	if len(title) > 3 {
 		return title[:3]
@@ -526,19 +526,19 @@ func (s *EnhancedShell) getAbbreviation(title string) string {
 // renderContent renders the main content area
 func (s *EnhancedShell) renderContent() string {
 	view := s.views[s.currentView]
-	
+
 	// Title
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205")).
 		MarginBottom(1)
-	
+
 	title := fmt.Sprintf("%s %s", view.Icon, view.Title)
-	
+
 	// Content based on current view
 	contentStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245"))
-	
+
 	var content string
 	switch s.currentView {
 	case ViewProcesses:
@@ -558,11 +558,11 @@ func (s *EnhancedShell) renderContent() string {
 	default:
 		content = "Unknown view"
 	}
-	
+
 	// Add debug info
 	debugInfo := fmt.Sprintf("\n\n---\nWindow: %dx%d | Mode: %s | Notifications: %d",
 		s.width, s.height, s.getTabRenderMode(), s.getTotalNotifications())
-	
+
 	return lipgloss.JoinVertical(lipgloss.Left,
 		titleStyle.Render(title),
 		contentStyle.Render(content),
@@ -573,14 +573,14 @@ func (s *EnhancedShell) renderContent() string {
 // renderFooter renders the footer with help text
 func (s *EnhancedShell) renderFooter() string {
 	help := "1-7: Switch views | ←→: Navigate | Tab: Focus | Ctrl+C: Quit"
-	
+
 	footerStyle := lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Background(lipgloss.Color("235")).
 		Width(s.width).
 		Align(lipgloss.Center).
 		Padding(0, 1)
-	
+
 	return footerStyle.Render(help)
 }
 
@@ -607,7 +607,7 @@ func (s *EnhancedShell) UpdateNotification(view ViewType, count int, severity st
 		if s.currentView != view {
 			v.HasNotif = true
 			v.NotifCount += count
-			
+
 			// Set notification icon based on severity
 			switch severity {
 			case "error":
