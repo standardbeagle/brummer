@@ -18,33 +18,39 @@ import (
 type ProcessViewNew struct {
 	width  int
 	height int
-	
+
 	// Process management
 	processMgr      *process.Manager
 	processes       []*process.Process
 	selectedIndex   int
 	selectedProcess string
-	
+
 	// UI state
-	focused         bool
-	showEmptyState  bool
-	lastUpdate      time.Time
-	
+	focused        bool
+	showEmptyState bool
+	lastUpdate     time.Time
+
+	// Scrolling state
+	scrollOffset int
+	visibleLines int
+
 	// Notification tracking
 	errorCount      int
 	warningCount    int
 	newProcessCount int
-	
+
 	// Styles
-	titleStyle       lipgloss.Style
-	headerStyle      lipgloss.Style
-	itemStyle        lipgloss.Style
-	selectedStyle    lipgloss.Style
-	runningStyle     lipgloss.Style
-	stoppedStyle     lipgloss.Style
-	errorStyle       lipgloss.Style
-	emptyStateStyle  lipgloss.Style
-	separatorStyle   lipgloss.Style
+	titleStyle      lipgloss.Style
+	headerStyle     lipgloss.Style
+	itemStyle       lipgloss.Style
+	selectedStyle   lipgloss.Style
+	runningStyle    lipgloss.Style
+	stoppedStyle    lipgloss.Style
+	errorStyle      lipgloss.Style
+	emptyStateStyle lipgloss.Style
+	separatorStyle  lipgloss.Style
+	footerStyle     lipgloss.Style
+	containerStyle  lipgloss.Style
 }
 
 // processDisplayItem represents a single item in the process list
@@ -59,17 +65,17 @@ type processDisplayItem struct {
 func NewProcessViewNew(processMgr *process.Manager) *ProcessViewNew {
 	// ALWAYS initialize colors first
 	MustInitColors()
-	
+
 	c := &ProcessViewNew{
 		width:      80,
 		height:     24,
 		processMgr: processMgr,
 		processes:  []*process.Process{},
 	}
-	
+
 	c.initializeStyles()
 	c.updateProcessList()
-	
+
 	return c
 }
 
@@ -79,36 +85,43 @@ func (c *ProcessViewNew) initializeStyles() {
 		Bold(true).
 		Foreground(lipgloss.Color("205")).
 		MarginBottom(1)
-	
+
 	c.headerStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("245")).
 		Background(lipgloss.Color("236")).
 		Padding(0, 1)
-	
+
 	c.itemStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("252"))
-	
+
 	c.selectedStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("226")).
 		Background(lipgloss.Color("236"))
-	
+
 	c.runningStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("82"))  // Green
-	
+		Foreground(lipgloss.Color("82")) // Green
+
 	c.stoppedStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")) // Gray
-	
+
 	c.errorStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("196"))  // Red
-	
+		Foreground(lipgloss.Color("196")) // Red
+
 	c.emptyStateStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("245")).
 		Align(lipgloss.Center, lipgloss.Center)
-	
+
 	c.separatorStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("240"))
+
+	c.footerStyle = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Background(lipgloss.Color("235")).
+		Padding(0, 1)
+
+	c.containerStyle = lipgloss.NewStyle()
 }
 
 // Init implements Component interface
@@ -118,33 +131,38 @@ func (c *ProcessViewNew) Init() tea.Cmd {
 
 // Update implements tea.Model interface
 func (c *ProcessViewNew) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Debug mode validation
+	Debug().CheckState("ProcessViewNew", func() error {
+		return ValidateProcessView(c)
+	})
+
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		c.width = msg.Width
 		c.height = msg.Height
 		return c, nil
-		
+
 	case tea.KeyMsg:
 		if c.focused {
 			return c.handleKeyPress(msg)
 		}
-		
+
 	case tickMsg:
 		c.updateProcessList()
 		return c, c.tickCmd()
-		
+
 	case processUpdateMsg:
 		c.updateProcessList()
 		return c, nil
 	}
-	
+
 	return c, nil
 }
 
 // handleKeyPress handles keyboard input when focused
 func (c *ProcessViewNew) handleKeyPress(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 	processes := c.getSelectableProcesses()
-	
+
 	switch key.String() {
 	case "up", "k":
 		if c.selectedIndex > 0 {
@@ -152,16 +170,18 @@ func (c *ProcessViewNew) handleKeyPress(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if c.selectedIndex < len(processes) {
 				c.selectedProcess = processes[c.selectedIndex].ID
 			}
+			c.updateScrollOffset()
 		}
-		
+
 	case "down", "j":
 		if c.selectedIndex < len(processes)-1 {
 			c.selectedIndex++
 			if c.selectedIndex < len(processes) {
 				c.selectedProcess = processes[c.selectedIndex].ID
 			}
+			c.updateScrollOffset()
 		}
-		
+
 	case "r":
 		// Restart selected process
 		if c.selectedProcess != "" {
@@ -171,7 +191,7 @@ func (c *ProcessViewNew) handleKeyPress(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		
+
 	case "s":
 		// Stop selected process
 		if c.selectedProcess != "" {
@@ -181,27 +201,62 @@ func (c *ProcessViewNew) handleKeyPress(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		
+
+	case "x":
+		// Select/deselect process for batch operations
+		if c.selectedProcess != "" {
+			// Toggle selection state (would need to track this)
+			return c, nil
+		}
+
 	case "R":
 		// Restart all processes
 		return c, c.restartAllProcesses()
-		
+
+	case "S":
+		// Stop all processes
+		return c, c.stopAllProcesses()
+
 	case "enter":
-		// Could switch to logs view for selected process
-		// This would be handled by parent shell
+		// Switch to logs view for selected process
+		if c.selectedProcess != "" {
+			return c, func() tea.Msg {
+				return SwitchToLogsMsg{ProcessID: c.selectedProcess}
+			}
+		}
 		return c, nil
+
+	case "pgup":
+		// Scroll up by page
+		c.scrollOffset -= c.visibleLines - 1
+		if c.scrollOffset < 0 {
+			c.scrollOffset = 0
+		}
+
+	case "pgdown":
+		// Scroll down by page
+		maxScroll := len(processes) - c.visibleLines
+		if maxScroll < 0 {
+			maxScroll = 0
+		}
+		c.scrollOffset += c.visibleLines - 1
+		if c.scrollOffset > maxScroll {
+			c.scrollOffset = maxScroll
+		}
 	}
-	
+
 	return c, nil
 }
 
 // View implements Component interface
 func (c *ProcessViewNew) View() string {
-	if c.showEmptyState || len(c.processes) == 0 {
-		return c.renderEmptyState()
-	}
-	
-	return c.renderProcessList()
+	return Debug().TrackRender("ProcessViewNew", func() string {
+		if c.showEmptyState || len(c.processes) == 0 {
+			return c.renderEmptyState()
+		}
+
+		return c.renderProcessList()
+	})
 }
 
 // renderEmptyState shows when no processes are running
@@ -215,98 +270,129 @@ Use / for commands:
 
 Available scripts:
   Use /list to see package.json scripts`
-	
+
 	// Use safe width calculation for centering
 	availableWidth := CalculateAvailableWidth(c.width, false)
 	availableHeight := c.height
-	
+
 	return c.emptyStateStyle.
 		Width(availableWidth).
 		Height(availableHeight).
 		Render(emptyText)
 }
 
-// renderProcessList renders the list of processes
+// renderProcessList renders the list of processes with proper scrolling and footer
 func (c *ProcessViewNew) renderProcessList() string {
-	var lines []string
-	
+	var allLines []string
+
 	// Group processes
 	running, stopped := c.groupProcesses()
-	
-	// Render running processes
+
+	// Build all content lines
 	if len(running) > 0 {
-		lines = append(lines, c.headerStyle.Render("🏃 Running Processes"))
+		allLines = append(allLines, c.headerStyle.Render("🏃 Running Processes"))
 		for _, proc := range running {
 			selected := proc.ID == c.selectedProcess
 			line := c.renderProcessItem(proc, selected)
-			lines = append(lines, line)
+			allLines = append(allLines, line)
 		}
 	}
-	
+
 	// Add separator if both sections exist
 	if len(running) > 0 && len(stopped) > 0 {
-		lines = append(lines, "")
+		allLines = append(allLines, "")
 	}
-	
+
 	// Render stopped processes
 	if len(stopped) > 0 {
-		lines = append(lines, c.headerStyle.Render("⏹️  Stopped Processes"))
+		allLines = append(allLines, c.headerStyle.Render("⏹️  Stopped Processes"))
 		for _, proc := range stopped {
 			selected := proc.ID == c.selectedProcess
 			line := c.renderProcessItem(proc, selected)
-			lines = append(lines, line)
+			allLines = append(allLines, line)
 		}
 	}
-	
-	// Add stats footer
-	stats := c.renderStats()
-	if stats != "" {
-		lines = append(lines, "", c.separatorStyle.Render(strings.Repeat("─", 40)), stats)
+
+	// Calculate visible area (height minus footer lines)
+	footerHeight := 3 // separator + stats + help
+	c.visibleLines = c.height - footerHeight
+	if c.visibleLines < 1 {
+		c.visibleLines = 1
 	}
-	
-	return strings.Join(lines, "\n")
+
+	// Apply scrolling using lipgloss viewport
+	var viewportLines []string
+	if len(allLines) > c.visibleLines {
+		// Need scrolling
+		endIdx := c.scrollOffset + c.visibleLines
+		if endIdx > len(allLines) {
+			endIdx = len(allLines)
+		}
+		viewportLines = allLines[c.scrollOffset:endIdx]
+	} else {
+		// All content fits
+		viewportLines = allLines
+	}
+
+	// Pad viewport to fill available space
+	for len(viewportLines) < c.visibleLines {
+		viewportLines = append(viewportLines, "")
+	}
+
+	// Create the main content area
+	content := strings.Join(viewportLines, "\n")
+
+	// Create footer with stats and help
+	separator := c.separatorStyle.Render(strings.Repeat("─", c.width))
+	stats := c.renderStats()
+	help := c.renderHelp()
+
+	footer := strings.Join([]string{separator, stats, help}, "\n")
+
+	// Combine content and footer
+	return strings.Join([]string{content, footer}, "\n")
 }
 
 // renderProcessItem renders a single process item
 func (c *ProcessViewNew) renderProcessItem(proc *process.Process, selected bool) string {
 	// Build status indicator with emoji
 	statusEmoji := c.getStatusEmoji(proc)
-	
+
 	// Calculate widths properly
 	name := proc.Name
 	maxNameWidth := 20
 	if SafeStringWidth(name) > maxNameWidth {
 		name = SafeTruncateWithEllipsis(name, maxNameWidth)
 	}
-	
+
 	// Format uptime
 	uptime := c.formatUptime(proc)
-	
+
 	// Build the line with proper spacing
 	// Format: "  🟢 name                 3m 42s  PID: 12345"
 	indicator := "  "
 	if selected {
 		indicator = "▶ "
 	}
-	
+
 	// Use safe padding to align columns
 	nameField := SafePadRight(name, maxNameWidth)
 	uptimeField := SafePadLeft(uptime, 10)
 	pidField := fmt.Sprintf("PID: %s", proc.ID)
-	
+
 	// Combine with proper spacing
-	line := fmt.Sprintf("%s%s %s %s  %s", 
-		indicator, 
+	line := fmt.Sprintf("%s%s %s %s  %s",
+		indicator,
 		statusEmoji,
 		nameField,
 		uptimeField,
 		pidField)
-	
+
 	// Apply style based on selection and status
 	if selected {
 		return c.selectedStyle.Render(line)
 	}
-	
+
 	switch proc.GetStatus() {
 	case process.StatusRunning:
 		return c.runningStyle.Render(line)
@@ -340,9 +426,9 @@ func (c *ProcessViewNew) formatUptime(proc *process.Process) string {
 	if proc.GetStatus() != process.StatusRunning {
 		return "-"
 	}
-	
+
 	uptime := time.Since(proc.StartTime)
-	
+
 	if uptime < time.Minute {
 		return fmt.Sprintf("%ds", int(uptime.Seconds()))
 	} else if uptime < time.Hour {
@@ -361,7 +447,7 @@ func (c *ProcessViewNew) renderStats() string {
 	running := 0
 	stopped := 0
 	failed := 0
-	
+
 	for _, proc := range c.processes {
 		switch proc.GetStatus() {
 		case process.StatusRunning:
@@ -372,21 +458,59 @@ func (c *ProcessViewNew) renderStats() string {
 			stopped++
 		}
 	}
-	
+
 	stats := fmt.Sprintf("Total: %d | Running: %d | Stopped: %d",
 		len(c.processes), running, stopped)
-		
+
 	if failed > 0 {
 		stats += fmt.Sprintf(" | ⚠️ Failed: %d", failed)
 	}
-	
-	return stats
+
+	// Add scroll indicator if needed
+	if len(c.processes) > c.visibleLines {
+		current := c.selectedIndex + 1
+		total := len(c.processes)
+		stats += fmt.Sprintf(" | [%d/%d]", current, total)
+	}
+
+	return c.footerStyle.Render(stats)
+}
+
+// renderHelp renders keyboard shortcuts help
+func (c *ProcessViewNew) renderHelp() string {
+	help := "[r]estart [s]top [x]select [R]estart-all [S]top-all [enter]logs"
+	if c.focused {
+		return c.footerStyle.Copy().Bold(true).Render(help)
+	}
+	return c.footerStyle.Render(help)
+}
+
+// updateScrollOffset ensures selected item is visible
+func (c *ProcessViewNew) updateScrollOffset() {
+	// Ensure selected item is visible
+	if c.selectedIndex < c.scrollOffset {
+		c.scrollOffset = c.selectedIndex
+	} else if c.selectedIndex >= c.scrollOffset+c.visibleLines {
+		c.scrollOffset = c.selectedIndex - c.visibleLines + 1
+	}
+
+	// Ensure scroll offset is valid
+	maxScroll := len(c.processes) - c.visibleLines
+	if maxScroll < 0 {
+		maxScroll = 0
+	}
+	if c.scrollOffset > maxScroll {
+		c.scrollOffset = maxScroll
+	}
+	if c.scrollOffset < 0 {
+		c.scrollOffset = 0
+	}
 }
 
 // groupProcesses groups processes by status
 func (c *ProcessViewNew) groupProcesses() ([]*process.Process, []*process.Process) {
 	var running, stopped []*process.Process
-	
+
 	for _, proc := range c.processes {
 		if proc.GetStatus() == process.StatusRunning {
 			running = append(running, proc)
@@ -394,7 +518,7 @@ func (c *ProcessViewNew) groupProcesses() ([]*process.Process, []*process.Proces
 			stopped = append(stopped, proc)
 		}
 	}
-	
+
 	return running, stopped
 }
 
@@ -409,7 +533,30 @@ func (c *ProcessViewNew) updateProcessList() {
 		c.processes = c.processMgr.GetAllProcesses()
 		c.showEmptyState = len(c.processes) == 0
 		c.lastUpdate = time.Now()
-		
+
+		// Initialize selection if needed
+		if c.selectedProcess == "" && len(c.processes) > 0 {
+			c.selectedIndex = 0
+			c.selectedProcess = c.processes[0].ID
+		}
+
+		// Validate current selection
+		if c.selectedProcess != "" {
+			found := false
+			for i, proc := range c.processes {
+				if proc.ID == c.selectedProcess {
+					c.selectedIndex = i
+					found = true
+					break
+				}
+			}
+			// If selected process no longer exists, select first
+			if !found && len(c.processes) > 0 {
+				c.selectedIndex = 0
+				c.selectedProcess = c.processes[0].ID
+			}
+		}
+
 		// Update notification counts
 		c.errorCount = 0
 		c.warningCount = 0
@@ -452,6 +599,14 @@ func (c *ProcessViewNew) ClearNotifications() {
 
 func (c *ProcessViewNew) restartProcess(proc *process.Process) tea.Cmd {
 	return func() tea.Msg {
+		// Get the current script command for this process
+		scriptCmd := ""
+		if c.processMgr != nil && c.processMgr.GetPackageJSON() != nil {
+			if cmd, exists := c.processMgr.GetPackageJSON().Scripts[proc.Name]; exists {
+				scriptCmd = cmd
+			}
+		}
+
 		// Stop if running
 		if proc.GetStatus() == process.StatusRunning {
 			if err := c.processMgr.StopProcess(proc.ID); err != nil {
@@ -460,13 +615,22 @@ func (c *ProcessViewNew) restartProcess(proc *process.Process) tea.Cmd {
 			// Wait a bit for clean shutdown
 			time.Sleep(500 * time.Millisecond)
 		}
-		
-		// Start again
-		_, err := c.processMgr.StartScript(proc.Name)
-		if err != nil {
-			return errorMsg{err: err}
+
+		// Start again - use the original script name
+		if scriptCmd != "" {
+			_, err := c.processMgr.StartScript(proc.Name)
+			if err != nil {
+				return errorMsg{err: err}
+			}
+		} else {
+			// If no script found, try starting as a raw command
+			// Note: This assumes the proc.Name might be a command
+			_, err := c.processMgr.StartCommand(proc.Name, proc.Name, []string{})
+			if err != nil {
+				return errorMsg{err: err}
+			}
 		}
-		
+
 		return processUpdateMsg{}
 	}
 }
@@ -483,20 +647,50 @@ func (c *ProcessViewNew) stopProcess(proc *process.Process) tea.Cmd {
 func (c *ProcessViewNew) restartAllProcesses() tea.Cmd {
 	return func() tea.Msg {
 		processes := c.processMgr.GetAllProcesses()
-		
+		toRestart := []*process.Process{}
+
+		// First stop all running processes
 		for _, proc := range processes {
 			if proc.GetStatus() == process.StatusRunning {
-				// Stop process
+				toRestart = append(toRestart, proc)
 				if err := c.processMgr.StopProcess(proc.ID); err != nil {
 					continue
 				}
-				
-				// Restart it
-				time.Sleep(200 * time.Millisecond)
-				c.processMgr.StartScript(proc.Name)
 			}
 		}
-		
+
+		// Wait for processes to stop
+		time.Sleep(500 * time.Millisecond)
+
+		// Restart them
+		for _, proc := range toRestart {
+			// Check if it's a script from package.json
+			if c.processMgr.GetPackageJSON() != nil {
+				if _, exists := c.processMgr.GetPackageJSON().Scripts[proc.Name]; exists {
+					c.processMgr.StartScript(proc.Name)
+					continue
+				}
+			}
+			// Otherwise start as command
+			c.processMgr.StartCommand(proc.Name, proc.Name, []string{})
+		}
+
+		return processUpdateMsg{}
+	}
+}
+
+func (c *ProcessViewNew) stopAllProcesses() tea.Cmd {
+	return func() tea.Msg {
+		processes := c.processMgr.GetAllProcesses()
+
+		for _, proc := range processes {
+			if proc.GetStatus() == process.StatusRunning {
+				if err := c.processMgr.StopProcess(proc.ID); err != nil {
+					continue
+				}
+			}
+		}
+
 		return processUpdateMsg{}
 	}
 }
@@ -512,6 +706,7 @@ func (c *ProcessViewNew) tickCmd() tea.Cmd {
 func (c *ProcessViewNew) SetSize(width, height int) {
 	c.width = width
 	c.height = height
+	c.updateScrollOffset()
 }
 
 // Message types
@@ -519,4 +714,9 @@ type tickMsg time.Time
 type processUpdateMsg struct{}
 type errorMsg struct {
 	err error
+}
+
+// SwitchToLogsMsg is sent to switch to logs view for a specific process
+type SwitchToLogsMsg struct {
+	ProcessID string
 }

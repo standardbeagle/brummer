@@ -4,20 +4,20 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/progress"
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
-	"github.com/charmbracelet/bubbles/spinner"
-	"github.com/charmbracelet/bubbles/progress"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 // BubblesListAdapter wraps a Bubbles list component
 type BubblesListAdapter struct {
 	BaseComponent
-	list list.Model
+	list  list.Model
 	items []list.Item
 }
 
@@ -27,11 +27,11 @@ func NewBubblesListAdapter(title string, items []list.Item) *BubblesListAdapter 
 	l.Title = title
 	l.SetShowStatusBar(false)
 	l.SetFilteringEnabled(true)
-	
+
 	return &BubblesListAdapter{
 		BaseComponent: BaseComponent{visible: true},
-		list: l,
-		items: items,
+		list:          l,
+		items:         items,
 	}
 }
 
@@ -43,7 +43,7 @@ func (a *BubblesListAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.SetSize(msg.Width, msg.Height)
 		a.list.SetSize(msg.Width, msg.Height)
 	}
-	
+
 	newList, cmd := a.list.Update(msg)
 	a.list = newList
 	return a, cmd
@@ -89,7 +89,7 @@ func NewBubblesTableAdapter(columns []table.Column, rows []table.Row) *BubblesTa
 		table.WithFocused(true),
 		table.WithHeight(10),
 	)
-	
+
 	// Style the table
 	s := table.DefaultStyles()
 	s.Header = s.Header.
@@ -102,10 +102,10 @@ func NewBubblesTableAdapter(columns []table.Column, rows []table.Row) *BubblesTa
 		Background(lipgloss.Color("57")).
 		Bold(false)
 	t.SetStyles(s)
-	
+
 	return &BubblesTableAdapter{
 		BaseComponent: BaseComponent{visible: true},
-		table: t,
+		table:         t,
 	}
 }
 
@@ -141,10 +141,10 @@ type BubblesViewportAdapter struct {
 func NewBubblesViewportAdapter() *BubblesViewportAdapter {
 	vp := viewport.New(80, 20)
 	vp.SetContent("Loading...")
-	
+
 	return &BubblesViewportAdapter{
 		BaseComponent: BaseComponent{visible: true},
-		viewport: vp,
+		viewport:      vp,
 	}
 }
 
@@ -160,7 +160,7 @@ func (a *BubblesViewportAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		a.SetSize(msg.Width, msg.Height)
 	}
-	
+
 	newViewport, cmd := a.viewport.Update(msg)
 	a.viewport = newViewport
 	return a, cmd
@@ -184,7 +184,7 @@ func (a *BubblesViewportAdapter) SetSize(width, height int) {
 // BubblesTextInputAdapter wraps a Bubbles text input
 type BubblesTextInputAdapter struct {
 	BaseComponent
-	input textinput.Model
+	input    textinput.Model
 	onSubmit func(string) tea.Cmd
 }
 
@@ -194,11 +194,11 @@ func NewBubblesTextInputAdapter(placeholder string, onSubmit func(string) tea.Cm
 	ti.Placeholder = placeholder
 	ti.CharLimit = 156
 	ti.Width = 50
-	
+
 	return &BubblesTextInputAdapter{
 		BaseComponent: BaseComponent{visible: true},
-		input: ti,
-		onSubmit: onSubmit,
+		input:         ti,
+		onSubmit:      onSubmit,
 	}
 }
 
@@ -212,7 +212,7 @@ func (a *BubblesTextInputAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return a, cmd
 		}
 	}
-	
+
 	newInput, cmd := a.input.Update(msg)
 	a.input = newInput
 	return a, cmd
@@ -251,11 +251,11 @@ func NewBubblesSpinnerAdapter(message string) *BubblesSpinnerAdapter {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	
+
 	return &BubblesSpinnerAdapter{
 		BaseComponent: BaseComponent{visible: true},
-		spinner: s,
-		message: message,
+		spinner:       s,
+		message:       message,
 	}
 }
 
@@ -290,11 +290,11 @@ type BubblesProgressAdapter struct {
 // NewBubblesProgressAdapter creates an adapter for a Bubbles progress bar
 func NewBubblesProgressAdapter(label string) *BubblesProgressAdapter {
 	p := progress.New(progress.WithDefaultGradient())
-	
+
 	return &BubblesProgressAdapter{
 		BaseComponent: BaseComponent{visible: true},
-		progress: p,
-		label: label,
+		progress:      p,
+		label:         label,
 	}
 }
 
@@ -315,7 +315,7 @@ func (a *BubblesProgressAdapter) View() string {
 	if !a.visible {
 		return ""
 	}
-	
+
 	progressView := a.progress.ViewAs(a.percent)
 	return fmt.Sprintf("%s\n%s %.0f%%", a.label, progressView, a.percent*100)
 }
@@ -332,9 +332,9 @@ func (*BubblesProgressAdapter) Init() tea.Cmd { return nil }
 // CompositeExample shows how to compose multiple Bubbles components
 type CompositeExample struct {
 	BaseComponent
-	layout *BoxLayout
-	list   *BubblesListAdapter
-	input  *BubblesTextInputAdapter
+	layout   *BoxLayout
+	list     *BubblesListAdapter
+	input    *BubblesTextInputAdapter
 	viewport *BubblesViewportAdapter
 }
 
@@ -347,24 +347,24 @@ func NewCompositeExample() *CompositeExample {
 		simpleItem("Item 3"),
 	}
 	listAdapter := NewBubblesListAdapter("Select an item", items)
-	
+
 	inputAdapter := NewBubblesTextInputAdapter("Type a command...", nil)
-	
+
 	viewportAdapter := NewBubblesViewportAdapter()
 	viewportAdapter.SetContent("This is scrollable content\nLine 2\nLine 3\nLine 4\nLine 5")
-	
+
 	// Compose them in a layout
 	layout := NewBoxLayout(Vertical)
-	layout.AddChild(listAdapter, 0.5)    // 50% height for list
+	layout.AddChild(listAdapter, 0.5)     // 50% height for list
 	layout.AddChild(viewportAdapter, 0.3) // 30% for viewport
 	layout.AddChild(inputAdapter, 0.2)    // 20% for input
-	
+
 	return &CompositeExample{
 		BaseComponent: BaseComponent{visible: true},
-		layout: layout,
-		list: listAdapter,
-		input: inputAdapter,
-		viewport: viewportAdapter,
+		layout:        layout,
+		list:          listAdapter,
+		input:         inputAdapter,
+		viewport:      viewportAdapter,
 	}
 }
 
@@ -406,14 +406,14 @@ func ValidateBubblesIntegration() {
 	var _ Component = &BubblesTextInputAdapter{}
 	var _ Component = &BubblesSpinnerAdapter{}
 	var _ Component = &BubblesProgressAdapter{}
-	
+
 	// 2. Bubbles components work with our layouts
 	var _ Component = &CompositeExample{}
-	
+
 	// 3. Bubbles components support our traits
 	var _ Sizable = &BubblesListAdapter{}
 	var _ Visible = &BubblesViewportAdapter{}
-	
+
 	// This proves our architecture is compatible with Bubbles
 }
 
@@ -454,20 +454,20 @@ func CreateProgressBar(label string, percent float64) Component {
 func ExampleBubblesInLayout() Component {
 	// Create a vertical layout
 	layout := NewBoxLayout(Vertical)
-	
+
 	// Add Bubbles components
 	layout.AddChild(CreateSearchableList("Processes", []string{
 		"npm run dev",
 		"npm test",
 		"npm run build",
 	}), 0.4)
-	
+
 	layout.AddChild(CreateScrollableLog(strings.Repeat("Log line\n", 100)), 0.4)
-	
+
 	layout.AddChild(CreateCommandInput(func(cmd string) tea.Cmd {
 		return nil // Handle command
 	}), 0.2)
-	
+
 	return layout
 }
 
@@ -475,7 +475,7 @@ func ExampleBubblesInLayout() Component {
 func ExampleBubblesInOverlay() Component {
 	// Base layer with content
 	base := CreateScrollableLog("Main content...")
-	
+
 	// Overlay with Bubbles list
 	overlay := NewWindow("Select Action", CreateSearchableList("Actions", []string{
 		"Run Script",
@@ -485,14 +485,15 @@ func ExampleBubblesInOverlay() Component {
 	}))
 	overlay.SetModal(true)
 	overlay.SetSize(60, 20)
-	
+
 	// Stack them
 	stack := NewStackLayout()
 	stack.AddLayer(base)
 	stack.AddLayer(overlay)
-	
+
 	return stack
 }
+
 // Init implements tea.Model interface for BubblesListAdapter
 func (*BubblesListAdapter) Init() tea.Cmd { return nil }
 
