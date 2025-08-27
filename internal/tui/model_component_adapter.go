@@ -3,12 +3,12 @@ package tui
 import (
 	"fmt"
 	"strings"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/internal/tui/navigation"
 )
 
@@ -17,21 +17,21 @@ import (
 type ModelComponentAdapter struct {
 	// Existing model for data and business logic
 	model *Model
-	
+
 	// Component system
 	rootComponent    components.Component
-	viewSwitcher    *components.ViewSwitcher
+	viewSwitcher     *components.ViewSwitcher
 	notificationComp *components.NotificationComponent
-	processView     *components.ProcessViewComponent
-	logsView        *components.LogsViewComponent
-	errorsView      *components.ErrorsViewComponent
-	urlsView        *components.URLsViewComponent
-	scriptSelector  *components.ScriptSelectorComponent
-	settingsView    *components.SettingsViewComponent
-	commandInput    *components.CommandInputComponent
-	webView         *components.WebViewComponent
-	aiCodersView    *components.AICodersViewComponent
-	
+	processView      *components.ProcessViewComponent
+	logsView         *components.LogsViewComponent
+	errorsView       *components.ErrorsViewComponent
+	urlsView         *components.URLsViewComponent
+	scriptSelector   *components.ScriptSelectorComponent
+	settingsView     *components.SettingsViewComponent
+	commandInput     *components.CommandInputComponent
+	webView          *components.WebViewComponent
+	aiCodersView     *components.AICodersViewComponent
+
 	// Mode flag for gradual migration
 	useComponents bool
 }
@@ -42,12 +42,12 @@ func NewModelComponentAdapter(model *Model, useComponents bool) *ModelComponentA
 		model:         model,
 		useComponents: useComponents,
 	}
-	
+
 	if useComponents {
 		// Initialize component system
 		adapter.initializeComponents()
 	}
-	
+
 	return adapter
 }
 
@@ -59,7 +59,7 @@ func (a *ModelComponentAdapter) initializeComponents() {
 	} else {
 		a.notificationComp = components.NewNotificationComponent(nil)
 	}
-	
+
 	// Create view components with nil-safe checks
 	if a.model.processMgr != nil {
 		a.processView = components.NewProcessViewComponent(a.model.processMgr)
@@ -67,19 +67,19 @@ func (a *ModelComponentAdapter) initializeComponents() {
 		// Create empty process view
 		a.processView = components.NewProcessViewComponent(nil)
 	}
-	
+
 	if a.model.logStore != nil {
 		a.logsView = components.NewLogsViewComponent(a.model.logStore)
 	} else {
 		// Create empty logs view
 		a.logsView = components.NewLogsViewComponent(nil)
 	}
-	
+
 	a.errorsView = components.NewErrorsViewComponent()
-	
+
 	// Create URLs view
 	a.urlsView = components.NewURLsViewComponent()
-	
+
 	// Create script selector
 	// Note: Package info would need to be obtained from the script selector controller
 	// For now, create without package info as it can be loaded separately
@@ -88,22 +88,22 @@ func (a *ModelComponentAdapter) initializeComponents() {
 	} else {
 		a.scriptSelector = components.NewScriptSelectorComponent(nil, nil)
 	}
-	
+
 	// Create settings view
 	a.settingsView = components.NewSettingsViewComponent()
-	
+
 	// Create command input
 	a.commandInput = components.NewCommandInputComponent()
-	
+
 	// Create web view
 	a.webView = components.NewWebViewComponent()
-	
+
 	// Create AI coders view
 	a.aiCodersView = components.NewAICodersViewComponent()
-	
+
 	// Create view switcher
 	a.viewSwitcher = components.NewViewSwitcher()
-	
+
 	// Add views to switcher
 	if a.processView != nil {
 		a.viewSwitcher.AddView("processes", a.processView)
@@ -129,13 +129,13 @@ func (a *ModelComponentAdapter) initializeComponents() {
 	if a.aiCodersView != nil {
 		a.viewSwitcher.AddView("aicoders", a.aiCodersView)
 	}
-	
+
 	// Set initial view
 	a.viewSwitcher.SwitchTo("processes")
-	
+
 	// Create root layout
 	mainLayout := components.NewBoxLayout(components.Vertical)
-	
+
 	// Set initial size to ensure components render
 	initialWidth := 80
 	initialHeight := 24
@@ -146,25 +146,25 @@ func (a *ModelComponentAdapter) initializeComponents() {
 		initialHeight = a.model.height
 	}
 	mainLayout.SetSize(initialWidth, initialHeight)
-	
+
 	// Add header
 	header := a.createHeader()
 	mainLayout.AddChild(header, 0.1)
-	
+
 	// Add view switcher as main content
 	mainLayout.AddChild(a.viewSwitcher, 0.8)
 	a.viewSwitcher.SetSize(initialWidth, int(float64(initialHeight)*0.8))
-	
+
 	// Add footer
 	footer := a.createFooter()
 	mainLayout.AddChild(footer, 0.1)
-	
+
 	// Create overlay stack for notifications
 	overlayStack := components.NewStackLayout()
 	overlayStack.SetSize(initialWidth, initialHeight)
 	overlayStack.AddLayer(mainLayout)
 	overlayStack.AddLayer(a.notificationComp)
-	
+
 	a.rootComponent = overlayStack
 }
 
@@ -188,11 +188,11 @@ func (a *ModelComponentAdapter) createFooter() components.Component {
 func (a *ModelComponentAdapter) Init() tea.Cmd {
 	if a.useComponents {
 		var cmds []tea.Cmd
-		
+
 		// Initialize existing model for data
 		modelCmd := a.model.Init()
 		cmds = append(cmds, modelCmd)
-		
+
 		// Send initial window size to components
 		cmds = append(cmds, func() tea.Msg {
 			// Use model's dimensions if available
@@ -208,7 +208,7 @@ func (a *ModelComponentAdapter) Init() tea.Cmd {
 				Height: 24,
 			}
 		})
-		
+
 		return tea.Batch(cmds...)
 	}
 	// Use existing model only
@@ -220,11 +220,11 @@ func (a *ModelComponentAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Always update the model for data changes
 	newModel, modelCmd := a.model.Update(msg)
 	a.model = newModel.(*Model)
-	
+
 	if a.useComponents {
 		var cmds []tea.Cmd
 		cmds = append(cmds, modelCmd)
-		
+
 		// Update root component first to handle sizing
 		if a.rootComponent != nil {
 			newRoot, cmd := a.rootComponent.Update(msg)
@@ -235,7 +235,7 @@ func (a *ModelComponentAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
-		
+
 		// Handle view switching based on model's current view
 		switch msg := msg.(type) {
 		case tea.WindowSizeMsg:
@@ -268,16 +268,16 @@ func (a *ModelComponentAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.viewSwitcher.SwitchTo("scripts")
 				}
 			}
-		
-		// Note: navigation.ChangeViewMsg handling can be added when navigation package exports it
+
+			// Note: navigation.ChangeViewMsg handling can be added when navigation package exports it
 		}
-		
+
 		// Bridge data changes to components
 		cmds = append(cmds, a.bridgeDataChanges())
-		
+
 		return a, tea.Batch(cmds...)
 	}
-	
+
 	// Use existing model UI
 	return newModel, modelCmd
 }
@@ -320,7 +320,7 @@ func (a *ModelComponentAdapter) mapViewToComponentName(view navigation.View) str
 // bridgeDataChanges checks for data changes and notifies components
 func (a *ModelComponentAdapter) bridgeDataChanges() tea.Cmd {
 	var cmds []tea.Cmd
-	
+
 	// Send process updates
 	if a.model.processMgr != nil && a.processView != nil {
 		processes := a.model.processMgr.GetAllProcesses()
@@ -330,7 +330,7 @@ func (a *ModelComponentAdapter) bridgeDataChanges() tea.Cmd {
 			}
 		})
 	}
-	
+
 	// Send log updates
 	if a.model.logStore != nil && a.logsView != nil {
 		logEntries := a.model.logStore.GetAll()
@@ -350,7 +350,7 @@ func (a *ModelComponentAdapter) bridgeDataChanges() tea.Cmd {
 			}
 		})
 	}
-	
+
 	// Send error updates
 	if a.model.logStore != nil && a.errorsView != nil {
 		errorContexts := a.model.logStore.GetErrorContexts()
@@ -373,7 +373,7 @@ func (a *ModelComponentAdapter) bridgeDataChanges() tea.Cmd {
 			}
 		})
 	}
-	
+
 	// Send URL updates
 	if a.model.logStore != nil && a.urlsView != nil {
 		urlEntries := a.model.logStore.GetURLs()
@@ -385,13 +385,13 @@ func (a *ModelComponentAdapter) bridgeDataChanges() tea.Cmd {
 			} else if strings.HasPrefix(u.URL, "ws://") || strings.HasPrefix(u.URL, "wss://") {
 				urlType = components.URLTypeWebSocket
 			}
-			
+
 			urls[i] = components.URLInfo{
 				URL:       u.URL,
 				ProcessID: u.ProcessID,
 				Type:      urlType,
-				FirstSeen: u.Timestamp,  // Use Timestamp as FirstSeen
-				LastSeen:  u.Timestamp,  // Use Timestamp as LastSeen
+				FirstSeen: u.Timestamp, // Use Timestamp as FirstSeen
+				LastSeen:  u.Timestamp, // Use Timestamp as LastSeen
 				Count:     1,
 				Active:    true,
 			}
@@ -402,7 +402,7 @@ func (a *ModelComponentAdapter) bridgeDataChanges() tea.Cmd {
 			}
 		})
 	}
-	
+
 	return tea.Batch(cmds...)
 }
 
@@ -411,7 +411,7 @@ func (a *ModelComponentAdapter) getProcessData() []interface{} {
 	if a.model.processMgr == nil {
 		return nil
 	}
-	
+
 	processes := a.model.processMgr.GetAllProcesses()
 	result := make([]interface{}, len(processes))
 	for i, p := range processes {
@@ -424,7 +424,7 @@ func (a *ModelComponentAdapter) getLogData() []string {
 	if a.model.logStore == nil {
 		return nil
 	}
-	
+
 	// Get all logs from log store
 	logs := a.model.logStore.GetAll()
 	// Get last 100 logs
@@ -442,7 +442,7 @@ func (a *ModelComponentAdapter) getErrorData() []interface{} {
 	if a.model.logStore == nil {
 		return nil
 	}
-	
+
 	// Get error contexts from log store
 	errorContexts := a.model.logStore.GetErrorContexts()
 	result := make([]interface{}, len(errorContexts))
@@ -466,7 +466,7 @@ func (p *modelDataProvider) GetProcesses() []interface{} {
 	if p.model.processMgr == nil {
 		return nil
 	}
-	
+
 	processes := p.model.processMgr.GetAllProcesses()
 	result := make([]interface{}, len(processes))
 	for i, proc := range processes {
@@ -480,7 +480,7 @@ func (p *modelDataProvider) StartProcess(name string) error {
 	if p.model.processMgr == nil {
 		return fmt.Errorf("process manager not initialized")
 	}
-	
+
 	// Start a script by name
 	_, err := p.model.processMgr.StartScript(name)
 	return err
@@ -491,7 +491,7 @@ func (p *modelDataProvider) StopProcess(id string) error {
 	if p.model.processMgr == nil {
 		return fmt.Errorf("process manager not initialized")
 	}
-	
+
 	return p.model.processMgr.StopProcess(id)
 }
 
@@ -500,7 +500,7 @@ func (p *modelDataProvider) GetLogs(processID string) []string {
 	if p.model.logStore == nil {
 		return nil
 	}
-	
+
 	logs := p.model.logStore.GetByProcess(processID)
 	// Get last 100 logs for process
 	if len(logs) > 100 {
@@ -518,7 +518,7 @@ func (p *modelDataProvider) GetFilteredLogs(filter string) []string {
 	if p.model.logStore == nil {
 		return nil
 	}
-	
+
 	logEntries := p.model.logStore.GetAll()
 	// Get last 1000 logs
 	if len(logEntries) > 1000 {
@@ -531,7 +531,7 @@ func (p *modelDataProvider) GetFilteredLogs(filter string) []string {
 	if filter == "" {
 		return allLogs
 	}
-	
+
 	// Simple filter implementation
 	var filtered []string
 	filterLower := strings.ToLower(filter)
@@ -548,7 +548,7 @@ func (p *modelDataProvider) GetErrors() []interface{} {
 	if p.model.logStore == nil {
 		return nil
 	}
-	
+
 	errorContexts := p.model.logStore.GetErrorContexts()
 	result := make([]interface{}, len(errorContexts))
 	for i, err := range errorContexts {
@@ -566,7 +566,7 @@ func (p *modelDataProvider) ClearErrors() error {
 	if p.model.logStore == nil {
 		return fmt.Errorf("log store not initialized")
 	}
-	
+
 	// Clear errors in log store
 	p.model.logStore.ClearErrors()
 	return nil
@@ -577,7 +577,7 @@ func (p *modelDataProvider) GetURLs() []string {
 	if p.model.logStore == nil {
 		return nil
 	}
-	
+
 	urls := p.model.logStore.GetURLs()
 	result := make([]string, len(urls))
 	for i, u := range urls {
@@ -589,13 +589,13 @@ func (p *modelDataProvider) GetURLs() []string {
 // GetSettings returns current settings
 func (p *modelDataProvider) GetSettings() map[string]interface{} {
 	settings := make(map[string]interface{})
-	
+
 	// Get process manager settings if available
 	if p.model.processMgr != nil {
 		// Add process manager related settings
 		settings["processCount"] = len(p.model.processMgr.GetAllProcesses())
 	}
-	
+
 	return settings
 }
 
@@ -631,10 +631,10 @@ func (a *ModelComponentAdapter) MigrateView(view navigation.View) error {
 	if !a.useComponents {
 		return fmt.Errorf("component mode not enabled")
 	}
-	
+
 	// Views are already migrated when component mode is enabled
 	// This method is kept for API compatibility
-	
+
 	return nil
 }
 
@@ -644,16 +644,16 @@ func ExampleGradualMigration() {
 	_ = &Model{
 		// ... existing model setup
 	}
-	
+
 	// Step 2: Wrap with adapter (start in legacy mode)
 	// adapter := NewModelComponentAdapter(model, false)
-	
+
 	// Step 3: Run the app (uses legacy UI)
 	// program := tea.NewProgram(adapter)
-	
+
 	// Step 4: Enable component mode when ready
 	// adapter.EnableComponentMode()
-	
+
 	// Step 5: Migrate views one by one
 	// adapter.MigrateView(navigation.ViewProcesses)
 	// adapter.MigrateView(navigation.ViewLogs)
@@ -666,7 +666,7 @@ func CreateModelWithFeatureFlag(useNewUI bool) tea.Model {
 	model := &Model{
 		// ... initialize model
 	}
-	
+
 	// Wrap with adapter based on feature flag
 	return NewModelComponentAdapter(model, useNewUI)
 }
@@ -709,7 +709,7 @@ func (f *simpleFooterComponent) View() string {
 		"q: quit",
 		"?: help",
 	}
-	
+
 	if f.adapter.viewSwitcher != nil {
 		current := f.adapter.viewSwitcher.CurrentView()
 		switch current {
@@ -721,7 +721,7 @@ func (f *simpleFooterComponent) View() string {
 			help = append(help, "c: clear", "enter: details")
 		}
 	}
-	
+
 	return lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Render(strings.Join(help, " | "))

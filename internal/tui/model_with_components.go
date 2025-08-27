@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
@@ -25,13 +25,13 @@ type ComponentSystem interface {
 type ModelWithComponents struct {
 	// Core model for business logic
 	baseModel *Model
-	
+
 	// Component system for UI (when enabled)
 	componentBridge ComponentSystem
-	
+
 	// Feature flag for enabling component mode
 	useComponents bool
-	
+
 	// Data provider adapter
 	dataProvider *BrummerDataProvider
 }
@@ -49,12 +49,12 @@ func NewModelWithComponents(
 ) *ModelWithComponents {
 	// Create base model
 	baseModel := NewModel(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, cfg)
-	
+
 	mwc := &ModelWithComponents{
 		baseModel:     baseModel,
 		useComponents: useComponents,
 	}
-	
+
 	if useComponents {
 		// Use minimal shell for testing
 		if useMinimalShell := os.Getenv("BRUMMER_MINIMAL_SHELL") == "true"; useMinimalShell {
@@ -77,7 +77,7 @@ func NewModelWithComponents(
 			}
 		}
 	}
-	
+
 	return mwc
 }
 
@@ -87,7 +87,7 @@ func (m *ModelWithComponents) Init() tea.Cmd {
 		// When using components, ONLY initialize component system
 		return m.componentBridge.Init()
 	}
-	
+
 	// Fallback to base model when not using components
 	return m.baseModel.Init()
 }
@@ -103,7 +103,7 @@ func (m *ModelWithComponents) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, cmd
 	}
-	
+
 	// Fallback to original model when not using components
 	newModel, cmd := m.baseModel.Update(msg)
 	m.baseModel = newModel.(*Model)
@@ -125,9 +125,9 @@ func (m *ModelWithComponents) syncDataToComponents() tea.Cmd {
 	if !m.useComponents || m.dataProvider == nil {
 		return nil
 	}
-	
+
 	var cmds []tea.Cmd
-	
+
 	// Check for process updates
 	if processes := m.dataProvider.GetProcesses(); len(processes) > 0 {
 		cmds = append(cmds, components.SendDataUpdate(
@@ -136,7 +136,7 @@ func (m *ModelWithComponents) syncDataToComponents() tea.Cmd {
 			"model",
 		))
 	}
-	
+
 	// Check for log updates
 	if logs := m.dataProvider.GetLogs(""); len(logs) > 0 {
 		cmds = append(cmds, components.SendDataUpdate(
@@ -145,7 +145,7 @@ func (m *ModelWithComponents) syncDataToComponents() tea.Cmd {
 			"model",
 		))
 	}
-	
+
 	// Check for error updates
 	if errors := m.dataProvider.GetErrors(); len(errors) > 0 {
 		cmds = append(cmds, components.SendDataUpdate(
@@ -154,7 +154,7 @@ func (m *ModelWithComponents) syncDataToComponents() tea.Cmd {
 			"model",
 		))
 	}
-	
+
 	// Check for URL updates
 	if urls := m.dataProvider.GetURLs(); len(urls) > 0 {
 		cmds = append(cmds, components.SendDataUpdate(
@@ -163,7 +163,7 @@ func (m *ModelWithComponents) syncDataToComponents() tea.Cmd {
 			"model",
 		))
 	}
-	
+
 	return tea.Batch(cmds...)
 }
 
@@ -209,7 +209,7 @@ func (p *BrummerDataProvider) GetProcesses() []interface{} {
 	if p.model.processMgr == nil {
 		return nil
 	}
-	
+
 	processes := p.model.processMgr.GetAllProcesses()
 	result := make([]interface{}, len(processes))
 	for i, proc := range processes {
@@ -228,7 +228,7 @@ func (p *BrummerDataProvider) StartProcess(name string) error {
 	if p.model.processMgr == nil {
 		return fmt.Errorf("process manager not initialized")
 	}
-	
+
 	// Try to start as a script first
 	_, err := p.model.processMgr.StartScript(name)
 	if err != nil {
@@ -243,7 +243,7 @@ func (p *BrummerDataProvider) StopProcess(id string) error {
 	if p.model.processMgr == nil {
 		return fmt.Errorf("process manager not initialized")
 	}
-	
+
 	return p.model.processMgr.StopProcess(id)
 }
 
@@ -252,7 +252,7 @@ func (p *BrummerDataProvider) GetLogs(processID string) []string {
 	if p.model.logStore == nil {
 		return nil
 	}
-	
+
 	// Get logs from the store
 	var logs []string
 	if processID == "" {
@@ -264,7 +264,7 @@ func (p *BrummerDataProvider) GetLogs(processID string) []string {
 		}
 		logs = make([]string, len(entries))
 		for i, entry := range entries {
-			logs[i] = fmt.Sprintf("[%s] %s: %s", 
+			logs[i] = fmt.Sprintf("[%s] %s: %s",
 				entry.Timestamp.Format("15:04:05"),
 				entry.ProcessID,
 				entry.Content)
@@ -281,7 +281,7 @@ func (p *BrummerDataProvider) GetLogs(processID string) []string {
 			logs[i] = entry.Content
 		}
 	}
-	
+
 	return logs
 }
 
@@ -291,7 +291,7 @@ func (p *BrummerDataProvider) GetFilteredLogs(filter string) []string {
 	if filter == "" {
 		return logs
 	}
-	
+
 	// Simple filter implementation
 	var filtered []string
 	for _, log := range logs {
@@ -307,7 +307,7 @@ func (p *BrummerDataProvider) GetErrors() []interface{} {
 	if p.model.logStore == nil {
 		return nil
 	}
-	
+
 	// Get error contexts from log store
 	errorContexts := p.model.logStore.GetErrorContexts()
 	result := make([]interface{}, len(errorContexts))
@@ -326,7 +326,7 @@ func (p *BrummerDataProvider) ClearErrors() error {
 	if p.model.logStore == nil {
 		return fmt.Errorf("log store not initialized")
 	}
-	
+
 	p.model.logStore.ClearErrors()
 	return nil
 }
@@ -336,7 +336,7 @@ func (p *BrummerDataProvider) GetURLs() []string {
 	if p.model.logStore == nil {
 		return nil
 	}
-	
+
 	urls := p.model.logStore.GetURLs()
 	result := make([]string, len(urls))
 	for i, u := range urls {
@@ -348,24 +348,24 @@ func (p *BrummerDataProvider) GetURLs() []string {
 // GetSettings returns current settings
 func (p *BrummerDataProvider) GetSettings() map[string]interface{} {
 	settings := make(map[string]interface{})
-	
+
 	// Get process manager settings
 	if p.model.processMgr != nil {
 		// Add available settings from process manager
 		settings["processCount"] = len(p.model.processMgr.GetAllProcesses())
 	}
-	
+
 	// Get MCP settings
 	if p.model.mcpServer != nil {
 		settings["mcpEnabled"] = p.model.mcpServer.IsRunning()
 		settings["mcpPort"] = p.model.mcpServer.GetPort()
 	}
-	
+
 	// Get proxy settings
 	if p.model.proxyServer != nil {
 		settings["proxyEnabled"] = p.model.proxyServer.IsRunning()
 	}
-	
+
 	return settings
 }
 
@@ -377,7 +377,7 @@ func (p *BrummerDataProvider) UpdateSetting(key string, value interface{}) error
 	default:
 		return fmt.Errorf("unknown setting: %s", key)
 	}
-	
+
 	return fmt.Errorf("invalid value for setting: %s", key)
 }
 

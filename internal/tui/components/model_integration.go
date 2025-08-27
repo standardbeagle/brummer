@@ -12,24 +12,24 @@ import (
 type ModelBridge struct {
 	// Component tree root
 	root Component
-	
+
 	// View management
 	viewSwitcher *ViewSwitcher
 	overlayStack *StackLayout
-	
+
 	// Message routing
 	router *SimpleMessageRouter
-	
+
 	// Component registry
 	components map[string]Component
-	
+
 	// Current dimensions
 	width  int
 	height int
-	
+
 	// Data provider interface (implemented by existing Model)
 	dataProvider DataProvider
-	
+
 	// Flag to indicate if using IntegratedShell (to avoid duplicate key handling)
 	usingIntegratedShell bool
 }
@@ -40,18 +40,18 @@ type DataProvider interface {
 	GetProcesses() []interface{}
 	StartProcess(name string) error
 	StopProcess(id string) error
-	
+
 	// Log data
 	GetLogs(processID string) []string
 	GetFilteredLogs(filter string) []string
-	
+
 	// Error data
 	GetErrors() []interface{}
 	ClearErrors() error
-	
+
 	// URL data
 	GetURLs() []string
-	
+
 	// Settings
 	GetSettings() map[string]interface{}
 	UpdateSetting(key string, value interface{}) error
@@ -61,7 +61,7 @@ type DataProvider interface {
 func NewModelBridge(dataProvider DataProvider) *ModelBridge {
 	// Force color output for terminal UI
 	lipgloss.SetColorProfile(termenv.ANSI256)
-	
+
 	bridge := &ModelBridge{
 		dataProvider: dataProvider,
 		router:       NewMessageRouter(),
@@ -69,10 +69,10 @@ func NewModelBridge(dataProvider DataProvider) *ModelBridge {
 		width:        80,
 		height:       24,
 	}
-	
+
 	// Build the component tree
 	bridge.buildComponentTree()
-	
+
 	return bridge
 }
 
@@ -89,44 +89,44 @@ func (b *ModelBridge) buildComponentTree() {
 			return
 		}
 	}
-	
+
 	// Fallback to the old component tree structure
 	// Create main layout with initial size
 	mainLayout := NewBoxLayout(Vertical)
 	mainLayout.SetSize(b.width, b.height)
-	
+
 	// Header (can be a component wrapping existing header)
 	header := b.createHeader()
 	mainLayout.AddChild(header, 0.1) // 10% height
-	
+
 	// Content area with view switcher
 	b.viewSwitcher = NewViewSwitcher()
 	b.viewSwitcher.SetSize(b.width, int(float64(b.height)*0.8))
-	
+
 	// Create and register views
 	b.createAndRegisterViews()
-	
+
 	mainLayout.AddChild(b.viewSwitcher, 0.8) // 80% height
-	
+
 	// Footer
 	footer := b.createFooter()
 	mainLayout.AddChild(footer, 0.1) // 10% height
-	
+
 	// Create overlay stack for modals/overlays with initial size
 	b.overlayStack = NewStackLayout()
 	b.overlayStack.SetSize(b.width, b.height)
 	b.overlayStack.AddLayer(mainLayout)
-	
+
 	// Add system panel overlay (initially hidden)
 	systemPanel := b.createSystemPanel()
 	b.overlayStack.AddLayer(systemPanel)
 	b.components["system_panel"] = systemPanel
-	
+
 	// Add command palette overlay (initially hidden)
 	commandPalette := b.createCommandPalette()
 	b.overlayStack.AddLayer(commandPalette)
 	b.components["command_palette"] = commandPalette
-	
+
 	// Set root
 	b.root = b.overlayStack
 }
@@ -137,27 +137,27 @@ func (b *ModelBridge) createAndRegisterViews() {
 	processView := b.createProcessView()
 	b.viewSwitcher.AddView("processes", processView)
 	b.components["process_view"] = processView
-	
+
 	// Logs view
 	logsView := b.createLogsView()
 	b.viewSwitcher.AddView("logs", logsView)
 	b.components["logs_view"] = logsView
-	
+
 	// Errors view
 	errorsView := b.createErrorsView()
 	b.viewSwitcher.AddView("errors", errorsView)
 	b.components["errors_view"] = errorsView
-	
+
 	// URLs view
 	urlsView := b.createURLsView()
 	b.viewSwitcher.AddView("urls", urlsView)
 	b.components["urls_view"] = urlsView
-	
+
 	// Settings view
 	settingsView := b.createSettingsView()
 	b.viewSwitcher.AddView("settings", settingsView)
 	b.components["settings_view"] = settingsView
-	
+
 	// Start with processes view
 	b.viewSwitcher.SwitchTo("processes")
 }
@@ -230,7 +230,7 @@ func (b *ModelBridge) createCommandPalette() Component {
 // Update processes all messages through the component tree
 func (b *ModelBridge) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	
+
 	// Handle global messages
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -242,7 +242,7 @@ func (b *ModelBridge) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				sizable.SetSize(msg.Width, msg.Height)
 			}
 		}
-		
+
 	case tea.KeyMsg:
 		// If using IntegratedShell, let it handle ALL keyboard input
 		// to avoid duplicate processing
@@ -253,11 +253,11 @@ func (b *ModelBridge) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c":
 				// Always quit on Ctrl+C
 				return b, tea.Quit
-				
+
 			case "ctrl+p":
 				// Show command palette (global action)
 				return b, SendShow("command_palette")
-				
+
 			case "ctrl+s":
 				// Toggle system panel (global action)
 				if panel, ok := b.components["system_panel"].(*SystemPanel); ok {
@@ -267,34 +267,34 @@ func (b *ModelBridge) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		// Pass through to IntegratedShell or other root component
-		
+
 	case ViewChangeMsg:
 		// Handle view changes
 		b.viewSwitcher.SwitchTo(msg.ViewID)
-		
+
 	case DataUpdateMsg:
 		// Handle data updates from external sources
 		cmds = append(cmds, b.handleDataUpdate(msg))
-		
+
 	case CommandMsg:
 		// Handle commands
 		cmds = append(cmds, b.handleCommand(msg))
-		
-	// Handle navigation messages if available
-	// case navigation.ChangeViewMsg:
-	//	// Bridge old navigation messages
-	//	b.viewSwitcher.SwitchTo(string(msg.View))
+
+		// Handle navigation messages if available
+		// case navigation.ChangeViewMsg:
+		//	// Bridge old navigation messages
+		//	b.viewSwitcher.SwitchTo(string(msg.View))
 	}
-	
+
 	// Let component tree handle the message
 	newRoot, cmd := b.root.Update(msg)
-	if c, ok := newRoot.(Component); ok { 
-		b.root = c 
+	if c, ok := newRoot.(Component); ok {
+		b.root = c
 	}
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	
+
 	return b, tea.Batch(cmds...)
 }
 
@@ -307,7 +307,7 @@ func (b *ModelBridge) View() string {
 func (b *ModelBridge) Init() tea.Cmd {
 	// Initialize any components that need it
 	var cmds []tea.Cmd
-	
+
 	// Send initial window size to ensure components are properly sized
 	cmds = append(cmds, func() tea.Msg {
 		return tea.WindowSizeMsg{
@@ -315,7 +315,7 @@ func (b *ModelBridge) Init() tea.Cmd {
 			Height: b.height,
 		}
 	})
-	
+
 	// Initialize the root component if it has an Init method
 	if b.root != nil {
 		if initializable, ok := b.root.(interface{ Init() tea.Cmd }); ok {
@@ -324,7 +324,7 @@ func (b *ModelBridge) Init() tea.Cmd {
 			}
 		}
 	}
-	
+
 	return tea.Batch(cmds...)
 }
 
@@ -360,7 +360,7 @@ func (b *ModelBridge) handleCommand(msg CommandMsg) tea.Cmd {
 			}
 			return SendNotification(NotificationSuccess, "Process started", msg.Args[0])
 		}
-		
+
 	case "stop_process":
 		if len(msg.Args) > 0 {
 			err := b.dataProvider.StopProcess(msg.Args[0])
@@ -369,20 +369,20 @@ func (b *ModelBridge) handleCommand(msg CommandMsg) tea.Cmd {
 			}
 			return SendNotification(NotificationSuccess, "Process stopped", msg.Args[0])
 		}
-		
+
 	case "clear_errors":
 		err := b.dataProvider.ClearErrors()
 		if err != nil {
 			return SendNotification(NotificationError, "Failed to clear errors", err.Error())
 		}
 		return SendNotification(NotificationSuccess, "Errors cleared", "")
-		
+
 	case "switch_view":
 		if len(msg.Args) > 0 {
 			return SendViewChange(msg.Args[0], nil)
 		}
 	}
-	
+
 	return nil
 }
 
@@ -498,7 +498,7 @@ func (c *commandHandlerBridge) GetSuggestions(prefix string) []string {
 func WrapExistingModel(existingModel interface{}) *ModelBridge {
 	// This would create adapters for the existing model
 	// to implement the DataProvider interface
-	
+
 	// For now, return a basic bridge
 	return NewModelBridge(nil)
 }
@@ -510,7 +510,7 @@ func MigrateModel(existingModel interface{}) tea.Model {
 	// 2. Wrap existing view controllers as components
 	// 3. Set up message routing
 	// 4. Return a tea.Model that uses components
-	
+
 	bridge := WrapExistingModel(existingModel)
 	return bridge
 }

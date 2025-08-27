@@ -11,11 +11,11 @@ type RefactoredModel struct {
 	// Component tree
 	root         components.Component
 	viewSwitcher *components.ViewSwitcher
-	
+
 	// Current state
 	width  int
 	height int
-	
+
 	// Keep existing data communication unchanged
 	model *Model // Reference to existing model for data
 }
@@ -24,7 +24,7 @@ type RefactoredModel struct {
 func NewRefactoredModel(existingModel *Model) *RefactoredModel {
 	// Build the UI tree
 	builder := components.NewUIBuilder()
-	
+
 	// Set header and footer using existing layout controller
 	// Note: layoutController would need to implement HeaderRenderer/FooterRenderer
 	// For now, we'll skip this
@@ -32,7 +32,7 @@ func NewRefactoredModel(existingModel *Model) *RefactoredModel {
 	//	builder.SetHeader(existingModel.layoutController)
 	//	builder.SetFooter(existingModel.layoutController)
 	// }
-	
+
 	// Add all views as adapters
 	builder.AddView(navigation.ViewProcesses, existingModel.processViewController)
 	builder.AddView(navigation.ViewLogs, existingModel.logsViewController)
@@ -40,14 +40,14 @@ func NewRefactoredModel(existingModel *Model) *RefactoredModel {
 	builder.AddView(navigation.ViewURLs, existingModel.urlsViewController)
 	builder.AddView(navigation.ViewWeb, existingModel.webViewController)
 	builder.AddView(navigation.ViewSettings, existingModel.settingsController)
-	
+
 	// Add overlays (will implement these as components later)
 	// builder.AddOverlay(systemPanelComponent)
 	// builder.AddOverlay(commandPaletteComponent)
-	
+
 	// Build the tree
 	root := builder.Build()
-	
+
 	return &RefactoredModel{
 		root:         root,
 		viewSwitcher: components.ExtractViewSwitcher(root),
@@ -64,21 +64,21 @@ func (m *RefactoredModel) Init() tea.Cmd {
 // Update handles all messages through the component tree
 func (m *RefactoredModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	
+
 	// Handle data updates through existing model
 	// This keeps all data communication unchanged
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		
+
 	// Handle view change messages if available
 	// case navigation.ChangeViewMsg:
 	//	// Switch view using component system
 	//	if m.viewSwitcher != nil {
 	//		m.viewSwitcher.SwitchTo(string(msg.View))
 	//	}
-		
+
 	default:
 		// Let existing model handle data events
 		newModel, cmd := m.model.Update(msg)
@@ -87,7 +87,7 @@ func (m *RefactoredModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	}
-	
+
 	// Let component tree handle UI updates
 	newRoot, cmd := m.root.Update(msg)
 	if c, ok := newRoot.(components.Component); ok {
@@ -96,7 +96,7 @@ func (m *RefactoredModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if cmd != nil {
 		cmds = append(cmds, cmd)
 	}
-	
+
 	return m, tea.Batch(cmds...)
 }
 
