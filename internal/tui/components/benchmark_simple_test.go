@@ -3,7 +3,7 @@ package components
 import (
 	"testing"
 	"time"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -18,11 +18,11 @@ func init() {
 func BenchmarkMinimalShellRender(b *testing.B) {
 	shell := NewMinimalShell()
 	shell.Init()
-	
+
 	// Set window size
 	sizeMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
 	model, _ := shell.Update(sizeMsg)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = model.View()
@@ -33,11 +33,11 @@ func BenchmarkMinimalShellRender(b *testing.B) {
 func BenchmarkMinimalShellViewSwitch(b *testing.B) {
 	shell := NewMinimalShell()
 	shell.Init()
-	
+
 	// Set window size
 	sizeMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
 	model, _ := shell.Update(sizeMsg)
-	
+
 	// Prepare key messages for switching views
 	keys := []tea.KeyMsg{
 		{Type: tea.KeyRunes, Runes: []rune{'1'}},
@@ -46,7 +46,7 @@ func BenchmarkMinimalShellViewSwitch(b *testing.B) {
 		{Type: tea.KeyRunes, Runes: []rune{'4'}},
 		{Type: tea.KeyRunes, Runes: []rune{'5'}},
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		msg := keys[i%len(keys)]
@@ -58,13 +58,13 @@ func BenchmarkMinimalShellViewSwitch(b *testing.B) {
 func BenchmarkMinimalShellTabNavigation(b *testing.B) {
 	shell := NewMinimalShell()
 	shell.Init()
-	
+
 	// Set window size
 	sizeMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
 	model, _ := shell.Update(sizeMsg)
-	
+
 	tabMsg := tea.KeyMsg{Type: tea.KeyTab}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		model, _ = model.Update(tabMsg)
@@ -75,13 +75,13 @@ func BenchmarkMinimalShellTabNavigation(b *testing.B) {
 func BenchmarkBoxLayoutRender(b *testing.B) {
 	layout := NewBoxLayout(Vertical)
 	layout.SetSize(80, 24)
-	
+
 	// Add children
 	for i := 0; i < 5; i++ {
 		child := &BaseComponent{width: 80, height: 4}
 		layout.AddChild(child, 0.2)
 	}
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = layout.View()
@@ -94,7 +94,7 @@ func BenchmarkBorderWindowRender(b *testing.B) {
 	window := NewBorderWindow(content)
 	window.SetSize(80, 24)
 	window.SetBorderStyle(lipgloss.NormalBorder())
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = window.View()
@@ -104,7 +104,7 @@ func BenchmarkBorderWindowRender(b *testing.B) {
 // BenchmarkStyleApplication benchmarks lipgloss style application
 func BenchmarkStyleApplication(b *testing.B) {
 	text := "Sample text for styling benchmark"
-	
+
 	style := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205")).
@@ -113,7 +113,7 @@ func BenchmarkStyleApplication(b *testing.B) {
 		Border(lipgloss.NormalBorder()).
 		Width(40).
 		Height(5)
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = style.Render(text)
@@ -124,11 +124,11 @@ func BenchmarkStyleApplication(b *testing.B) {
 func BenchmarkTabHighlighting(b *testing.B) {
 	tabs := []string{"[1] Processes", "[2] Logs", "[3] Errors", "[4] URLs", "[5] Web"}
 	activeIndex := 0
-	
+
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		activeIndex = (activeIndex + 1) % len(tabs)
-		
+
 		var tabLine []string
 		for j, tab := range tabs {
 			style := lipgloss.NewStyle().Padding(0, 1)
@@ -141,7 +141,7 @@ func BenchmarkTabHighlighting(b *testing.B) {
 			}
 			tabLine = append(tabLine, style.Render(tab))
 		}
-		
+
 		_ = lipgloss.JoinHorizontal(lipgloss.Top, tabLine...)
 	}
 }
@@ -159,7 +159,7 @@ func TestPerformanceBaseline(t *testing.T) {
 				shell := NewMinimalShell()
 				sizeMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
 				model, _ := shell.Update(sizeMsg)
-				
+
 				start := time.Now()
 				for i := 0; i < 1000; i++ {
 					_ = model.View()
@@ -174,7 +174,7 @@ func TestPerformanceBaseline(t *testing.T) {
 				shell := NewMinimalShell()
 				sizeMsg := tea.WindowSizeMsg{Width: 80, Height: 24}
 				model, _ := shell.Update(sizeMsg)
-				
+
 				start := time.Now()
 				m := model
 				for i := 0; i < 1000; i++ {
@@ -186,7 +186,7 @@ func TestPerformanceBaseline(t *testing.T) {
 			maxTime: 50 * time.Millisecond, // 0.05ms per switch
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			duration := tt.benchmark()
