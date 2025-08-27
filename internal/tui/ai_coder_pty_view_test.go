@@ -317,7 +317,7 @@ func TestAICoderPTYView_ScrollFunctionality(t *testing.T) {
 		// Create a mock session to test with
 		mockSession := &aicoder.PTYSession{ID: "test-session"}
 		view.currentSession = mockSession
-		
+
 		// Simulate PTY output message
 		view, _ = view.Update(PTYOutputMsg{
 			SessionID: "test-session",

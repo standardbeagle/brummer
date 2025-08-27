@@ -29,7 +29,7 @@ type PTYSession struct {
 	mu           sync.RWMutex
 	ctx          context.Context
 	cancel       context.CancelFunc
-	
+
 	// Terminal configuration state for cleanup
 	terminalState *terminalState
 
@@ -53,7 +53,7 @@ type PTYSession struct {
 	// Channel closing synchronization
 	closeOnce sync.Once
 	closed    bool
-	
+
 	// Memory monitoring for channel buffer sizes
 	channelMemoryStats struct {
 		outputChanSize int
@@ -201,7 +201,7 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 	// Start I/O goroutines
 	go session.readLoop()
 	go session.writeLoop()
-	
+
 	// Start periodic channel monitoring (every 30 seconds)
 	go session.channelMonitorLoop()
 
@@ -297,7 +297,7 @@ func (s *PTYSession) writeLoop() {
 				s.mu.RLock()
 				isClosed := s.closed
 				s.mu.RUnlock()
-				
+
 				if !isClosed {
 					select {
 					case s.EventChan <- PTYEvent{
@@ -316,7 +316,7 @@ func (s *PTYSession) writeLoop() {
 			s.mu.RLock()
 			isClosed := s.closed
 			s.mu.RUnlock()
-			
+
 			if !isClosed {
 				select {
 				case s.EventChan <- PTYEvent{
@@ -383,7 +383,7 @@ func (s *PTYSession) WriteInputNonBlocking(data []byte) error {
 	s.mu.RLock()
 	isClosed := s.closed
 	s.mu.RUnlock()
-	
+
 	if !isClosed {
 		select {
 		case s.EventChan <- PTYEvent{
@@ -711,7 +711,7 @@ func (s *PTYSession) logTerminalError(message string, err error, context map[str
 	s.mu.RLock()
 	isClosed := s.closed
 	s.mu.RUnlock()
-	
+
 	if !isClosed {
 		// Create structured log data
 		logData := make(map[string]interface{})
@@ -723,7 +723,7 @@ func (s *PTYSession) logTerminalError(message string, err error, context map[str
 		for k, v := range context {
 			logData[k] = v
 		}
-		
+
 		// Emit as debug event for monitoring (non-blocking)
 		select {
 		case s.EventChan <- PTYEvent{
@@ -742,16 +742,16 @@ func (s *PTYSession) logTerminalError(message string, err error, context map[str
 func (s *PTYSession) UpdateChannelStats() {
 	s.channelMemoryStats.mu.Lock()
 	defer s.channelMemoryStats.mu.Unlock()
-	
+
 	// Update current channel sizes
 	s.channelMemoryStats.outputChanSize = len(s.OutputChan)
 	s.channelMemoryStats.inputChanSize = len(s.InputChan)
 	s.channelMemoryStats.eventChanSize = len(s.EventChan)
 	s.channelMemoryStats.lastCheck = time.Now()
-	
+
 	// Log warning if any channel is getting full (>80% capacity)
 	const warningThreshold = 800 // 80% of 1000 buffer size
-	
+
 	if s.channelMemoryStats.outputChanSize > warningThreshold {
 		s.logTerminalError("output channel high usage", nil, map[string]interface{}{
 			"channel_size": s.channelMemoryStats.outputChanSize,
@@ -759,7 +759,7 @@ func (s *PTYSession) UpdateChannelStats() {
 			"usage_pct":    float64(s.channelMemoryStats.outputChanSize) / 10.0,
 		})
 	}
-	
+
 	if s.channelMemoryStats.inputChanSize > warningThreshold {
 		s.logTerminalError("input channel high usage", nil, map[string]interface{}{
 			"channel_size": s.channelMemoryStats.inputChanSize,
@@ -767,7 +767,7 @@ func (s *PTYSession) UpdateChannelStats() {
 			"usage_pct":    float64(s.channelMemoryStats.inputChanSize) / 10.0,
 		})
 	}
-	
+
 	if s.channelMemoryStats.eventChanSize > warningThreshold {
 		s.logTerminalError("event channel high usage", nil, map[string]interface{}{
 			"channel_size": s.channelMemoryStats.eventChanSize,
@@ -781,7 +781,7 @@ func (s *PTYSession) UpdateChannelStats() {
 func (s *PTYSession) GetChannelStats() (outputSize, inputSize, eventSize int, lastCheck time.Time) {
 	s.channelMemoryStats.mu.RLock()
 	defer s.channelMemoryStats.mu.RUnlock()
-	
+
 	return s.channelMemoryStats.outputChanSize,
 		s.channelMemoryStats.inputChanSize,
 		s.channelMemoryStats.eventChanSize,
@@ -792,7 +792,7 @@ func (s *PTYSession) GetChannelStats() (outputSize, inputSize, eventSize int, la
 func (s *PTYSession) channelMonitorLoop() {
 	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
 	defer ticker.Stop()
-	
+
 	for {
 		select {
 		case <-s.ctx.Done():
@@ -803,4 +803,3 @@ func (s *PTYSession) channelMonitorLoop() {
 		}
 	}
 }
-

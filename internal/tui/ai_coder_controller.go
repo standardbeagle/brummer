@@ -165,7 +165,7 @@ type AICoderController struct {
 	cancel context.CancelFunc
 
 	// Lock-free PTY monitoring only - legacy removed
-	
+
 	// Lock-free PTY manager (Phase 3 integration)
 	lockFreePTYManager *LockFreePTYManager
 }
@@ -188,7 +188,7 @@ func NewAICoderController(cfg *config.Config, eventBus *events.EventBus, logStor
 		ctx:        ctx,
 		cancel:     cancel,
 	}
-	
+
 	// Phase 3: Initialize lock-free PTY manager for 30-300x performance improvement
 	// This replaces channel-based PTY monitoring with atomic operations and ring buffers
 	// Key benefits:
@@ -593,7 +593,6 @@ func (c *AICoderController) CreateTerminalSession() error {
 	return nil
 }
 
-
 // startPTYMonitoring starts PTY monitoring using lock-free architecture ONLY
 func (c *AICoderController) startPTYMonitoring(session *aicoder.PTYSession) {
 	// Phase 3: ONLY use lock-free PTY manager - no legacy fallback
@@ -601,18 +600,15 @@ func (c *AICoderController) startPTYMonitoring(session *aicoder.PTYSession) {
 		c.logStore.Add("system", "System", "Critical error: lock-free PTY manager not initialized", true)
 		return
 	}
-	
+
 	err := c.lockFreePTYManager.StartSession(session)
 	if err != nil {
 		c.logStore.Add("system", "System", fmt.Sprintf("Failed to start lock-free PTY monitoring for session %s: %v", session.ID, err), true)
 		return
 	}
-	
+
 	c.logStore.Add("system", "System", fmt.Sprintf("Started lock-free PTY monitoring for session %s", session.ID), false)
 }
-
-
-
 
 // stopPTYMonitoring stops monitoring for a specific session
 func (c *AICoderController) stopPTYMonitoring(sessionID string) {
@@ -621,7 +617,7 @@ func (c *AICoderController) stopPTYMonitoring(sessionID string) {
 		c.logStore.Add("system", "System", "Lock-free PTY manager not available for stopping session", true)
 		return
 	}
-	
+
 	err := c.lockFreePTYManager.StopSession(sessionID)
 	if err != nil {
 		c.logStore.Add("system", "System", fmt.Sprintf("Failed to stop lock-free PTY monitoring for session %s: %v", sessionID, err), true)
@@ -646,10 +642,9 @@ func (c *AICoderController) Shutdown() {
 	if c.lockFreePTYManager != nil {
 		c.lockFreePTYManager.Shutdown()
 	}
-	
+
 	// Cancel context to stop all goroutines
 	c.cancel()
-	
+
 	c.logStore.Add("system", "System", "AI Coder Controller shutdown complete", false)
 }
-
