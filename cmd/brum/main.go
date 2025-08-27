@@ -21,6 +21,7 @@ import (
 	"github.com/standardbeagle/brummer/internal/discovery"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
+	"github.com/standardbeagle/brummer/internal/parser"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui"
@@ -312,8 +313,11 @@ func runApp(cmd *cobra.Command, args []string) {
 		if hasPackageJSON {
 			scripts := processMgr.GetScripts()
 
+			// Detect project commands for better script resolution
+			projectCommands := parser.DetectProjectCommands(absWorkDir)
+			
 			for _, arg := range args {
-				// Check if it's a known script
+				// Check if it's a known script in package.json
 				if _, exists := scripts[arg]; exists {
 					// Start the script
 					proc, err := processMgr.StartScript(arg)
@@ -333,7 +337,41 @@ func runApp(cmd *cobra.Command, args []string) {
 					continue
 				}
 
-				// Fallback to command execution if not a script
+				// Check if it's a detected project command (from other build systems)
+				var foundProjectCommand bool
+				for _, cmd := range projectCommands {
+					// Match by the command name or a simplified version
+					if cmd.Name == arg || 
+					   strings.HasSuffix(cmd.Name, " "+arg) || // e.g., "rails server" matches "server"
+					   (cmd.Category == "Rails" && arg == "server") || // Special case for Rails
+					   (cmd.Category == "Maven" && arg == "compile") || // Maven commands
+					   (cmd.Category == "Gradle" && arg == "build") { // Gradle commands
+						
+						// Execute the detected command
+						proc, err := processMgr.StartCommand(arg, cmd.Command, cmd.Args)
+						if err != nil {
+							if noTUI {
+								log.Printf("Failed to start %s command '%s': %v", cmd.Category, arg, err)
+							} else {
+								logStore.Add("system", "startup", fmt.Sprintf("❌ Failed to start %s command '%s': %v", cmd.Category, arg, err), true)
+							}
+						} else {
+							if noTUI {
+								fmt.Printf("Started %s command '%s' (PID: %s)\n", cmd.Category, arg, proc.ID)
+							} else {
+								logStore.Add("system", "startup", fmt.Sprintf("✅ Started %s command '%s' (PID: %s)", cmd.Category, arg, proc.ID), false)
+							}
+						}
+						foundProjectCommand = true
+						break
+					}
+				}
+				
+				if foundProjectCommand {
+					continue
+				}
+
+				// Fallback to command execution if not a script or project command
 				if len(args) == 1 && strings.Contains(arg, " ") {
 					// Single argument with spaces - treat as a command
 					parts := strings.Fields(arg)
@@ -368,8 +406,45 @@ func runApp(cmd *cobra.Command, args []string) {
 				}
 			}
 		} else {
-			// No package.json - treat all args as commands
+			// No package.json - check for other project types
+			projectCommands := parser.DetectProjectCommands(absWorkDir)
+			
 			for _, arg := range args {
+				// Check if it's a detected project command
+				var foundProjectCommand bool
+				for _, cmd := range projectCommands {
+					// Match by the command name or a simplified version
+					if cmd.Name == arg || 
+					   strings.HasSuffix(cmd.Name, " "+arg) || // e.g., "rails server" matches "server"
+					   (cmd.Category == "Ruby" && arg == "server") || // Special case for Rails
+					   (cmd.Category == "Maven" && arg == "compile") || // Maven commands
+					   (cmd.Category == "Gradle" && arg == "build") { // Gradle commands
+						
+						// Execute the detected command
+						proc, err := processMgr.StartCommand(arg, cmd.Command, cmd.Args)
+						if err != nil {
+							if noTUI {
+								log.Printf("Failed to start %s command '%s': %v", cmd.Category, arg, err)
+							} else {
+								logStore.Add("system", "startup", fmt.Sprintf("❌ Failed to start %s command '%s': %v", cmd.Category, arg, err), true)
+							}
+						} else {
+							if noTUI {
+								fmt.Printf("Started %s command '%s' (PID: %s)\n", cmd.Category, arg, proc.ID)
+							} else {
+								logStore.Add("system", "startup", fmt.Sprintf("✅ Started %s command '%s' (PID: %s)", cmd.Category, arg, proc.ID), false)
+							}
+						}
+						foundProjectCommand = true
+						break
+					}
+				}
+				
+				if foundProjectCommand {
+					continue
+				}
+				
+				// Now try original fallback logic
 				if len(args) == 1 && strings.Contains(arg, " ") {
 					// Single argument with spaces - treat as a command
 					parts := strings.Fields(arg)
