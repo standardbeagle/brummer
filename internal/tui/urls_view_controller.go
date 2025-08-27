@@ -16,8 +16,8 @@ type URLsViewController struct {
 	ShowingMCPHelp bool // Exported for access from Model
 
 	// Dependencies injected from parent Model
-	logStore     *logs.Store
-	mcpServer    MCPServerInterface
+	logStore  *logs.Store
+	mcpServer MCPServerInterface
 }
 
 // NewURLsViewController creates a new URLs view controller
@@ -28,7 +28,6 @@ func NewURLsViewController(logStore *logs.Store, mcpServer MCPServerInterface) *
 		mcpServer:    mcpServer,
 	}
 }
-
 
 // ToggleMCPHelp toggles the MCP help display
 func (v *URLsViewController) ToggleMCPHelp() {

@@ -55,7 +55,6 @@ func NewProcessViewController(processMgr *process.Manager) *ProcessViewControlle
 	}
 }
 
-
 // SetSelectedProcess sets the currently selected process
 func (v *ProcessViewController) SetSelectedProcess(processID string) {
 	v.selectedProcess = processID

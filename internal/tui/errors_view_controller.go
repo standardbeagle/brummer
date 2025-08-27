@@ -47,7 +47,7 @@ type ErrorsViewController struct {
 	lastErrorCount  int
 
 	// Dependencies injected from parent Model
-	logStore     *logs.Store
+	logStore *logs.Store
 }
 
 // NewErrorsViewController creates a new errors view controller
@@ -64,7 +64,6 @@ func NewErrorsViewController(logStore *logs.Store) *ErrorsViewController {
 		logStore:        logStore,
 	}
 }
-
 
 // GetErrorsViewport returns the errors viewport for direct manipulation
 func (v *ErrorsViewController) GetErrorsViewport() *viewport.Model {

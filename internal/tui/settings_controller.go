@@ -45,7 +45,6 @@ func NewSettingsController(cfg *config.Config, mcpServer MCPServerInterface, pro
 	}
 }
 
-
 // GetSettingsListPointer returns a pointer to the settings list (for backward compatibility)
 func (s *SettingsController) GetSettingsListPointer() *list.Model {
 	return &s.settingsList

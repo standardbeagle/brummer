@@ -161,7 +161,7 @@ type WebViewController struct {
 	lastWebCount      int
 
 	// Dependencies injected from parent Model
-	proxyServer  *proxy.Server
+	proxyServer *proxy.Server
 }
 
 // NewWebViewController creates a new web view controller
@@ -182,7 +182,6 @@ func NewWebViewController(proxyServer *proxy.Server) *WebViewController {
 		proxyServer:       proxyServer,
 	}
 }
-
 
 // SetWebFilter sets the current web filter
 func (v *WebViewController) SetWebFilter(filter string) {
