@@ -3,11 +3,11 @@ package components
 import (
 	"fmt"
 	"strings"
-	
-	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/table"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -15,16 +15,16 @@ import (
 // with Bubbles components in our component system
 type MigratedProcessView struct {
 	BaseComponent
-	
+
 	// Use Bubbles table for process list
 	processTable *BubblesTableAdapter
-	
+
 	// Use Bubbles viewport for process output
 	outputView *BubblesViewportAdapter
-	
+
 	// Layout to arrange them
 	layout *BoxLayout
-	
+
 	// Data source (would come from process manager)
 	processes []ProcessInfo
 }
@@ -48,29 +48,29 @@ func NewMigratedProcessView() *MigratedProcessView {
 		{Title: "CPU", Width: 10},
 		{Title: "Memory", Width: 10},
 	}
-	
+
 	// Sample data (would come from process manager)
 	rows := []table.Row{
 		{"dev-1234", "npm run dev", "running", "2.3%", "45MB"},
 		{"test-5678", "npm test", "stopped", "0%", "0MB"},
 	}
-	
+
 	processTable := NewBubblesTableAdapter(columns, rows)
-	
+
 	// Create viewport for output
 	outputView := NewBubblesViewportAdapter()
 	outputView.SetContent("Process output will appear here...")
-	
+
 	// Arrange in layout
 	layout := NewBoxLayout(Vertical)
-	layout.AddChild(processTable, 0.4)  // 40% for process list
-	layout.AddChild(outputView, 0.6)    // 60% for output
-	
+	layout.AddChild(processTable, 0.4) // 40% for process list
+	layout.AddChild(outputView, 0.6)   // 60% for output
+
 	return &MigratedProcessView{
 		BaseComponent: BaseComponent{visible: true},
-		processTable: processTable,
-		outputView: outputView,
-		layout: layout,
+		processTable:  processTable,
+		outputView:    outputView,
+		layout:        layout,
 	}
 }
 
@@ -107,21 +107,21 @@ func (v *MigratedProcessView) UpdateProcesses(processes []ProcessInfo) {
 // MigratedLogsView shows how LogsViewController can use Bubbles
 type MigratedLogsView struct {
 	BaseComponent
-	
+
 	// Use Bubbles viewport for logs
 	viewport *viewport.Model
-	
+
 	// Filters using Bubbles list
 	filterList *BubblesListAdapter
-	
+
 	// Search using Bubbles text input
 	searchInput *BubblesTextInputAdapter
-	
+
 	// Layout
 	layout *BoxLayout
-	
+
 	// Log content
-	logs []string
+	logs     []string
 	filtered []string
 }
 
@@ -130,7 +130,7 @@ func NewMigratedLogsView() *MigratedLogsView {
 	// Create viewport for logs
 	vp := viewport.New(80, 20)
 	vp.SetContent("Logs loading...")
-	
+
 	// Create filter list
 	filterItems := []list.Item{
 		simpleItem("All"),
@@ -140,30 +140,30 @@ func NewMigratedLogsView() *MigratedLogsView {
 		simpleItem("Debug"),
 	}
 	filterList := NewBubblesListAdapter("Log Level", filterItems)
-	
+
 	// Create search input
 	searchInput := NewBubblesTextInputAdapter("Search logs...", nil)
-	
+
 	// Create layout
 	layout := NewBoxLayout(Horizontal)
-	
+
 	// Left side: filters and search
 	leftPanel := NewBoxLayout(Vertical)
 	leftPanel.AddChild(filterList, 0.7)
 	leftPanel.AddChild(searchInput, 0.3)
-	
+
 	// Add to main layout
-	layout.AddChild(leftPanel, 0.3)    // 30% for controls
-	layout.AddChild(&viewportAdapter{viewport: &vp}, 0.7)  // 70% for logs
-	
+	layout.AddChild(leftPanel, 0.3)                       // 30% for controls
+	layout.AddChild(&viewportAdapter{viewport: &vp}, 0.7) // 70% for logs
+
 	return &MigratedLogsView{
 		BaseComponent: BaseComponent{visible: true},
-		viewport: &vp,
-		filterList: filterList,
-		searchInput: searchInput,
-		layout: layout,
-		logs: []string{},
-		filtered: []string{},
+		viewport:      &vp,
+		filterList:    filterList,
+		searchInput:   searchInput,
+		layout:        layout,
+		logs:          []string{},
+		filtered:      []string{},
 	}
 }
 
@@ -223,13 +223,13 @@ func (a *viewportAdapter) SetSize(width, height int) {
 // MigratedErrorsView demonstrates error view with Bubbles
 type MigratedErrorsView struct {
 	BaseComponent
-	
+
 	// Error list using Bubbles list with custom rendering
 	errorList *list.Model
-	
+
 	// Details viewport
 	detailsView *viewport.Model
-	
+
 	// Layout
 	layout *BoxLayout
 }
@@ -243,8 +243,10 @@ type ErrorItem struct {
 	Timestamp string
 }
 
-func (e ErrorItem) Title() string       { return e.Message }
-func (e ErrorItem) Description() string { return fmt.Sprintf("%s:%d - %s", e.File, e.Line, e.Timestamp) }
+func (e ErrorItem) Title() string { return e.Message }
+func (e ErrorItem) Description() string {
+	return fmt.Sprintf("%s:%d - %s", e.File, e.Line, e.Timestamp)
+}
 func (e ErrorItem) FilterValue() string { return e.Message }
 
 // NewMigratedErrorsView creates an errors view using Bubbles
@@ -254,42 +256,42 @@ func NewMigratedErrorsView() *MigratedErrorsView {
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.
 		Foreground(lipgloss.Color("196")).
 		BorderForeground(lipgloss.Color("196"))
-	
+
 	// Create error list
 	errorItems := []list.Item{
 		ErrorItem{
-			Level: "error",
-			Message: "Connection timeout",
-			File: "server.js",
-			Line: 42,
+			Level:     "error",
+			Message:   "Connection timeout",
+			File:      "server.js",
+			Line:      42,
 			Timestamp: "10:23:45",
 		},
 		ErrorItem{
-			Level: "warning",
-			Message: "Deprecated API usage",
-			File: "api.js",
-			Line: 17,
+			Level:     "warning",
+			Message:   "Deprecated API usage",
+			File:      "api.js",
+			Line:      17,
 			Timestamp: "10:24:12",
 		},
 	}
-	
+
 	errorList := list.New(errorItems, delegate, 0, 0)
 	errorList.Title = "Errors & Warnings"
-	
+
 	// Create details viewport
 	detailsView := viewport.New(80, 10)
 	detailsView.SetContent("Select an error to see details...")
-	
+
 	// Layout
 	layout := NewBoxLayout(Vertical)
 	layout.AddChild(&listAdapter{list: &errorList}, 0.6)
 	layout.AddChild(&viewportAdapter{viewport: &detailsView}, 0.4)
-	
+
 	return &MigratedErrorsView{
 		BaseComponent: BaseComponent{visible: true},
-		errorList: &errorList,
-		detailsView: &detailsView,
-		layout: layout,
+		errorList:     &errorList,
+		detailsView:   &detailsView,
+		layout:        layout,
 	}
 }
 
@@ -396,27 +398,27 @@ func (m MigrationBenefits) Document() string {
 func ExampleMigrationStrategy() Component {
 	// Phase 1: Wrap existing controllers with ViewAdapter
 	// (Already done)
-	
+
 	// Phase 2: Replace internals with Bubbles components
 	// Start with simple views like URLs, Settings
-	
+
 	// Phase 3: Migrate complex views
 	// ProcessView, LogsView using composition
-	
+
 	// Phase 4: Add new features using Bubbles
 	// Command palette with list
 	// Search with textinput
 	// Progress bars for long operations
-	
+
 	// Example of mixed old/new
 	layout := NewBoxLayout(Vertical)
-	
+
 	// Old controller wrapped
 	// layout.AddChild(NewViewAdapter(existingController), 0.5)
-	
+
 	// New Bubbles-based view
 	layout.AddChild(NewMigratedProcessView(), 0.5)
-	
+
 	return layout
 }
 
@@ -424,10 +426,10 @@ func ExampleMigrationStrategy() Component {
 func RealWorldExample() Component {
 	// Main layout
 	main := NewBoxLayout(Horizontal)
-	
+
 	// Sidebar with navigation
 	sidebar := NewBoxLayout(Vertical)
-	
+
 	// Navigation list
 	navItems := []list.Item{
 		simpleItem("Processes"),
@@ -438,7 +440,7 @@ func RealWorldExample() Component {
 	}
 	nav := NewBubblesListAdapter("Views", navItems)
 	sidebar.AddChild(nav, 0.3)
-	
+
 	// Quick actions
 	actionItems := []list.Item{
 		simpleItem("Start All"),
@@ -448,29 +450,29 @@ func RealWorldExample() Component {
 	}
 	actions := NewBubblesListAdapter("Actions", actionItems)
 	sidebar.AddChild(actions, 0.3)
-	
+
 	// Status
 	status := NewBubblesProgressAdapter("CPU Usage")
 	status.SetPercent(0.45)
 	sidebar.AddChild(status, 0.4)
-	
+
 	// Content area with view switcher
 	content := NewViewSwitcher()
 	content.AddView("processes", NewMigratedProcessView())
 	content.AddView("logs", NewMigratedLogsView())
 	content.AddView("errors", NewMigratedErrorsView())
-	
+
 	// Compose
-	main.AddChild(sidebar, 0.2)   // 20% for sidebar
-	main.AddChild(content, 0.8)   // 80% for content
-	
+	main.AddChild(sidebar, 0.2) // 20% for sidebar
+	main.AddChild(content, 0.8) // 80% for content
+
 	// Add overlay support
 	root := NewStackLayout()
 	root.AddLayer(main)
-	
+
 	// Command palette overlay (hidden by default)
 	cmdPalette := NewCommandPalette(nil)
 	root.AddLayer(cmdPalette)
-	
+
 	return root
 }

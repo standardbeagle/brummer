@@ -3,7 +3,7 @@ package components
 import (
 	"fmt"
 	"time"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -124,7 +124,7 @@ func (m *ExampleUsageModel) simulateEvents() tea.Cmd {
 			{Type: "ai_event", Message: "AI Coder session started"},
 			{Type: "settings", Message: "Theme changed to dark"},
 		}
-		
+
 		// Pick a random event
 		event := events[int(t.Unix())%len(events)]
 		event.Time = t
@@ -137,14 +137,14 @@ func (m *ExampleUsageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case SimulatedEvent:
 		// Log the event
-		m.eventLog = append(m.eventLog, fmt.Sprintf("[%s] %s", 
+		m.eventLog = append(m.eventLog, fmt.Sprintf("[%s] %s",
 			msg.Time.Format("15:04:05"), msg.Message))
-		
+
 		// Keep only last 10 events
 		if len(m.eventLog) > 10 {
 			m.eventLog = m.eventLog[1:]
 		}
-		
+
 		// Trigger appropriate notification
 		switch msg.Type {
 		case "process_start":
@@ -168,10 +168,10 @@ func (m *ExampleUsageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "settings":
 			m.notifMgr.SettingsChanged("theme")
 		}
-		
+
 		// Continue simulating events
 		return m, m.simulateEvents()
-		
+
 	default:
 		// Pass through to shell
 		newShell, cmd := m.shell.Update(msg)
@@ -183,7 +183,7 @@ func (m *ExampleUsageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 // View renders the example model
 func (m *ExampleUsageModel) View() string {
 	shellView := m.shell.View()
-	
+
 	// Add event log overlay
 	if len(m.eventLog) > 0 {
 		eventLogStr := "\n\n--- Recent Events ---\n"
@@ -192,7 +192,7 @@ func (m *ExampleUsageModel) View() string {
 		}
 		shellView += eventLogStr
 	}
-	
+
 	return shellView
 }
 
@@ -200,16 +200,16 @@ func (m *ExampleUsageModel) View() string {
 func IntegrateWithMinimalShell(shell *MinimalShell) {
 	// Example of adding notifications to MinimalShell
 	// This would typically be called from event handlers
-	
+
 	// Add error notification
 	shell.notifications["errors"] = 5
-	
+
 	// Add log notification
 	shell.notifications["logs"] = 12
-	
+
 	// Add URL notification
 	shell.notifications["urls"] = 3
-	
+
 	// Clear notifications for current view
 	delete(shell.notifications, shell.currentView)
 }
@@ -218,16 +218,16 @@ func IntegrateWithMinimalShell(shell *MinimalShell) {
 type NotificationConfig struct {
 	// EnableSound plays a sound for critical notifications
 	EnableSound bool
-	
+
 	// AutoClear automatically clears notifications after a timeout
 	AutoClear bool
-	
+
 	// AutoClearTimeout duration before clearing notifications
 	AutoClearTimeout time.Duration
-	
+
 	// MaxNotifications maximum notifications to show per tab
 	MaxNotifications int
-	
+
 	// PriorityColors custom colors for different severities
 	PriorityColors map[string]string
 }

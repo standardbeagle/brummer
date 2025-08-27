@@ -52,38 +52,38 @@ func (b *UIBuilder) Build() Component {
 		adapter := NewViewAdapter(string(view), renderer)
 		viewSwitcher.AddView(string(view), adapter)
 	}
-	
+
 	// Create the main layout
 	mainLayout := NewBoxLayout(Vertical)
-	
+
 	// Add header if present
 	if b.headerRenderer != nil {
 		header := NewHeader(b.headerRenderer)
 		mainLayout.AddChild(header, 0) // Fixed size
 	}
-	
+
 	// Add main content (view switcher)
 	mainLayout.AddChild(viewSwitcher, 1.0) // Flexible size
-	
+
 	// Add footer if present
 	if b.footerRenderer != nil {
 		footer := NewFooter(b.footerRenderer)
 		mainLayout.AddChild(footer, 0) // Fixed size
 	}
-	
+
 	// If there are overlays, wrap in a stack layout
 	if len(b.overlays) > 0 {
 		stack := NewStackLayout()
 		stack.AddLayer(mainLayout) // Base layer
-		
+
 		// Add overlay layers
 		for _, overlay := range b.overlays {
 			stack.AddLayer(overlay)
 		}
-		
+
 		return stack
 	}
-	
+
 	return mainLayout
 }
 
