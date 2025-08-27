@@ -29,7 +29,7 @@ func main() {
 
 	// Create event bus
 	eventBus := &events.EventBus{}
-	
+
 	// Create process manager
 	processMgr, err := process.NewManager(dir, eventBus, true)
 	if err != nil {

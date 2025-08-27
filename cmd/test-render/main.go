@@ -36,7 +36,7 @@ func main() {
 
 	// Create event bus
 	eventBus := &events.EventBus{}
-	
+
 	// Create process manager
 	processMgr, err := process.NewManager(dir, eventBus, hasPackageJSON)
 	if err != nil {
@@ -54,13 +54,13 @@ func main() {
 	fmt.Println("=== Integrated Shell Render Test ===")
 	fmt.Println(shell.View())
 	fmt.Println("\n=== Process View Component Test ===")
-	
+
 	// Create standalone process view
 	processView := components.NewProcessViewNew(processMgr)
 	processView.SetSize(78, 20) // Account for borders
-	
+
 	fmt.Println(processView.View())
-	
+
 	fmt.Println("\n=== Test Complete ===")
 	fmt.Println("The integrated shell and process view components compiled and rendered successfully!")
 }
