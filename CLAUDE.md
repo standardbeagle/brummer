@@ -6,18 +6,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ⚠️ **CRITICAL INSTRUCTION**: Always update this section when working on tasks to maintain continuity between sessions.
 
-- **Current State**: Stable codebase with component-based TUI system
-- **Recent Work**: Component system implementation with tab navigation and visual highlighting
-- **Architecture**: Event-driven with Process Manager, Hub System, Proxy Server, and Component-based TUI
-- **Branch**: main (stable)
+- **Current State**: MIGRATION IN PROGRESS - Component system exists but is NOT enabled by default
+- **Default UI**: Still using monolithic Model (traditional TUI) - this is what users see
+- **Component System**: Built but requires `BRUMMER_USE_COMPONENTS=true` to activate
+- **Migration Status**: ~40% complete - components built, tests written, but not integrated as default
+- **Branch**: main (has uncommitted changes - 66 files modified)
+
+### ACTUAL Current State:
+- **DEFAULT MODE**: Traditional monolithic TUI (internal/tui/model.go)
+- **COMPONENT MODE**: Must set `BRUMMER_USE_COMPONENTS=true` to use new architecture
+- **MAIN ENTRY**: cmd/brum/main.go line 579 checks for component flag
+- **COMPONENT IMPL**: internal/tui/components/integrated_shell.go (when enabled)
+- **BRIDGE**: internal/tui/model_with_components.go wraps old model with optional components
 
 ### Major Completed Work:
-- ✅ Message Router pattern implementation for TUI model refactoring
+- ✅ Component system built (IntegratedShell, ProcessViewNew, LogsViewComponent)
+- ✅ Test harness and tests written for components
+- ✅ Race conditions fixed in component tests
 - ✅ Lock-free architecture with atomic operations (30-300x performance improvement)
 - ✅ AI Coder foundation with tmux-style interactive coding sessions
 - ✅ Hub mode for multi-instance coordination via MCP
 - ✅ Comprehensive MCP server with browser automation and telemetry
-- ✅ Component-based TUI system with gradual migration support
+- ⚠️ Component-based TUI system exists but NOT DEFAULT
 
 ### Next Agent Instructions:
 - **ALWAYS check this status section first** to understand current work context
