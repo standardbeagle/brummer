@@ -1,0 +1,1 @@
+{"name":"test","scripts":{"hello":"echo Hello World && echo Second Line && echo Third Line"}}
