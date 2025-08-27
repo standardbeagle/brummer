@@ -49,7 +49,7 @@ const (
 	ViewFilters        = navigation.ViewFilters
 	ViewScriptSelector = navigation.ViewScriptSelector
 	ViewAICoders       = navigation.ViewAICoders
-	
+
 	// AICoderMinTerminalWidth is the minimum width needed for three-pane layout
 	AICoderMinTerminalWidth = 120
 )
@@ -836,7 +836,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Always trigger a view update when PTY output arrives
 		cmds = append(cmds, m.waitForUpdates())
-		
+
 	case BatchPTYMsg:
 		// Handle batched PTY messages from lock-free architecture (Phase 3)
 		if m.currentView() == ViewAICoders && m.aiCoderController != nil {
@@ -1516,7 +1516,7 @@ func (m *Model) handleProxyCommand(urlStr string) {
 	// Log successful registration
 	m.logStore.Add("system", "System", fmt.Sprintf("🚀 Proxy registered: %s → %s", urlStr, proxyURL), false)
 	m.logStore.Add("system", "System", fmt.Sprintf("🔗 Access your app at: %s", proxyURL), false)
-	
+
 	// Switch to web view to show the new proxy
 	m.navController.SwitchTo(ViewWeb)
 }
@@ -1542,7 +1542,7 @@ func (m *Model) listProxies() {
 		}
 		m.logStore.Add("system", "System", fmt.Sprintf("  %d. %s → %s [%s]", i+1, mapping.TargetURL, mapping.ProxyURL, label), false)
 	}
-	
+
 	// Switch to web view to show proxy mappings
 	m.navController.SwitchTo(ViewWeb)
 }

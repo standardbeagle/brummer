@@ -28,7 +28,7 @@ const (
 
 	// Update channel buffer size - EMERGENCY FIX for AI coder PTY output saturation
 	// TODO: Replace with lock-free ring buffer (see race analysis)
-	UpdateChannelBufferSize = 10000  // Increased 100x to prevent channel blocking
+	UpdateChannelBufferSize = 10000 // Increased 100x to prevent channel blocking
 )
 
 // Time constants
