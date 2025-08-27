@@ -2,9 +2,9 @@ package components
 
 import (
 	"strings"
-	
-	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -17,17 +17,17 @@ type CommandHandler interface {
 // CommandPalette is an overlay for command input
 type CommandPalette struct {
 	Window
-	
+
 	// Input field
-	input       textinput.Model
-	
+	input textinput.Model
+
 	// Command handling
-	handler     CommandHandler
-	
+	handler CommandHandler
+
 	// Suggestions
 	suggestions []string
 	selectedIdx int
-	
+
 	// Styling
 	inputStyle      lipgloss.Style
 	suggestionStyle lipgloss.Style
@@ -40,7 +40,7 @@ func NewCommandPalette(handler CommandHandler) *CommandPalette {
 	input.Placeholder = "Type a command..."
 	input.CharLimit = 256
 	input.Width = 50
-	
+
 	// Create content wrapper
 	palette := &CommandPalette{
 		Window:          *NewWindow("Command", nil), // We'll render content directly
@@ -52,16 +52,16 @@ func NewCommandPalette(handler CommandHandler) *CommandPalette {
 		suggestionStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
 		selectedStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("86")).Bold(true),
 	}
-	
+
 	// Configure window
 	palette.SetModal(true) // Modal to capture input
 	palette.borderStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("86"))
-	
+
 	// Set a reasonable size
 	palette.SetSize(60, 20)
-	
+
 	return palette
 }
 
@@ -92,16 +92,16 @@ func (c *CommandPalette) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !c.visible {
 		return c, nil
 	}
-	
+
 	var cmds []tea.Cmd
-	
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "esc":
 			c.Hide()
 			return c, nil
-			
+
 		case "enter":
 			// Execute command
 			if c.input.Value() != "" {
@@ -112,7 +112,7 @@ func (c *CommandPalette) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return c, nil
-			
+
 		case "tab", "down":
 			// Next suggestion
 			if len(c.suggestions) > 0 {
@@ -120,7 +120,7 @@ func (c *CommandPalette) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				c.input.SetValue(c.suggestions[c.selectedIdx])
 			}
 			return c, nil
-			
+
 		case "shift+tab", "up":
 			// Previous suggestion
 			if len(c.suggestions) > 0 {
@@ -133,12 +133,12 @@ func (c *CommandPalette) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return c, nil
 		}
 	}
-	
+
 	// Update input
 	var cmd tea.Cmd
 	c.input, cmd = c.input.Update(msg)
 	cmds = append(cmds, cmd)
-	
+
 	// Update suggestions based on input
 	if c.handler != nil && c.input.Value() != "" {
 		c.suggestions = c.handler.GetSuggestions(c.input.Value())
@@ -148,7 +148,7 @@ func (c *CommandPalette) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	} else {
 		c.suggestions = []string{}
 	}
-	
+
 	return c, tea.Batch(cmds...)
 }
 
@@ -157,25 +157,25 @@ func (c *CommandPalette) View() string {
 	if !c.visible {
 		return ""
 	}
-	
+
 	var content strings.Builder
-	
+
 	// Render input field
 	content.WriteString(c.inputStyle.Render("> "))
 	content.WriteString(c.input.View())
 	content.WriteString("\n")
-	
+
 	// Render suggestions
 	if len(c.suggestions) > 0 {
 		content.WriteString("\n")
 		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Render("Suggestions:"))
 		content.WriteString("\n")
-		
+
 		for i, suggestion := range c.suggestions {
 			if i >= 10 {
 				break // Limit to 10 suggestions
 			}
-			
+
 			if i == c.selectedIdx {
 				content.WriteString(c.selectedStyle.Render("  → " + suggestion))
 			} else {
@@ -184,13 +184,13 @@ func (c *CommandPalette) View() string {
 			content.WriteString("\n")
 		}
 	}
-	
+
 	// Apply window styling
 	styled := c.borderStyle.
 		Width(c.width).
 		Padding(1, 2).
 		Render(content.String())
-	
+
 	// Center in screen
 	return lipgloss.Place(
 		c.width,

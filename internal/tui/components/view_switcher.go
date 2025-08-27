@@ -16,7 +16,7 @@ type ViewSwitcher struct {
 func NewViewSwitcher() *ViewSwitcher {
 	return &ViewSwitcher{
 		BaseComponent: BaseComponent{visible: true},
-		views:        make(map[string]Component),
+		views:         make(map[string]Component),
 	}
 }
 
@@ -35,16 +35,16 @@ func (v *ViewSwitcher) SwitchTo(name string) {
 		if v.current != nil {
 			v.current.Blur()
 		}
-		
+
 		// Switch to new view
 		v.currentView = name
 		v.current = component
-		
+
 		// Size the new view
 		if sizable, ok := v.current.(Sizable); ok {
 			sizable.SetSize(v.width, v.height)
 		}
-		
+
 		// Focus the new view if we have focus
 		if v.focused {
 			v.current.Focus()
@@ -67,7 +67,7 @@ func (v *ViewSwitcher) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			sizable.SetSize(msg.Width, msg.Height)
 		}
 	}
-	
+
 	// Update current view
 	if v.current != nil {
 		newCurrent, cmd := v.current.Update(msg)
@@ -77,7 +77,7 @@ func (v *ViewSwitcher) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return v, cmd
 	}
-	
+
 	return v, nil
 }
 

@@ -7,9 +7,9 @@ import (
 // FocusChain manages focus between multiple components
 type FocusChain struct {
 	BaseComponent
-	components   []Component
-	focusIndex   int
-	wrapAround   bool
+	components []Component
+	focusIndex int
+	wrapAround bool
 }
 
 // NewFocusChain creates a new focus chain
@@ -36,7 +36,7 @@ func (f *FocusChain) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if len(f.components) == 0 {
 		return f, nil
 	}
-	
+
 	// Handle resize for all components
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -47,7 +47,7 @@ func (f *FocusChain) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	// Handle focus navigation
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -58,7 +58,7 @@ func (f *FocusChain) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return f, f.focusPrevious()
 		}
 	}
-	
+
 	// Update all components, but only the focused one gets input messages
 	var cmds []tea.Cmd
 	for i, comp := range f.components {
@@ -73,7 +73,7 @@ func (f *FocusChain) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	return f, tea.Batch(cmds...)
 }
 
@@ -84,7 +84,7 @@ func (f *FocusChain) View() string {
 	if !f.visible || len(f.components) == 0 {
 		return ""
 	}
-	
+
 	layout := NewBoxLayout(Vertical)
 	for _, comp := range f.components {
 		layout.AddChild(comp, 1.0) // Equal weight
@@ -98,10 +98,10 @@ func (f *FocusChain) focusNext() tea.Cmd {
 	if len(f.components) == 0 {
 		return nil
 	}
-	
+
 	// Blur current
 	f.components[f.focusIndex].Blur()
-	
+
 	// Move to next
 	f.focusIndex++
 	if f.focusIndex >= len(f.components) {
@@ -111,7 +111,7 @@ func (f *FocusChain) focusNext() tea.Cmd {
 			f.focusIndex = len(f.components) - 1
 		}
 	}
-	
+
 	// Focus new
 	return f.components[f.focusIndex].Focus()
 }
@@ -121,10 +121,10 @@ func (f *FocusChain) focusPrevious() tea.Cmd {
 	if len(f.components) == 0 {
 		return nil
 	}
-	
+
 	// Blur current
 	f.components[f.focusIndex].Blur()
-	
+
 	// Move to previous
 	f.focusIndex--
 	if f.focusIndex < 0 {
@@ -134,7 +134,7 @@ func (f *FocusChain) focusPrevious() tea.Cmd {
 			f.focusIndex = 0
 		}
 	}
-	
+
 	// Focus new
 	return f.components[f.focusIndex].Focus()
 }
@@ -162,11 +162,11 @@ func (f *FocusChain) FocusFirst() tea.Cmd {
 	if len(f.components) == 0 {
 		return nil
 	}
-	
+
 	if f.focusIndex < len(f.components) {
 		f.components[f.focusIndex].Blur()
 	}
-	
+
 	f.focusIndex = 0
 	return f.components[f.focusIndex].Focus()
 }
@@ -176,11 +176,11 @@ func (f *FocusChain) FocusLast() tea.Cmd {
 	if len(f.components) == 0 {
 		return nil
 	}
-	
+
 	if f.focusIndex < len(f.components) {
 		f.components[f.focusIndex].Blur()
 	}
-	
+
 	f.focusIndex = len(f.components) - 1
 	return f.components[f.focusIndex].Focus()
 }

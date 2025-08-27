@@ -17,31 +17,31 @@ type SystemPanelRenderer interface {
 type SystemPanel struct {
 	Window
 	renderer SystemPanelRenderer
-	
+
 	// Positioning
-	position   string // "top", "bottom", "center"
-	slideFrom  string // Animation direction
+	position  string // "top", "bottom", "center"
+	slideFrom string // Animation direction
 }
 
 // NewSystemPanel creates a new system panel overlay
 func NewSystemPanel(renderer SystemPanelRenderer) *SystemPanel {
 	// Create a simple content wrapper for the renderer
 	content := &systemPanelContent{renderer: renderer}
-	
+
 	panel := &SystemPanel{
 		Window:   *NewWindow("System Messages", content),
 		renderer: renderer,
 		position: "bottom",
 	}
-	
+
 	// Configure as modal when expanded
 	panel.SetModal(false) // Not modal by default, can be changed when expanded
-	
+
 	// Use a distinctive border style
 	panel.borderStyle = lipgloss.NewStyle().
 		Border(lipgloss.DoubleBorder()).
 		BorderForeground(lipgloss.Color("220"))
-	
+
 	return panel
 }
 
@@ -54,7 +54,7 @@ func (s *SystemPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if !s.renderer.HasMessages() && s.visible {
 			s.Hide()
 		}
-		
+
 		// Update expanded state
 		if s.renderer.IsExpanded() {
 			s.state = WindowExpanded
@@ -64,7 +64,7 @@ func (s *SystemPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s.SetModal(false)
 		}
 	}
-	
+
 	// Handle escape to close
 	if s.visible {
 		switch msg := msg.(type) {
@@ -77,7 +77,7 @@ func (s *SystemPanel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	// Delegate to Window
 	return s.Window.Update(msg)
 }
@@ -87,10 +87,10 @@ func (s *SystemPanel) View() string {
 	if !s.visible || s.renderer == nil {
 		return ""
 	}
-	
+
 	// Get the panel content
 	content := s.renderer.RenderPanel()
-	
+
 	// Apply styling based on state
 	if s.state == WindowExpanded {
 		// Full screen with border
@@ -99,14 +99,14 @@ func (s *SystemPanel) View() string {
 			Height(s.height - 2).
 			Render(content)
 	}
-	
+
 	// Normal state - position at bottom
 	// Calculate height based on content
 	lines := lipgloss.Height(content)
 	if lines > s.height/3 {
 		lines = s.height / 3 // Max 1/3 of screen
 	}
-	
+
 	// Style for bottom panel
 	styled := lipgloss.NewStyle().
 		Width(s.width).
@@ -115,7 +115,7 @@ func (s *SystemPanel) View() string {
 		BorderTop(true).
 		BorderForeground(lipgloss.Color("240")).
 		Render(content)
-	
+
 	// Position at bottom
 	return lipgloss.Place(
 		s.width,

@@ -22,15 +22,15 @@ type Header struct {
 func NewHeader(renderer HeaderRenderer) *Header {
 	h := &Header{
 		BaseComponent: BaseComponent{visible: true},
-		renderer:     renderer,
-		style:        lipgloss.NewStyle(),
+		renderer:      renderer,
+		style:         lipgloss.NewStyle(),
 	}
-	
+
 	// Set fixed height based on renderer
 	if renderer != nil {
 		h.height = renderer.GetHeaderHeight()
 	}
-	
+
 	return h
 }
 
@@ -50,14 +50,14 @@ func (h *Header) View() string {
 	if !h.visible || h.renderer == nil {
 		return ""
 	}
-	
+
 	content := h.renderer.RenderHeader()
-	
+
 	// Apply width constraint
 	if h.width > 0 {
 		return h.style.Width(h.width).Render(content)
 	}
-	
+
 	return content
 }
 
@@ -78,15 +78,15 @@ type FooterRenderer interface {
 func NewFooter(renderer FooterRenderer) *Footer {
 	f := &Footer{
 		BaseComponent: BaseComponent{visible: true},
-		renderer:     renderer,
-		style:        lipgloss.NewStyle(),
+		renderer:      renderer,
+		style:         lipgloss.NewStyle(),
 	}
-	
+
 	// Set fixed height based on renderer
 	if renderer != nil {
 		f.height = renderer.GetFooterHeight()
 	}
-	
+
 	return f
 }
 
@@ -106,13 +106,13 @@ func (f *Footer) View() string {
 	if !f.visible || f.renderer == nil {
 		return ""
 	}
-	
+
 	content := f.renderer.RenderFooter()
-	
+
 	// Apply width constraint
 	if f.width > 0 {
 		return f.style.Width(f.width).Render(content)
 	}
-	
+
 	return content
 }

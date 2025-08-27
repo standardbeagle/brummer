@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/pkg/events"
@@ -13,28 +13,28 @@ import (
 // NotificationComponent displays system notifications
 type NotificationComponent struct {
 	BaseComponent
-	
+
 	// Notifications queue
-	notifications []SystemNotificationMsg
+	notifications    []SystemNotificationMsg
 	maxNotifications int
-	
+
 	// Display settings
-	position      NotificationPosition
-	showDuration  time.Duration
-	fadeOut       bool
-	
+	position     NotificationPosition
+	showDuration time.Duration
+	fadeOut      bool
+
 	// Styles
-	successStyle  lipgloss.Style
-	errorStyle    lipgloss.Style
-	warningStyle  lipgloss.Style
-	infoStyle     lipgloss.Style
-	borderStyle   lipgloss.Style
-	titleStyle    lipgloss.Style
-	messageStyle  lipgloss.Style
-	actionStyle   lipgloss.Style
-	
+	successStyle lipgloss.Style
+	errorStyle   lipgloss.Style
+	warningStyle lipgloss.Style
+	infoStyle    lipgloss.Style
+	borderStyle  lipgloss.Style
+	titleStyle   lipgloss.Style
+	messageStyle lipgloss.Style
+	actionStyle  lipgloss.Style
+
 	// EventBus integration (simplified for now)
-	eventBus     *events.EventBus
+	eventBus *events.EventBus
 }
 
 // NotificationPosition defines where notifications appear
@@ -54,23 +54,23 @@ func NewNotificationComponent(eventBus *events.EventBus) *NotificationComponent 
 	n := &NotificationComponent{
 		notifications:    []SystemNotificationMsg{},
 		maxNotifications: 5,
-		position:        NotificationTopRight,
-		showDuration:    5 * time.Second,
-		fadeOut:         true,
-		eventBus:        eventBus,
+		position:         NotificationTopRight,
+		showDuration:     5 * time.Second,
+		fadeOut:          true,
+		eventBus:         eventBus,
 	}
-	
+
 	// Initialize styles
 	n.initStyles()
-	
+
 	// Subscribe to EventBus notifications if available
 	if eventBus != nil {
 		n.subscribeToEventBus()
 	}
-	
+
 	// Set visible by default
 	n.visible = true
-	
+
 	return n
 }
 
@@ -81,31 +81,31 @@ func (n *NotificationComponent) initStyles() {
 		Border(lipgloss.RoundedBorder()).
 		Padding(1, 2).
 		MarginBottom(1)
-	
+
 	// Level-specific styles
 	n.successStyle = n.borderStyle.Copy().
 		BorderForeground(lipgloss.Color("42")).
 		Foreground(lipgloss.Color("42"))
-	
+
 	n.errorStyle = n.borderStyle.Copy().
 		BorderForeground(lipgloss.Color("196")).
 		Foreground(lipgloss.Color("196"))
-	
+
 	n.warningStyle = n.borderStyle.Copy().
 		BorderForeground(lipgloss.Color("214")).
 		Foreground(lipgloss.Color("214"))
-	
+
 	n.infoStyle = n.borderStyle.Copy().
 		BorderForeground(lipgloss.Color("86")).
 		Foreground(lipgloss.Color("86"))
-	
+
 	// Content styles
 	n.titleStyle = lipgloss.NewStyle().
 		Bold(true).
 		MarginBottom(1)
-	
+
 	n.messageStyle = lipgloss.NewStyle()
-	
+
 	n.actionStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("205")).
 		Underline(true).
@@ -136,12 +136,12 @@ func (n *NotificationComponent) mapEventLevel(level string) NotificationLevel {
 // Update handles messages
 func (n *NotificationComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	
+
 	switch msg := msg.(type) {
 	case SystemNotificationMsg:
 		// Add new notification
 		n.addNotification(msg)
-		
+
 		// Schedule auto-dismiss if needed
 		if msg.AutoDismiss {
 			duration := msg.Duration
@@ -151,7 +151,7 @@ func (n *NotificationComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, n.scheduleDismiss(msg.ID, duration))
 		}
 		return n, tea.Batch(cmds...)
-		
+
 	case NotificationMsg:
 		// Handle old-style notification (convert to SystemNotificationMsg)
 		n.addNotification(SystemNotificationMsg{
@@ -164,12 +164,12 @@ func (n *NotificationComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			AutoDismiss: msg.Level != NotificationError,
 			Duration:    n.showDuration,
 		})
-		
+
 		if msg.Level != NotificationError {
 			cmds = append(cmds, n.scheduleDismiss(n.notifications[len(n.notifications)-1].ID, n.showDuration))
 		}
 		return n, tea.Batch(cmds...)
-		
+
 	case NotificationDismissMsg:
 		// Dismiss notification(s)
 		if msg.All {
@@ -178,7 +178,7 @@ func (n *NotificationComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			n.removeNotification(msg.ID)
 		}
 		return n, nil
-		
+
 	case NotificationActionMsg:
 		// Execute notification action
 		for _, notif := range n.notifications {
@@ -190,12 +190,12 @@ func (n *NotificationComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return n, nil
-		
+
 	case dismissTimerMsg:
 		// Auto-dismiss notification
 		n.removeNotification(msg.notificationID)
 		return n, nil
-		
+
 	case tea.KeyMsg:
 		// Handle key presses for visible notifications
 		if len(n.notifications) > 0 {
@@ -206,13 +206,13 @@ func (n *NotificationComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					n.removeNotification(n.notifications[0].ID)
 				}
 				return n, nil
-				
+
 			case "ctrl+n":
 				// Dismiss all notifications
 				n.notifications = []SystemNotificationMsg{}
 				return n, nil
 			}
-			
+
 			// Check for action keys (1-9)
 			if len(n.notifications) > 0 && len(n.notifications[0].Actions) > 0 {
 				for i, action := range n.notifications[0].Actions {
@@ -225,7 +225,7 @@ func (n *NotificationComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	return n, tea.Batch(cmds...)
 }
 
@@ -234,23 +234,23 @@ func (n *NotificationComponent) View() string {
 	if !n.visible || len(n.notifications) == 0 {
 		return ""
 	}
-	
+
 	var notifications []string
-	
+
 	// Render each notification
 	count := len(n.notifications)
 	if count > n.maxNotifications {
 		count = n.maxNotifications
 	}
-	
+
 	for i := 0; i < count; i++ {
 		notif := n.notifications[i]
 		notifications = append(notifications, n.renderNotification(notif, i == 0))
 	}
-	
+
 	// Position notifications
 	content := strings.Join(notifications, "\n")
-	
+
 	// Apply positioning
 	switch n.position {
 	case NotificationTopRight:
@@ -263,7 +263,7 @@ func (n *NotificationComponent) View() string {
 				maxWidth = width
 			}
 		}
-		
+
 		aligned := []string{}
 		for _, line := range lines {
 			width := lipgloss.Width(line)
@@ -271,10 +271,10 @@ func (n *NotificationComponent) View() string {
 			aligned = append(aligned, padding+line)
 		}
 		content = strings.Join(aligned, "\n")
-		
+
 	case NotificationTopLeft:
 		// Already left-aligned by default
-		
+
 	case NotificationBottomRight:
 		// Would need terminal height to position at bottom
 		// For now, align right
@@ -286,7 +286,7 @@ func (n *NotificationComponent) View() string {
 				maxWidth = width
 			}
 		}
-		
+
 		aligned := []string{}
 		for _, line := range lines {
 			width := lipgloss.Width(line)
@@ -294,7 +294,7 @@ func (n *NotificationComponent) View() string {
 			aligned = append(aligned, padding+line)
 		}
 		content = strings.Join(aligned, "\n")
-		
+
 	case NotificationTop:
 		// Center horizontally
 		lines := strings.Split(content, "\n")
@@ -310,7 +310,7 @@ func (n *NotificationComponent) View() string {
 		}
 		content = strings.Join(centered, "\n")
 	}
-	
+
 	return content
 }
 
@@ -319,7 +319,7 @@ func (n *NotificationComponent) renderNotification(notif SystemNotificationMsg, 
 	// Select style based on level
 	var style lipgloss.Style
 	var icon string
-	
+
 	switch notif.Level {
 	case NotificationSuccess:
 		style = n.successStyle
@@ -334,10 +334,10 @@ func (n *NotificationComponent) renderNotification(notif SystemNotificationMsg, 
 		style = n.infoStyle
 		icon = "ℹ"
 	}
-	
+
 	// Build content
 	var content strings.Builder
-	
+
 	// Title with icon
 	if notif.Title != "" {
 		title := fmt.Sprintf("%s %s", icon, notif.Title)
@@ -346,20 +346,20 @@ func (n *NotificationComponent) renderNotification(notif SystemNotificationMsg, 
 			content.WriteString("\n")
 		}
 	}
-	
+
 	// Message
 	if notif.Message != "" {
 		// Wrap message if too long
 		wrapped := n.wrapText(notif.Message, 50)
 		content.WriteString(n.messageStyle.Render(wrapped))
 	}
-	
+
 	// Details (if expanded and is top notification)
 	if isTop && notif.Details != "" {
 		content.WriteString("\n\n")
 		content.WriteString(n.messageStyle.Render(n.wrapText(notif.Details, 50)))
 	}
-	
+
 	// Actions (only for top notification)
 	if isTop && len(notif.Actions) > 0 {
 		content.WriteString("\n")
@@ -370,7 +370,7 @@ func (n *NotificationComponent) renderNotification(notif SystemNotificationMsg, 
 		}
 		content.WriteString(strings.Join(actions, "  "))
 	}
-	
+
 	// Help text for top notification
 	if isTop {
 		help := "[esc] dismiss"
@@ -380,7 +380,7 @@ func (n *NotificationComponent) renderNotification(notif SystemNotificationMsg, 
 		content.WriteString("\n")
 		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Render(help))
 	}
-	
+
 	// Apply border style
 	return style.Render(content.String())
 }
@@ -392,15 +392,15 @@ func (n *NotificationComponent) addNotification(notif SystemNotificationMsg) {
 		if existing.Title == notif.Title && existing.Message == notif.Message {
 			// Update timestamp and move to front
 			notif.Count = existing.Count + 1
-			n.notifications = append([]SystemNotificationMsg{notif}, 
+			n.notifications = append([]SystemNotificationMsg{notif},
 				append(n.notifications[:i], n.notifications[i+1:]...)...)
 			return
 		}
 	}
-	
+
 	// Add to front of queue
 	n.notifications = append([]SystemNotificationMsg{notif}, n.notifications...)
-	
+
 	// Limit queue size
 	if len(n.notifications) > n.maxNotifications*2 {
 		n.notifications = n.notifications[:n.maxNotifications*2]
@@ -431,10 +431,10 @@ func (n *NotificationComponent) wrapText(text string, maxWidth int) string {
 	if len(words) == 0 {
 		return text
 	}
-	
+
 	var lines []string
 	currentLine := words[0]
-	
+
 	for _, word := range words[1:] {
 		if len(currentLine)+1+len(word) <= maxWidth {
 			currentLine += " " + word
@@ -443,11 +443,11 @@ func (n *NotificationComponent) wrapText(text string, maxWidth int) string {
 			currentLine = word
 		}
 	}
-	
+
 	if currentLine != "" {
 		lines = append(lines, currentLine)
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
