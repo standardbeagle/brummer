@@ -3,7 +3,7 @@ package components
 import (
 	"fmt"
 	"strings"
-	
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/mattn/go-runewidth"
 	"github.com/muesli/termenv"
@@ -22,7 +22,7 @@ func MustInitColors() {
 // - Multi-byte UTF-8 characters
 // - Double-width emojis and CJK characters
 // - ANSI escape codes (strips them first)
-// 
+//
 // NEVER use len() for display width calculations!
 func SafeStringWidth(s string) int {
 	// First strip any ANSI codes
@@ -47,14 +47,14 @@ func SafeTruncate(s string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-	
+
 	// Strip ANSI first
 	cleaned := stripANSI(s)
-	
+
 	// Calculate truncation point considering display width
 	width := 0
 	var result strings.Builder
-	
+
 	for _, r := range cleaned {
 		rw := runewidth.RuneWidth(r)
 		if width+rw > maxWidth {
@@ -63,7 +63,7 @@ func SafeTruncate(s string, maxWidth int) string {
 		result.WriteRune(r)
 		width += rw
 	}
-	
+
 	return result.String()
 }
 
@@ -75,11 +75,11 @@ func SafeTruncateWithEllipsis(s string, maxWidth int) string {
 		}
 		return strings.Repeat(".", maxWidth)
 	}
-	
+
 	if SafeStringWidth(s) <= maxWidth {
 		return s
 	}
-	
+
 	// Reserve 3 cells for "..."
 	truncated := SafeTruncate(s, maxWidth-3)
 	return truncated + "..."
@@ -91,7 +91,7 @@ func SafePadLeft(s string, targetWidth int) string {
 	if currentWidth >= targetWidth {
 		return s
 	}
-	
+
 	padding := strings.Repeat(" ", targetWidth-currentWidth)
 	return padding + s
 }
@@ -102,7 +102,7 @@ func SafePadRight(s string, targetWidth int) string {
 	if currentWidth >= targetWidth {
 		return s
 	}
-	
+
 	padding := strings.Repeat(" ", targetWidth-currentWidth)
 	return s + padding
 }
@@ -113,11 +113,11 @@ func SafeCenter(s string, targetWidth int) string {
 	if currentWidth >= targetWidth {
 		return s
 	}
-	
+
 	totalPadding := targetWidth - currentWidth
 	leftPadding := totalPadding / 2
 	rightPadding := totalPadding - leftPadding
-	
+
 	return strings.Repeat(" ", leftPadding) + s + strings.Repeat(" ", rightPadding)
 }
 
@@ -125,38 +125,38 @@ func SafeCenter(s string, targetWidth int) string {
 // including emoji, text, and notification badge
 func CalculateTabWidth(icon, key, name, notifEmoji string, notifCount int) int {
 	width := 0
-	
+
 	// Icon (emoji) is typically 2 cells
 	if icon != "" {
 		width += runewidth.StringWidth(icon)
 	}
-	
+
 	// Space after icon
 	if icon != "" && (key != "" || name != "") {
 		width += 1 // space
 	}
-	
+
 	// Key binding
 	if key != "" {
 		width += runewidth.StringWidth(key)
 	}
-	
+
 	// Separator between key and name
 	if key != "" && name != "" {
 		width += 1 // dot or space
 	}
-	
+
 	// Name
 	if name != "" {
 		width += runewidth.StringWidth(name)
 	}
-	
+
 	// Notification badge
 	if notifEmoji != "" && notifCount > 0 {
-		width += 1 // space before notification
+		width += 1                                 // space before notification
 		width += runewidth.StringWidth(notifEmoji) // emoji is 2 cells
-		width += 1 // space
-		
+		width += 1                                 // space
+
 		// Count digits
 		if notifCount > 99 {
 			width += 3 // "99+"
@@ -166,7 +166,7 @@ func CalculateTabWidth(icon, key, name, notifEmoji string, notifCount int) int {
 			width += 1 // single digit
 		}
 	}
-	
+
 	return width
 }
 
@@ -183,14 +183,14 @@ func CalculateAvailableWidth(totalWidth int, hasBorder bool) int {
 func stripANSI(s string) string {
 	var result strings.Builder
 	inEscape := false
-	
+
 	for i := 0; i < len(s); i++ {
 		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
 			inEscape = true
 			i++ // skip the '['
 			continue
 		}
-		
+
 		if inEscape {
 			// Skip until we find the end of the escape sequence
 			if (s[i] >= 'A' && s[i] <= 'Z') || (s[i] >= 'a' && s[i] <= 'z') {
@@ -198,10 +198,10 @@ func stripANSI(s string) string {
 			}
 			continue
 		}
-		
+
 		result.WriteByte(s[i])
 	}
-	
+
 	return result.String()
 }
 
@@ -220,13 +220,13 @@ const (
 	GlobeEmojiWidth  = 2 // 🌐
 	RobotEmojiWidth  = 2 // 🤖
 	GearEmojiWidth   = 2 // ⚙️
-	
+
 	// Notification emojis
 	RedCircleWidth    = 2 // 🔴
 	YellowCircleWidth = 2 // 🟡
 	BlueCircleWidth   = 2 // 🔵
 	GreenCircleWidth  = 2 // 🟢
-	
+
 	// UI elements
 	TriangleWidth = 1 // ▶ (this is actually 1 cell)
 	BoxLineWidth  = 1 // │ (box drawing character)
@@ -252,7 +252,7 @@ type WidthOverflowError struct {
 }
 
 func (e WidthOverflowError) Error() string {
-	return fmt.Sprintf("component width %d exceeds available %d by %d cells", 
+	return fmt.Sprintf("component width %d exceeds available %d by %d cells",
 		e.Component, e.Available, e.Overflow)
 }
 
@@ -290,15 +290,15 @@ func (c *TabWidthCalculator) determineMode() {
 func (c *TabWidthCalculator) AvailablePerTab() int {
 	// Account for separators between tabs (3 cells each: " │ ")
 	separatorWidth := (c.TabCount - 1) * 3
-	
+
 	// Some padding on sides
 	padding := 4
-	
+
 	available := c.TerminalWidth - separatorWidth - padding
 	if available < 0 {
 		available = 0
 	}
-	
+
 	if c.TabCount > 0 {
 		return available / c.TabCount
 	}

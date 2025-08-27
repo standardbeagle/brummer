@@ -41,14 +41,14 @@ func (b *BoxLayout) AddChild(child Component, weight float64) {
 // Update propagates updates to children
 func (b *BoxLayout) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	
+
 	// Handle resize
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		b.SetSize(msg.Width, msg.Height)
 		b.layoutChildren()
 	}
-	
+
 	// Update focused child or all children for certain messages
 	for i, child := range b.children {
 		if child.Focused() || !isInputMessage(msg) {
@@ -62,7 +62,7 @@ func (b *BoxLayout) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	return b, tea.Batch(cmds...)
 }
 
@@ -71,7 +71,7 @@ func (b *BoxLayout) View() string {
 	if !b.visible || len(b.children) == 0 {
 		return ""
 	}
-	
+
 	views := make([]string, 0, len(b.children))
 	for _, child := range b.children {
 		if v, ok := child.(Visible); ok && !v.IsVisible() {
@@ -79,7 +79,7 @@ func (b *BoxLayout) View() string {
 		}
 		views = append(views, child.View())
 	}
-	
+
 	if b.direction == Vertical {
 		return lipgloss.JoinVertical(lipgloss.Left, views...)
 	}
@@ -91,11 +91,11 @@ func (b *BoxLayout) layoutChildren() {
 	if len(b.children) == 0 {
 		return
 	}
-	
+
 	// Calculate flexible space
 	totalWeight := 0.0
 	fixedSize := 0
-	
+
 	for i, weight := range b.weights {
 		if weight > 0 {
 			totalWeight += weight
@@ -109,7 +109,7 @@ func (b *BoxLayout) layoutChildren() {
 			}
 		}
 	}
-	
+
 	// Calculate available space for flexible components
 	var availableSpace int
 	if b.direction == Vertical {
@@ -117,7 +117,7 @@ func (b *BoxLayout) layoutChildren() {
 	} else {
 		availableSpace = b.width - fixedSize - (len(b.children)-1)*b.spacing
 	}
-	
+
 	// Set sizes for all children
 	for i, child := range b.children {
 		if sizable, ok := child.(Sizable); ok {
@@ -152,5 +152,6 @@ func isInputMessage(msg tea.Msg) bool {
 	}
 	return false
 }
+
 // Init implements tea.Model interface for BoxLayout
 func (*BoxLayout) Init() tea.Cmd { return nil }

@@ -44,7 +44,7 @@ func (s *StackLayout) Init() tea.Cmd {
 // Update propagates updates to layers
 func (s *StackLayout) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	
+
 	// Handle resize
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -56,18 +56,18 @@ func (s *StackLayout) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	// Input goes to top visible layer first
 	if isInputMessage(msg) {
 		for i := len(s.layers) - 1; i >= 0; i-- {
 			if v, ok := s.layers[i].(Visible); ok && !v.IsVisible() {
 				continue
 			}
-			
+
 			// Let this layer handle the input
 			newLayer, cmd := s.layers[i].Update(msg)
-			if c, ok := newLayer.(Component); ok { 
-				s.layers[i] = c 
+			if c, ok := newLayer.(Component); ok {
+				s.layers[i] = c
 			}
 			if cmd != nil {
 				return s, cmd // Top layer consumed the input
@@ -77,13 +77,15 @@ func (s *StackLayout) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Non-input messages go to all layers
 		for i, layer := range s.layers {
 			newLayer, cmd := layer.Update(msg)
-			if c, ok := newLayer.(Component); ok { s.layers[i] = c }
+			if c, ok := newLayer.(Component); ok {
+				s.layers[i] = c
+			}
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 		}
 	}
-	
+
 	return s, tea.Batch(cmds...)
 }
 
@@ -92,14 +94,14 @@ func (s *StackLayout) View() string {
 	if !s.visible || len(s.layers) == 0 {
 		return ""
 	}
-	
+
 	// Start with the base layer
 	var baseView string
 	for _, layer := range s.layers {
 		if v, ok := layer.(Visible); ok && !v.IsVisible() {
 			continue
 		}
-		
+
 		if baseView == "" {
 			baseView = layer.View()
 		} else {
@@ -114,7 +116,7 @@ func (s *StackLayout) View() string {
 			}
 		}
 	}
-	
+
 	return baseView
 }
 

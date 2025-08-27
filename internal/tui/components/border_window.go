@@ -9,20 +9,20 @@ import (
 // It automatically adjusts content width/height to account for borders
 type BorderWindow struct {
 	BaseComponent
-	
+
 	// Content to display
 	content Component
-	
+
 	// Title (optional)
 	title string
-	
+
 	// Border style
-	borderStyle  lipgloss.Border
-	borderColor  lipgloss.Color
-	
+	borderStyle lipgloss.Border
+	borderColor lipgloss.Color
+
 	// Title style
-	titleStyle   lipgloss.Style
-	
+	titleStyle lipgloss.Style
+
 	// Padding inside border
 	paddingTop    int
 	paddingBottom int
@@ -38,10 +38,10 @@ func NewBorderWindow(content Component) *BorderWindow {
 			width:   80,
 			height:  24,
 		},
-		content:      content,
-		borderStyle:  lipgloss.NormalBorder(),
-		borderColor:  lipgloss.Color("240"),
-		titleStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")),
+		content:     content,
+		borderStyle: lipgloss.NormalBorder(),
+		borderColor: lipgloss.Color("240"),
+		titleStyle:  lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("205")),
 	}
 }
 
@@ -86,17 +86,17 @@ func (b *BorderWindow) updateContentSize() {
 	if b.content == nil {
 		return
 	}
-	
+
 	// Calculate available space for content
 	// Borders take 2 chars width (left + right) and 2 lines height (top + bottom)
 	contentWidth := b.width - 2 - b.paddingLeft - b.paddingRight
 	contentHeight := b.height - 2 - b.paddingTop - b.paddingBottom
-	
+
 	// If we have a title, it takes an additional line
 	if b.title != "" {
 		contentHeight--
 	}
-	
+
 	// Ensure positive dimensions
 	if contentWidth < 1 {
 		contentWidth = 1
@@ -104,7 +104,7 @@ func (b *BorderWindow) updateContentSize() {
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
-	
+
 	// Update content size if it's sizable
 	if sizable, ok := b.content.(Sizable); ok {
 		sizable.SetSize(contentWidth, contentHeight)
@@ -118,7 +118,7 @@ func (b *BorderWindow) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		b.SetSize(msg.Width, msg.Height)
 	}
-	
+
 	// Forward to content
 	if b.content != nil {
 		newContent, cmd := b.content.Update(msg)
@@ -128,7 +128,7 @@ func (b *BorderWindow) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return b, cmd
 	}
-	
+
 	return b, nil
 }
 
@@ -137,10 +137,10 @@ func (b *BorderWindow) View() string {
 	if !b.visible || b.content == nil {
 		return ""
 	}
-	
+
 	// Get content view
 	contentView := b.content.View()
-	
+
 	// Apply padding if set
 	if b.paddingTop > 0 || b.paddingBottom > 0 || b.paddingLeft > 0 || b.paddingRight > 0 {
 		paddingStyle := lipgloss.NewStyle().
@@ -150,18 +150,18 @@ func (b *BorderWindow) View() string {
 			PaddingRight(b.paddingRight)
 		contentView = paddingStyle.Render(contentView)
 	}
-	
+
 	// Create border style with proper width
 	// The width here is the INNER width (content area)
-	innerWidth := b.width - 2  // Subtract border chars
+	innerWidth := b.width - 2   // Subtract border chars
 	innerHeight := b.height - 2 // Subtract border lines
-	
+
 	style := lipgloss.NewStyle().
 		Width(innerWidth).
 		Height(innerHeight).
 		Border(b.borderStyle).
 		BorderForeground(b.borderColor)
-	
+
 	// If we have a title, render it in the top border
 	if b.title != "" {
 		// For now, render title separately
@@ -170,12 +170,12 @@ func (b *BorderWindow) View() string {
 			Width(innerWidth).
 			Align(lipgloss.Center).
 			Render(b.title)
-		
+
 		// Combine title and content
 		contentWithTitle := lipgloss.JoinVertical(lipgloss.Left, titleLine, contentView)
 		return style.Render(contentWithTitle)
 	}
-	
+
 	return style.Render(contentView)
 }
 
@@ -201,6 +201,7 @@ func (b *BorderWindow) Blur() tea.Cmd {
 func (b *BorderWindow) Focused() bool {
 	return b.focused
 }
+
 // Init implements tea.Model interface
 func (b *BorderWindow) Init() tea.Cmd {
 	return nil

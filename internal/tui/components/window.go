@@ -2,7 +2,7 @@ package components
 
 import (
 	"strings"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
@@ -20,21 +20,21 @@ const (
 // Window is a container that can be shown/hidden, minimized, or expanded
 type Window struct {
 	BaseComponent
-	
+
 	// Window properties
-	title       string
-	state       WindowState
-	modal       bool  // If true, captures all input when visible
-	resizable   bool
-	movable     bool
-	
+	title     string
+	state     WindowState
+	modal     bool // If true, captures all input when visible
+	resizable bool
+	movable   bool
+
 	// Content
-	content     Component
-	
+	content Component
+
 	// Styling
 	borderStyle lipgloss.Style
 	titleStyle  lipgloss.Style
-	
+
 	// Animation (future enhancement)
 	animationProgress float64
 }
@@ -43,11 +43,11 @@ type Window struct {
 func NewWindow(title string, content Component) *Window {
 	return &Window{
 		BaseComponent: BaseComponent{visible: false}, // Start hidden
-		title:        title,
-		state:        WindowHidden,
-		content:      content,
-		borderStyle:  lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
-		titleStyle:   lipgloss.NewStyle().Bold(true),
+		title:         title,
+		state:         WindowHidden,
+		content:       content,
+		borderStyle:   lipgloss.NewStyle().Border(lipgloss.RoundedBorder()),
+		titleStyle:    lipgloss.NewStyle().Bold(true),
 	}
 }
 
@@ -120,21 +120,25 @@ func (w *Window) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	// If modal and visible, consume all input
 	if w.IsModal() && w.content != nil {
 		newContent, cmd := w.content.Update(msg)
-		if c, ok := newContent.(Component); ok { w.content = c }
+		if c, ok := newContent.(Component); ok {
+			w.content = c
+		}
 		return w, cmd
 	}
-	
+
 	// If not modal but visible, pass through to content
 	if w.visible && w.content != nil {
 		newContent, cmd := w.content.Update(msg)
-		if c, ok := newContent.(Component); ok { w.content = c }
+		if c, ok := newContent.(Component); ok {
+			w.content = c
+		}
 		return w, cmd
 	}
-	
+
 	return w, nil
 }
 
@@ -143,7 +147,7 @@ func (w *Window) View() string {
 	if !w.visible {
 		return ""
 	}
-	
+
 	switch w.state {
 	case WindowMinimized:
 		return w.renderMinimized()
@@ -165,19 +169,19 @@ func (w *Window) renderNormal() string {
 	if w.content == nil {
 		return ""
 	}
-	
+
 	// Get content
 	content := w.content.View()
-	
+
 	// Add title if present
 	if w.title != "" {
 		titleLine := w.titleStyle.Render(w.title)
 		content = lipgloss.JoinVertical(lipgloss.Left, titleLine, content)
 	}
-	
+
 	// Apply border and size constraints
 	styled := w.borderStyle.Render(content)
-	
+
 	// Apply size if set
 	if w.width > 0 && w.height > 0 {
 		styled = lipgloss.NewStyle().
@@ -185,7 +189,7 @@ func (w *Window) renderNormal() string {
 			Height(w.height).
 			Render(styled)
 	}
-	
+
 	return styled
 }
 
@@ -194,44 +198,44 @@ func (w *Window) renderExpanded() string {
 	if w.content == nil {
 		return ""
 	}
-	
+
 	// In expanded mode, fill the entire space
 	content := w.content.View()
-	
+
 	// Add title bar
 	if w.title != "" {
 		titleBar := w.renderTitleBar(true)
 		content = lipgloss.JoinVertical(lipgloss.Left, titleBar, content)
 	}
-	
+
 	return content
 }
 
 // renderTitleBar renders the window title bar
 func (w *Window) renderTitleBar(expanded bool) string {
 	var controls []string
-	
+
 	if expanded {
 		controls = append(controls, "[-]") // Minimize
-		controls = append(controls, "[□]")  // Restore
+		controls = append(controls, "[□]") // Restore
 	} else {
 		controls = append(controls, "[□]") // Maximize
 	}
 	controls = append(controls, "[x]") // Close
-	
+
 	controlStr := strings.Join(controls, " ")
-	
+
 	// Calculate padding for title centering
 	titleWidth := w.width - len(controlStr) - 4
 	if titleWidth < 0 {
 		titleWidth = len(w.title)
 	}
-	
+
 	title := lipgloss.NewStyle().
 		Width(titleWidth).
 		Align(lipgloss.Center).
 		Render(w.title)
-	
+
 	return lipgloss.JoinHorizontal(lipgloss.Top, title, " ", controlStr)
 }
 
