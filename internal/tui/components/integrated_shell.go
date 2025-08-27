@@ -236,6 +236,28 @@ func (s *IntegratedShell) Init() tea.Cmd {
 		cmds = append(cmds, s.logsView.Init())
 	}
 
+	// CRITICAL FIX: Load any existing logs immediately
+	// This ensures logs that were added before subscription starts are displayed
+	if s.logStore != nil {
+		existingLogs := s.logStore.GetAll()
+		if len(existingLogs) > 0 {
+			// Convert to pointers and send initial logs to view
+			entries := make([]*logs.LogEntry, len(existingLogs))
+			for i := range existingLogs {
+				entry := existingLogs[i] // Copy to avoid reference issues
+				entries[i] = &entry
+			}
+			
+			// Send as a command that returns LogsUpdateMsg
+			cmds = append(cmds, func() tea.Msg {
+				return LogsUpdateMsg{
+					Entries: entries,
+					Append:  false, // Replace, not append
+				}
+			})
+		}
+	}
+
 	// Start log subscription (incremental updates)
 	if s.logSub != nil {
 		cmds = append(cmds, s.logSub.Subscribe())
@@ -782,6 +804,54 @@ func (s *IntegratedShell) Focused() bool {
 		}
 	}
 	return false
+}
+
+// GetLogStore returns the log store (for testing)
+func (s *IntegratedShell) GetLogStore() *logs.Store {
+	return s.logStore
+}
+
+// GetProcessManager returns the process manager (for testing)
+func (s *IntegratedShell) GetProcessManager() *process.Manager {
+	return s.processMgr
+}
+
+// GetProcessNameCache returns a copy of the process name cache (for testing)
+func (s *IntegratedShell) GetProcessNameCache() map[string]string {
+	cache := make(map[string]string)
+	s.processNameCache.Range(func(key, value interface{}) bool {
+		if k, ok := key.(string); ok {
+			if v, ok := value.(string); ok {
+				cache[k] = v
+			}
+		}
+		return true
+	})
+	return cache
+}
+
+// GetProcessNameCacheSync returns the actual sync.Map for testing concurrent operations
+func (s *IntegratedShell) GetProcessNameCacheSync() *sync.Map {
+	return s.processNameCache
+}
+
+// NotifyNewLogs triggers a log update notification (for testing)
+func (s *IntegratedShell) NotifyNewLogs() {
+	if s.logSub != nil {
+		s.logSub.NotifyNewLogs()
+	}
+}
+
+// RefreshLogsView safely triggers a view update (for testing)
+// This should only be called from the main Bubble Tea update loop in production
+func (s *IntegratedShell) RefreshLogsView() {
+	// In tests, we can call this but need to be careful about concurrency
+	// In production, this would normally be triggered by Bubble Tea messages
+	if s.logsView != nil {
+		// Note: This is still potentially unsafe if called from multiple goroutines
+		// but safer than direct field access
+		s.logsView.applyFilter()
+	}
 }
 
 // Cleanup releases resources when the shell is shutting down
