@@ -1080,11 +1080,11 @@ For detailed documentation and examples, use: about tool="proxy_register"`,
 			}
 
 			return map[string]interface{}{
-				"targetUrl":  urlStr,
-				"proxyUrl":   proxyURL,
+				"targetUrl":   urlStr,
+				"proxyUrl":    proxyURL,
 				"processName": params.ProcessName,
-				"registered": true,
-				"message":    fmt.Sprintf("Proxy registered: %s → %s", urlStr, proxyURL),
+				"registered":  true,
+				"message":     fmt.Sprintf("Proxy registered: %s → %s", urlStr, proxyURL),
 			}, nil
 		},
 	}

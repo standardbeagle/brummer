@@ -92,7 +92,7 @@ func HandleSlashCommand(ctx *SlashCommandContext, input string) {
 			ctx.LogStore.Add("system", "System", "Example: /proxy https://stgeorge.sbdev.io", false)
 			return
 		}
-		
+
 		subcommand := parts[1]
 		if subcommand == "list" {
 			ctx.ListProxies()

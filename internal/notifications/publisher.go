@@ -3,7 +3,7 @@ package notifications
 import (
 	"fmt"
 	"sync"
-	
+
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
