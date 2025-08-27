@@ -25,8 +25,8 @@ type ViewAdapter struct {
 func NewViewAdapter(name string, view ViewRenderer) *ViewAdapter {
 	return &ViewAdapter{
 		BaseComponent: BaseComponent{visible: true},
-		view:         view,
-		name:         name,
+		view:          view,
+		name:          name,
 	}
 }
 
@@ -37,13 +37,13 @@ func (v *ViewAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		v.SetSize(msg.Width, msg.Height)
 	}
-	
+
 	// If view implements ViewUpdater, delegate update
 	if updater, ok := v.view.(ViewUpdater); ok {
 		cmd := updater.Update(msg)
 		return v, cmd
 	}
-	
+
 	return v, nil
 }
 

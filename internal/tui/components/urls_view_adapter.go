@@ -7,7 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"time"
-	
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
@@ -17,15 +17,15 @@ import (
 // URLsViewComponent adapts the URLs view to the component system
 type URLsViewComponent struct {
 	BaseComponent
-	
+
 	// Component state
-	urls       []URLInfo
-	list       list.Model
-	
+	urls []URLInfo
+	list list.Model
+
 	// Display options
 	groupByProcess bool
 	showTimestamp  bool
-	
+
 	// Styles
 	titleStyle   lipgloss.Style
 	urlStyle     lipgloss.Style
@@ -41,16 +41,16 @@ func NewURLsViewComponent() *URLsViewComponent {
 		groupByProcess: false,
 		showTimestamp:  true,
 	}
-	
+
 	// Initialize styles
 	u.initStyles()
-	
+
 	// Initialize list
 	u.initializeList()
-	
+
 	// Set visible by default
 	u.visible = true
-	
+
 	return u
 }
 
@@ -59,17 +59,17 @@ func (u *URLsViewComponent) initStyles() {
 	u.titleStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("86"))
-	
+
 	u.urlStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("39")).
 		Underline(true)
-	
+
 	u.processStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("205"))
-	
+
 	u.helpStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241"))
-	
+
 	u.activeStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("42")).
 		Bold(true)
@@ -78,13 +78,13 @@ func (u *URLsViewComponent) initStyles() {
 // initializeList sets up the bubbles list component
 func (u *URLsViewComponent) initializeList() {
 	items := u.urlsToListItems()
-	
+
 	u.list = list.New(items, urlItemDelegate{}, 80, 20)
 	u.list.Title = "URLs"
 	u.list.SetShowStatusBar(true)
 	u.list.SetFilteringEnabled(true)
 	u.list.SetShowHelp(true)
-	
+
 	// Customize key bindings
 	u.list.KeyMap.CursorUp = key.NewBinding(
 		key.WithKeys("up", "k"),
@@ -99,7 +99,7 @@ func (u *URLsViewComponent) initializeList() {
 // Update handles messages
 func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	
+
 	// Handle component-specific messages
 	switch msg := msg.(type) {
 	case URLDetectedMsg:
@@ -117,7 +117,7 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		
+
 		if !found {
 			// Add new URL
 			u.urls = append(u.urls, URLInfo{
@@ -130,22 +130,22 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Active:    true,
 			})
 		}
-		
+
 		u.updateList()
-		
+
 		// Send notification for new URL
 		if !found {
 			return u, SendSystemNotification(NotificationInfo,
 				"URL Detected", msg.URL)
 		}
 		return u, nil
-		
+
 	case URLsUpdateMsg:
 		// Update entire URL list
 		u.urls = msg.URLs
 		u.updateList()
 		return u, nil
-		
+
 	case URLOpenMsg:
 		// Open URL
 		if msg.External {
@@ -160,18 +160,18 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Internal opening would switch to web view
 		cmds = append(cmds, SendViewChange("web", msg.URL))
 		return u, tea.Batch(cmds...)
-		
+
 	case URLCopyMsg:
 		// Copy URL to clipboard
 		// This would need clipboard integration
 		return u, SendSystemNotification(NotificationInfo,
 			"URL copied", msg.URL)
-		
+
 	case tea.WindowSizeMsg:
 		u.width = msg.Width
 		u.height = msg.Height
 		u.list.SetSize(msg.Width, msg.Height-4)
-		
+
 	case tea.KeyMsg:
 		// Handle key presses
 		switch msg.String() {
@@ -182,7 +182,7 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return u, SendURLOpen(ui.url.URL, true)
 				}
 			}
-			
+
 		case "o":
 			// Open URL externally
 			if item := u.list.SelectedItem(); item != nil {
@@ -190,7 +190,7 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return u, SendURLOpen(ui.url.URL, true)
 				}
 			}
-			
+
 		case "c":
 			// Copy URL
 			if item := u.list.SelectedItem(); item != nil {
@@ -198,7 +198,7 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return u, SendURLCopy(ui.url.URL)
 				}
 			}
-			
+
 		case "w":
 			// Open in web view
 			if item := u.list.SelectedItem(); item != nil {
@@ -206,19 +206,19 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return u, SendURLOpen(ui.url.URL, false)
 				}
 			}
-			
+
 		case "g":
 			// Toggle grouping by process
 			u.groupByProcess = !u.groupByProcess
 			u.updateList()
 			return u, nil
-			
+
 		case "t":
 			// Toggle timestamp display
 			u.showTimestamp = !u.showTimestamp
 			u.updateList()
 			return u, nil
-			
+
 		case "r":
 			// Refresh/recheck URLs
 			// This could ping URLs to check if they're still active
@@ -226,7 +226,7 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				"Refreshing URLs", "Checking URL availability...")
 		}
 	}
-	
+
 	// Update the list component
 	if u.visible {
 		newList, cmd := u.list.Update(msg)
@@ -235,7 +235,7 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	}
-	
+
 	return u, tea.Batch(cmds...)
 }
 
@@ -244,7 +244,7 @@ func (u *URLsViewComponent) View() string {
 	if !u.visible {
 		return ""
 	}
-	
+
 	// Use the list component for rendering
 	return u.list.View()
 }
@@ -253,7 +253,7 @@ func (u *URLsViewComponent) View() string {
 func (u *URLsViewComponent) updateList() {
 	items := u.urlsToListItems()
 	u.list.SetItems(items)
-	
+
 	// Update title with count
 	if len(u.urls) > 0 {
 		u.list.Title = fmt.Sprintf("URLs (%d)", len(u.urls))
@@ -275,7 +275,7 @@ func (u *URLsViewComponent) urlsToListItems() []list.Item {
 			}
 			grouped[process] = append(grouped[process], url)
 		}
-		
+
 		// Create list items grouped
 		var items []list.Item
 		for process, urls := range grouped {
@@ -295,7 +295,7 @@ func (u *URLsViewComponent) urlsToListItems() []list.Item {
 		}
 		return items
 	}
-	
+
 	// Ungrouped list
 	items := make([]list.Item, len(u.urls))
 	for i, url := range u.urls {
@@ -332,7 +332,7 @@ func (i urlItem) Title() string {
 	if i.indented {
 		prefix = "  "
 	}
-	
+
 	icon := "🔗"
 	switch i.url.Type {
 	case URLTypeHTTPS:
@@ -342,7 +342,7 @@ func (i urlItem) Title() string {
 	case URLTypeFile:
 		icon = "📁"
 	}
-	
+
 	title := fmt.Sprintf("%s%s %s", prefix, icon, i.url.URL)
 	if i.url.Active {
 		title += " ✓"
@@ -352,17 +352,17 @@ func (i urlItem) Title() string {
 
 func (i urlItem) Description() string {
 	parts := []string{}
-	
+
 	// Add process if available
 	if i.url.ProcessID != "" {
 		parts = append(parts, fmt.Sprintf("Process: %s", i.url.ProcessID))
 	}
-	
+
 	// Add count if more than 1
 	if i.url.Count > 1 {
 		parts = append(parts, fmt.Sprintf("Seen: %dx", i.url.Count))
 	}
-	
+
 	// Add timestamp if enabled
 	if i.showTimestamp {
 		timeAgo := time.Since(i.url.LastSeen)
@@ -376,7 +376,7 @@ func (i urlItem) Description() string {
 		}
 		parts = append(parts, timeStr)
 	}
-	
+
 	if i.indented {
 		return "  " + strings.Join(parts, " | ")
 	}
@@ -427,9 +427,9 @@ func (d urlItemDelegate) Render(w io.Writer, m list.Model, index int, listItem l
 	groupStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205"))
-	
+
 	var str string
-	
+
 	switch item := listItem.(type) {
 	case urlItem:
 		str = fmt.Sprintf("%s\n  %s", item.Title(), item.Description())
@@ -438,7 +438,7 @@ func (d urlItemDelegate) Render(w io.Writer, m list.Model, index int, listItem l
 	default:
 		return
 	}
-	
+
 	var fn func(...string) string
 	if index == m.Index() {
 		fn = func(strs ...string) string {
@@ -448,7 +448,7 @@ func (d urlItemDelegate) Render(w io.Writer, m list.Model, index int, listItem l
 	} else {
 		fn = urlStyle.Render
 	}
-	
+
 	fmt.Fprintf(w, "%s", fn(str))
 }
 

@@ -5,7 +5,7 @@ import (
 	"io"
 	"strings"
 	"time"
-	
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textarea"
@@ -17,24 +17,24 @@ import (
 // AICodersViewComponent provides AI coder session management
 type AICodersViewComponent struct {
 	BaseComponent
-	
+
 	// Sessions
 	sessions        []AICoderSessionInfo
 	activeSessionID string
 	selectedIndex   int
-	
+
 	// Current session view
-	mode           AICoderViewMode
-	messages       []AIMessage
-	messageView    viewport.Model
-	inputArea      textarea.Model
-	sessionList    list.Model
-	
+	mode        AICoderViewMode
+	messages    []AIMessage
+	messageView viewport.Model
+	inputArea   textarea.Model
+	sessionList list.Model
+
 	// Display options
 	showTimestamps bool
 	showTokenCount bool
 	splitView      bool
-	
+
 	// Styles
 	titleStyle     lipgloss.Style
 	sessionStyle   lipgloss.Style
@@ -77,26 +77,26 @@ func NewAICodersViewComponent() *AICodersViewComponent {
 		showTokenCount: false,
 		splitView:      true,
 	}
-	
+
 	// Initialize styles
 	a.initStyles()
-	
+
 	// Initialize viewport for messages
 	a.messageView = viewport.New(80, 20)
-	
+
 	// Initialize input area
 	a.inputArea = textarea.New()
 	a.inputArea.Placeholder = "Type your message to AI..."
 	a.inputArea.CharLimit = 4000
 	a.inputArea.SetWidth(80)
 	a.inputArea.SetHeight(4)
-	
+
 	// Initialize session list
 	a.initializeSessionList()
-	
+
 	// Set visible by default
 	a.visible = true
-	
+
 	return a
 }
 
@@ -105,31 +105,31 @@ func (a *AICodersViewComponent) initStyles() {
 	a.titleStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205"))
-	
+
 	a.sessionStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("86"))
-	
+
 	a.userStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("39")).
 		Bold(true)
-	
+
 	a.assistantStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("250"))
-	
+
 	a.systemStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241")).
 		Italic(true)
-	
+
 	a.timestampStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("238"))
-	
+
 	a.activeStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("42")).
 		Bold(true)
-	
+
 	a.inactiveStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241"))
-	
+
 	a.errorStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("196"))
 }
@@ -137,12 +137,12 @@ func (a *AICodersViewComponent) initStyles() {
 // initializeSessionList sets up the session list
 func (a *AICodersViewComponent) initializeSessionList() {
 	items := a.sessionsToListItems()
-	
+
 	a.sessionList = list.New(items, sessionItemDelegate{}, 40, 20)
 	a.sessionList.Title = "AI Coder Sessions"
 	a.sessionList.SetShowStatusBar(true)
 	a.sessionList.SetFilteringEnabled(true)
-	
+
 	// Customize key bindings
 	a.sessionList.KeyMap.CursorUp = key.NewBinding(
 		key.WithKeys("up", "k"),
@@ -162,7 +162,7 @@ func (a *AICodersViewComponent) Init() tea.Cmd {
 
 func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	
+
 	// Handle component-specific messages
 	switch msg := msg.(type) {
 	case AICoderStartMsg:
@@ -179,7 +179,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		a.sessions = append(a.sessions, session)
 		a.activeSessionID = session.ID
 		a.updateSessionList()
-		
+
 		// Add system message
 		a.messages = append(a.messages, AIMessage{
 			ID:        generateMessageID(),
@@ -188,14 +188,14 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Content:   msg.SystemPrompt,
 			Timestamp: time.Now(),
 		})
-		
+
 		// Switch to chat mode
 		a.mode = AICoderViewModeChat
 		a.updateMessageView()
-		
+
 		return a, SendSystemNotification(NotificationSuccess,
 			"AI Coder started", fmt.Sprintf("Session: %s", msg.Name))
-		
+
 	case AICoderStopMsg:
 		// Stop AI coder session
 		for i, session := range a.sessions {
@@ -205,15 +205,15 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		a.updateSessionList()
-		
+
 		if msg.SessionID == a.activeSessionID {
 			a.activeSessionID = ""
 			a.mode = AICoderViewModeList
 		}
-		
+
 		return a, SendSystemNotification(NotificationInfo,
 			"AI Coder stopped", fmt.Sprintf("Session: %s", msg.SessionID))
-		
+
 	case AICoderMessageMsg:
 		// Add message to conversation
 		message := AIMessage{
@@ -226,9 +226,9 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !msg.IsUser {
 			message.Role = "assistant"
 		}
-		
+
 		a.messages = append(a.messages, message)
-		
+
 		// Update session activity
 		for i, session := range a.sessions {
 			if session.ID == msg.SessionID {
@@ -237,17 +237,17 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
-		
+
 		a.updateMessageView()
 		a.updateSessionList()
-		
+
 		// Clear input if it was user message
 		if msg.IsUser {
 			a.inputArea.SetValue("")
 		}
-		
+
 		return a, nil
-		
+
 	case AICoderResponseMsg:
 		// Handle AI response
 		if msg.Error != nil {
@@ -260,11 +260,11 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				Timestamp: time.Now(),
 				Error:     msg.Error.Error(),
 			})
-			
+
 			return a, SendSystemNotification(NotificationError,
 				"AI Error", msg.Error.Error())
 		}
-		
+
 		// Add or update assistant message
 		if msg.Complete {
 			a.messages = append(a.messages, AIMessage{
@@ -283,20 +283,20 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		}
-		
+
 		a.updateMessageView()
 		return a, nil
-		
+
 	case AICoderSessionUpdateMsg:
 		// Update session list
 		a.sessions = msg.Sessions
 		a.updateSessionList()
 		return a, nil
-		
+
 	case tea.WindowSizeMsg:
 		a.width = msg.Width
 		a.height = msg.Height
-		
+
 		// Update component sizes
 		if a.splitView {
 			a.sessionList.SetSize(msg.Width/3, msg.Height-4)
@@ -307,9 +307,9 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.messageView.Width = msg.Width - 4
 			a.messageView.Height = msg.Height - 10
 		}
-		
+
 		a.inputArea.SetWidth(msg.Width - 4)
-		
+
 	case tea.KeyMsg:
 		// Handle key presses based on mode
 		switch a.mode {
@@ -325,7 +325,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return a, nil
 					}
 				}
-				
+
 			case "n":
 				// New session
 				return a, func() tea.Msg {
@@ -336,7 +336,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						WorkingDir:   ".",
 					}
 				}
-				
+
 			case "d":
 				// Delete/stop session
 				if item := a.sessionList.SelectedItem(); item != nil {
@@ -349,12 +349,12 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 				}
-				
+
 			case "s":
 				// Toggle split view
 				a.splitView = !a.splitView
 				return a, nil
-				
+
 			case "tab":
 				// Switch to chat if active session
 				if a.activeSessionID != "" {
@@ -362,7 +362,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return a, nil
 				}
 			}
-			
+
 		case AICoderViewModeChat:
 			// Check if input is focused
 			if a.inputArea.Focused() {
@@ -372,7 +372,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.inputArea.SetValue("")
 					a.inputArea.Blur()
 					return a, nil
-					
+
 				case "ctrl+enter":
 					// Send message
 					message := a.inputArea.Value()
@@ -388,12 +388,12 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						a.inputArea.SetValue("")
 						return a, cmd
 					}
-					
+
 				case "esc":
 					// Unfocus input
 					a.inputArea.Blur()
 					return a, nil
-					
+
 				default:
 					// Update input
 					var cmd tea.Cmd
@@ -407,23 +407,23 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					// Focus input
 					a.inputArea.Focus()
 					return a, textarea.Blink
-					
+
 				case "tab", "l":
 					// Switch to list
 					a.mode = AICoderViewModeList
 					return a, nil
-					
+
 				case "s":
 					// Toggle split view
 					a.splitView = !a.splitView
 					return a, nil
-					
+
 				case "t":
 					// Toggle timestamps
 					a.showTimestamps = !a.showTimestamps
 					a.updateMessageView()
 					return a, nil
-					
+
 				case "c":
 					// Clear messages (keep system prompt)
 					var newMessages []AIMessage
@@ -435,7 +435,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					a.messages = newMessages
 					a.updateMessageView()
 					return a, nil
-					
+
 				case "q":
 					// Quit session
 					a.activeSessionID = ""
@@ -443,7 +443,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return a, nil
 				}
 			}
-			
+
 		case AICoderViewModeSplit:
 			// Split view mode - handle both list and chat
 			switch msg.String() {
@@ -454,7 +454,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	// Update sub-components
 	if a.visible {
 		switch a.mode {
@@ -464,7 +464,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
-			
+
 		case AICoderViewModeChat:
 			// Update viewport
 			newView, cmd := a.messageView.Update(msg)
@@ -472,7 +472,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
-			
+
 			// Update input if not handling keys above
 			if a.inputArea.Focused() {
 				newInput, cmd := a.inputArea.Update(msg)
@@ -483,7 +483,7 @@ func (a *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	}
-	
+
 	return a, tea.Batch(cmds...)
 }
 
@@ -492,9 +492,9 @@ func (a *AICodersViewComponent) View() string {
 	if !a.visible {
 		return ""
 	}
-	
+
 	var b strings.Builder
-	
+
 	switch a.mode {
 	case AICoderViewModeList:
 		a.renderListView(&b)
@@ -503,7 +503,7 @@ func (a *AICodersViewComponent) View() string {
 	case AICoderViewModeSplit:
 		a.renderSplitView(&b)
 	}
-	
+
 	return b.String()
 }
 
@@ -512,10 +512,10 @@ func (a *AICodersViewComponent) renderListView(b *strings.Builder) {
 	// Title
 	title := fmt.Sprintf("🤖 AI Coder Sessions (%d)", len(a.sessions))
 	b.WriteString(a.titleStyle.Render(title) + "\n\n")
-	
+
 	// Session list
 	b.WriteString(a.sessionList.View())
-	
+
 	// Footer hints
 	b.WriteString("\n")
 	hints := []string{
@@ -538,7 +538,7 @@ func (a *AICodersViewComponent) renderChatView(b *strings.Builder) {
 			break
 		}
 	}
-	
+
 	// Title bar
 	if activeSession != nil {
 		title := fmt.Sprintf("🤖 %s (%s) - %s", activeSession.Name, activeSession.Model, activeSession.State)
@@ -546,17 +546,17 @@ func (a *AICodersViewComponent) renderChatView(b *strings.Builder) {
 	} else {
 		b.WriteString(a.titleStyle.Render("🤖 AI Coder") + "\n")
 	}
-	
+
 	// Message view
 	b.WriteString(a.messageView.View())
 	b.WriteString("\n")
-	
+
 	// Input area
 	if a.activeSessionID != "" && activeSession != nil && activeSession.State == "active" {
 		b.WriteString("─────────────────\n")
 		b.WriteString(a.inputArea.View())
 		b.WriteString("\n")
-		
+
 		// Input hints
 		if a.inputArea.Focused() {
 			hints := []string{
@@ -608,17 +608,17 @@ func (a *AICodersViewComponent) loadSessionMessages(sessionID string) {
 
 func (a *AICodersViewComponent) updateMessageView() {
 	var content strings.Builder
-	
+
 	// Filter messages for active session
 	for _, msg := range a.messages {
 		if msg.SessionID != a.activeSessionID {
 			continue
 		}
-		
+
 		// Format message
 		var roleStyle lipgloss.Style
 		var rolePrefix string
-		
+
 		switch msg.Role {
 		case "user":
 			roleStyle = a.userStyle
@@ -630,30 +630,30 @@ func (a *AICodersViewComponent) updateMessageView() {
 			roleStyle = a.systemStyle
 			rolePrefix = "System"
 		}
-		
+
 		// Add timestamp if enabled
 		if a.showTimestamps {
 			timestamp := msg.Timestamp.Format("15:04:05")
 			content.WriteString(a.timestampStyle.Render(timestamp) + " ")
 		}
-		
+
 		// Add role and content
-		content.WriteString(roleStyle.Render(rolePrefix+": "))
-		
+		content.WriteString(roleStyle.Render(rolePrefix + ": "))
+
 		if msg.Error != "" {
 			content.WriteString(a.errorStyle.Render(msg.Content))
 		} else {
 			content.WriteString(msg.Content)
 		}
-		
+
 		// Add token count if enabled
 		if a.showTokenCount && msg.Tokens > 0 {
 			content.WriteString(a.timestampStyle.Render(fmt.Sprintf(" [%d tokens]", msg.Tokens)))
 		}
-		
+
 		content.WriteString("\n\n")
 	}
-	
+
 	a.messageView.SetContent(content.String())
 	a.messageView.GotoBottom()
 }
@@ -685,16 +685,16 @@ func (i sessionItem) Title() string {
 	if i.session.State != "active" {
 		icon = "⚫"
 	}
-	
+
 	return fmt.Sprintf("%s %s (%s)", icon, i.session.Name, i.session.Model)
 }
 
 func (i sessionItem) Description() string {
 	parts := []string{}
-	
+
 	// Add message count
 	parts = append(parts, fmt.Sprintf("%d messages", i.session.MessageCount))
-	
+
 	// Add duration
 	duration := time.Since(i.session.StartTime)
 	if duration < time.Hour {
@@ -702,7 +702,7 @@ func (i sessionItem) Description() string {
 	} else {
 		parts = append(parts, fmt.Sprintf("%dh %dm", int(duration.Hours()), int(duration.Minutes())%60))
 	}
-	
+
 	// Add last activity
 	lastActive := time.Since(i.session.LastActivity)
 	if lastActive < time.Minute {
@@ -712,7 +712,7 @@ func (i sessionItem) Description() string {
 	} else {
 		parts = append(parts, fmt.Sprintf("%dh ago", int(lastActive.Hours())))
 	}
-	
+
 	return strings.Join(parts, " | ")
 }
 
@@ -739,15 +739,15 @@ func (d sessionItemDelegate) Render(w io.Writer, m list.Model, index int, listIt
 		Bold(true)
 	normalStyle := lipgloss.NewStyle().
 		PaddingLeft(2)
-	
+
 	item, ok := listItem.(sessionItem)
 	if !ok {
 		return
 	}
-	
+
 	// Format the item
 	str := fmt.Sprintf("%s\n  %s", item.Title(), item.Description())
-	
+
 	if index == m.Index() {
 		fmt.Fprintf(w, "%s", selectedStyle.Render("> "+str))
 	} else {

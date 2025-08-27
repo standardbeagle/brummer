@@ -5,7 +5,7 @@ import (
 	"io"
 	"sort"
 	"strings"
-	
+
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -18,30 +18,30 @@ import (
 // ScriptSelectorComponent provides script selection and management
 type ScriptSelectorComponent struct {
 	BaseComponent
-	
+
 	// Component state
 	scripts        []ScriptInfo
 	list           list.Model
 	filterInput    textinput.Model
 	showModal      bool
 	selectedScript *ScriptInfo
-	
+
 	// Display options
 	showRunning   bool
 	showCommand   bool
 	groupByStatus bool
-	
+
 	// Process manager reference
-	processMgr    *process.Manager
-	packageInfo   *parser.PackageJSON
-	
+	processMgr  *process.Manager
+	packageInfo *parser.PackageJSON
+
 	// Styles
-	titleStyle    lipgloss.Style
-	runningStyle  lipgloss.Style
-	stoppedStyle  lipgloss.Style
-	commandStyle  lipgloss.Style
-	helpStyle     lipgloss.Style
-	modalStyle    lipgloss.Style
+	titleStyle   lipgloss.Style
+	runningStyle lipgloss.Style
+	stoppedStyle lipgloss.Style
+	commandStyle lipgloss.Style
+	helpStyle    lipgloss.Style
+	modalStyle   lipgloss.Style
 }
 
 // NewScriptSelectorComponent creates a new script selector component
@@ -54,20 +54,20 @@ func NewScriptSelectorComponent(processMgr *process.Manager, packageInfo *parser
 		showCommand:   false,
 		groupByStatus: false,
 	}
-	
+
 	// Initialize styles
 	s.initStyles()
-	
+
 	// Initialize components
 	s.initializeList()
 	s.initializeFilterInput()
-	
+
 	// Load scripts
 	s.loadScripts()
-	
+
 	// Set visible by default
 	s.visible = true
-	
+
 	return s
 }
 
@@ -76,21 +76,21 @@ func (s *ScriptSelectorComponent) initStyles() {
 	s.titleStyle = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205"))
-	
+
 	s.runningStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("42")).
 		Bold(true)
-	
+
 	s.stoppedStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241"))
-	
+
 	s.commandStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("39")).
 		Italic(true)
-	
+
 	s.helpStyle = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("241"))
-	
+
 	s.modalStyle = lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("205")).
@@ -101,13 +101,13 @@ func (s *ScriptSelectorComponent) initStyles() {
 // initializeList sets up the bubbles list component
 func (s *ScriptSelectorComponent) initializeList() {
 	items := s.scriptsToListItems()
-	
+
 	s.list = list.New(items, scriptItemDelegate{}, 80, 20)
 	s.list.Title = "Scripts"
 	s.list.SetShowStatusBar(true)
 	s.list.SetFilteringEnabled(false) // We use custom filter
 	s.list.SetShowHelp(true)
-	
+
 	// Customize key bindings
 	s.list.KeyMap.CursorUp = key.NewBinding(
 		key.WithKeys("up", "k"),
@@ -130,11 +130,11 @@ func (s *ScriptSelectorComponent) initializeFilterInput() {
 // loadScripts loads scripts from package.json
 func (s *ScriptSelectorComponent) loadScripts() {
 	s.scripts = []ScriptInfo{}
-	
+
 	if s.packageInfo == nil || s.packageInfo.Scripts == nil {
 		return
 	}
-	
+
 	// Get running processes
 	runningProcesses := make(map[string]bool)
 	if s.processMgr != nil {
@@ -144,7 +144,7 @@ func (s *ScriptSelectorComponent) loadScripts() {
 			}
 		}
 	}
-	
+
 	// Convert package.json scripts to ScriptInfo
 	for name, command := range s.packageInfo.Scripts {
 		script := ScriptInfo{
@@ -153,13 +153,13 @@ func (s *ScriptSelectorComponent) loadScripts() {
 			Description: s.getScriptDescription(name, command),
 			Running:     runningProcesses[name],
 		}
-		
+
 		// Parse environment variables from command
 		script.Env = s.parseEnvFromCommand(command)
-		
+
 		s.scripts = append(s.scripts, script)
 	}
-	
+
 	// Sort scripts by name
 	sort.Slice(s.scripts, func(i, j int) bool {
 		// Running scripts first
@@ -174,22 +174,22 @@ func (s *ScriptSelectorComponent) loadScripts() {
 func (s *ScriptSelectorComponent) getScriptDescription(name, command string) string {
 	// Common script patterns
 	descriptions := map[string]string{
-		"dev":      "Start development server",
-		"start":    "Start production server",
-		"build":    "Build for production",
-		"test":     "Run tests",
-		"lint":     "Run linter",
-		"format":   "Format code",
-		"clean":    "Clean build artifacts",
-		"install":  "Install dependencies",
-		"deploy":   "Deploy to production",
-		"watch":    "Watch for changes",
+		"dev":     "Start development server",
+		"start":   "Start production server",
+		"build":   "Build for production",
+		"test":    "Run tests",
+		"lint":    "Run linter",
+		"format":  "Format code",
+		"clean":   "Clean build artifacts",
+		"install": "Install dependencies",
+		"deploy":  "Deploy to production",
+		"watch":   "Watch for changes",
 	}
-	
+
 	if desc, ok := descriptions[name]; ok {
 		return desc
 	}
-	
+
 	// Try to infer from command
 	if strings.Contains(command, "webpack") {
 		return "Webpack bundler"
@@ -203,14 +203,14 @@ func (s *ScriptSelectorComponent) getScriptDescription(name, command string) str
 	if strings.Contains(command, "eslint") {
 		return "Code linter"
 	}
-	
+
 	return ""
 }
 
 // parseEnvFromCommand extracts environment variables from command
 func (s *ScriptSelectorComponent) parseEnvFromCommand(command string) map[string]string {
 	env := make(map[string]string)
-	
+
 	// Simple parser for ENV=value patterns
 	parts := strings.Fields(command)
 	for _, part := range parts {
@@ -221,14 +221,14 @@ func (s *ScriptSelectorComponent) parseEnvFromCommand(command string) map[string
 			}
 		}
 	}
-	
+
 	return env
 }
 
 // Update handles messages
 func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
-	
+
 	// Handle component-specific messages
 	switch msg := msg.(type) {
 	case ScriptListMsg:
@@ -236,7 +236,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		s.scripts = msg.Scripts
 		s.updateList()
 		return s, nil
-		
+
 	case ScriptSelectMsg:
 		// Handle script selection and action
 		for _, script := range s.scripts {
@@ -259,18 +259,18 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		return s, nil
-		
+
 	case ProcessListUpdateMsg:
 		// Update running status
 		s.loadScripts()
 		s.updateList()
 		return s, nil
-		
+
 	case tea.WindowSizeMsg:
 		s.width = msg.Width
 		s.height = msg.Height
 		s.list.SetSize(msg.Width, msg.Height-4)
-		
+
 	case tea.KeyMsg:
 		// Handle modal first
 		if s.showModal {
@@ -281,7 +281,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return s, nil
 		}
-		
+
 		// Handle filter input
 		if s.filterInput.Focused() {
 			switch msg.String() {
@@ -290,7 +290,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				s.applyFilter()
 				s.filterInput.Blur()
 				return s, nil
-				
+
 			case "esc":
 				// Cancel filter
 				s.filterInput.SetValue("")
@@ -298,7 +298,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				s.filterInput.Blur()
 				return s, nil
 			}
-			
+
 			// Update filter input
 			var cmd tea.Cmd
 			s.filterInput, cmd = s.filterInput.Update(msg)
@@ -306,7 +306,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s.applyFilter()
 			return s, cmd
 		}
-		
+
 		// Handle list navigation
 		switch msg.String() {
 		case "enter", " ":
@@ -320,7 +320,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 			}
-			
+
 		case "r":
 			// Run selected script
 			if item := s.list.SelectedItem(); item != nil {
@@ -328,7 +328,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return s, s.runScript(si.script)
 				}
 			}
-			
+
 		case "s":
 			// Stop selected script
 			if item := s.list.SelectedItem(); item != nil {
@@ -336,7 +336,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return s, s.stopScript(si.script)
 				}
 			}
-			
+
 		case "R":
 			// Restart selected script
 			if item := s.list.SelectedItem(); item != nil {
@@ -344,7 +344,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return s, s.restartScript(si.script)
 				}
 			}
-			
+
 		case "v":
 			// View script details
 			if item := s.list.SelectedItem(); item != nil {
@@ -353,24 +353,24 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					s.showModal = true
 				}
 			}
-			
+
 		case "/":
 			// Focus filter input
 			s.filterInput.Focus()
 			return s, textinput.Blink
-			
+
 		case "c":
 			// Toggle command display
 			s.showCommand = !s.showCommand
 			s.updateList()
 			return s, nil
-			
+
 		case "g":
 			// Toggle grouping by status
 			s.groupByStatus = !s.groupByStatus
 			s.updateList()
 			return s, nil
-			
+
 		case "a":
 			// Run all scripts
 			var runCmds []tea.Cmd
@@ -380,7 +380,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 			return s, tea.Batch(runCmds...)
-			
+
 		case "S":
 			// Stop all scripts
 			var stopCmds []tea.Cmd
@@ -392,7 +392,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return s, tea.Batch(stopCmds...)
 		}
 	}
-	
+
 	// Update the list component
 	if s.visible && !s.showModal && !s.filterInput.Focused() {
 		newList, cmd := s.list.Update(msg)
@@ -401,7 +401,7 @@ func (s *ScriptSelectorComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 	}
-	
+
 	return s, tea.Batch(cmds...)
 }
 
@@ -410,14 +410,14 @@ func (s *ScriptSelectorComponent) View() string {
 	if !s.visible {
 		return ""
 	}
-	
+
 	// Show modal if active
 	if s.showModal && s.selectedScript != nil {
 		return s.renderModal()
 	}
-	
+
 	var b strings.Builder
-	
+
 	// Title
 	title := fmt.Sprintf("📜 Scripts (%d)", len(s.scripts))
 	running := 0
@@ -430,7 +430,7 @@ func (s *ScriptSelectorComponent) View() string {
 		title += fmt.Sprintf(" - %d running", running)
 	}
 	b.WriteString(s.titleStyle.Render(title) + "\n")
-	
+
 	// Filter input or help
 	if s.filterInput.Focused() {
 		b.WriteString("Filter: " + s.filterInput.View() + "\n")
@@ -446,10 +446,10 @@ func (s *ScriptSelectorComponent) View() string {
 		}
 		b.WriteString(s.helpStyle.Render(strings.Join(help, " | ")) + "\n")
 	}
-	
+
 	// List
 	b.WriteString(s.list.View())
-	
+
 	return b.String()
 }
 
@@ -458,26 +458,26 @@ func (s *ScriptSelectorComponent) renderModal() string {
 	if s.selectedScript == nil {
 		return ""
 	}
-	
+
 	var content strings.Builder
-	
+
 	// Title
 	status := "⭕ Stopped"
 	if s.selectedScript.Running {
 		status = "🟢 Running"
 	}
 	content.WriteString(fmt.Sprintf("Script: %s %s\n\n", s.selectedScript.Name, status))
-	
+
 	// Command
 	content.WriteString("Command:\n")
 	content.WriteString(s.commandStyle.Render(s.selectedScript.Command) + "\n\n")
-	
+
 	// Description
 	if s.selectedScript.Description != "" {
 		content.WriteString("Description:\n")
 		content.WriteString(s.selectedScript.Description + "\n\n")
 	}
-	
+
 	// Environment variables
 	if len(s.selectedScript.Env) > 0 {
 		content.WriteString("Environment:\n")
@@ -486,10 +486,10 @@ func (s *ScriptSelectorComponent) renderModal() string {
 		}
 		content.WriteString("\n")
 	}
-	
+
 	// Help
 	content.WriteString(s.helpStyle.Render("Press ESC to close"))
-	
+
 	return s.modalStyle.Render(content.String())
 }
 
@@ -499,7 +499,7 @@ func (s *ScriptSelectorComponent) runScript(script ScriptInfo) tea.Cmd {
 	if s.processMgr == nil || script.Running {
 		return nil
 	}
-	
+
 	return SendProcessStart(script.Name)
 }
 
@@ -507,7 +507,7 @@ func (s *ScriptSelectorComponent) stopScript(script ScriptInfo) tea.Cmd {
 	if s.processMgr == nil || !script.Running {
 		return nil
 	}
-	
+
 	// Find process ID
 	for _, p := range s.processMgr.GetAllProcesses() {
 		if p.Name == script.Name && p.Status == process.StatusRunning {
@@ -533,7 +533,7 @@ func (s *ScriptSelectorComponent) applyFilter() {
 		s.updateList()
 		return
 	}
-	
+
 	// Filter scripts
 	var filtered []list.Item
 	for _, script := range s.scripts {
@@ -546,7 +546,7 @@ func (s *ScriptSelectorComponent) applyFilter() {
 			})
 		}
 	}
-	
+
 	s.list.SetItems(filtered)
 }
 
@@ -558,11 +558,11 @@ func (s *ScriptSelectorComponent) updateList() {
 func (s *ScriptSelectorComponent) scriptsToListItems() []list.Item {
 	if s.groupByStatus {
 		var items []list.Item
-		
+
 		// Running scripts
 		var running []ScriptInfo
 		var stopped []ScriptInfo
-		
+
 		for _, script := range s.scripts {
 			if script.Running {
 				running = append(running, script)
@@ -570,7 +570,7 @@ func (s *ScriptSelectorComponent) scriptsToListItems() []list.Item {
 				stopped = append(stopped, script)
 			}
 		}
-		
+
 		// Add running group
 		if len(running) > 0 {
 			items = append(items, scriptGroupItem{
@@ -585,7 +585,7 @@ func (s *ScriptSelectorComponent) scriptsToListItems() []list.Item {
 				})
 			}
 		}
-		
+
 		// Add stopped group
 		if len(stopped) > 0 {
 			items = append(items, scriptGroupItem{
@@ -600,10 +600,10 @@ func (s *ScriptSelectorComponent) scriptsToListItems() []list.Item {
 				})
 			}
 		}
-		
+
 		return items
 	}
-	
+
 	// Ungrouped
 	items := make([]list.Item, len(s.scripts))
 	for i, script := range s.scripts {
@@ -615,7 +615,6 @@ func (s *ScriptSelectorComponent) scriptsToListItems() []list.Item {
 	}
 	return items
 }
-
 
 // Focus sets focus to this component
 func (s *ScriptSelectorComponent) Focus() tea.Cmd {
@@ -643,12 +642,12 @@ func (i scriptItem) Title() string {
 	if i.indented {
 		prefix = "  "
 	}
-	
+
 	status := "⭕"
 	if i.script.Running {
 		status = "🟢"
 	}
-	
+
 	return fmt.Sprintf("%s%s %s", prefix, status, i.script.Name)
 }
 
@@ -657,7 +656,7 @@ func (i scriptItem) Description() string {
 	if i.indented {
 		desc = "  "
 	}
-	
+
 	if i.showCommand {
 		cmd := i.script.Command
 		if len(cmd) > 60 {
@@ -667,7 +666,7 @@ func (i scriptItem) Description() string {
 	} else if i.script.Description != "" {
 		desc += i.script.Description
 	}
-	
+
 	return desc
 }
 
@@ -713,9 +712,9 @@ func (d scriptItemDelegate) Render(w io.Writer, m list.Model, index int, listIte
 	groupStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(lipgloss.Color("205"))
-	
+
 	var str string
-	
+
 	switch item := listItem.(type) {
 	case scriptItem:
 		str = fmt.Sprintf("%s\n  %s", item.Title(), item.Description())
@@ -724,7 +723,7 @@ func (d scriptItemDelegate) Render(w io.Writer, m list.Model, index int, listIte
 	default:
 		return
 	}
-	
+
 	var fn func(...string) string
 	if index == m.Index() {
 		fn = func(strs ...string) string {
@@ -734,6 +733,6 @@ func (d scriptItemDelegate) Render(w io.Writer, m list.Model, index int, listIte
 	} else {
 		fn = itemStyle.Render
 	}
-	
+
 	fmt.Fprintf(w, "%s", fn(str))
 }
