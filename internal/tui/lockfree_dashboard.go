@@ -79,21 +79,21 @@ func (d *LockFreeDashboard) renderBufferMetrics(metrics BufferMetrics) string {
 	var lines []string
 	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("🔄 Ring Buffer"))
 	lines = append(lines, "")
-	
+
 	lines = append(lines, fmt.Sprintf("Buffer Size:     %s", formatNumber(metrics.BufferSize)))
 	lines = append(lines, fmt.Sprintf("Current Used:    %s", formatNumber(metrics.CurrentUsed)))
 	lines = append(lines, fmt.Sprintf("Max Used:        %s", formatNumber(metrics.MaxUsedSlots)))
-	
+
 	// Usage bar
 	usagePercent := float64(metrics.CurrentUsed) / float64(metrics.BufferSize) * 100
 	usageBar := renderProgressBar(int(usagePercent), 30)
 	lines = append(lines, fmt.Sprintf("Utilization:     %s %.1f%%", usageBar, usagePercent))
 	lines = append(lines, "")
-	
+
 	lines = append(lines, fmt.Sprintf("Messages Written: %s", formatNumber(metrics.MessagesWritten)))
 	lines = append(lines, fmt.Sprintf("Messages Dropped: %s", formatNumber(metrics.MessagesDropped)))
 	lines = append(lines, fmt.Sprintf("Buffer Full Count: %s", formatNumber(metrics.BufferFullCount)))
-	
+
 	if metrics.MessagesWritten > 0 {
 		dropRate := float64(metrics.MessagesDropped) / float64(metrics.MessagesWritten) * 100
 		lines = append(lines, fmt.Sprintf("Drop Rate:       %.2f%%", dropRate))
@@ -113,22 +113,22 @@ func (d *LockFreeDashboard) renderManagerMetrics(metrics PTYManagerMetrics) stri
 	var lines []string
 	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("⚡ Manager"))
 	lines = append(lines, "")
-	
+
 	lines = append(lines, fmt.Sprintf("Active Sessions:  %d", metrics.activeSessions.Load()))
 	lines = append(lines, fmt.Sprintf("Total Messages:   %s", formatNumber(metrics.totalMessages.Load())))
 	lines = append(lines, fmt.Sprintf("Dropped Messages: %s", formatNumber(metrics.droppedMessages.Load())))
 	lines = append(lines, "")
-	
+
 	lines = append(lines, fmt.Sprintf("Batches Processed: %s", formatNumber(metrics.batchesProcessed.Load())))
 	lines = append(lines, fmt.Sprintf("Avg Batch Size:    %d", metrics.averageBatchSize.Load()))
-	
+
 	// Poll duration
 	lastPollNs := metrics.lastPollDuration.Load()
 	if lastPollNs > 0 {
 		pollDuration := time.Duration(lastPollNs)
 		lines = append(lines, fmt.Sprintf("Last Poll:        %v", pollDuration))
 	}
-	
+
 	// Buffer utilization from manager perspective
 	bufferUtil := metrics.bufferUtilization.Load()
 	if bufferUtil > 0 {
@@ -149,34 +149,34 @@ func (d *LockFreeDashboard) renderPerformanceSummary(managerMetrics PTYManagerMe
 		Width(d.width - 4)
 
 	var summary []string
-	
+
 	// Calculate throughput if we have batch data
 	batchesProcessed := managerMetrics.batchesProcessed.Load()
 	totalMessages := managerMetrics.totalMessages.Load()
-	
+
 	if batchesProcessed > 0 && totalMessages > 0 {
 		avgBatchSize := float64(totalMessages) / float64(batchesProcessed)
 		summary = append(summary, fmt.Sprintf("📊 Avg Batch Size: %.1f", avgBatchSize))
 	}
-	
+
 	// Memory efficiency
 	if bufferMetrics.BufferSize > 0 {
 		efficiency := float64(bufferMetrics.MaxUsedSlots) / float64(bufferMetrics.BufferSize) * 100
 		summary = append(summary, fmt.Sprintf("🎯 Peak Efficiency: %.1f%%", efficiency))
 	}
-	
+
 	// Performance status
 	dropRate := bufferMetrics.SaturationRatio * 100
 	var status string
 	if dropRate < 1 {
 		status = "🟢 Excellent"
 	} else if dropRate < 5 {
-		status = "🟡 Good"  
+		status = "🟡 Good"
 	} else {
 		status = "🔴 Degraded"
 	}
 	summary = append(summary, fmt.Sprintf("Status: %s (%.2f%% drops)", status, dropRate))
-	
+
 	summaryText := "Performance: " + strings.Join(summary, " | ")
 	return style.Render(summaryText)
 }
@@ -189,12 +189,12 @@ func renderProgressBar(percent int, width int) string {
 	if percent > 100 {
 		percent = 100
 	}
-	
+
 	filled := (percent * width) / 100
 	empty := width - filled
-	
+
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", empty)
-	
+
 	// Color based on usage
 	if percent < 50 {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("32")).Render(bar) // Green
@@ -223,11 +223,11 @@ func (d *LockFreeDashboard) RenderQuickStats(managerMetrics PTYManagerMetrics, b
 	if bufferMetrics.BufferSize == 0 {
 		return "Lock-free PTY: Initializing..."
 	}
-	
+
 	utilization := float64(bufferMetrics.CurrentUsed) / float64(bufferMetrics.BufferSize) * 100
 	dropRate := bufferMetrics.SaturationRatio * 100
 	sessions := managerMetrics.activeSessions.Load()
-	
+
 	var indicator string
 	if dropRate < 1 {
 		indicator = "🟢"
@@ -236,7 +236,7 @@ func (d *LockFreeDashboard) RenderQuickStats(managerMetrics PTYManagerMetrics, b
 	} else {
 		indicator = "🔴"
 	}
-	
-	return fmt.Sprintf("%s LockFree: %d sessions, %.0f%% util, %.1f%% drops", 
+
+	return fmt.Sprintf("%s LockFree: %d sessions, %.0f%% util, %.1f%% drops",
 		indicator, sessions, utilization, dropRate)
 }

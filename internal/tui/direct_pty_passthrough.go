@@ -18,19 +18,19 @@ type DirectPTYPassthrough struct {
 	// Core components
 	session    *aicoder.PTYSession
 	terminalFD int // Direct terminal file descriptor
-	
+
 	// Atomic state
-	active       atomic.Bool
+	active          atomic.Bool
 	passthroughMode atomic.Bool // Toggle between direct and parsed modes
-	
+
 	// Performance counters
 	bytesPassedThrough atomic.Uint64
 	directWrites       atomic.Uint64
-	
+
 	// Control
 	ctx    context.Context
 	cancel context.CancelFunc
-	
+
 	// Dependencies
 	logStore *logs.Store
 }
@@ -45,17 +45,17 @@ type DirectPTYMessage struct {
 // NewDirectPTYPassthrough creates a new direct passthrough system
 func NewDirectPTYPassthrough(ctx context.Context, session *aicoder.PTYSession, logStore *logs.Store) *DirectPTYPassthrough {
 	passthroughCtx, cancel := context.WithCancel(ctx)
-	
+
 	passthrough := &DirectPTYPassthrough{
 		session:  session,
 		ctx:      passthroughCtx,
 		cancel:   cancel,
 		logStore: logStore,
 	}
-	
+
 	// Initialize terminal file descriptor (stdout for now)
 	passthrough.terminalFD = int(os.Stdout.Fd())
-	
+
 	return passthrough
 }
 
@@ -64,12 +64,12 @@ func (d *DirectPTYPassthrough) Start() error {
 	if !d.active.CompareAndSwap(false, true) {
 		return fmt.Errorf("passthrough already active")
 	}
-	
+
 	d.logStore.Add("system", "System", "Starting direct PTY passthrough", false)
-	
+
 	// Start the passthrough loop
 	go d.passthroughLoop()
-	
+
 	return nil
 }
 
@@ -78,7 +78,7 @@ func (d *DirectPTYPassthrough) Stop() {
 	if !d.active.CompareAndSwap(true, false) {
 		return // Already stopped
 	}
-	
+
 	d.cancel()
 	d.logStore.Add("system", "System", "Stopped direct PTY passthrough", false)
 }
@@ -96,18 +96,18 @@ func (d *DirectPTYPassthrough) SetPassthroughMode(enabled bool) {
 // passthroughLoop is the main loop for direct PTY passthrough
 func (d *DirectPTYPassthrough) passthroughLoop() {
 	defer d.active.Store(false)
-	
+
 	for {
 		select {
 		case <-d.ctx.Done():
 			return
-			
+
 		case output, ok := <-d.session.OutputChan:
 			if !ok {
 				// Channel closed
 				return
 			}
-			
+
 			if d.passthroughMode.Load() {
 				// Direct mode: write raw bytes to terminal
 				d.writeDirectToTerminal(output)
@@ -122,11 +122,11 @@ func (d *DirectPTYPassthrough) writeDirectToTerminal(data []byte) {
 	// Use syscall.Write for maximum performance
 	n, err := syscall.Write(d.terminalFD, data)
 	if err != nil {
-		d.logStore.Add("system", "System", 
+		d.logStore.Add("system", "System",
 			fmt.Sprintf("Direct terminal write error: %v", err), true)
 		return
 	}
-	
+
 	// Update metrics
 	d.bytesPassedThrough.Add(uint64(n))
 	d.directWrites.Add(1)
