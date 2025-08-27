@@ -2,7 +2,7 @@ package components
 
 import (
 	"fmt"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -37,8 +37,8 @@ type ToggleMsg struct {
 // ResizeMsg notifies components of size changes
 // (Separate from tea.WindowSizeMsg for component-specific sizing)
 type ResizeMsg struct {
-	Width  int
-	Height int
+	Width       int
+	Height      int
 	ComponentID string // Optional: target specific component
 }
 
@@ -229,11 +229,11 @@ type ContextMenuItem struct {
 
 // DragDropMsg handles drag and drop operations
 type DragDropMsg struct {
-	Action   DragDropAction
-	Source   string
-	Target   string
-	Data     interface{}
-	X, Y     int
+	Action DragDropAction
+	Source string
+	Target string
+	Data   interface{}
+	X, Y   int
 }
 
 type DragDropAction int
@@ -349,20 +349,20 @@ func BatchCommands(cmds ...tea.Cmd) tea.Cmd {
 type MessageRouter interface {
 	// Route sends a message to a specific component
 	Route(componentID string, msg tea.Msg) tea.Cmd
-	
+
 	// Broadcast sends a message to all components
 	Broadcast(msg tea.Msg) tea.Cmd
-	
+
 	// Subscribe registers interest in specific message types
 	Subscribe(componentID string, msgType interface{})
-	
+
 	// Unsubscribe removes interest in message types
 	Unsubscribe(componentID string, msgType interface{})
 }
 
 // SimpleMessageRouter provides basic message routing
 type SimpleMessageRouter struct {
-	components   map[string]Component
+	components    map[string]Component
 	subscriptions map[string][]interface{}
 }
 

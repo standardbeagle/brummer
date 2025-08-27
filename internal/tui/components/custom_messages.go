@@ -2,10 +2,10 @@ package components
 
 import (
 	"time"
-	
+
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/process"
 )
 
 // Process-specific messages
@@ -173,8 +173,8 @@ type URLInfo struct {
 
 // URLOpenMsg requests opening a URL
 type URLOpenMsg struct {
-	URL       string
-	External  bool // Open in external browser
+	URL      string
+	External bool // Open in external browser
 }
 
 // URLCopyMsg requests copying a URL to clipboard
@@ -254,10 +254,10 @@ const (
 
 // AICoderStartMsg starts a new AI coder session
 type AICoderStartMsg struct {
-	Name        string
-	Model       string
+	Name         string
+	Model        string
 	SystemPrompt string
-	WorkingDir  string
+	WorkingDir   string
 }
 
 // AICoderStopMsg stops an AI coder session
@@ -287,12 +287,12 @@ type AICoderSessionUpdateMsg struct {
 }
 
 type AICoderSessionInfo struct {
-	ID          string
-	Name        string
-	Model       string
-	State       string
+	ID           string
+	Name         string
+	Model        string
+	State        string
 	MessageCount int
-	StartTime   time.Time
+	StartTime    time.Time
 	LastActivity time.Time
 }
 
@@ -357,12 +357,12 @@ const (
 type CommandMode string
 
 const (
-	CommandModeNormal   CommandMode = "normal"
-	CommandModeSearch   CommandMode = "search"
-	CommandModeFilter   CommandMode = "filter"
-	CommandModeGoto     CommandMode = "goto"
-	CommandModeRun      CommandMode = "run"
-	CommandModeAI       CommandMode = "ai"
+	CommandModeNormal CommandMode = "normal"
+	CommandModeSearch CommandMode = "search"
+	CommandModeFilter CommandMode = "filter"
+	CommandModeGoto   CommandMode = "goto"
+	CommandModeRun    CommandMode = "run"
+	CommandModeAI     CommandMode = "ai"
 )
 
 // CommandModeMsg changes the command input mode
@@ -372,8 +372,8 @@ type CommandModeMsg struct {
 
 // CommandExecuteMsg executes a command
 type CommandExecuteMsg struct {
-	Command   string
-	Args      []string
+	Command    string
+	Args       []string
 	Background bool
 }
 
@@ -415,22 +415,22 @@ type CommandSuggestion struct {
 
 // SystemNotificationMsg represents a system notification
 type SystemNotificationMsg struct {
-	ID        string
-	Level     NotificationLevel
-	Title     string
-	Message   string
-	Details   string
-	Source    string
-	Timestamp time.Time
-	Actions   []NotificationAction
+	ID          string
+	Level       NotificationLevel
+	Title       string
+	Message     string
+	Details     string
+	Source      string
+	Timestamp   time.Time
+	Actions     []NotificationAction
 	AutoDismiss bool
-	Duration  time.Duration
-	Count     int  // Number of times this notification has occurred
+	Duration    time.Duration
+	Count       int // Number of times this notification has occurred
 }
 
 // NotificationDismissMsg dismisses a notification
 type NotificationDismissMsg struct {
-	ID string
+	ID  string
 	All bool // Dismiss all notifications
 }
 
@@ -497,13 +497,13 @@ func SendURLOpen(url string, external bool) tea.Cmd {
 func SendSystemNotification(level NotificationLevel, title, message string) tea.Cmd {
 	return func() tea.Msg {
 		return SystemNotificationMsg{
-			ID:        generateID(),
-			Level:     level,
-			Title:     title,
-			Message:   message,
-			Timestamp: time.Now(),
+			ID:          generateID(),
+			Level:       level,
+			Title:       title,
+			Message:     message,
+			Timestamp:   time.Now(),
 			AutoDismiss: level != NotificationError,
-			Duration:  5 * time.Second,
+			Duration:    5 * time.Second,
 		}
 	}
 }

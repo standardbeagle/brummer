@@ -9,7 +9,7 @@ import (
 // Components are tea.Model with additional focus management.
 type Component interface {
 	tea.Model // Standard Bubble Tea model interface
-	
+
 	// Focus management
 	Focus() tea.Cmd
 	Blur() tea.Cmd
@@ -40,10 +40,10 @@ type Container interface {
 
 // BaseComponent provides common functionality for components
 type BaseComponent struct {
-	width    int
-	height   int
-	focused  bool
-	visible  bool
+	width   int
+	height  int
+	focused bool
+	visible bool
 }
 
 // SetSize sets the component dimensions
