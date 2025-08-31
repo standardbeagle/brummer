@@ -218,10 +218,19 @@ func (c *ProcessViewNew) handleKeyPress(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return c, c.stopAllProcesses()
 
 	case "enter":
-		// Switch to logs view for selected process
-		if c.selectedProcess != "" {
-			return c, func() tea.Msg {
-				return SwitchToLogsMsg{ProcessID: c.selectedProcess}
+		// If a running process is selected, switch to its logs
+		// If a script is selected that's not running, start it
+		if c.selectedIndex >= 0 && c.selectedIndex < len(processes) {
+			selectedProc := processes[c.selectedIndex]
+			
+			if selectedProc.Status == process.StatusRunning {
+				// Switch to logs view for running process
+				return c, func() tea.Msg {
+					return SwitchToLogsMsg{ProcessID: selectedProc.ID}
+				}
+			} else {
+				// Start the script (it's not running)
+				return c, c.startScript(selectedProc.Name)
 			}
 		}
 		return c, nil
@@ -251,11 +260,14 @@ func (c *ProcessViewNew) handleKeyPress(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 // View implements Component interface
 func (c *ProcessViewNew) View() string {
 	return Debug().TrackRender("ProcessViewNew", func() string {
+		// DEBUG: Always show process count at top
+		debugHeader := fmt.Sprintf("[DEBUG View: %d processes, showEmpty: %v]", len(c.processes), c.showEmptyState)
+		
 		if c.showEmptyState || len(c.processes) == 0 {
-			return c.renderEmptyState()
+			return debugHeader + "\n" + c.renderEmptyState()
 		}
 
-		return c.renderProcessList()
+		return debugHeader + "\n" + c.renderProcessList()
 	})
 }
 
@@ -291,8 +303,9 @@ func (c *ProcessViewNew) renderProcessList() string {
 	// Build all content lines
 	if len(running) > 0 {
 		allLines = append(allLines, c.headerStyle.Render("🏃 Running Processes"))
-		for _, proc := range running {
-			selected := proc.ID == c.selectedProcess
+		for i, proc := range running {
+			// Check if this process is selected
+			selected := i == c.selectedIndex
 			line := c.renderProcessItem(proc, selected)
 			allLines = append(allLines, line)
 		}
@@ -306,9 +319,22 @@ func (c *ProcessViewNew) renderProcessList() string {
 	// Render stopped processes
 	if len(stopped) > 0 {
 		allLines = append(allLines, c.headerStyle.Render("⏹️  Stopped Processes"))
-		for _, proc := range stopped {
-			selected := proc.ID == c.selectedProcess
+		// Debug: Add visible debug lines that will definitely show
+		allLines = append(allLines, fmt.Sprintf("  [DEBUG: %d stopped processes]", len(stopped)))
+		if len(stopped) > 0 && stopped[0] != nil {
+			allLines = append(allLines, fmt.Sprintf("  [DEBUG: First process name: %s]", stopped[0].Name))
+		}
+		stoppedStartIdx := len(running)
+		for i, proc := range stopped {
+			// Check if this process is selected
+			processIdx := stoppedStartIdx + i
+			selected := processIdx == c.selectedIndex
 			line := c.renderProcessItem(proc, selected)
+			// Debug: check if line is empty
+			if line == "" {
+				// If line is empty, render something visible for debugging
+				line = fmt.Sprintf("  [DEBUG: Empty render for %s]", proc.Name)
+			}
 			allLines = append(allLines, line)
 		}
 	}
@@ -343,7 +369,21 @@ func (c *ProcessViewNew) renderProcessList() string {
 	content := strings.Join(viewportLines, "\n")
 
 	// Create footer with stats and help
-	separator := c.separatorStyle.Render(strings.Repeat("─", c.width))
+	// Ensure width is positive and reasonable to avoid overflow
+	separatorWidth := c.width
+	if separatorWidth <= 0 {
+		separatorWidth = 80 // Default width
+	} else if separatorWidth > 200 {
+		separatorWidth = 200 // Cap at reasonable max to prevent overflow
+	}
+	
+	// Create separator line that fits exactly
+	separatorLine := strings.Repeat("─", separatorWidth)
+	separator := c.separatorStyle.
+		Width(c.width).
+		MaxWidth(c.width).
+		Render(separatorLine)
+	
 	stats := c.renderStats()
 	help := c.renderHelp()
 
@@ -378,10 +418,18 @@ func (c *ProcessViewNew) renderProcessItem(proc *process.Process, selected bool)
 	// Use safe padding to align columns
 	nameField := SafePadRight(name, maxNameWidth)
 	uptimeField := SafePadLeft(uptime, 10)
-	pidField := fmt.Sprintf("PID: %s", proc.ID)
+	
+	// Only show PID if process is actually running (has an ID)
+	var pidField string
+	if proc.ID != "" {
+		pidField = fmt.Sprintf("  PID: %s", proc.ID)
+	} else {
+		// For non-running scripts, show ready status
+		pidField = "  (ready to run)"
+	}
 
 	// Combine with proper spacing
-	line := fmt.Sprintf("%s%s %s %s  %s",
+	line := fmt.Sprintf("%s%s %s %s%s",
 		indicator,
 		statusEmoji,
 		nameField,
@@ -473,16 +521,36 @@ func (c *ProcessViewNew) renderStats() string {
 		stats += fmt.Sprintf(" | [%d/%d]", current, total)
 	}
 
-	return c.footerStyle.Render(stats)
+	// Truncate if too wide
+	if SafeStringWidth(stats) > c.width {
+		stats = SafeTruncateWithEllipsis(stats, c.width-2)
+	}
+
+	// Apply style with width constraint
+	return c.footerStyle.
+		Width(c.width).
+		Render(stats)
 }
 
 // renderHelp renders keyboard shortcuts help
 func (c *ProcessViewNew) renderHelp() string {
 	help := "[r]estart [s]top [x]select [R]estart-all [S]top-all [enter]logs"
-	if c.focused {
-		return c.footerStyle.Copy().Bold(true).Render(help)
+	
+	// Truncate if too wide
+	if SafeStringWidth(help) > c.width {
+		help = SafeTruncateWithEllipsis(help, c.width-2)
 	}
-	return c.footerStyle.Render(help)
+	
+	// Apply style with width constraint
+	if c.focused {
+		return c.footerStyle.Copy().
+			Bold(true).
+			Width(c.width).
+			Render(help)
+	}
+	return c.footerStyle.
+		Width(c.width).
+		Render(help)
 }
 
 // updateScrollOffset ensures selected item is visible
@@ -530,37 +598,88 @@ func (c *ProcessViewNew) getSelectableProcesses() []*process.Process {
 // updateProcessList refreshes the process list from the manager
 func (c *ProcessViewNew) updateProcessList() {
 	if c.processMgr != nil {
-		c.processes = c.processMgr.GetAllProcesses()
-		c.showEmptyState = len(c.processes) == 0
+		// Get running/stopped processes
+		runningProcesses := c.processMgr.GetAllProcesses()
+		
+		// Build a map of running script names
+		runningScripts := make(map[string]bool)
+		for _, proc := range runningProcesses {
+			runningScripts[proc.Name] = true
+		}
+		
+		// Add available scripts that aren't running
+		allProcesses := make([]*process.Process, 0)
+		allProcesses = append(allProcesses, runningProcesses...)
+		
+		// Check for scripts in package.json
+		pkg := c.processMgr.GetPackageJSON()
+		// DEBUG
+		if pkg == nil {
+			// Create a dummy process to show the issue
+			debugProc := &process.Process{
+				ID:   "",
+				Name: "[DEBUG: No package.json]",
+				Status: process.StatusStopped,
+			}
+			debugProc.SetStatus(process.StatusStopped)
+			allProcesses = append(allProcesses, debugProc)
+		} else if len(pkg.Scripts) == 0 {
+			// Create a dummy process to show the issue
+			debugProc := &process.Process{
+				ID:   "",
+				Name: "[DEBUG: No scripts in package.json]",
+				Status: process.StatusStopped,
+			}
+			debugProc.SetStatus(process.StatusStopped)
+			allProcesses = append(allProcesses, debugProc)
+		} else {
+			// Original code continues here
+			for scriptName := range pkg.Scripts {
+				if !runningScripts[scriptName] {
+					// Create a placeholder process for the script
+					// We create a minimal process that represents an available script
+					scriptProc := &process.Process{
+						ID:     "",  // Empty ID indicates not running
+						Name:   scriptName,
+						Status: process.StatusStopped,
+					}
+					// Initialize the atomic state for GetStatus() to work
+					scriptProc.SetStatus(process.StatusStopped)
+					allProcesses = append(allProcesses, scriptProc)
+				}
+			}
+		}
+		
+		c.processes = allProcesses
+		c.showEmptyState = len(c.processes) == 0 && c.processMgr.GetPackageJSON() == nil
 		c.lastUpdate = time.Now()
+		
 
 		// Initialize selection if needed
-		if c.selectedProcess == "" && len(c.processes) > 0 {
+		if c.selectedIndex < 0 && len(c.processes) > 0 {
 			c.selectedIndex = 0
-			c.selectedProcess = c.processes[0].ID
+			if c.processes[0].ID != "" {
+				c.selectedProcess = c.processes[0].ID
+			}
 		}
 
 		// Validate current selection
-		if c.selectedProcess != "" {
-			found := false
-			for i, proc := range c.processes {
-				if proc.ID == c.selectedProcess {
-					c.selectedIndex = i
-					found = true
-					break
-				}
-			}
-			// If selected process no longer exists, select first
-			if !found && len(c.processes) > 0 {
+		if c.selectedIndex >= len(c.processes) {
+			if len(c.processes) > 0 {
 				c.selectedIndex = 0
-				c.selectedProcess = c.processes[0].ID
+				if c.processes[0].ID != "" {
+					c.selectedProcess = c.processes[0].ID
+				}
+			} else {
+				c.selectedIndex = -1
+				c.selectedProcess = ""
 			}
 		}
 
 		// Update notification counts
 		c.errorCount = 0
 		c.warningCount = 0
-		for _, proc := range c.processes {
+		for _, proc := range runningProcesses {
 			if proc.GetStatus() == process.StatusFailed {
 				c.errorCount++
 			}
@@ -632,6 +751,22 @@ func (c *ProcessViewNew) restartProcess(proc *process.Process) tea.Cmd {
 		}
 
 		return processUpdateMsg{}
+	}
+}
+
+func (c *ProcessViewNew) startScript(scriptName string) tea.Cmd {
+	return func() tea.Msg {
+		if c.processMgr != nil && c.processMgr.GetPackageJSON() != nil {
+			if _, exists := c.processMgr.GetPackageJSON().Scripts[scriptName]; exists {
+				_, err := c.processMgr.StartScript(scriptName)
+				if err != nil {
+					return errorMsg{err: err}
+				}
+				return processUpdateMsg{}
+			}
+		}
+		// Script not found
+		return errorMsg{err: fmt.Errorf("script '%s' not found", scriptName)}
 	}
 }
 

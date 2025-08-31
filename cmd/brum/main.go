@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -128,6 +129,12 @@ func main() {
 }
 
 func runApp(cmd *cobra.Command, args []string) {
+	// DEBUG - entered runApp
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] runApp called with %d args\n", len(args))
+		debugFile.Close()
+	}
+	
 	// Handle version flag
 	if showVersion {
 		fmt.Printf("brum version %s\n", Version)
@@ -164,6 +171,12 @@ func runApp(cmd *cobra.Command, args []string) {
 	processMgr, err := process.NewManager(absWorkDir, eventBus, hasPackageJSON)
 	if err != nil {
 		log.Fatal("Failed to initialize process manager:", err)
+	}
+	
+	// DEBUG - process manager created
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] Process manager created\n")
+		debugFile.Close()
 	}
 
 	logStore := logs.NewStore(10000, eventBus)
@@ -305,18 +318,28 @@ func runApp(cmd *cobra.Command, args []string) {
 		}
 	})
 
-	// Handle CLI arguments to start scripts
+	// Prepare CLI arguments but DON'T start scripts yet - wait for proper initialization
 	var startedFromCLI bool
+	var scriptsToStart []string
 	if len(args) > 0 {
 		startedFromCLI = true
+		scriptsToStart = args
+		// Scripts will be started when we receive TUIReady or LogHandlersReady event
+	}
+
+	// Function to start scripts after log handlers are ready
+	// This is triggered by EventBus, not by delays
+	startScriptsFromCLI := func() {
+		if len(scriptsToStart) == 0 {
+			return
+		}
 
 		if hasPackageJSON {
 			scripts := processMgr.GetScripts()
-
 			// Detect project commands for better script resolution
 			projectCommands := parser.DetectProjectCommands(absWorkDir)
 			
-			for _, arg := range args {
+			for _, arg := range scriptsToStart {
 				// Check if it's a known script in package.json
 				if _, exists := scripts[arg]; exists {
 					// Start the script
@@ -372,7 +395,24 @@ func runApp(cmd *cobra.Command, args []string) {
 				}
 
 				// Fallback to command execution if not a script or project command
-				if len(args) == 1 && strings.Contains(arg, " ") {
+				// Special case: if we have multiple args and none are scripts, treat as single command
+				if !foundProjectCommand && len(scriptsToStart) > 1 {
+					// Multiple arguments that aren't scripts - treat as command with arguments
+					// Only do this for the first arg, skip others
+					if arg == scriptsToStart[0] {
+						proc, err := processMgr.StartCommand("custom", scriptsToStart[0], scriptsToStart[1:])
+						if err != nil {
+							log.Fatalf("Failed to start command '%s': %v", strings.Join(scriptsToStart, " "), err)
+						} else {
+							if noTUI {
+								fmt.Printf("Started command '%s' (PID: %s)\n", strings.Join(scriptsToStart, " "), proc.ID)
+							} else {
+								logStore.Add("system", "startup", fmt.Sprintf("✅ Started command '%s' (PID: %s)", strings.Join(scriptsToStart, " "), proc.ID), false)
+							}
+						}
+						break // Don't process remaining args
+					}
+				} else if len(scriptsToStart) == 1 && strings.Contains(arg, " ") {
 					// Single argument with spaces - treat as a command
 					parts := strings.Fields(arg)
 					if len(parts) > 0 {
@@ -409,7 +449,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			// No package.json - check for other project types
 			projectCommands := parser.DetectProjectCommands(absWorkDir)
 			
-			for _, arg := range args {
+			for _, arg := range scriptsToStart {
 				// Check if it's a detected project command
 				var foundProjectCommand bool
 				for _, cmd := range projectCommands {
@@ -445,7 +485,24 @@ func runApp(cmd *cobra.Command, args []string) {
 				}
 				
 				// Now try original fallback logic
-				if len(args) == 1 && strings.Contains(arg, " ") {
+				// Special case: if we have multiple args and none are project commands, treat as single command
+				if !foundProjectCommand && len(scriptsToStart) > 1 {
+					// Multiple arguments that aren't commands - treat as command with arguments
+					// Only do this for the first arg, skip others
+					if arg == scriptsToStart[0] {
+						proc, err := processMgr.StartCommand("custom", scriptsToStart[0], scriptsToStart[1:])
+						if err != nil {
+							log.Fatalf("Failed to start command '%s': %v", strings.Join(scriptsToStart, " "), err)
+						} else {
+							if noTUI {
+								fmt.Printf("Started command '%s' (PID: %s)\n", strings.Join(scriptsToStart, " "), proc.ID)
+							} else {
+								logStore.Add("system", "startup", fmt.Sprintf("✅ Started command '%s' (PID: %s)", strings.Join(scriptsToStart, " "), proc.ID), false)
+							}
+						}
+						break // Don't process remaining args
+					}
+				} else if len(scriptsToStart) == 1 && strings.Contains(arg, " ") {
 					// Single argument with spaces - treat as a command
 					parts := strings.Fields(arg)
 					if len(parts) > 0 {
@@ -480,9 +537,29 @@ func runApp(cmd *cobra.Command, args []string) {
 			}
 		}
 
-		// Give processes a moment to start before showing TUI
+		// Give processes a moment to start
 		if startedFromCLI {
 			time.Sleep(100 * time.Millisecond)
+		}
+	}
+
+	// Subscribe to initialization events to know when to start processes
+	// Use sync.Once to ensure we only start processes once
+	var startOnce sync.Once
+	if len(scriptsToStart) > 0 {
+		// For non-TUI mode, we start immediately after subscribing
+		if noTUI {
+			// In headless mode, start scripts immediately
+			startScriptsFromCLI()
+		} else {
+			// In TUI mode, wait for the TUI to be ready
+			eventBus.Subscribe(events.LogHandlersReady, func(event events.Event) {
+				startOnce.Do(startScriptsFromCLI)
+			})
+			// Also subscribe to ComponentsReady as a backup
+			eventBus.Subscribe(events.ComponentsReady, func(event events.Event) {
+				startOnce.Do(startScriptsFromCLI)
+			})
 		}
 	}
 
@@ -630,6 +707,12 @@ func runApp(cmd *cobra.Command, args []string) {
 
 	// Only run TUI if not in headless mode
 	if !noTUI {
+		// DEBUG - entered TUI block
+		if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] Entered TUI block (noTUI=false)\n")
+			debugFile.Close()
+		}
+		
 		// Set up signal handling for cleanup
 		sigChan := make(chan os.Signal, 1)
 		setupSignalHandling(sigChan)
@@ -685,13 +768,74 @@ func runApp(cmd *cobra.Command, args []string) {
 				}
 			}
 		}
+		
+		// DEBUG - model created
+		if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] Model created, type: %T\n", model)
+			debugFile.Close()
+		}
 
-		p := tea.NewProgram(model, tea.WithAltScreen())
+		// DEBUG - before creating tea.Program
+		if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] About to create tea.Program, model=%v\n", model != nil)
+			debugFile.Close()
+		}
+		
+		// Create program with panic recovery
+		var p *tea.Program
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+						fmt.Fprintf(debugFile, "[DEBUG] PANIC in tea.NewProgram: %v\n", r)
+						debugFile.Close()
+					}
+					panic(r) // Re-panic to see stack trace
+				}
+			}()
+			p = tea.NewProgram(model)
+		}()
+		
+		// DEBUG - after creating tea.Program
+		if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] tea.Program created: %v\n", p != nil)
+			debugFile.Close()
+		}
+		
+		// Force flush to make sure debug is written
+		// time.Sleep(10 * time.Millisecond) // Temporarily disabled
+		
+		if p == nil {
+			if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+				fmt.Fprintf(debugFile, "[DEBUG] tea.Program is nil after creation\n")
+				debugFile.Close()
+			}
+			return
+		}
+
+		// DEBUG
+		if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] Starting tea.Program.Run()\n")
+			debugFile.Close()
+		}
 
 		// Run TUI in goroutine so we can handle signals
 		done := make(chan error)
 		go func() {
+			// DEBUG - about to call Run()
+			if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+				fmt.Fprintf(debugFile, "[DEBUG] About to call p.Run()\n")
+				debugFile.Close()
+			}
+			
 			_, err := p.Run()
+			
+			// DEBUG - after Run() returns
+			if debugFile, err2 := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err2 == nil {
+				fmt.Fprintf(debugFile, "[DEBUG] p.Run() returned, err=%v\n", err)
+				debugFile.Close()
+			}
+			
 			done <- err
 		}()
 

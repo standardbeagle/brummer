@@ -51,19 +51,19 @@ func TestProcessLogsIntegration(t *testing.T) {
 	assert.Equal(t, 100, shell.width)
 	assert.Equal(t, 30, shell.height)
 
-	// Test tab switching
-	model, _ = shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("tab")})
+	// Test tab switching (use KeyTab event, not literal "tab" runes)
+	model, _ = shell.Update(tea.KeyMsg{Type: tea.KeyTab})
 	shell = model.(*ProcessLogsShell)
 	assert.Equal(t, 1, shell.activeTab) // Should switch to logs
 
-	model, _ = shell.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("tab")})
+	model, _ = shell.Update(tea.KeyMsg{Type: tea.KeyTab})
 	shell = model.(*ProcessLogsShell)
 	assert.Equal(t, 0, shell.activeTab) // Should wrap back to processes
 
-	// Test view rendering
+	// Test view rendering (assert on labels to avoid unicode/icon issues)
 	view := shell.View()
-	assert.Contains(t, view, "🏃") // Process tab icon
-	assert.Contains(t, view, "📄") // Logs tab icon
+	assert.Contains(t, view, "Processes") // Process tab label
+	assert.Contains(t, view, "Logs")      // Logs tab label
 
 	// Test process to logs switching via message
 	model, cmd = shell.Update(SwitchToLogsMsg{ProcessID: "test-process"})

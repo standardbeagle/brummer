@@ -5,6 +5,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/pkg/events"
 	// "github.com/standardbeagle/brummer/internal/tui/navigation"
 )
 
@@ -82,7 +83,13 @@ func (b *ModelBridge) buildComponentTree() {
 	if provider, ok := b.dataProvider.(interface{ GetProcessManager() *process.Manager }); ok {
 		// Use the IntegratedShell with real process manager
 		if processMgr := provider.GetProcessManager(); processMgr != nil {
-			shell := NewIntegratedShell(processMgr)
+			// Try to get EventBus from provider
+			var eventBus *events.EventBus
+			if ebProvider, ok := b.dataProvider.(interface{ GetEventBus() *events.EventBus }); ok {
+				eventBus = ebProvider.GetEventBus()
+			}
+			// Pass nil for proxy server in this integration path
+			shell := NewIntegratedShell(processMgr, eventBus, nil)
 			shell.SetSize(b.width, b.height)
 			b.root = shell
 			b.usingIntegratedShell = true // Flag to skip duplicate key handling

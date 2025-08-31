@@ -24,13 +24,18 @@ type CommandInputComponent struct {
 	historyIndex int
 
 	// Suggestions
-	suggestions     []CommandSuggestion
+	allSuggestions  []CommandSuggestion // master list; do not mutate during filtering
+	suggestions     []CommandSuggestion // filtered view
 	selectedIndex   int
 	showSuggestions bool
 
 	// Command results
 	lastCommand string
 	lastResult  string
+
+	// Decoupled interfaces
+	provider SuggestionProvider
+	executor CommandExecutor
 
 	// Styles
 	promptStyle     lipgloss.Style
@@ -202,6 +207,18 @@ func (c *CommandInputComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Execute command
 			cmd := c.textInput.Value()
 			if cmd != "" {
+				// Use executor if available
+				if c.executor != nil {
+					execCmd := c.executor.Execute(cmd)
+					// Add to history
+					c.history = append(c.history, cmd)
+					c.historyIndex = -1
+					// Clear input
+					c.textInput.SetValue("")
+					c.showSuggestions = false
+					return c, execCmd
+				}
+				// Fall back to message-based execution
 				return c, func() tea.Msg {
 					return CommandExecuteMsg{Command: cmd}
 				}
@@ -211,7 +228,9 @@ func (c *CommandInputComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Autocomplete or cycle suggestions
 			if c.showSuggestions && len(c.suggestions) > 0 {
 				c.selectedIndex = (c.selectedIndex + 1) % len(c.suggestions)
-				c.textInput.SetValue(c.suggestions[c.selectedIndex].Command)
+				val := c.suggestions[c.selectedIndex].Command
+				// The suggestion already includes the slash if needed
+				c.textInput.SetValue(val)
 			}
 			return c, nil
 
@@ -222,7 +241,9 @@ func (c *CommandInputComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if c.selectedIndex < 0 {
 					c.selectedIndex = len(c.suggestions) - 1
 				}
-				c.textInput.SetValue(c.suggestions[c.selectedIndex].Command)
+				val := c.suggestions[c.selectedIndex].Command
+				// The suggestion already includes the slash if needed
+				c.textInput.SetValue(val)
 			}
 			return c, nil
 
@@ -272,6 +293,11 @@ func (c *CommandInputComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Update text input
 		var cmd tea.Cmd
 		c.textInput, cmd = c.textInput.Update(msg)
+
+		// Auto-show suggestions when using slash commands
+		if !c.showSuggestions && strings.HasPrefix(c.textInput.Value(), "/") {
+			c.showSuggestions = true
+		}
 
 		// Update suggestions on input change
 		c.updateSuggestions()
@@ -341,6 +367,20 @@ func (c *CommandInputComponent) View() string {
 	return b.String()
 }
 
+// SetProvider sets the suggestion provider
+func (c *CommandInputComponent) SetProvider(provider SuggestionProvider) {
+	c.provider = provider
+	// Update suggestions immediately if provider is set
+	if provider != nil {
+		c.updateSuggestions()
+	}
+}
+
+// SetExecutor sets the command executor
+func (c *CommandInputComponent) SetExecutor(executor CommandExecutor) {
+	c.executor = executor
+}
+
 // Helper methods
 
 func (c *CommandInputComponent) getPromptForMode(mode CommandMode) string {
@@ -378,17 +418,34 @@ func (c *CommandInputComponent) getPlaceholderForMode(mode CommandMode) string {
 }
 
 func (c *CommandInputComponent) updateSuggestions() {
-	input := strings.ToLower(c.textInput.Value())
+	input := c.textInput.Value()
+	
+	// Use provider if available for dynamic suggestions
+	if c.provider != nil {
+		c.suggestions = c.provider.Suggest(input)
+		c.selectedIndex = 0
+		return
+	}
+	
+	// Fall back to static suggestions
+	// Always filter from the master list
+	inputLower := strings.ToLower(input)
+	trimmed := strings.TrimPrefix(inputLower, "/") // allow slash-commands like "/ai"
+
 	if input == "" {
+		c.suggestions = c.allSuggestions
 		c.selectedIndex = 0
 		return
 	}
 
-	// Filter suggestions based on input
 	var filtered []CommandSuggestion
-	for _, s := range c.suggestions {
-		if strings.HasPrefix(strings.ToLower(s.Command), input) ||
-			strings.Contains(strings.ToLower(s.Description), input) {
+	for _, s := range c.allSuggestions {
+		cmdLower := strings.ToLower(s.Command)
+		descLower := strings.ToLower(s.Description)
+		shortcutLower := strings.ToLower(s.Shortcut)
+		if strings.HasPrefix(cmdLower, trimmed) ||
+			strings.Contains(descLower, trimmed) ||
+			(shortcutLower != "" && strings.HasPrefix(shortcutLower, trimmed)) {
 			filtered = append(filtered, s)
 		}
 	}

@@ -47,15 +47,44 @@ func NewModelWithComponents(
 	cfg *config.Config,
 	useComponents bool,
 ) *ModelWithComponents {
-	// Create base model
-	baseModel := NewModel(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, cfg)
-
+	// DEBUG - log immediately
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] NewModelWithComponents called, useComponents=%v\n", useComponents)
+		debugFile.Close()
+	}
+	
 	mwc := &ModelWithComponents{
-		baseModel:     baseModel,
 		useComponents: useComponents,
+	}
+	
+	// Only create base model if NOT using components
+	// When using components, IntegratedShell handles everything
+	if !useComponents {
+		// Create base model for traditional mode
+		baseModel := NewModel(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, cfg)
+		
+		// DEBUG - log after NewModel
+		if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] NewModel returned, baseModel=%v\n", baseModel != nil)
+			debugFile.Close()
+		}
+		
+		mwc.baseModel = baseModel
+	}
+
+	// DEBUG - log after struct creation
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] ModelWithComponents struct created\n")
+		debugFile.Close()
 	}
 
 	if useComponents {
+		// DEBUG: Log component creation
+		if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] useComponents=true, processMgr=%v\n", processMgr != nil)
+			debugFile.Close()
+		}
+		
 		// Use minimal shell for testing
 		if useMinimalShell := os.Getenv("BRUMMER_MINIMAL_SHELL") == "true"; useMinimalShell {
 			// Check which version to use
@@ -67,15 +96,37 @@ func NewModelWithComponents(
 				mwc.componentBridge = components.NewMinimalShell()
 			}
 		} else {
-			// Use IntegratedShell directly with the process manager
+			// Use IntegratedShell directly with the process manager and event bus
 			// Skip the overcomplicated ModelBridge entirely
-			if baseModel.processMgr != nil {
-				mwc.componentBridge = components.NewIntegratedShell(baseModel.processMgr)
+			if processMgr != nil {
+				// Create proxy adapter if we have a proxy server
+				var proxyAdapter components.ProxyServerInterface
+				if proxyServer != nil {
+					proxyAdapter = &proxyServerAdapter{server: proxyServer}
+				}
+				
+				mwc.componentBridge = components.NewIntegratedShell(processMgr, eventBus, proxyAdapter)
+				// DEBUG: Log creation
+				if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+					fmt.Fprintf(debugFile, "[DEBUG] Created IntegratedShell\n")
+					debugFile.Close()
+				}
 			} else {
 				// Fallback to minimal shell if no process manager
 				mwc.componentBridge = components.NewMinimalShell()
+				// DEBUG: Log fallback
+				if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+					fmt.Fprintf(debugFile, "[DEBUG] Fallback to MinimalShell\n")
+					debugFile.Close()
+				}
 			}
 		}
+	}
+	
+	// DEBUG - about to return
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] NewModelWithComponents returning, bridge=%v\n", mwc.componentBridge != nil)
+		debugFile.Close()
 	}
 
 	return mwc
@@ -83,9 +134,24 @@ func NewModelWithComponents(
 
 // Init initializes the model
 func (m *ModelWithComponents) Init() tea.Cmd {
+	// DEBUG
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] ModelWithComponents.Init CALLED: useComponents=%v, bridge=%v\n", 
+			m.useComponents, m.componentBridge != nil)
+		debugFile.Close()
+	}
+	
 	if m.useComponents && m.componentBridge != nil {
 		// When using components, ONLY initialize component system
-		return m.componentBridge.Init()
+		cmd := m.componentBridge.Init()
+		
+		// DEBUG
+		if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] componentBridge.Init() returned cmd=%v\n", cmd != nil)
+			debugFile.Close()
+		}
+		
+		return cmd
 	}
 
 	// Fallback to base model when not using components
@@ -112,12 +178,30 @@ func (m *ModelWithComponents) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the UI
 func (m *ModelWithComponents) View() string {
+	// DEBUG
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] ModelWithComponents.View called, useComponents=%v, bridge=%v\n", 
+			m.useComponents, m.componentBridge != nil)
+		debugFile.Close()
+	}
+	
 	if m.useComponents && m.componentBridge != nil {
 		// Use component system for rendering
-		return m.componentBridge.View()
+		result := m.componentBridge.View()
+		
+		// DEBUG
+		if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+			fmt.Fprintf(debugFile, "[DEBUG] componentBridge.View returned %d bytes\n", len(result))
+			debugFile.Close()
+		}
+		
+		return result
 	}
 	// Fall back to base model rendering
-	return m.baseModel.View()
+	if m.baseModel != nil {
+		return m.baseModel.View()
+	}
+	return "[ERROR: No model to render]"
 }
 
 // syncDataToComponents sends data updates from Model to component system
@@ -400,6 +484,12 @@ func CreateModelWithComponentFlag(
 	cfg *config.Config,
 	useComponents bool,
 ) tea.Model {
+	// DEBUG
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] CreateModelWithComponentFlag called, useComponents=%v\n", useComponents)
+		debugFile.Close()
+	}
+	
 	return NewModelWithComponents(
 		processMgr,
 		logStore,
@@ -410,4 +500,33 @@ func CreateModelWithComponentFlag(
 		cfg,
 		useComponents,
 	)
+}
+
+// proxyServerAdapter adapts proxy.Server to components.ProxyServerInterface
+type proxyServerAdapter struct {
+	server *proxy.Server
+}
+
+// GetURLMappings implements components.ProxyServerInterface
+func (p *proxyServerAdapter) GetURLMappings() []components.ProxyURLMapping {
+	if p.server == nil {
+		return nil
+	}
+	
+	// Get mappings from the proxy server
+	mappings := p.server.GetURLMappings()
+	
+	// Convert to component interface type
+	result := make([]components.ProxyURLMapping, 0, len(mappings))
+	for _, m := range mappings {
+		result = append(result, components.ProxyURLMapping{
+			TargetURL:   m.TargetURL,
+			ProxyPort:   m.ProxyPort,
+			ProxyURL:    m.ProxyURL,
+			ProcessName: m.ProcessName,
+			Label:       m.Label,
+		})
+	}
+	
+	return result
 }

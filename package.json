@@ -1,1 +1,10 @@
-{"name":"test","scripts":{"hello":"echo Hello World && echo Second Line && echo Third Line"}}
+
+{
+  "name": "component-test",
+  "version": "1.0.0",
+  "scripts": {
+    "server": "node -e \"console.log('Server starting...'); console.log('Listening on http://localhost:3000'); setInterval(() => { console.log('Request: GET /api/data'); Math.random() > 0.7 && console.error('Error: Connection timeout'); }, 2000); process.stdin.resume();\"",
+    "errors": "python3 test_generate_errors.py",
+    "dev": "echo 'Development server starting...' && echo 'Ready at http://localhost:5173' && sleep 100"
+  }
+}

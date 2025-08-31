@@ -24,7 +24,8 @@ func TestRuntimeLogFlow(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create integrated shell (this is what happens at runtime)
-	shell := NewIntegratedShell(processMgr)
+	proxy := NewFakeProxyServer(nil)
+	shell := NewIntegratedShell(processMgr, eventBus, proxy)
 	require.NotNil(t, shell)
 
 	// Initialize the shell
@@ -41,7 +42,7 @@ func TestRuntimeLogFlow(t *testing.T) {
 		shell.logStore.Add("test-proc-1", "Test Process 1", "Starting process...", false)
 		shell.logStore.Add("test-proc-1", "Test Process 1", "Processing data...", false)
 		shell.logStore.Add("test-proc-2", "Test Process 2", "Error: Connection failed", true)
-		
+
 		// Notify the subscription about new logs
 		shell.logSub.NotifyNewLogs()
 	}
@@ -79,7 +80,7 @@ func TestRuntimeLogFlow(t *testing.T) {
 
 		// Basic check that logs are visible
 		assert.Contains(t, output, "Logs", "Should show logs title")
-		
+
 	case <-time.After(200 * time.Millisecond):
 		t.Error("Timeout waiting for log update message")
 	}
@@ -105,13 +106,14 @@ func TestLogCallbackIntegration(t *testing.T) {
 	})
 
 	// Create integrated shell (which adds its own callback)
-	shell := NewIntegratedShell(processMgr)
+	proxy := NewFakeProxyServer(nil)
+	shell := NewIntegratedShell(processMgr, eventBus, proxy)
 	require.NotNil(t, shell)
 
 	// Now simulate what would happen when a process outputs logs
 	// In real usage, this would be called by the streamLogs method
 	// We'll invoke the callbacks directly since we can't easily start a real process
-	
+
 	// The shell's callback should have been registered
 	// Let's add a log directly to the store and notify
 	shell.logStore.Add("test-process", "Test", "Test log line", false)
@@ -128,7 +130,7 @@ func TestLogCallbackIntegration(t *testing.T) {
 	if cached, ok := shell.processNameCache.Load("test-process"); ok {
 		assert.Equal(t, "Test", cached.(string), "Process name should be cached")
 	}
-	
+
 	// The callback count would be >0 if we had triggered the actual callbacks
 	// In this test we're just verifying the store integration
 	_ = callbackCount

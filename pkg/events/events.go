@@ -29,6 +29,11 @@ const (
 	MCPDisconnected    EventType = "mcp.disconnected"
 	URLDetected        EventType = "url.detected"
 	DockerPortDetected EventType = "docker.port.detected"
+	
+	// TUI/Component initialization events
+	TUIReady          EventType = "tui.ready"           // TUI fully initialized and ready for processes
+	ComponentsReady   EventType = "components.ready"    // Component system initialized
+	LogHandlersReady  EventType = "log.handlers.ready"  // Log subscription active
 )
 
 type Event struct {

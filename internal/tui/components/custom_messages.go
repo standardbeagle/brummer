@@ -144,6 +144,12 @@ type URLDetectedMsg struct {
 	ProcessID string
 	Type      URLType
 	Timestamp time.Time
+
+	// Proxy information
+	HasProxy   bool   // True if this URL has a proxy mapping
+	ProxyPort  int    // The proxy port if mapped
+	ProxyURL   string // The proxy URL if mapped
+	ProxyLabel string // The proxy label (e.g., "Frontend", "API")
 }
 
 type URLType int
@@ -169,6 +175,12 @@ type URLInfo struct {
 	LastSeen  time.Time
 	Count     int
 	Active    bool
+
+	// Proxy information
+	HasProxy   bool   // True if this URL has a proxy mapping
+	ProxyPort  int    // The proxy port if mapped
+	ProxyURL   string // The proxy URL if mapped
+	ProxyLabel string // The proxy label (e.g., "Frontend", "API")
 }
 
 // URLOpenMsg requests opening a URL
@@ -181,6 +193,9 @@ type URLOpenMsg struct {
 type URLCopyMsg struct {
 	URL string
 }
+
+// ShowAIViewMsg requests switching to the AI view
+type ShowAIViewMsg struct{}
 
 // Web/Proxy-specific messages
 
@@ -514,3 +529,4 @@ func generateID() string {
 }
 
 // Note: ViewChangeMsg and SendViewChange are defined in messages.go
+// Note: CommandResultMsg, NavigateToViewMsg, and ShowHelpMsg are defined in services/command_executor.go

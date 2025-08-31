@@ -78,7 +78,7 @@ func (a *ModelComponentAdapter) initializeComponents() {
 	a.errorsView = components.NewErrorsViewComponent()
 
 	// Create URLs view
-	a.urlsView = components.NewURLsViewComponent()
+	a.urlsView = components.NewURLsViewComponent(a.model.processMgr)
 
 	// Create script selector
 	// Note: Package info would need to be obtained from the script selector controller

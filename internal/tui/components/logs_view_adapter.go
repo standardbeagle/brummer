@@ -118,10 +118,38 @@ func (l *LogsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// Handle component-specific messages
 	switch msg := msg.(type) {
 	case LogsUpdateMsg:
-		// Ignore the message entries - fetch directly from store
-		// This ensures we get collapsed entries and proper formatting
-		l.applyFilter()
-		l.updateViewport()
+		// Process the incoming logs immediately if they're provided
+		// This is critical for initial logs that arrive before store subscription
+		if len(msg.Entries) > 0 {
+			// Check if this is initial load or append
+			if !msg.Append {
+				// Initial load - replace all logs
+				l.filteredLogs = []string{}
+			}
+			
+			// Process each entry
+			for _, entry := range msg.Entries {
+				if entry != nil {
+					// Apply text filter if set
+					if l.currentFilter != "" {
+						filterLower := strings.ToLower(l.currentFilter)
+						contentLower := strings.ToLower(entry.Content)
+						if !strings.Contains(contentLower, filterLower) {
+							continue
+						}
+					}
+					
+					// Format the entry
+					formatted := l.formatLogEntry(entry)
+					l.filteredLogs = append(l.filteredLogs, formatted)
+				}
+			}
+			l.updateViewport()
+		} else {
+			// No entries in message - fetch from store for collapsed entries
+			l.applyFilter()
+			l.updateViewport()
+		}
 
 		// Auto-scroll if following
 		if l.following {

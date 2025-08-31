@@ -5,11 +5,14 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/process"
+	ui_services "github.com/standardbeagle/brummer/internal/tui/services"
+	"github.com/standardbeagle/brummer/pkg/events"
 	"golang.org/x/term"
 )
 
@@ -51,9 +54,23 @@ type IntegratedShell struct {
 	viewOrder   []ViewType
 
 	// Components
-	processView *ProcessViewNew
-	logsView    *LogsViewComponent
-	// Future: errorsView, urlsView, webView
+	processView    *ProcessViewNew
+	logsView       *LogsViewComponent
+	errorsView     *ErrorsViewComponent
+	urlsView       *URLsViewComponent
+	webView        *URLsViewComponent // Reuse URLs component for now
+	aiView         *AIViewComponent
+	settingsView   *SettingsViewComponent // Using existing adapter
+	commandPalette *CommandPalette
+
+	// Command input state
+	showCommandPalette bool
+
+	// Pending errors to be sent to errors view
+	pendingErrors []ErrorOccurredMsg
+
+	// Pending URLs to be sent to URLs view
+	pendingURLs []URLDetectedMsg
 
 	// Data stores
 	logStore         *logs.Store
@@ -62,6 +79,12 @@ type IntegratedShell struct {
 
 	// Process manager
 	processMgr *process.Manager
+
+	// Proxy server for URL mappings
+	proxyServer ProxyServerInterface
+
+	// Event system
+	eventBus *events.EventBus
 
 	// Width calculator
 	widthCalc *TabWidthCalculator
@@ -76,8 +99,22 @@ type IntegratedShell struct {
 	separatorStyle   lipgloss.Style
 }
 
+// ProxyServerInterface defines the interface for proxy server operations
+type ProxyServerInterface interface {
+	GetURLMappings() []ProxyURLMapping
+}
+
+// ProxyURLMapping represents a URL mapping from the proxy server
+type ProxyURLMapping struct {
+	TargetURL   string
+	ProxyPort   int
+	ProxyURL    string
+	ProcessName string
+	Label       string
+}
+
 // NewIntegratedShell creates a shell with real components
-func NewIntegratedShell(processMgr *process.Manager) *IntegratedShell {
+func NewIntegratedShell(processMgr *process.Manager, eventBus *events.EventBus, proxyServer ProxyServerInterface) *IntegratedShell {
 	// ALWAYS initialize colors first
 	MustInitColors()
 
@@ -102,14 +139,28 @@ func NewIntegratedShell(processMgr *process.Manager) *IntegratedShell {
 		currentView:      ViewProcesses,
 		views:            make(map[ViewType]*ViewInfo),
 		processMgr:       processMgr,
+		proxyServer:      proxyServer,
 		logStore:         logStore,
 		logSub:           NewDebouncedLogSubscription(logStore), // Event-driven subscription
 		processNameCache: &sync.Map{},
+		eventBus:         eventBus,
 	}
 
 	// Initialize components
 	shell.processView = NewProcessViewNew(processMgr)
 	shell.logsView = NewLogsViewComponent(logStore)
+	shell.errorsView = NewErrorsViewComponent()
+	shell.urlsView = NewURLsViewComponent(processMgr)
+	shell.webView = NewURLsViewComponent(processMgr) // Reuse URLs component for web view
+	shell.aiView = NewAIViewComponent()
+	shell.settingsView = NewSettingsViewComponent()
+
+	// Initialize services
+	aiService := ui_services.NewAICoderService(nil, logStore)
+
+	// Initialize command palette with handler
+	commandHandler := NewIntegratedShellCommandHandler(shell, processMgr, logStore, aiService)
+	shell.commandPalette = NewCommandPalette(commandHandler)
 
 	// Populate initial process name cache
 	if processMgr != nil {
@@ -127,6 +178,55 @@ func NewIntegratedShell(processMgr *process.Manager) *IntegratedShell {
 				processName = cached.(string)
 			}
 			logStore.Add(processID, processName, line, isError)
+
+			// If this is an error, send ErrorOccurredMsg to the errors view
+			if isError && shell.errorsView != nil {
+				// Send error message through Bubble Tea's message system
+				// Note: We can't send messages directly from callback, need to use program.Send
+				// For now, store errors in the errors view component
+				shell.pendingErrors = append(shell.pendingErrors, ErrorOccurredMsg{
+					ProcessID:   processID,
+					ProcessName: processName,
+					Error:       line,
+					Timestamp:   time.Now(),
+				})
+			}
+
+			// Detect URLs in the line
+			urls := extractURLs(line)
+			for _, url := range urls {
+				// Store pending URL detection for sending to URLs view
+				urlType := URLTypeHTTP // Default
+				switch getURLType(url) {
+				case "https":
+					urlType = URLTypeHTTPS
+				case "ws", "wss":
+					urlType = URLTypeWebSocket
+				}
+				urlMsg := URLDetectedMsg{
+					URL:       url,
+					ProcessID: processID,
+					Type:      urlType,
+					Timestamp: time.Now(),
+				}
+
+				// Check if proxy server has a mapping for this URL
+				if shell.proxyServer != nil {
+					mappings := shell.proxyServer.GetURLMappings()
+					for _, mapping := range mappings {
+						if strings.Contains(url, fmt.Sprintf(":%d", mapping.ProxyPort)) ||
+							strings.Contains(url, mapping.TargetURL) {
+							urlMsg.HasProxy = true
+							urlMsg.ProxyPort = mapping.ProxyPort
+							urlMsg.ProxyURL = mapping.ProxyURL
+							urlMsg.ProxyLabel = mapping.Label
+							break
+						}
+					}
+				}
+
+				shell.pendingURLs = append(shell.pendingURLs, urlMsg)
+			}
 
 			// Trigger debounced update (non-blocking)
 			shell.logSub.NotifyNewLogs()
@@ -177,12 +277,26 @@ func (s *IntegratedShell) initializeViews() {
 		KeyBinding: "5",
 	}
 
+	s.views[ViewAICoders] = &ViewInfo{
+		Title:      "AI",
+		Icon:       "🤖",
+		KeyBinding: "6",
+	}
+
+	s.views[ViewSettings] = &ViewInfo{
+		Title:      "Settings",
+		Icon:       "⚙️",
+		KeyBinding: "7",
+	}
+
 	s.viewOrder = []ViewType{
 		ViewProcesses,
 		ViewLogs,
 		ViewErrors,
 		ViewURLs,
 		ViewWeb,
+		ViewAICoders,
+		ViewSettings,
 	}
 }
 
@@ -223,6 +337,12 @@ func (s *IntegratedShell) initializeStyles() {
 
 // Init initializes the shell
 func (s *IntegratedShell) Init() tea.Cmd {
+	// DEBUG: Log init - write directly to file
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] IntegratedShell.Init() called\n")
+		debugFile.Close()
+	}
+
 	var cmds []tea.Cmd
 
 	// Don't send an initial window size - wait for Bubble Tea to send the actual size
@@ -236,8 +356,35 @@ func (s *IntegratedShell) Init() tea.Cmd {
 		cmds = append(cmds, s.logsView.Init())
 	}
 
-	// CRITICAL FIX: Load any existing logs immediately
-	// This ensures logs that were added before subscription starts are displayed
+	// Start log subscription FIRST (incremental updates)
+	if s.logSub != nil {
+		cmds = append(cmds, s.logSub.Subscribe())
+	}
+
+	// Focus the initial view (processes)
+	if s.processView != nil {
+		cmds = append(cmds, s.processView.Focus())
+	}
+
+	// Publish event that log handlers are ready
+	// This signals that processes can start without losing logs
+	if s.eventBus != nil {
+		s.eventBus.Publish(events.Event{
+			Type: events.LogHandlersReady,
+			Data: map[string]interface{}{
+				"component": "IntegratedShell",
+			},
+		})
+		s.eventBus.Publish(events.Event{
+			Type: events.ComponentsReady,
+			Data: map[string]interface{}{
+				"component": "IntegratedShell",
+			},
+		})
+	}
+
+	// Load any existing logs that might have been added before subscription
+	// This handles edge cases where logs exist from previous runs
 	if s.logStore != nil {
 		existingLogs := s.logStore.GetAll()
 		if len(existingLogs) > 0 {
@@ -247,8 +394,8 @@ func (s *IntegratedShell) Init() tea.Cmd {
 				entry := existingLogs[i] // Copy to avoid reference issues
 				entries[i] = &entry
 			}
-			
-			// Send as a command that returns LogsUpdateMsg
+
+			// Send as a command that returns LogsUpdateMsg immediately
 			cmds = append(cmds, func() tea.Msg {
 				return LogsUpdateMsg{
 					Entries: entries,
@@ -256,11 +403,6 @@ func (s *IntegratedShell) Init() tea.Cmd {
 				}
 			})
 		}
-	}
-
-	// Start log subscription (incremental updates)
-	if s.logSub != nil {
-		cmds = append(cmds, s.logSub.Subscribe())
 	}
 
 	return tea.Batch(cmds...)
@@ -272,6 +414,10 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
+		// DEBUG: Log window size
+		if os.Getenv("BRUMMER_DEBUG") == "true" {
+			fmt.Fprintf(os.Stderr, "[DEBUG] WindowSizeMsg: %dx%d\n", msg.Width, msg.Height)
+		}
 		s.width = msg.Width
 		s.height = msg.Height
 		s.widthCalc = NewTabWidthCalculator(s.width, len(s.viewOrder))
@@ -283,6 +429,26 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if s.logsView != nil {
 			_, cmd := s.logsView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		if s.errorsView != nil {
+			_, cmd := s.errorsView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		if s.urlsView != nil {
+			_, cmd := s.urlsView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		if s.webView != nil {
+			_, cmd := s.webView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		if s.aiView != nil {
+			_, cmd := s.aiView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		if s.settingsView != nil {
+			_, cmd := s.settingsView.Update(msg)
 			cmds = append(cmds, cmd)
 		}
 
@@ -300,7 +466,7 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return s, tea.Quit
 			}
 
-		case "1", "2", "3", "4", "5":
+		case "1", "2", "3", "4", "5", "6", "7":
 			// Number keys always switch views (unless in input field)
 			if !s.isInputFocused() {
 				for _, view := range s.viewOrder {
@@ -334,6 +500,23 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				return s, tea.Batch(cmds...)
 			}
+
+		case "/":
+			// Show command palette
+			if !s.isInputFocused() && !s.showCommandPalette {
+				s.showCommandPalette = true
+				s.commandPalette.Show()
+				return s, nil
+			}
+		}
+
+		// Handle command palette input if shown
+		if s.showCommandPalette && s.commandPalette != nil {
+			_, cmd := s.commandPalette.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			return s, tea.Batch(cmds...)
 		}
 
 		// Pass all other keys (including Tab) to current view component
@@ -368,6 +551,60 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmds = append(cmds, cmd)
 			}
 		}
+
+		// Process any pending errors and send to errors view
+		if len(s.pendingErrors) > 0 && s.errorsView != nil {
+			// Send all pending errors to the errors view
+			for _, errMsg := range s.pendingErrors {
+				_, cmd := s.errorsView.Update(errMsg)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
+			// Clear pending errors after sending
+			s.pendingErrors = nil
+		}
+
+		// Process any pending URLs and send to URLs view
+		if len(s.pendingURLs) > 0 && s.urlsView != nil {
+			// Get proxy mappings if available
+			var proxyMappings []ProxyURLMapping
+			if s.proxyServer != nil {
+				proxyMappings = s.proxyServer.GetURLMappings()
+			}
+
+			// Send all pending URLs to both URLs view and Web view
+			for _, urlMsg := range s.pendingURLs {
+				// Check if this URL has a proxy mapping
+				for _, mapping := range proxyMappings {
+					if strings.Contains(urlMsg.URL, mapping.TargetURL) {
+						// Add proxy info to the message
+						urlMsg.HasProxy = true
+						urlMsg.ProxyPort = mapping.ProxyPort
+						urlMsg.ProxyURL = mapping.ProxyURL
+						urlMsg.ProxyLabel = mapping.Label
+						break
+					}
+				}
+
+				// Send to URLs view
+				_, cmd := s.urlsView.Update(urlMsg)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+
+				// Also send to Web view (which handles proxy display)
+				if s.webView != nil {
+					_, cmd := s.webView.Update(urlMsg)
+					if cmd != nil {
+						cmds = append(cmds, cmd)
+					}
+				}
+			}
+			// Clear pending URLs after sending
+			s.pendingURLs = nil
+		}
+
 		// Re-subscribe for more updates
 		if s.logSub != nil {
 			cmds = append(cmds, s.logSub.Subscribe())
@@ -378,6 +615,27 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if s.logSub != nil {
 			cmds = append(cmds, s.logSub.Subscribe())
 		}
+
+	case HideCommandPaletteMsg:
+		// Hide the command palette
+		s.showCommandPalette = false
+		if s.commandPalette != nil {
+			s.commandPalette.Hide()
+		}
+		return s, nil
+
+	case ShowCommandPaletteMsg:
+		// Show the command palette
+		s.showCommandPalette = true
+		if s.commandPalette != nil {
+			s.commandPalette.Show()
+		}
+		return s, nil
+
+	case ShowAIViewMsg:
+		// Switch to AI view when requested (e.g., after /ai provider)
+		cmd := s.switchToView(ViewAICoders)
+		return s, cmd
 
 	default:
 		// Pass message to active component
@@ -395,6 +653,13 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the shell
 func (s *IntegratedShell) View() string {
+	// DEBUG: Check if we're even getting called - write directly to file
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG IntegratedShell.View called: size=%dx%d, view=%v]\n",
+			s.width, s.height, s.currentView)
+		debugFile.Close()
+	}
+
 	// Render header
 	header := s.renderHeader()
 
@@ -420,11 +685,32 @@ func (s *IntegratedShell) View() string {
 	footer := s.renderFooter()
 
 	// Combine all parts
-	return lipgloss.JoinVertical(lipgloss.Left,
+	fullView := lipgloss.JoinVertical(lipgloss.Left,
 		header,
 		contentBox,
 		footer,
 	)
+
+	// Render command palette as overlay if shown
+	if s.showCommandPalette && s.commandPalette != nil {
+		// Center the command palette
+		paletteView := s.commandPalette.View()
+
+		// Create overlay style
+		overlayStyle := lipgloss.NewStyle().
+			Width(s.width).
+			Height(s.height).
+			Align(lipgloss.Center, lipgloss.Center)
+
+		// Overlay the palette on top of the main view
+		fullView = overlayStyle.Render(paletteView)
+	}
+
+	// Always return at least the debug message
+	if fullView == "" {
+		return "[DEBUG: IntegratedShell.View() returning empty view]"
+	}
+	return fullView
 }
 
 // renderHeader renders the header with title and tabs
@@ -523,8 +809,7 @@ func (s *IntegratedShell) renderCurrentView(contentWidth, contentHeight int) str
 	case ViewProcesses:
 		if s.processView != nil {
 			// Set size for the component
-			s.processView.width = contentWidth
-			s.processView.height = contentHeight
+			s.processView.SetSize(contentWidth, contentHeight)
 			return s.processView.View()
 		}
 
@@ -536,13 +821,44 @@ func (s *IntegratedShell) renderCurrentView(contentWidth, contentHeight int) str
 		}
 
 	case ViewErrors:
+		if s.errorsView != nil {
+			// Set size for the component
+			s.errorsView.SetSize(contentWidth, contentHeight)
+			return s.errorsView.View()
+		}
 		return s.renderPlaceholder("Errors View", "❌ Errors will be displayed here", contentWidth, contentHeight)
 
 	case ViewURLs:
+		if s.urlsView != nil {
+			// Set size for the component
+			s.urlsView.SetSize(contentWidth, contentHeight)
+			return s.urlsView.View()
+		}
 		return s.renderPlaceholder("URLs View", "🔗 Discovered URLs will be listed here", contentWidth, contentHeight)
 
 	case ViewWeb:
+		if s.webView != nil {
+			// Set size for the component (reuse URLs view for proxy display)
+			s.webView.SetSize(contentWidth, contentHeight)
+			return s.webView.View()
+		}
 		return s.renderPlaceholder("Web View", "🌐 Browser automation controls", contentWidth, contentHeight)
+
+	case ViewAICoders:
+		if s.aiView != nil {
+			// Set size for the component
+			s.aiView.SetSize(contentWidth, contentHeight)
+			return s.aiView.View()
+		}
+		return s.renderPlaceholder("AI Coders", "🤖 AI coding assistants", contentWidth, contentHeight)
+
+	case ViewSettings:
+		if s.settingsView != nil {
+			// Set size for the component
+			s.settingsView.SetSize(contentWidth, contentHeight)
+			return s.settingsView.View()
+		}
+		return s.renderPlaceholder("Settings", "⚙️ Configuration settings", contentWidth, contentHeight)
 	}
 
 	return "Unknown view"
@@ -655,6 +971,26 @@ func (s *IntegratedShell) focusComponent(view ViewType) tea.Cmd {
 		if s.logsView != nil {
 			return s.logsView.Focus()
 		}
+	case ViewErrors:
+		if s.errorsView != nil {
+			return s.errorsView.Focus()
+		}
+	case ViewURLs:
+		if s.urlsView != nil {
+			return s.urlsView.Focus()
+		}
+	case ViewWeb:
+		if s.webView != nil {
+			return s.webView.Focus()
+		}
+	case ViewAICoders:
+		if s.aiView != nil {
+			return s.aiView.Focus()
+		}
+	case ViewSettings:
+		if s.settingsView != nil {
+			return s.settingsView.Focus()
+		}
 	}
 	return nil
 }
@@ -669,6 +1005,26 @@ func (s *IntegratedShell) blurComponent(view ViewType) tea.Cmd {
 	case ViewLogs:
 		if s.logsView != nil {
 			return s.logsView.Blur()
+		}
+	case ViewErrors:
+		if s.errorsView != nil {
+			return s.errorsView.Blur()
+		}
+	case ViewURLs:
+		if s.urlsView != nil {
+			return s.urlsView.Blur()
+		}
+	case ViewWeb:
+		if s.webView != nil {
+			return s.webView.Blur()
+		}
+	case ViewAICoders:
+		if s.aiView != nil {
+			return s.aiView.Blur()
+		}
+	case ViewSettings:
+		if s.settingsView != nil {
+			return s.settingsView.Blur()
 		}
 	}
 	return nil
@@ -687,6 +1043,31 @@ func (s *IntegratedShell) handleViewInput(key tea.KeyMsg) tea.Cmd {
 			_, cmd := s.logsView.Update(key)
 			return cmd
 		}
+	case ViewErrors:
+		if s.errorsView != nil && s.errorsView.Focused() {
+			_, cmd := s.errorsView.Update(key)
+			return cmd
+		}
+	case ViewURLs:
+		if s.urlsView != nil && s.urlsView.Focused() {
+			_, cmd := s.urlsView.Update(key)
+			return cmd
+		}
+	case ViewWeb:
+		if s.webView != nil && s.webView.Focused() {
+			_, cmd := s.webView.Update(key)
+			return cmd
+		}
+	case ViewAICoders:
+		if s.aiView != nil && s.aiView.Focused() {
+			_, cmd := s.aiView.Update(key)
+			return cmd
+		}
+	case ViewSettings:
+		if s.settingsView != nil && s.settingsView.Focused() {
+			_, cmd := s.settingsView.Update(key)
+			return cmd
+		}
 	}
 	return nil
 }
@@ -702,6 +1083,31 @@ func (s *IntegratedShell) updateActiveComponent(msg tea.Msg) tea.Cmd {
 	case ViewLogs:
 		if s.logsView != nil {
 			_, cmd := s.logsView.Update(msg)
+			return cmd
+		}
+	case ViewErrors:
+		if s.errorsView != nil {
+			_, cmd := s.errorsView.Update(msg)
+			return cmd
+		}
+	case ViewURLs:
+		if s.urlsView != nil {
+			_, cmd := s.urlsView.Update(msg)
+			return cmd
+		}
+	case ViewWeb:
+		if s.webView != nil {
+			_, cmd := s.webView.Update(msg)
+			return cmd
+		}
+	case ViewAICoders:
+		if s.aiView != nil {
+			_, cmd := s.aiView.Update(msg)
+			return cmd
+		}
+	case ViewSettings:
+		if s.settingsView != nil {
+			_, cmd := s.settingsView.Update(msg)
 			return cmd
 		}
 	}

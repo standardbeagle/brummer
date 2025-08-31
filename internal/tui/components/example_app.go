@@ -82,7 +82,7 @@ func (app *ExampleApp) initializeComponents() {
 	app.processView = NewProcessViewComponent(processMgr)
 	app.logsView = NewLogsViewComponent(logStore)
 	app.errorsView = NewErrorsViewComponent()
-	app.urlsView = NewURLsViewComponent()
+	app.urlsView = NewURLsViewComponent(nil)
 	app.webView = NewWebViewComponent()
 	app.aiCodersView = NewAICodersViewComponent()
 	app.settingsView = NewSettingsViewComponent()

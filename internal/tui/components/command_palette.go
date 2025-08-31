@@ -69,8 +69,13 @@ func NewCommandPalette(handler CommandHandler) *CommandPalette {
 func (c *CommandPalette) Show() {
 	c.Window.Show()
 	c.input.Focus()
-	c.input.SetValue("")
-	c.suggestions = []string{}
+	// Initialize with slash to indicate slash-command mode and populate suggestions
+	c.input.SetValue("/")
+	if c.handler != nil {
+		c.suggestions = c.handler.GetSuggestions(c.input.Value())
+	} else {
+		c.suggestions = []string{}
+	}
 	c.selectedIdx = 0
 }
 

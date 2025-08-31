@@ -39,6 +39,26 @@ type ComponentTestHarness struct {
 	Messages   []tea.Msg
 }
 
+// FakeProxyServer is a minimal test double implementing ProxyServerInterface.
+// Purpose: Allow tests to construct IntegratedShell without depending on a real proxy server.
+// External deps: none. Kept simple to avoid influencing test behavior.
+type FakeProxyServer struct {
+	Mappings []ProxyURLMapping
+}
+
+// GetURLMappings implements ProxyServerInterface for tests.
+func (f *FakeProxyServer) GetURLMappings() []ProxyURLMapping {
+	if f == nil {
+		return nil
+	}
+	return f.Mappings
+}
+
+// NewFakeProxyServer creates a ProxyServerInterface with optional mappings for tests.
+func NewFakeProxyServer(mappings []ProxyURLMapping) ProxyServerInterface {
+	return &FakeProxyServer{Mappings: mappings}
+}
+
 // NewTestHarness creates a properly initialized test harness
 func NewTestHarness(t *testing.T) *ComponentTestHarness {
 	h := &ComponentTestHarness{

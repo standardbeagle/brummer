@@ -35,7 +35,7 @@ type URLsViewComponent struct {
 }
 
 // NewURLsViewComponent creates a new URLs view component
-func NewURLsViewComponent() *URLsViewComponent {
+func NewURLsViewComponent(processMgr interface{}) *URLsViewComponent {
 	u := &URLsViewComponent{
 		urls:           []URLInfo{},
 		groupByProcess: false,
@@ -113,21 +113,32 @@ func (u *URLsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if msg.ProcessID != "" {
 					u.urls[i].ProcessID = msg.ProcessID
 				}
+				// Update proxy info if provided
+				if msg.HasProxy {
+					u.urls[i].HasProxy = true
+					u.urls[i].ProxyPort = msg.ProxyPort
+					u.urls[i].ProxyURL = msg.ProxyURL
+					u.urls[i].ProxyLabel = msg.ProxyLabel
+				}
 				found = true
 				break
 			}
 		}
 
 		if !found {
-			// Add new URL
+			// Add new URL with proxy information if available
 			u.urls = append(u.urls, URLInfo{
-				URL:       msg.URL,
-				ProcessID: msg.ProcessID,
-				Type:      msg.Type,
-				FirstSeen: msg.Timestamp,
-				LastSeen:  msg.Timestamp,
-				Count:     1,
-				Active:    true,
+				URL:        msg.URL,
+				ProcessID:  msg.ProcessID,
+				Type:       msg.Type,
+				FirstSeen:  msg.Timestamp,
+				LastSeen:   msg.Timestamp,
+				Count:      1,
+				Active:     true,
+				HasProxy:   msg.HasProxy,
+				ProxyPort:  msg.ProxyPort,
+				ProxyURL:   msg.ProxyURL,
+				ProxyLabel: msg.ProxyLabel,
 			})
 		}
 
@@ -344,6 +355,12 @@ func (i urlItem) Title() string {
 	}
 
 	title := fmt.Sprintf("%s%s %s", prefix, icon, i.url.URL)
+	
+	// Add proxy badge if available
+	if i.url.HasProxy {
+		title += fmt.Sprintf(" 🚀 [Proxy: %s]", i.url.ProxyURL)
+	}
+	
 	if i.url.Active {
 		title += " ✓"
 	}
@@ -356,6 +373,16 @@ func (i urlItem) Description() string {
 	// Add process if available
 	if i.url.ProcessID != "" {
 		parts = append(parts, fmt.Sprintf("Process: %s", i.url.ProcessID))
+	}
+	
+	// Add proxy label if available
+	if i.url.HasProxy && i.url.ProxyLabel != "" {
+		parts = append(parts, fmt.Sprintf("Label: %s", i.url.ProxyLabel))
+	}
+	
+	// Add proxy port if available
+	if i.url.HasProxy && i.url.ProxyPort > 0 {
+		parts = append(parts, fmt.Sprintf("Port: %d", i.url.ProxyPort))
 	}
 
 	// Add count if more than 1

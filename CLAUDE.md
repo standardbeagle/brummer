@@ -155,6 +155,29 @@ Components communicate via **event-driven architecture** using EventBus (`pkg/ev
 - Race detection is integrated in CI/CD pipeline
 - Use message-passing via tea.Cmd for TUI state changes
 
+### Event-Driven Synchronization (NO HARDCODED DELAYS!)
+**Process Startup Synchronization**: Use EventBus for proper async coordination
+- **NEVER use time.Sleep() for synchronization** - this is a code smell
+- Components publish `events.LogHandlersReady` when initialization complete
+- Process startup subscribes to this event to avoid race conditions
+- Use `sync.Once` to ensure single execution of startup logic
+
+**EventBus Architecture**:
+- **Worker Pool**: Bounded goroutines (CPU cores * 2.5) prevent resource exhaustion
+- **Non-blocking publish**: Falls back to goroutine spawn if buffer full
+- **Event Types**: Defined in `pkg/events/events.go` with clear semantics
+  - `TUIReady`: TUI fully initialized
+  - `ComponentsReady`: Component system ready
+  - `LogHandlersReady`: Log subscriptions active
+
+**Startup Sequence** (proper async flow):
+1. Initialize EventBus and core systems
+2. Subscribe process startup to `LogHandlersReady` event
+3. Initialize TUI/Components (triggers log subscription)
+4. Components publish `LogHandlersReady` event
+5. EventBus delivers event to subscriber
+6. Processes start ONLY after receiving event
+
 For detailed patterns, see:
 - [Architecture Overview](/docs/architecture/overview.md) - Core components and integration patterns
 - [Concurrency Patterns](/docs/architecture/concurrency-patterns.md) - Race condition prevention and safe concurrent programming
@@ -207,3 +230,4 @@ When an AI coder session is active, slash commands are context-aware:
 - **"/" at start of line**: Opens Brummer command palette
 - **"/" mid-line**: Sent to AI coder as regular input
 - **When terminal not focused**: Always opens Brummer command palette
+- use python pty scripts to test the actual live tui operations

@@ -25,7 +25,8 @@ func TestConcurrentLogStress(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create integrated shell
-	shell := NewIntegratedShell(processMgr)
+	proxy := NewFakeProxyServer(nil)
+	shell := NewIntegratedShell(processMgr, eventBus, proxy)
 	require.NotNil(t, shell)
 
 	// Initialize the shell
@@ -33,9 +34,9 @@ func TestConcurrentLogStress(t *testing.T) {
 	shell.Update(tea.WindowSizeMsg{Width: DefaultTestWidth, Height: DefaultTestHeight})
 
 	// Stress test parameters
-	numWriters := DefaultConcurrentWriters      // Number of concurrent log writers
-	logsPerWriter := DefaultLogsPerWriter       // Logs each writer will generate
-	numReaders := DefaultConcurrentReaders      // Number of concurrent readers
+	numWriters := DefaultConcurrentWriters // Number of concurrent log writers
+	logsPerWriter := DefaultLogsPerWriter  // Logs each writer will generate
+	numReaders := DefaultConcurrentReaders // Number of concurrent readers
 
 	var wg sync.WaitGroup
 
@@ -46,19 +47,19 @@ func TestConcurrentLogStress(t *testing.T) {
 			defer wg.Done()
 			processID := fmt.Sprintf("writer-%d", writerID)
 			processName := fmt.Sprintf("Writer %d", writerID)
-			
+
 			for j := 0; j < logsPerWriter; j++ {
 				// Add log to store
 				shell.GetLogStore().Add(processID, processName,
 					fmt.Sprintf("Log %d from writer %d", j, writerID),
 					j%10 == 0) // Every 10th log is an error
-				
+
 				// Update cache
 				shell.GetProcessNameCacheSync().Store(processID, processName)
-				
+
 				// Notify subscription
 				shell.NotifyNewLogs()
-				
+
 				// Small random delay to simulate real behavior
 				if j%10 == 0 {
 					time.Sleep(time.Microsecond * time.Duration(j%100))
@@ -76,16 +77,16 @@ func TestConcurrentLogStress(t *testing.T) {
 				// Read logs
 				allLogs := shell.GetLogStore().GetAll()
 				_ = len(allLogs)
-				
+
 				// Read from cache
 				shell.GetProcessNameCacheSync().Range(func(key, value interface{}) bool {
 					_ = value.(string)
 					return j < 50 // Stop early sometimes
 				})
-				
+
 				// Note: We don't call applyFilter() here because it's not thread-safe
 				// In production, Bubble Tea ensures single-threaded updates
-				
+
 				time.Sleep(time.Millisecond * 5)
 			}
 		}(i)
@@ -182,10 +183,10 @@ func TestLogStoreThreadSafety(t *testing.T) {
 		for i := 0; i < numOps; i++ {
 			all := store.GetAll()
 			_ = len(all)
-			
+
 			byProc := store.GetByProcess(fmt.Sprintf("p%d", i%100))
 			_ = len(byProc)
-			
+
 			collapsed := store.GetAllCollapsed()
 			_ = len(collapsed)
 		}
@@ -198,7 +199,7 @@ func TestLogStoreThreadSafety(t *testing.T) {
 		for i := 0; i < numOps/10; i++ {
 			filtered := store.GetErrors()
 			_ = len(filtered)
-			
+
 			// Get by process collapsed
 			procCollapsed := store.GetByProcessCollapsed(fmt.Sprintf("p%d", i%100))
 			_ = len(procCollapsed)
@@ -221,7 +222,7 @@ func TestLogStoreThreadSafety(t *testing.T) {
 	// Store should still be functional
 	store.Add("final", "Final", "Final log", false)
 	WaitForAsync() // Wait for async processing
-	
+
 	final := store.GetAll()
 	assert.NotNil(t, final, "Store should still be functional")
 }

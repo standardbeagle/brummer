@@ -572,31 +572,101 @@ func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *event
 }
 
 func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool, cfg *config.Config) *Model {
+	// DEBUG
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] NewModelWithView called, processMgr=%v\n", processMgr != nil)
+		debugFile.Close()
+	}
+	
 	scripts := processMgr.GetScripts()
+	
+	// DEBUG after GetScripts
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] GetScripts returned %d scripts\n", len(scripts))
+		debugFile.Close()
+	}
 
 	// processesList initialization moved to ProcessViewController
 
 	// Create settings list with package managers
 	// settingsList initialization moved to SettingsController
 
+	// DEBUG before creating controllers
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] Creating controllers...\n")
+		debugFile.Close()
+	}
+	
+	// DEBUG - try creating controllers individually with panic recovery
+	var processVC *ProcessViewController
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+					fmt.Fprintf(debugFile, "[DEBUG] PANIC in NewProcessViewController: %v\n", r)
+					debugFile.Close()
+				}
+			}
+		}()
+		processVC = NewProcessViewController(processMgr)
+	}()
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] ProcessViewController created\n")
+		debugFile.Close()
+	}
+	
+	logsVC := NewLogsViewController(logStore)
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] LogsViewController created\n")
+		debugFile.Close()
+	}
+	
+	errorsVC := NewErrorsViewController(logStore)
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] ErrorsViewController created\n")
+		debugFile.Close()
+	}
+	
+	urlsVC := NewURLsViewController(logStore, mcpServer)
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] URLsViewController created\n")
+		debugFile.Close()
+	}
+	
+	webVC := NewWebViewController(proxyServer)
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] WebViewController created\n")
+		debugFile.Close()
+	}
+	
+	cmdWin := NewCommandWindowController(processMgr)
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] CommandWindowController created\n")
+		debugFile.Close()
+	}
+	
 	m := Model{
-		processMgr:  processMgr,
-		logStore:    logStore,
-		eventBus:    eventBus,
-		mcpServer:   mcpServer,
-		mcpPort:     mcpPort,
-		proxyServer: proxyServer,
-		debugMode:   debugMode,
-		// processesList initialization moved to ProcessViewController
-		processViewController: NewProcessViewController(processMgr),
-		// settingsList initialization moved to SettingsController
-		logsViewController:      NewLogsViewController(logStore),
-		errorsViewController:    NewErrorsViewController(logStore),
-		urlsViewController:      NewURLsViewController(logStore, mcpServer),
-		webViewController:       NewWebViewController(proxyServer),
-		commandWindowController: NewCommandWindowController(processMgr),
+		processMgr:              processMgr,
+		logStore:                logStore,
+		eventBus:                eventBus,
+		mcpServer:               mcpServer,
+		mcpPort:                 mcpPort,
+		proxyServer:             proxyServer,
+		debugMode:               debugMode,
+		processViewController:   processVC,
+		logsViewController:      logsVC,
+		errorsViewController:    errorsVC,
+		urlsViewController:      urlsVC,
+		webViewController:       webVC,
+		commandWindowController: cmdWin,
 		keys:                    keys,
 		updateChan:              make(chan tea.Msg, UpdateChannelBufferSize),
+	}
+	
+	// DEBUG after creating controllers
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] Controllers created\n")
+		debugFile.Close()
 	}
 
 	// Note: Log callback is registered in main.go to avoid duplication
@@ -734,6 +804,12 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	//     - Dependencies: eventController must be initialized
 	//     - Critical: This ensures subscriptions are active before MCP server starts
 	m.setupEventSubscriptions()
+
+	// DEBUG - about to return
+	if debugFile, err := os.OpenFile("/tmp/brummer_debug.log", os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644); err == nil {
+		fmt.Fprintf(debugFile, "[DEBUG] NewModelWithView returning Model\n")
+		debugFile.Close()
+	}
 
 	return &m
 }

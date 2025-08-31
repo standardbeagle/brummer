@@ -54,7 +54,7 @@ func TestComponentSystemBuild(t *testing.T) {
 		}
 
 		// URLs view
-		urlsView := components.NewURLsViewComponent()
+		urlsView := components.NewURLsViewComponent(nil)
 		if urlsView == nil {
 			t.Error("Failed to create URLsViewComponent")
 		}

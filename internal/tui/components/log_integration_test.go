@@ -25,7 +25,8 @@ func TestIntegratedShellLogDelivery(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create integrated shell
-	shell := NewIntegratedShell(processMgr)
+	proxy := NewFakeProxyServer(nil)
+	shell := NewIntegratedShell(processMgr, eventBus, proxy)
 	require.NotNil(t, shell)
 	require.NotNil(t, shell.logStore)
 	require.NotNil(t, shell.logSub)
@@ -41,11 +42,11 @@ func TestIntegratedShellLogDelivery(t *testing.T) {
 	// Test that logs can be added to the store
 	// Note: The subscription system returns tea.Cmd which requires the Bubble Tea runtime
 	// In this test, we'll just verify that logs are added correctly to the store
-	
+
 	// Add a log to the store and notify
 	shell.GetLogStore().Add("test-process", "Test Process", "Test log line", false)
 	shell.NotifyNewLogs()
-	
+
 	// The notification system works asynchronously with debouncing,
 	// but we can verify the log was added to the store immediately
 
@@ -80,14 +81,14 @@ func TestDebouncedLogSubscriptionConcurrency(t *testing.T) {
 				processID := fmt.Sprintf("proc-%d", id)
 				logStore.Add(processID, fmt.Sprintf("Process %d", id),
 					fmt.Sprintf("Log %d-%d", id, j), false)
-				
+
 				// Notify subscription
 				sub.NotifyNewLogs()
-				
+
 				mu.Lock()
 				notificationCount++
 				mu.Unlock()
-				
+
 				time.Sleep(time.Microsecond * 100)
 			}
 		}(i)
@@ -98,7 +99,7 @@ func TestDebouncedLogSubscriptionConcurrency(t *testing.T) {
 	// Check that logs were added
 	allLogs := logStore.GetAll()
 	assert.Equal(t, 100, len(allLogs), "Should have 100 logs")
-	
+
 	mu.Lock()
 	finalCount := notificationCount
 	mu.Unlock()
@@ -154,13 +155,13 @@ func TestLogStoreIntegrity(t *testing.T) {
 	}
 
 	wg.Wait()
-	
+
 	// Wait for async processing
 	time.Sleep(50 * time.Millisecond)
 
 	// Verify all logs were added
 	allLogs := logStore.GetAll()
-	assert.Equal(t, numGoroutines*logsPerGoroutine, len(allLogs), 
+	assert.Equal(t, numGoroutines*logsPerGoroutine, len(allLogs),
 		"Should have all logs")
 
 	// Verify data integrity
@@ -169,11 +170,11 @@ func TestLogStoreIntegrity(t *testing.T) {
 		logCounts[log.ProcessID]++
 	}
 
-	assert.Equal(t, numGoroutines, len(logCounts), 
+	assert.Equal(t, numGoroutines, len(logCounts),
 		"Should have logs from all goroutines")
-	
+
 	for processID, count := range logCounts {
-		assert.Equal(t, logsPerGoroutine, count, 
+		assert.Equal(t, logsPerGoroutine, count,
 			"Process %s should have correct number of logs", processID)
 	}
 }
@@ -189,14 +190,15 @@ func TestProcessNameCacheConsistency(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create shell
-	shell := NewIntegratedShell(processMgr)
+	proxy := NewFakeProxyServer(nil)
+	shell := NewIntegratedShell(processMgr, eventBus, proxy)
 	require.NotNil(t, shell)
 
 	// Test concurrent cache operations
 	var wg sync.WaitGroup
 	for i := 0; i < 100; i++ {
 		wg.Add(2)
-		
+
 		// Writer
 		go func(id int) {
 			defer wg.Done()
@@ -204,7 +206,7 @@ func TestProcessNameCacheConsistency(t *testing.T) {
 			processName := fmt.Sprintf("Process %d", id)
 			shell.processNameCache.Store(processID, processName)
 		}(i)
-		
+
 		// Reader
 		go func(id int) {
 			defer wg.Done()

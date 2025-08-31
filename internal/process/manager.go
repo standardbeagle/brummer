@@ -288,6 +288,9 @@ func NewManager(workDir string, eventBus *events.EventBus, hasPackageJSON bool) 
 }
 
 func (m *Manager) GetScripts() map[string]string {
+	if m.packageJSON == nil {
+		return make(map[string]string)
+	}
 	return m.packageJSON.Scripts
 }
 
