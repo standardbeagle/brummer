@@ -118,22 +118,44 @@ func (c *CommandPalette) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return c, nil
 
-		case "tab", "down":
-			// Next suggestion
+		case "tab":
+			// Accept current suggestion (do not advance)
+			if len(c.suggestions) > 0 {
+				val := parseSuggestionCommand(c.suggestions[c.selectedIdx])
+				if val != "" {
+					c.input.SetValue(val)
+				} else {
+					c.input.SetValue(c.suggestions[c.selectedIdx])
+				}
+			}
+			return c, nil
+
+		case "down":
+			// Next suggestion (preview)
 			if len(c.suggestions) > 0 {
 				c.selectedIdx = (c.selectedIdx + 1) % len(c.suggestions)
-				c.input.SetValue(c.suggestions[c.selectedIdx])
+				val := parseSuggestionCommand(c.suggestions[c.selectedIdx])
+				if val != "" {
+					c.input.SetValue(val)
+				} else {
+					c.input.SetValue(c.suggestions[c.selectedIdx])
+				}
 			}
 			return c, nil
 
 		case "shift+tab", "up":
-			// Previous suggestion
+			// Previous suggestion (preview)
 			if len(c.suggestions) > 0 {
 				c.selectedIdx--
 				if c.selectedIdx < 0 {
 					c.selectedIdx = len(c.suggestions) - 1
 				}
-				c.input.SetValue(c.suggestions[c.selectedIdx])
+				val := parseSuggestionCommand(c.suggestions[c.selectedIdx])
+				if val != "" {
+					c.input.SetValue(val)
+				} else {
+					c.input.SetValue(c.suggestions[c.selectedIdx])
+				}
 			}
 			return c, nil
 		}
@@ -149,6 +171,17 @@ func (c *CommandPalette) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.suggestions = c.handler.GetSuggestions(c.input.Value())
 		if c.selectedIdx >= len(c.suggestions) {
 			c.selectedIdx = 0
+		}
+		// Proactive inline completion when exactly one unambiguous suggestion
+		// Do not auto-expand if the current input ends with a space (e.g., "/ai ")
+		if len(c.suggestions) == 1 {
+			val := c.input.Value()
+			if !strings.HasSuffix(val, " ") {
+				cand := parseSuggestionCommand(c.suggestions[0])
+				if cand != "" && strings.HasPrefix(cand, val) && cand != val {
+					c.input.SetValue(cand)
+				}
+			}
 		}
 	} else {
 		c.suggestions = []string{}
@@ -204,6 +237,16 @@ func (c *CommandPalette) View() string {
 		lipgloss.Center,
 		styled,
 	)
+}
+
+// parseSuggestionCommand extracts the raw command part from a suggestion line like
+// "/ai terminal - Start AI Coder with terminal" -> "/ai terminal"
+func parseSuggestionCommand(s string) string {
+	if s == "" {
+		return ""
+	}
+	parts := strings.SplitN(s, " - ", 2)
+	return strings.TrimSpace(parts[0])
 }
 
 // Focus focuses the input

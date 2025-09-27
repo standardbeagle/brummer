@@ -809,6 +809,11 @@ func (v *AICoderPTYView) renderViewportFromTerminal(terminal vt10x.Terminal, vie
 		result = scrollInfo + "\n" + result
 	}
 
+	// If result is empty or just whitespace, provide a helpful message
+	if strings.TrimSpace(result) == "" {
+		result = "Waiting for AI provider output...\nPress any key to interact with the session."
+	}
+
 	return result
 }
 

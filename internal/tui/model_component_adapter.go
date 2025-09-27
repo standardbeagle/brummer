@@ -31,6 +31,7 @@ type ModelComponentAdapter struct {
 	commandInput     *components.CommandInputComponent
 	webView          *components.WebViewComponent
 	aiCodersView     *components.AICodersViewComponent
+	aiPTYView        *components.AIPTYComponent
 
 	// Mode flag for gradual migration
 	useComponents bool
@@ -101,6 +102,9 @@ func (a *ModelComponentAdapter) initializeComponents() {
 	// Create AI coders view
 	a.aiCodersView = components.NewAICodersViewComponent()
 
+	// Create AI PTY view
+	a.aiPTYView = components.NewAIPTYComponent(a.model.logStore)
+
 	// Create view switcher
 	a.viewSwitcher = components.NewViewSwitcher()
 
@@ -126,8 +130,8 @@ func (a *ModelComponentAdapter) initializeComponents() {
 	if a.webView != nil {
 		a.viewSwitcher.AddView("web", a.webView)
 	}
-	if a.aiCodersView != nil {
-		a.viewSwitcher.AddView("aicoders", a.aiCodersView)
+	if a.aiPTYView != nil {
+		a.viewSwitcher.AddView("aicoders", a.aiPTYView)
 	}
 
 	// Set initial view
@@ -270,6 +274,32 @@ func (a *ModelComponentAdapter) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			// Note: navigation.ChangeViewMsg handling can be added when navigation package exports it
+		case components.AIPTYStartMsg:
+			// Handle AI PTY start message - route to AI PTY component and switch to AI view
+			if a.aiPTYView != nil {
+				_, cmd := a.aiPTYView.Update(msg)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+				// Switch to AI coders view to show the PTY session
+				a.viewSwitcher.SwitchTo("aicoders")
+			}
+		case components.AIPTYOutputMsg:
+			// Handle AI PTY output message - route to AI PTY component
+			if a.aiPTYView != nil {
+				_, cmd := a.aiPTYView.Update(msg)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
+		case components.AIPTYEventMsg:
+			// Handle AI PTY event message - route to AI PTY component
+			if a.aiPTYView != nil {
+				_, cmd := a.aiPTYView.Update(msg)
+				if cmd != nil {
+					cmds = append(cmds, cmd)
+				}
+			}
 		}
 
 		// Bridge data changes to components

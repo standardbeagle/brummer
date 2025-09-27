@@ -197,6 +197,24 @@ type URLCopyMsg struct {
 // ShowAIViewMsg requests switching to the AI view
 type ShowAIViewMsg struct{}
 
+// AIPTYStartMsg requests starting an interactive AI PTY session for a provider
+type AIPTYStartMsg struct {
+	Provider string
+}
+
+// AIPTYOutputMsg carries PTY output for the active AI session
+type AIPTYOutputMsg struct {
+	SessionID string
+	Data      []byte
+}
+
+// AIPTYEventMsg carries PTY lifecycle/diagnostic events
+type AIPTYEventMsg struct {
+	// We keep it generic to avoid heavy coupling; components interpret minimal fields
+	Type string
+	Msg  string
+}
+
 // Web/Proxy-specific messages
 
 // ProxyRequestMsg represents an HTTP request through the proxy

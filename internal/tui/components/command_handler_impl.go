@@ -96,18 +96,11 @@ func (h *IntegratedShellCommandHandler) ExecuteCommand(command string) tea.Cmd {
 			parts := strings.Fields(command)
 			if len(parts) >= 2 {
 				provider := parts[1]
-				startSpec, _ := h.aiService.Start(provider)
+				// Ask service for provider validation/spec (even if not used directly)
+				_, _ = h.aiService.Start(provider)
 				return tea.Batch(
 					func() tea.Msg { return HideCommandPaletteMsg{} },
-					func() tea.Msg { return ShowAIViewMsg{} },
-					func() tea.Msg {
-						return AICoderStartMsg{
-							Name:         startSpec.Name,
-							Model:        startSpec.Model,
-							SystemPrompt: startSpec.SystemPrompt,
-							WorkingDir:   startSpec.WorkingDir,
-						}
-					},
+					func() tea.Msg { return AIPTYStartMsg{Provider: provider} },
 				)
 			}
 		}
@@ -169,6 +162,15 @@ func (h *IntegratedShellCommandHandler) GetSuggestions(prefix string) []string {
 		if h.aiService != nil {
 			names := h.aiService.GetProviders()
 			if len(names) > 0 {
+				// Always include debug providers
+				seen := map[string]struct{}{}
+				for _, n := range names {
+					seen[n] = struct{}{}
+				}
+				if _, ok := seen["test"]; !ok {
+					names = append(names, "test")
+				}
+				sort.Strings(names)
 				return names
 			}
 		}
@@ -184,6 +186,14 @@ func (h *IntegratedShellCommandHandler) GetSuggestions(prefix string) []string {
 			for name := range defaults {
 				names = append(names, name)
 			}
+		}
+		// Always include debug providers
+		seen := map[string]struct{}{}
+		for _, n := range names {
+			seen[n] = struct{}{}
+		}
+		if _, ok := seen["test"]; !ok {
+			names = append(names, "test")
 		}
 		sort.Strings(names)
 		return names

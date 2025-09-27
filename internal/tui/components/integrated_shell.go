@@ -58,8 +58,8 @@ type IntegratedShell struct {
 	logsView       *LogsViewComponent
 	errorsView     *ErrorsViewComponent
 	urlsView       *URLsViewComponent
-	webView        *URLsViewComponent // Reuse URLs component for now
-	aiView         *AIViewComponent
+	webView        *URLsViewComponent     // Reuse URLs component for now
+	aiView         Sizable                // Any component that implements Component + SetSize
 	settingsView   *SettingsViewComponent // Using existing adapter
 	commandPalette *CommandPalette
 
@@ -152,7 +152,11 @@ func NewIntegratedShell(processMgr *process.Manager, eventBus *events.EventBus, 
 	shell.errorsView = NewErrorsViewComponent()
 	shell.urlsView = NewURLsViewComponent(processMgr)
 	shell.webView = NewURLsViewComponent(processMgr) // Reuse URLs component for web view
-	shell.aiView = NewAIViewComponent()
+
+	// Use interactive PTY AI tab instead of placeholder view
+	ptyAI := NewAIPTYComponent(logStore)
+	shell.aiView = ptyAI
+
 	shell.settingsView = NewSettingsViewComponent()
 
 	// Initialize services
@@ -637,10 +641,45 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd := s.switchToView(ViewAICoders)
 		return s, cmd
 
+	case AIPTYStartMsg:
+		// Forward to AI view to establish PTY session
+		if s.aiView != nil {
+			_, cmd := s.aiView.Update(msg)
+			// Ensure we are on AI tab
+			switchCmd := s.switchToView(ViewAICoders)
+			// Also pass a WindowSizeMsg so PTY gets proper dimensions immediately
+			sizeCmd := func() tea.Msg { return tea.WindowSizeMsg{Width: s.width, Height: s.height} }
+			return s, tea.Batch(cmd, switchCmd, sizeCmd)
+		}
+		return s, s.switchToView(ViewAICoders)
+
+	case AIPTYOutputMsg:
+		// Always deliver PTY output to the AI view regardless of active tab
+		if s.aiView != nil {
+			_, cmd := s.aiView.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		// Also let the active component handle if it wants
+		if cmd := s.updateActiveComponent(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+	case AIPTYEventMsg:
+		// Always deliver PTY events to the AI view regardless of active tab
+		if s.aiView != nil {
+			_, cmd := s.aiView.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		// Also pass to active component (no-op for others)
+		if cmd := s.updateActiveComponent(msg); cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	default:
 		// Pass message to active component
-		cmd := s.updateActiveComponent(msg)
-		if cmd != nil {
+		if cmd := s.updateActiveComponent(msg); cmd != nil {
 			cmds = append(cmds, cmd)
 		}
 	}
@@ -1060,6 +1099,11 @@ func (s *IntegratedShell) handleViewInput(key tea.KeyMsg) tea.Cmd {
 		}
 	case ViewAICoders:
 		if s.aiView != nil && s.aiView.Focused() {
+			_, cmd := s.aiView.Update(key)
+			return cmd
+		}
+		// Allow typing to go to PTY when AI tab is visible but not focused
+		if s.aiView != nil {
 			_, cmd := s.aiView.Update(key)
 			return cmd
 		}

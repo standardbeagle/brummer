@@ -1,3 +1,11 @@
+## 2025-09-21
+- AIPTYComponent: Stop treating EventChan PTYEventOutput as UI output; rely solely on OutputChan for rendering. Keeps EventChan for lifecycle only and avoids duplicate output signaling.
+- Deprecated old AIViewComponent (placeholder) with file-level comment to prevent accidental use; AIPTYComponent is the active AI UI.
+- Build and component tests passed (`TestAIPTY_StartTerminalProducesOutput`).
+
+- Added debug AI provider: "/ai test" starts a PTY that prints BRUMMER_TEST_COUNTER N every 0.5s for visual verification of streaming and tab persistence.
+
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
@@ -60,7 +68,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Refactored `repl_library` handler into separate methods to reduce complexity
 - Made timeout values configurable via environment variables:
   - `BRUMMER_LIBRARY_CHECK_TIMEOUT` (default: 1 second)
-  - `BRUMMER_LIBRARY_INJECT_TIMEOUT` (default: 2 seconds)  
+  - `BRUMMER_LIBRARY_INJECT_TIMEOUT` (default: 2 seconds)
   - `BRUMMER_REPL_RESPONSE_TIMEOUT` (default: 5 seconds)
 
 ### Refactored
