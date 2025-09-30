@@ -21,9 +21,10 @@ type IntegratedShell struct {
 	logsView    Component
 	processView Component
 	urlsView    Component
+	errorsView  Component
 
 	// State
-	currentView string // "logs", "processes", "urls", etc.
+	currentView string // "logs", "processes", "urls", "errors", etc.
 }
 
 // NewIntegratedShell creates a new shell with no components
@@ -57,6 +58,14 @@ func (s *IntegratedShell) SetURLsView(component Component) {
 	}
 }
 
+// SetErrorsView sets the errors component
+func (s *IntegratedShell) SetErrorsView(component Component) {
+	s.errorsView = component
+	if s.width > 0 && s.height > 0 {
+		component.SetSize(s.width, s.height)
+	}
+}
+
 // Init initializes the shell
 func (s *IntegratedShell) Init() tea.Cmd {
 	var cmds []tea.Cmd
@@ -69,6 +78,9 @@ func (s *IntegratedShell) Init() tea.Cmd {
 	}
 	if s.urlsView != nil {
 		cmds = append(cmds, s.urlsView.Init())
+	}
+	if s.errorsView != nil {
+		cmds = append(cmds, s.errorsView.Init())
 	}
 
 	return tea.Batch(cmds...)
@@ -94,11 +106,19 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if s.urlsView != nil {
 			s.urlsView.SetSize(msg.Width, msg.Height)
 		}
+		if s.errorsView != nil {
+			s.errorsView.SetSize(msg.Width, msg.Height)
+		}
 
 	case messages.LogAddedMsg:
 		// Route log messages to logs component
 		if s.logsView != nil {
 			_, cmd := s.logsView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+		// Also route to errors view (filters IsError internally)
+		if s.errorsView != nil {
+			_, cmd := s.errorsView.Update(msg)
 			cmds = append(cmds, cmd)
 		}
 
@@ -151,6 +171,12 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				s.currentView = "urls"
 			}
 			return s, nil
+		case "4":
+			// Switch to Errors view
+			if s.errorsView != nil {
+				s.currentView = "errors"
+			}
+			return s, nil
 		default:
 			// Forward to active component
 			switch s.currentView {
@@ -167,6 +193,11 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "urls":
 				if s.urlsView != nil {
 					_, cmd := s.urlsView.Update(msg)
+					cmds = append(cmds, cmd)
+				}
+			case "errors":
+				if s.errorsView != nil {
+					_, cmd := s.errorsView.Update(msg)
 					cmds = append(cmds, cmd)
 				}
 			}
@@ -196,6 +227,12 @@ func (s *IntegratedShell) View() string {
 			return s.urlsView.View()
 		}
 		return "URLs view not initialized"
+
+	case "errors":
+		if s.errorsView != nil {
+			return s.errorsView.View()
+		}
+		return "Errors view not initialized"
 
 	default:
 		return "Unknown view: " + s.currentView
