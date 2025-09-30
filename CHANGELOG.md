@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Race conditions in BubbleTea PTY component:
+  - Fixed concurrent read/write access to component state in `startProviderSession()`
+  - Fixed goroutine access to session/provider fields in `pokePTYCmd()`
+  - Captured component state before entering goroutines
+  - Pass data via messages instead of direct state modification
+  - All component state updates now happen only in Update() method
+  - Race detector validation: CLEAN (zero warnings)
+
 ### Added
 - Script library management system with MCP integration
   - New `repl_library` MCP tool for managing JavaScript/TypeScript debugging functions

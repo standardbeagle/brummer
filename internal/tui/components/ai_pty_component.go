@@ -122,6 +122,12 @@ func (c *AIPTYComponent) subscribePTYEvents() tea.Cmd {
 
 // startProviderSession creates the provider CLI PTY session based on config
 func (c *AIPTYComponent) startProviderSession(provider string) tea.Cmd {
+	// CRITICAL: Capture component dimensions BEFORE entering goroutine
+	// to avoid race condition with Update() method
+	width := c.width
+	height := c.height
+	logStore := c.logStore
+
 	return func() tea.Msg {
 		cfg, _ := config.Load()
 		mcpPort := 7777
@@ -160,55 +166,53 @@ func (c *AIPTYComponent) startProviderSession(provider string) tea.Cmd {
 			args = []string{"-i"}
 		}
 
-		c.cmdSummary = fmt.Sprintf("%s %v", command, args)
-		if c.logStore != nil {
-			c.logStore.Add("ai-pty", "AI", fmt.Sprintf("Starting provider %q: %s", provider, c.cmdSummary), false)
+		// RACE FIX: Don't write to component state from goroutine
+		// Instead, include data in the returned message
+		cmdSummary := fmt.Sprintf("%s %v", command, args)
+		if logStore != nil {
+			logStore.Add("ai-pty", "AI", fmt.Sprintf("Starting provider %q: %s", provider, cmdSummary), false)
 		}
 
 		// Validate the provider command exists on PATH (for immediate feedback)
 		if _, lookErr := exec.LookPath(command); lookErr != nil {
-			c.isStarting = false
-			c.statusMessage = fmt.Sprintf("Command not found: %s", command)
-			if c.logStore != nil {
-				c.logStore.Add("ai-pty", "AI", c.statusMessage, true)
+			// RACE FIX: Return error message instead of modifying component state
+			errMsg := fmt.Sprintf("Command not found: %s", command)
+			if logStore != nil {
+				logStore.Add("ai-pty", "AI", errMsg, true)
 			}
-			return nil
+			return AIPTYEventMsg{Type: "error", Msg: errMsg, CmdSummary: cmdSummary}
 		}
 
 		id := uuid.New().String()
 		sess, err := aicoder.NewPTYSessionWithEnv(id, fmt.Sprintf("%s AI", provider), command, args, env)
 		if err != nil {
-			c.isStarting = false
-			c.statusMessage = fmt.Sprintf("Failed to start: %v", err)
-			if c.logStore != nil {
-				c.logStore.Add("ai-pty", "AI", fmt.Sprintf("AI PTY failed: %v", err), true)
-			}
-			return nil
+			// DON'T modify component state here - return error in message
+			errMsg := fmt.Sprintf("Failed to start: %v", err)
+			return AIPTYEventMsg{Type: "error", Msg: errMsg, CmdSummary: cmdSummary}
 		}
-		c.session = sess
-		c.provider = provider
-		c.loggedFirstOutput = false
+
 		// Log PID for diagnostics
-		if c.logStore != nil && c.session.Command != nil && c.session.Command.Process != nil {
-			c.logStore.Add("ai-pty", "AI", fmt.Sprintf("PTY started: pid=%d", c.session.Command.Process.Pid), false)
+		if logStore != nil && sess.Command != nil && sess.Command.Process != nil {
+			logStore.Add("ai-pty", "AI", fmt.Sprintf("PTY started: pid=%d", sess.Command.Process.Pid), false)
 		}
-		// initial resize to the full available area (no internal frame)
-		if c.width > 0 && c.height > 0 {
-			_ = c.session.Resize(maxInt(20, c.width), maxInt(5, c.height))
+
+		// RACE FIX: Use captured width/height instead of reading from component
+		if width > 0 && height > 0 {
+			_ = sess.Resize(maxInt(20, width), maxInt(5, height))
 		}
 
 		// For terminal provider only, emit a readiness line so viewport shows content
 		if provider == "terminal" {
-			if err := c.session.WriteInputNonBlocking([]byte("echo BRUMMER_READY\n")); err != nil {
-				c.lastError = fmt.Sprintf("readiness echo failed: %v", err)
-				if c.logStore != nil {
-					c.logStore.Add("ai-pty", "AI", c.lastError, true)
+			if err := sess.WriteInputNonBlocking([]byte("echo BRUMMER_READY\n")); err != nil {
+				if logStore != nil {
+					logStore.Add("ai-pty", "AI", fmt.Sprintf("readiness echo failed: %v", err), true)
 				}
 			}
 		}
 
 		// Signal that session is ready; UI will begin subscriptions
-		return AIPTYEventMsg{Type: "started", Msg: "pty-session-ready"}
+		// IMPORTANT: Pass all data in message, don't modify component state from goroutine
+		return AIPTYEventMsg{Type: "started", Msg: "pty-session-ready", Session: sess, CmdSummary: cmdSummary}
 	}
 }
 
@@ -221,6 +225,7 @@ func (c *AIPTYComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case AIPTYStartMsg:
 		c.isStarting = true
 		c.spinnerIndex = 0
+		c.provider = m.Provider // Store provider name
 		c.statusMessage = fmt.Sprintf("Starting %q...", m.Provider)
 		c.startTime = time.Now()
 		if c.logStore != nil {
@@ -255,13 +260,41 @@ func (c *AIPTYComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Lifecycle and output events via EventChan; always resubscribe unless closed
 		switch m.Type {
 		case "started":
-			if c.session != nil {
+			// Extract session from message (safe in Update method)
+			if sess, ok := m.Session.(*aicoder.PTYSession); ok && sess != nil {
+				c.session = sess
+				c.loggedFirstOutput = false
+				c.isStarting = false
+				// RACE FIX: Update cmdSummary from message, not from goroutine
+				if m.CmdSummary != "" {
+					c.cmdSummary = m.CmdSummary
+				}
+				// Log session startup for diagnostics
+				if c.logStore != nil {
+					c.logStore.Add("ai-pty", "AI", "✅ PTY session started successfully, beginning subscriptions", false)
+				}
 				// Update terminal content immediately and start both refresh tick and subscriptions
 				termStr := c.session.GetTerminal().String()
 				c.viewport.SetContent(termStr)
 				c.viewport.GotoBottom()
 				return c, tea.Batch(c.refreshTickCmd(), c.subscribePTY(), c.subscribePTYEvents())
+			} else {
+				if c.logStore != nil {
+					c.logStore.Add("ai-pty", "AI", "❌ ERROR: received 'started' event but session is nil or wrong type", true)
+				}
 			}
+		case "error":
+			c.isStarting = false
+			c.statusMessage = m.Msg
+			c.lastError = m.Msg
+			// RACE FIX: Update cmdSummary from message
+			if m.CmdSummary != "" {
+				c.cmdSummary = m.CmdSummary
+			}
+			if c.logStore != nil {
+				c.logStore.Add("ai-pty", "AI", m.Msg, true)
+			}
+			return c, nil
 		case "output":
 			// Treat as output signal; refresh from terminal
 			c.outputCount++
@@ -476,12 +509,14 @@ func (c *AIPTYComponent) pokePTYCmd() tea.Cmd {
 	if c.session == nil {
 		return nil
 	}
+	// RACE FIX: Capture session and provider before entering goroutine
+	session := c.session
 	provider := c.provider
 	return func() tea.Msg {
 		// Best-effort poke; ignore errors
-		_ = c.session.WriteInputNonBlocking([]byte("\n"))
+		_ = session.WriteInputNonBlocking([]byte("\n"))
 		if provider == "terminal" {
-			_ = c.session.WriteInputNonBlocking([]byte("echo BRUMMER_READY\n"))
+			_ = session.WriteInputNonBlocking([]byte("echo BRUMMER_READY\n"))
 		}
 		return nil
 	}

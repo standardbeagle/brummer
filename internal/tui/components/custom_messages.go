@@ -211,8 +211,10 @@ type AIPTYOutputMsg struct {
 // AIPTYEventMsg carries PTY lifecycle/diagnostic events
 type AIPTYEventMsg struct {
 	// We keep it generic to avoid heavy coupling; components interpret minimal fields
-	Type string
-	Msg  string
+	Type       string
+	Msg        string
+	Session    interface{} // Optional: PTY session for "started" events
+	CmdSummary string      // Optional: command summary for diagnostics
 }
 
 // Web/Proxy-specific messages
