@@ -70,11 +70,18 @@ type Store struct {
 	// Event bus for publishing LogLine events
 	eventBus EventBus
 
+	// Observer pattern for log additions
+	observers   []LogObserver
+	observersMu sync.RWMutex
+
 	// Channel-based async operations
 	addChan   chan *addLogRequest
 	closeChan chan struct{}
 	wg        sync.WaitGroup
 }
+
+// LogObserver is a function that gets called when a log entry is added
+type LogObserver func(entry *LogEntry)
 
 type URLEntry struct {
 	URL         string
@@ -106,6 +113,7 @@ func NewStore(maxEntries int, eventBus EventBus) *Store {
 		maxEntries:     maxEntries,
 		eventBus:       eventBus,
 		filters:        []filters.Filter{},
+		observers:      make([]LogObserver, 0),
 		addChan:        make(chan *addLogRequest, 1000),
 		closeChan:      make(chan struct{}),
 	}
@@ -115,6 +123,34 @@ func NewStore(maxEntries int, eventBus EventBus) *Store {
 	go s.processAddRequests()
 
 	return s
+}
+
+// OnAdd registers an observer that will be called when a log entry is added.
+// Returns an unsubscribe function that removes the observer.
+//
+// This is the foundation of the event-driven UI architecture.
+// Components should subscribe to log additions rather than polling.
+func (s *Store) OnAdd(observer LogObserver) func() {
+	s.observersMu.Lock()
+	defer s.observersMu.Unlock()
+
+	s.observers = append(s.observers, observer)
+
+	// Return unsubscribe function
+	return func() {
+		s.observersMu.Lock()
+		defer s.observersMu.Unlock()
+
+		// Find and remove this observer
+		for i, obs := range s.observers {
+			// Compare function pointers by comparing their addresses
+			// This is Go's way of checking if two function values are "the same"
+			if &obs == &observer {
+				s.observers = append(s.observers[:i], s.observers[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 func (s *Store) Add(processID, processName, content string, isError bool) *LogEntry {
@@ -256,6 +292,18 @@ func (s *Store) addSync(processID, processName, content string, isError bool) *L
 				"processName": processName,
 			},
 		})
+	}
+
+	// Notify all observers of the new log entry
+	// This is the key to event-driven UI updates - no polling needed!
+	s.observersMu.RLock()
+	observers := make([]LogObserver, len(s.observers))
+	copy(observers, s.observers)
+	s.observersMu.RUnlock()
+
+	// Call observers outside the lock to prevent deadlocks
+	for _, observer := range observers {
+		observer(&entry)
 	}
 
 	return &entry
