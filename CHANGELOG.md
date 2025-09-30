@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Pass data via messages instead of direct state modification
   - All component state updates now happen only in Update() method
   - Race detector validation: CLEAN (zero warnings)
+- PTY terminal connection timing issue:
+  - Terminal now displays bash prompt immediately (<100ms) instead of 2-second delay
+  - Removed premature output in `startProviderSession()` that sent data before subscriptions were ready
+  - Added immediate `pokePTYCmd()` trigger after establishing subscriptions
+  - Ensures all terminal output is properly captured and displayed
+  - `/ai terminal` command now works correctly with visible prompt and responsive input
 
 ### Added
 - Script library management system with MCP integration

@@ -201,14 +201,10 @@ func (c *AIPTYComponent) startProviderSession(provider string) tea.Cmd {
 			_ = sess.Resize(maxInt(20, width), maxInt(5, height))
 		}
 
-		// For terminal provider only, emit a readiness line so viewport shows content
-		if provider == "terminal" {
-			if err := sess.WriteInputNonBlocking([]byte("echo BRUMMER_READY\n")); err != nil {
-				if logStore != nil {
-					logStore.Add("ai-pty", "AI", fmt.Sprintf("readiness echo failed: %v", err), true)
-				}
-			}
-		}
+		// FIX: Don't send initial output here - it happens BEFORE subscribePTY() is called!
+		// The pokePTYCmd() mechanism (triggered by spinner after 2s) will send "echo BRUMMER_READY"
+		// AFTER subscriptions are established, ensuring output is captured.
+		// This fixes the bug where initial terminal output was lost.
 
 		// Signal that session is ready; UI will begin subscriptions
 		// IMPORTANT: Pass all data in message, don't modify component state from goroutine
@@ -277,7 +273,9 @@ func (c *AIPTYComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				termStr := c.session.GetTerminal().String()
 				c.viewport.SetContent(termStr)
 				c.viewport.GotoBottom()
-				return c, tea.Batch(c.refreshTickCmd(), c.subscribePTY(), c.subscribePTYEvents())
+				// FIX: Immediately poke the PTY to trigger output capture
+				// This ensures bash prompt (or any initial output) is captured by subscribePTY()
+				return c, tea.Batch(c.refreshTickCmd(), c.subscribePTY(), c.subscribePTYEvents(), c.pokePTYCmd())
 			} else {
 				if c.logStore != nil {
 					c.logStore.Add("ai-pty", "AI", "❌ ERROR: received 'started' event but session is nil or wrong type", true)
