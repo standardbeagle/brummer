@@ -18,7 +18,9 @@ type IntegratedShell struct {
 	height int
 
 	// Components (nil until initialized)
-	logsView Component
+	logsView    Component
+	processView Component
+	urlsView    Component
 
 	// State
 	currentView string // "logs", "processes", "urls", etc.
@@ -39,12 +41,34 @@ func (s *IntegratedShell) SetLogsView(component Component) {
 	}
 }
 
+// SetProcessView sets the process component
+func (s *IntegratedShell) SetProcessView(component Component) {
+	s.processView = component
+	if s.width > 0 && s.height > 0 {
+		component.SetSize(s.width, s.height)
+	}
+}
+
+// SetURLsView sets the URLs component
+func (s *IntegratedShell) SetURLsView(component Component) {
+	s.urlsView = component
+	if s.width > 0 && s.height > 0 {
+		component.SetSize(s.width, s.height)
+	}
+}
+
 // Init initializes the shell
 func (s *IntegratedShell) Init() tea.Cmd {
 	var cmds []tea.Cmd
 
 	if s.logsView != nil {
 		cmds = append(cmds, s.logsView.Init())
+	}
+	if s.processView != nil {
+		cmds = append(cmds, s.processView.Init())
+	}
+	if s.urlsView != nil {
+		cmds = append(cmds, s.urlsView.Init())
 	}
 
 	return tea.Batch(cmds...)
@@ -64,6 +88,12 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if s.logsView != nil {
 			s.logsView.SetSize(msg.Width, msg.Height)
 		}
+		if s.processView != nil {
+			s.processView.SetSize(msg.Width, msg.Height)
+		}
+		if s.urlsView != nil {
+			s.urlsView.SetSize(msg.Width, msg.Height)
+		}
 
 	case messages.LogAddedMsg:
 		// Route log messages to logs component
@@ -73,25 +103,72 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case messages.ProcessStartedMsg:
-		// Future: Route to process component
-		// For now, just log it via LogAddedMsg if needed
+		// Route to process component
+		if s.processView != nil {
+			_, cmd := s.processView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 
 	case messages.ProcessStoppedMsg:
-		// Future: Route to process component
+		// Route to process component
+		if s.processView != nil {
+			_, cmd := s.processView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
+	case messages.ProcessStateChangedMsg:
+		// Route to process component
+		if s.processView != nil {
+			_, cmd := s.processView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 
 	case messages.URLDetectedMsg:
-		// Future: Route to URLs component
+		// Route to URLs component
+		if s.urlsView != nil {
+			_, cmd := s.urlsView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
 
 	case tea.KeyMsg:
 		// Handle global keys (component switching, etc.)
 		switch msg.String() {
 		case "ctrl+c", "q":
 			// Quit handled by parent
+		case "1":
+			// Switch to logs view
+			s.currentView = "logs"
+			return s, nil
+		case "2":
+			// Switch to processes view
+			if s.processView != nil {
+				s.currentView = "processes"
+			}
+			return s, nil
+		case "3":
+			// Switch to URLs view
+			if s.urlsView != nil {
+				s.currentView = "urls"
+			}
+			return s, nil
 		default:
 			// Forward to active component
-			if s.currentView == "logs" && s.logsView != nil {
-				_, cmd := s.logsView.Update(msg)
-				cmds = append(cmds, cmd)
+			switch s.currentView {
+			case "logs":
+				if s.logsView != nil {
+					_, cmd := s.logsView.Update(msg)
+					cmds = append(cmds, cmd)
+				}
+			case "processes":
+				if s.processView != nil {
+					_, cmd := s.processView.Update(msg)
+					cmds = append(cmds, cmd)
+				}
+			case "urls":
+				if s.urlsView != nil {
+					_, cmd := s.urlsView.Update(msg)
+					cmds = append(cmds, cmd)
+				}
 			}
 		}
 	}
@@ -107,6 +184,18 @@ func (s *IntegratedShell) View() string {
 			return s.logsView.View()
 		}
 		return "Logs view not initialized"
+
+	case "processes":
+		if s.processView != nil {
+			return s.processView.View()
+		}
+		return "Process view not initialized"
+
+	case "urls":
+		if s.urlsView != nil {
+			return s.urlsView.View()
+		}
+		return "URLs view not initialized"
 
 	default:
 		return "Unknown view: " + s.currentView
