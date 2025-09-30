@@ -80,3 +80,17 @@ type ServiceHealthMsg struct {
 	Healthy bool
 	Message string
 }
+
+// Proxy request events
+// These messages represent HTTP requests captured by the proxy server
+
+type ProxyRequestMsg struct {
+	RequestID   string
+	Method      string
+	URL         string
+	Path        string
+	StatusCode  int
+	Duration    time.Duration
+	ProcessName string
+	Timestamp   time.Time
+}

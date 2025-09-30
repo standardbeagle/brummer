@@ -22,9 +22,10 @@ type IntegratedShell struct {
 	processView Component
 	urlsView    Component
 	errorsView  Component
+	webView     Component
 
 	// State
-	currentView string // "logs", "processes", "urls", "errors", etc.
+	currentView string // "logs", "processes", "urls", "errors", "web", etc.
 }
 
 // NewIntegratedShell creates a new shell with no components
@@ -66,6 +67,14 @@ func (s *IntegratedShell) SetErrorsView(component Component) {
 	}
 }
 
+// SetWebView sets the web/proxy component
+func (s *IntegratedShell) SetWebView(component Component) {
+	s.webView = component
+	if s.width > 0 && s.height > 0 {
+		component.SetSize(s.width, s.height)
+	}
+}
+
 // Init initializes the shell
 func (s *IntegratedShell) Init() tea.Cmd {
 	var cmds []tea.Cmd
@@ -81,6 +90,9 @@ func (s *IntegratedShell) Init() tea.Cmd {
 	}
 	if s.errorsView != nil {
 		cmds = append(cmds, s.errorsView.Init())
+	}
+	if s.webView != nil {
+		cmds = append(cmds, s.webView.Init())
 	}
 
 	return tea.Batch(cmds...)
@@ -108,6 +120,9 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if s.errorsView != nil {
 			s.errorsView.SetSize(msg.Width, msg.Height)
+		}
+		if s.webView != nil {
+			s.webView.SetSize(msg.Width, msg.Height)
 		}
 
 	case messages.LogAddedMsg:
@@ -150,6 +165,13 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
+	case messages.ProxyRequestMsg:
+		// Route to web component
+		if s.webView != nil {
+			_, cmd := s.webView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
 	case tea.KeyMsg:
 		// Handle global keys (component switching, etc.)
 		switch msg.String() {
@@ -177,6 +199,12 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				s.currentView = "errors"
 			}
 			return s, nil
+		case "5":
+			// Switch to Web view
+			if s.webView != nil {
+				s.currentView = "web"
+			}
+			return s, nil
 		default:
 			// Forward to active component
 			switch s.currentView {
@@ -198,6 +226,11 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "errors":
 				if s.errorsView != nil {
 					_, cmd := s.errorsView.Update(msg)
+					cmds = append(cmds, cmd)
+				}
+			case "web":
+				if s.webView != nil {
+					_, cmd := s.webView.Update(msg)
 					cmds = append(cmds, cmd)
 				}
 			}
@@ -233,6 +266,12 @@ func (s *IntegratedShell) View() string {
 			return s.errorsView.View()
 		}
 		return "Errors view not initialized"
+
+	case "web":
+		if s.webView != nil {
+			return s.webView.View()
+		}
+		return "Web view not initialized"
 
 	default:
 		return "Unknown view: " + s.currentView
