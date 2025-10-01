@@ -4,9 +4,17 @@ Brummer implements robust signal handling with double Ctrl+C force exit.
 
 ## Behavior
 
-### First Ctrl+C
-- **Action**: Graceful shutdown
-- **Message**: "⚠️  Interrupt received, shutting down gracefully... (Press Ctrl+C again to force quit)"
+### First Ctrl+C (Accidental Press Protection)
+- **Action**: No shutdown - just shows warning
+- **Message**: "⚠️  Interrupt received. Press Ctrl+C again within 2 seconds to exit."
+- **What happens**:
+  - Nothing! The app keeps running
+  - You can continue working
+  - Protects against accidental Ctrl+C
+
+### Second Ctrl+C (within 2 seconds)
+- **Action**: Start graceful shutdown
+- **Message**: "⏳ Shutting down gracefully... (Press Ctrl+C again to force quit)"
 - **What happens**:
   - Stops all running processes
   - Stops MCP server
@@ -14,7 +22,7 @@ Brummer implements robust signal handling with double Ctrl+C force exit.
   - Unregisters instance
   - Clean exit
 
-### Second Ctrl+C (within 2 seconds)
+### Third Ctrl+C (during shutdown)
 - **Action**: Force exit immediately
 - **Message**: "🚨 Force quit! Exiting immediately..."
 - **Exit code**: 130 (standard for Ctrl+C)
@@ -25,7 +33,7 @@ Brummer implements robust signal handling with double Ctrl+C force exit.
 
 ## Timeout Reset
 
-If no second Ctrl+C is received within 2 seconds, the counter resets. The next Ctrl+C will be treated as a first interrupt again.
+If no second Ctrl+C is received within 2 seconds, the counter resets and the app continues running normally. You can safely hit Ctrl+C by accident and then go back to typing.
 
 ## Implementation
 
@@ -41,16 +49,19 @@ The implementation uses:
 
 ## Why This Matters
 
-### Problem Without Double Ctrl+C
-If the application hangs during shutdown (e.g., service not responding, deadlock, network timeout), the user is stuck with no way to exit except `kill -9` from another terminal.
+### Accidental Press Protection
+Users often hit Ctrl+C by accident while typing. With single Ctrl+C shutdown, this would interrupt their work. Now:
+- First Ctrl+C is harmless - just shows a warning
+- User can continue working if it was accidental
+- Must press Ctrl+C twice to actually exit
 
-### Solution: Force Quit Safety Hatch
-Users can always exit with double Ctrl+C, even if:
-- ServiceBridge is blocked
-- Components are hung
-- Services won't stop
-- Network operations timeout
-- Any other blocking situation
+### Force Quit Safety Hatch
+If graceful shutdown hangs (service not responding, deadlock, network timeout), users can force quit with third Ctrl+C:
+- ServiceBridge is blocked → force quit works
+- Components are hung → force quit works
+- Services won't stop → force quit works
+- Network operations timeout → force quit works
+- Any blocking situation → force quit works
 
 ## Platform Support
 
@@ -68,24 +79,32 @@ Users can always exit with double Ctrl+C, even if:
 ## Testing
 
 ```bash
-# Test graceful shutdown
+# Test accidental press (no shutdown)
 ./brum
 # Press Ctrl+C once
-# Observe: "Interrupt received, shutting down gracefully..."
-# Wait for clean exit
+# Observe: "⚠️  Interrupt received. Press Ctrl+C again within 2 seconds to exit."
+# App keeps running! You can continue working.
 
-# Test force quit
+# Test graceful shutdown (double Ctrl+C)
 ./brum
 # Press Ctrl+C twice quickly
-# Observe: "Force quit! Exiting immediately..."
+# Observe:
+#   First: "⚠️  Interrupt received. Press Ctrl+C again within 2 seconds to exit."
+#   Second: "⏳ Shutting down gracefully... (Press Ctrl+C again to force quit)"
+# Wait for clean exit
+
+# Test force quit (triple Ctrl+C)
+./brum
+# Press Ctrl+C twice to start shutdown
+# While shutting down, press Ctrl+C again
+# Observe: "🚨 Force quit! Exiting immediately..."
 # Immediate exit (exit code 130)
 
-# Test timeout reset
+# Test timeout reset (accidental press recovery)
 ./brum
 # Press Ctrl+C once
 # Wait 3 seconds
-# Press Ctrl+C again
-# Observe: Treated as first interrupt (graceful shutdown)
+# App still running! Counter reset. Continue working normally.
 ```
 
 ## Exit Codes

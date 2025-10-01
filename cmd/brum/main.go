@@ -128,6 +128,11 @@ func main() {
 }
 
 func runApp(cmd *cobra.Command, args []string) {
+	// Set up signal handling FIRST - before anything else
+	// This ensures Ctrl+C always works, even if startup hangs
+	sigChan := make(chan os.Signal, 1)
+	setupSignalHandling(sigChan)
+
 	// Handle version flag
 	if showVersion {
 		fmt.Printf("brum version %s\n", Version)
@@ -522,11 +527,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", actualPort)
 			fmt.Printf("Press Ctrl+C to stop.\n")
 
-			// Set up signal handling
-			sigChan := make(chan os.Signal, 1)
-			setupSignalHandling(sigChan)
-
-			// Wait for signal
+			// Wait for signal (handler already set up at top of runApp)
 			<-sigChan
 			fmt.Println("\nShutting down gracefully...")
 
@@ -556,9 +557,7 @@ func runApp(cmd *cobra.Command, args []string) {
 
 	// Only run TUI if not in headless mode
 	if !noTUI {
-		// Set up signal handling for cleanup
-		sigChan := make(chan os.Signal, 1)
-		setupSignalHandling(sigChan)
+		// Signal handling already set up at top of runApp()
 
 		// ========================================
 		// COMPONENT-BASED UI SYSTEM
