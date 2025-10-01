@@ -213,10 +213,19 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Initialize ServiceBridge - this happens AFTER program.Run() has started
 		// so program.Send() calls from observers won't block
 		if s.serviceBridge != nil && s.program != nil {
-			s.serviceBridge.Start(s.program)
-			// Send confirmation message
+			// Start ServiceBridge in background to avoid blocking the UI
+			// ServiceBridge.Start() subscribes to observers which might fire immediately
+			bridge := s.serviceBridge
+			program := s.program
+
 			return s, func() tea.Msg {
-				return messages.ServiceBridgeStartedMsg{}
+				// Run in goroutine so we don't block the message loop
+				go func() {
+					bridge.Start(program)
+					// Send confirmation when done
+					program.Send(messages.ServiceBridgeStartedMsg{})
+				}()
+				return nil
 			}
 		}
 
