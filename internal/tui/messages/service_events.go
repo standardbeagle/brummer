@@ -81,6 +81,17 @@ type ServiceHealthMsg struct {
 	Message string
 }
 
+// ServiceBridge lifecycle events
+// These messages coordinate ServiceBridge initialization
+
+// StartServiceBridgeMsg triggers ServiceBridge initialization.
+// Sent by IntegratedShell.Init() to start observers after program is running.
+type StartServiceBridgeMsg struct{}
+
+// ServiceBridgeStartedMsg confirms ServiceBridge is active.
+// Sent after observers are registered and event flow is established.
+type ServiceBridgeStartedMsg struct{}
+
 // Proxy request events
 // These messages represent HTTP requests captured by the proxy server
 

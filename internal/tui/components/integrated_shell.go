@@ -2,6 +2,7 @@ package components
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/standardbeagle/brummer/internal/tui/bridge"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
@@ -41,6 +42,10 @@ type IntegratedShell struct {
 	commandRegistry *CommandRegistry
 	commandExecutor *CommandExecutor
 
+	// ServiceBridge (optional - for proper initialization lifecycle)
+	serviceBridge *bridge.ServiceBridge
+	program       *tea.Program
+
 	// State
 	currentView string // "logs", "processes", "urls", "errors", "web", "aicoders", "mcp", "settings", etc.
 }
@@ -61,6 +66,13 @@ func (s *IntegratedShell) GetCommandRegistry() *CommandRegistry {
 // SetCommandExecutor sets the command executor for handling CommandExecuteMsg
 func (s *IntegratedShell) SetCommandExecutor(executor *CommandExecutor) {
 	s.commandExecutor = executor
+}
+
+// SetServiceBridge sets the ServiceBridge for proper initialization lifecycle.
+// The bridge will be started when the BubbleTea program calls Init().
+func (s *IntegratedShell) SetServiceBridge(bridge *bridge.ServiceBridge, program *tea.Program) {
+	s.serviceBridge = bridge
+	s.program = program
 }
 
 // SetLogsView sets the logs component
@@ -180,6 +192,15 @@ func (s *IntegratedShell) Init() tea.Cmd {
 		cmds = append(cmds, s.helpOverlay.Init())
 	}
 
+	// Start ServiceBridge AFTER program is initialized
+	// This is the proper BubbleTea way - Init() runs after program.Run() starts
+	// so we can safely set up observers that call program.Send()
+	if s.serviceBridge != nil && s.program != nil {
+		cmds = append(cmds, func() tea.Msg {
+			return messages.StartServiceBridgeMsg{}
+		})
+	}
+
 	return tea.Batch(cmds...)
 }
 
@@ -188,6 +209,21 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	switch msg := msg.(type) {
+	case messages.StartServiceBridgeMsg:
+		// Initialize ServiceBridge - this happens AFTER program.Run() has started
+		// so program.Send() calls from observers won't block
+		if s.serviceBridge != nil && s.program != nil {
+			s.serviceBridge.Start(s.program)
+			// Send confirmation message
+			return s, func() tea.Msg {
+				return messages.ServiceBridgeStartedMsg{}
+			}
+		}
+
+	case messages.ServiceBridgeStartedMsg:
+		// ServiceBridge is now active and observers are registered
+		// No action needed - this is just for debugging/logging
+
 	case tea.WindowSizeMsg:
 		// Update shell size
 		s.width = msg.Width
