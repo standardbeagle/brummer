@@ -977,12 +977,14 @@ func (m *Model) renderContent() string {
 
 	switch m.currentView() {
 	case ViewProcesses:
-		// Render with calculated content dimensions
-		return m.processViewController.Render(m.width, contentHeight)
+		// Update size and render
+		m.processViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		return m.processViewController.Render()
 	case ViewLogs:
 		// Sync state and render with calculated dimensions
 		m.logsViewController.SetSelectedProcess(m.selectedProcess)
-		return m.logsViewController.Render(m.width, contentHeight)
+		m.logsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		return m.logsViewController.Render()
 	case ViewErrors:
 		// Render with calculated dimensions
 		// Use content layout for split view if available and screen is wide enough
@@ -1008,35 +1010,33 @@ func (m *Model) renderContent() string {
 			return m.contentLayout.RenderSplitView(leftContent, rightContent, DefaultSplitRatio)
 		}
 		// Fall back to regular rendering for narrow screens
-		return m.errorsViewController.Render(m.width, contentHeight)
+		m.errorsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		return m.errorsViewController.Render()
 	case ViewURLs:
 		// Render with calculated dimensions
-		return m.urlsViewController.Render(m.width, contentHeight)
+		m.urlsViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		return m.urlsViewController.Render()
 	case ViewWeb:
 		// Update controller dimensions and render
-		return m.webViewController.Render(m.width, contentHeight)
+		m.webViewController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		return m.webViewController.Render()
 	case ViewSettings:
 		if m.fileBrowserController.IsShowing() {
 			return m.fileBrowserController.Render(m.width, m.height)
 		}
 		// Update controller dimensions and render
-		return m.settingsController.Render(m.width, contentHeight)
+		m.settingsController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		return m.settingsController.Render()
 	case ViewMCPConnections:
 		if m.debugMode {
 			return m.mcpDebugController.Render(m.width, m.height, m.headerHeight, m.footerHeight)
 		}
 		// Fallback to settings if not in debug mode
-		return m.settingsController.Render(m.width, contentHeight)
+		m.settingsController.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		return m.settingsController.Render()
 	case ViewAICoders:
 		if m.aiCoderController != nil {
-			// Use three-pane layout with vertical tabs for wide screens
-			if m.contentLayout != nil && m.width >= AICoderMinTerminalWidth {
-				// Use multi-terminal layout with tabs, constrained terminal, and info panel
-				return m.aiCoderController.RenderThreePaneLayout(m.contentLayout, m.width, contentHeight)
-			} else {
-				// Fall back to single pane for narrow screens
-				return m.aiCoderController.RenderWindowed(m.width, contentHeight)
-			}
+			return m.aiCoderController.Render()
 		}
 		return "AI Coder feature is not initialized"
 	case ViewFilters:

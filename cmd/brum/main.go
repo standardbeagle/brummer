@@ -23,7 +23,8 @@ import (
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
-	"github.com/standardbeagle/brummer/internal/tui"
+	"github.com/standardbeagle/brummer/internal/tui/bridge"
+	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -559,32 +560,57 @@ func runApp(cmd *cobra.Command, args []string) {
 		sigChan := make(chan os.Signal, 1)
 		setupSignalHandling(sigChan)
 
-		// Create and run TUI
-		initialView := tui.ViewScriptSelector
-		if startedFromCLI {
-			initialView = tui.ViewLogs
-		} else if !hasPackageJSON {
-			// Default to processes view when no package.json (no scripts to select)
-			initialView = tui.ViewProcesses
-		}
-		// Load configuration
-		cfg, err := config.Load()
-		if err != nil {
-			// Log warning but continue with defaults
-			fmt.Fprintf(os.Stderr, "Warning: Failed to load configuration: %v\n", err)
-			cfg = &config.Config{}
-		}
+		// ========================================
+		// COMPONENT-BASED UI SYSTEM
+		// ========================================
 
-		model := tui.NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, initialView, debugMode, cfg)
+		// Create IntegratedShell
+		shell := components.NewIntegratedShell()
 
-		// Set AI coder manager in MCP server if available
-		if mcpSrv, ok := mcpServer.(*mcp.MCPServer); ok {
-			if aiCoderManager := model.GetAICoderManager(); aiCoderManager != nil {
-				mcpSrv.SetAICoderManager(aiCoderManager)
-			}
-		}
+		// Create all view components
+		logsView := components.NewLogsViewComponent(logStore)
+		shell.SetLogsView(logsView)
 
-		p := tea.NewProgram(model, tea.WithAltScreen())
+		processView := components.NewProcessViewComponent(processMgr)
+		shell.SetProcessView(processView)
+
+		urlsView := components.NewURLsViewComponent()
+		shell.SetURLsView(urlsView)
+
+		errorsView := components.NewErrorsViewComponent(logStore)
+		shell.SetErrorsView(errorsView)
+
+		webView := components.NewWebViewComponent(proxyServer)
+		shell.SetWebView(webView)
+
+		// Register all commands from services
+		registry := shell.GetCommandRegistry()
+		registry.RegisterMultiple(components.GetProcessCommands(processMgr))
+		registry.RegisterMultiple(components.GetLogCommands(logStore))
+		registry.RegisterMultiple(components.GetProxyCommands(proxyServer))
+		registry.RegisterMultiple(components.GetAICommands([]string{"claude", "gpt4"}))
+		registry.RegisterMultiple(components.GetDockerCommands())
+
+		// Create command executor
+		executor := components.NewCommandExecutor(processMgr, logStore, proxyServer, registry)
+		shell.SetCommandExecutor(executor)
+
+		// Create command input overlay
+		commandInput := components.NewCommandInputComponent(registry)
+		shell.SetCommandInput(commandInput)
+
+		// Create help overlay
+		helpOverlay := components.NewHelpOverlayComponent()
+		shell.SetHelpOverlay(helpOverlay)
+
+		// Create ServiceBridge to connect services to UI
+		serviceBridge := bridge.NewServiceBridge(processMgr, logStore, proxyServer, eventBus)
+
+		// Create BubbleTea program
+		p := tea.NewProgram(shell, tea.WithAltScreen())
+
+		// Start ServiceBridge with program reference
+		serviceBridge.Start(p)
 
 		// Run TUI in goroutine so we can handle signals
 		done := make(chan error)
@@ -606,6 +632,12 @@ func runApp(cmd *cobra.Command, args []string) {
 		}
 
 		// Cleanup all processes and resources
+
+		// Stop ServiceBridge if it was created
+		if serviceBridge != nil {
+			serviceBridge.Stop()
+		}
+
 		fmt.Println("Stopping all running processes...")
 		if err := processMgr.Cleanup(); err != nil {
 			// Error during cleanup (logged internally)

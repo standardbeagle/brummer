@@ -39,6 +39,13 @@ type ProcessViewController struct {
 	processesList   list.Model
 	selectedProcess string
 
+	// Size tracking
+	width         int
+	height        int
+	headerHeight  int
+	footerHeight  int
+	contentHeight int
+
 	// Dependencies injected from parent Model
 	processMgr *process.Manager
 }
@@ -69,6 +76,16 @@ func (v *ProcessViewController) GetSelectedProcess() string {
 // GetProcessesList returns the processes list for direct manipulation
 func (v *ProcessViewController) GetProcessesList() *list.Model {
 	return &v.processesList
+}
+
+// UpdateSize updates the controller dimensions
+func (v *ProcessViewController) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
+	v.width = width
+	v.height = height
+	v.headerHeight = headerHeight
+	v.footerHeight = footerHeight
+	v.contentHeight = contentHeight
+	v.processesList.SetSize(width, contentHeight)
 }
 
 // UpdateProcessList refreshes the process list with current data
@@ -131,21 +148,20 @@ func (v *ProcessViewController) UpdateProcessList() {
 }
 
 // Render renders the processes view
-func (v *ProcessViewController) Render(width, height int) string {
+func (v *ProcessViewController) Render() string {
 	processes := v.processMgr.GetAllProcesses()
 	if len(processes) == 0 {
-		// Show empty state centered using the provided dimensions
+		// Show empty state centered using the stored dimensions
 		emptyState := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245")).
 			Align(lipgloss.Center, lipgloss.Center).
-			Width(width).
-			Height(height).
+			Width(v.width).
+			Height(v.contentHeight).
 			Render("No processes running.\n\nUse / for commands:\n/run <script> to start scripts\n/restart all\n/stop <process>")
 		return emptyState
 	}
 
-	// Set list size and return view
-	v.processesList.SetSize(width, height)
+	// Return view (size already set via UpdateSize)
 	return v.processesList.View()
 }
 
