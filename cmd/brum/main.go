@@ -609,15 +609,19 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Create BubbleTea program
 		p := tea.NewProgram(shell, tea.WithAltScreen())
 
-		// Start ServiceBridge with program reference
-		serviceBridge.Start(p)
-
 		// Run TUI in goroutine so we can handle signals
 		done := make(chan error)
 		go func() {
 			_, err := p.Run()
 			done <- err
 		}()
+
+		// Give program a moment to start before setting up observers
+		// This prevents blocking on p.Send() before the program is running
+		time.Sleep(50 * time.Millisecond)
+
+		// Start ServiceBridge with program reference AFTER program is running
+		serviceBridge.Start(p)
 
 		// Wait for either TUI to exit or signal
 		select {
