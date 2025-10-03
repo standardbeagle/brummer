@@ -134,10 +134,15 @@ func HandleSlashCommand(ctx *SlashCommandContext, input string) {
 	case "/help":
 		*ctx.CurrentView = "help"
 
+	case "/exit", "/quit":
+		// Send quit message to exit the TUI
+		ctx.UpdateChan <- tea.Quit()
+		ctx.LogStore.Add("system", "System", "👋 Exiting Brummer...", false)
+
 	default:
 		// Unknown command - show error
 		ctx.LogStore.Add("system", "System", fmt.Sprintf("❌ Unknown command: %s", command), true)
-		ctx.LogStore.Add("system", "System", "Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help", false)
+		ctx.LogStore.Add("system", "System", "Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help, /exit", false)
 	}
 }
 

@@ -41,7 +41,7 @@ func NewFooterComponent() *FooterComponent {
 		BaseComponent: NewBaseComponent(),
 		showHelp:      true,
 		globalShortcuts: []Shortcut{
-			{Key: "1-8", Label: "Views"},
+			{Key: "1-9", Label: "Views"},
 			{Key: "?", Label: "Help"},
 			{Key: "q", Label: "Quit"},
 		},

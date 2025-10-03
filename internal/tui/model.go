@@ -742,7 +742,10 @@ func (m *Model) setupEventSubscriptions() {
 }
 
 func (m *Model) Init() tea.Cmd {
+	fmt.Printf("DEBUG: Model.Init() called - TUI is initializing!\n")
+
 	// Send startup message via EventController
+	fmt.Printf("DEBUG: Sending startup message...\n")
 	m.eventController.SendStartupMessage()
 
 	cmds := []tea.Cmd{
@@ -752,7 +755,7 @@ func (m *Model) Init() tea.Cmd {
 	}
 
 	// PTY events are now handled by AICoderController
-
+	fmt.Printf("DEBUG: Returning batch of commands for TUI startup\n")
 	return tea.Batch(cmds...)
 }
 
@@ -874,6 +877,10 @@ func (m *Model) View() string {
 	if m.width == 0 {
 		return "Loading..."
 	}
+
+	// Debug: Log terminal dimensions
+	fmt.Printf("DEBUG M: Terminal dimensions - Width: %d, Height: %d\n", m.width, m.height)
+
 
 	// Special views that take over the entire screen
 	if m.currentView() == ViewScriptSelector && m.scriptSelectorController != nil {

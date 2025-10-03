@@ -86,7 +86,7 @@ func (c *HelpOverlayComponent) initHelpContent() {
 		{
 			Title: "Navigation",
 			Shortcuts: []HelpShortcut{
-				{Key: "1-8", Description: "Switch between views"},
+				{Key: "1-9", Description: "Switch between views"},
 				{Key: "Tab", Description: "Next view"},
 				{Key: "Shift+Tab", Description: "Previous view"},
 				{Key: "?", Description: "Show this help"},

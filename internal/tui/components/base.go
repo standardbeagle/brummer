@@ -15,6 +15,9 @@ type Component interface {
 
 	// Blur removes keyboard focus from the component
 	Blur() tea.Cmd
+
+	// GetSize returns current dimensions atomically
+	GetSize() (width, height int)
 }
 
 // BaseComponent provides common functionality for all components.
@@ -39,13 +42,18 @@ func (b *BaseComponent) SetSize(width, height int) {
 	b.height = height
 }
 
-// Focus enables keyboard focus
+// GetSize returns current dimensions
+func (b *BaseComponent) GetSize() (width, height int) {
+	return b.width, b.height
+}
+
+// Focus gives keyboard focus to the component
 func (b *BaseComponent) Focus() tea.Cmd {
 	b.focused = true
 	return nil
 }
 
-// Blur disables keyboard focus
+// Blur removes keyboard focus from the component
 func (b *BaseComponent) Blur() tea.Cmd {
 	b.focused = false
 	return nil

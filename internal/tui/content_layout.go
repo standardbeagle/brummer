@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"strings"
+
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -47,18 +49,38 @@ func (cl *ContentLayout) calculateContentHeight() int {
 	return contentHeight
 }
 
-// RenderContent renders content with proper layout
+// RenderContent renders content with defensive container enforcement
 func (cl *ContentLayout) RenderContent(content string) string {
 	// Use the centralized height calculation
 	contentHeight := cl.calculateContentHeight()
 
-	// Apply content style with proper dimensions
-	// Must set both Width and Height to constrain content properly
+	// Defensive content rendering - truncate if too long
+	contentLines := strings.Split(content, "\n")
+	maxLines := contentHeight
+	if maxLines < 1 {
+		maxLines = 1
+	}
+
+	// Truncate content to fit available height
+	if len(contentLines) > maxLines {
+		contentLines = contentLines[:maxLines]
+		// Add truncation indicator
+		if maxLines > 1 {
+			contentLines[maxLines-1] = "...(content truncated)"
+		} else {
+			contentLines[0] = contentLines[0][:cl.width-20] + "...(truncated)"
+		}
+	}
+
+	// Rejoin truncated content
+	truncatedContent := strings.Join(contentLines, "\n")
+
+	// Apply content style with strict dimensions
 	styledContent := cl.contentStyle.
 		Width(cl.width).
 		Height(contentHeight).
 		MaxHeight(contentHeight).
-		Render(content)
+		Render(truncatedContent)
 
 	return styledContent
 }

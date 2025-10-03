@@ -71,6 +71,8 @@ func (e *CommandExecutor) Execute(msg messages.CommandExecuteMsg) tea.Cmd {
 		return e.handleComposeUp(args)
 	case "compose-down":
 		return e.handleComposeDown(args)
+	case "exit", "quit":
+		return e.handleExit(args)
 	default:
 		// Unknown command
 		return e.sendError(fmt.Sprintf("Unknown command: %s", commandName))
@@ -324,6 +326,15 @@ func (e *CommandExecutor) handleComposeUp(args []string) tea.Cmd {
 func (e *CommandExecutor) handleComposeDown(args []string) tea.Cmd {
 	// TODO: Implement compose-down
 	return e.sendSuccess("Stopping all compose services")
+}
+
+func (e *CommandExecutor) handleExit(args []string) tea.Cmd {
+	// Log exit message
+	if e.logStore != nil {
+		e.logStore.Add("system", "Command", "👋 Exiting Brummer...", false)
+	}
+	// Return quit command to exit the TUI
+	return tea.Quit
 }
 
 // Helper methods
