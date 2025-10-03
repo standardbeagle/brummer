@@ -1,10 +1,15 @@
 package components
 
 import (
+	"strings"
+
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/bridge"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
+
+// TTY TESTING WARNING: See diagnostic_view.go for critical testing guidelines
+// This component handles WindowSizeMsg routing and requires proper TTY testing.
 
 // IntegratedShell is the top-level component that routes messages to child components.
 // It manages component lifecycle, focus, and message routing.
@@ -27,6 +32,7 @@ type IntegratedShell struct {
 	aicodersView Component
 	mcpView      Component
 	settingsView Component
+	diagnosticView Component
 
 	// Chrome Components (optional)
 	tabsComponent         Component
@@ -139,6 +145,14 @@ func (s *IntegratedShell) SetSettingsView(component Component) {
 	}
 }
 
+// SetDiagnosticView sets the diagnostic component
+func (s *IntegratedShell) SetDiagnosticView(component Component) {
+	s.diagnosticView = component
+	if s.width > 0 && s.height > 0 {
+		component.SetSize(s.width, s.height)
+	}
+}
+
 // SetCommandInput sets the command input overlay component
 func (s *IntegratedShell) SetCommandInput(component Component) {
 	s.commandInput = component
@@ -155,8 +169,33 @@ func (s *IntegratedShell) SetHelpOverlay(component Component) {
 	}
 }
 
+// SetHeaderComponent sets the header component
+func (s *IntegratedShell) SetHeaderComponent(component Component) {
+	s.headerComponent = component
+	if s.width > 0 && s.height > 0 {
+		component.SetSize(s.width, s.height)
+	}
+}
+
+// SetFooterComponent sets the footer component
+func (s *IntegratedShell) SetFooterComponent(component Component) {
+	s.footerComponent = component
+	if s.width > 0 && s.height > 0 {
+		component.SetSize(s.width, s.height)
+	}
+}
+
+// SetTabsComponent sets the tabs component
+func (s *IntegratedShell) SetTabsComponent(component Component) {
+	s.tabsComponent = component
+	if s.width > 0 && s.height > 0 {
+		component.SetSize(s.width, s.height)
+	}
+}
+
 // Init initializes the shell
 func (s *IntegratedShell) Init() tea.Cmd {
+
 	var cmds []tea.Cmd
 
 	if s.logsView != nil {
@@ -182,6 +221,9 @@ func (s *IntegratedShell) Init() tea.Cmd {
 	}
 	if s.settingsView != nil {
 		cmds = append(cmds, s.settingsView.Init())
+	}
+	if s.diagnosticView != nil {
+		cmds = append(cmds, s.diagnosticView.Init())
 	}
 
 	// Initialize overlays
@@ -262,6 +304,26 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if s.settingsView != nil {
 			s.settingsView.SetSize(msg.Width, msg.Height)
+		}
+		if s.diagnosticView != nil {
+			s.diagnosticView.SetSize(msg.Width, msg.Height)
+			// Also send the WindowSizeMsg to diagnostic view for processing
+			_, cmd := s.diagnosticView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
+		// Propagate size to chrome components
+		if s.headerComponent != nil {
+			s.headerComponent.SetSize(msg.Width, msg.Height)
+		}
+		if s.tabsComponent != nil {
+			s.tabsComponent.SetSize(msg.Width, msg.Height)
+		}
+		if s.footerComponent != nil {
+			s.footerComponent.SetSize(msg.Width, msg.Height)
+		}
+		if s.notificationComponent != nil {
+			s.notificationComponent.SetSize(msg.Width, msg.Height)
 		}
 
 		// Propagate size to overlays
@@ -416,6 +478,12 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				s.currentView = "settings"
 			}
 			return s, nil
+		case "9":
+			// Switch to Diagnostic view
+			if s.diagnosticView != nil {
+				s.currentView = "diagnostic"
+			}
+			return s, nil
 		default:
 			// Forward to active component
 			switch s.currentView {
@@ -457,6 +525,11 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "settings":
 				if s.settingsView != nil {
 					_, cmd := s.settingsView.Update(msg)
+					cmds = append(cmds, cmd)
+				}
+			case "diagnostic":
+				if s.diagnosticView != nil {
+					_, cmd := s.diagnosticView.Update(msg)
 					cmds = append(cmds, cmd)
 				}
 			}
@@ -527,9 +600,49 @@ func (s *IntegratedShell) View() string {
 			baseView = "Settings view not initialized"
 		}
 
+	case "diagnostic":
+		if s.diagnosticView != nil {
+			baseView = s.diagnosticView.View()
+		} else {
+			baseView = "Diagnostic view not initialized"
+		}
+
 	default:
 		baseView = "Unknown view: " + s.currentView
 	}
+
+	// Build the complete layout with header, tabs, content, and footer
+	var sections []string
+
+	// Header (if available)
+	if s.headerComponent != nil {
+		header := s.headerComponent.View()
+		if header != "" {
+			sections = append(sections, header)
+		}
+	}
+
+	// Tabs (if available)
+	if s.tabsComponent != nil {
+		tabs := s.tabsComponent.View()
+		if tabs != "" {
+			sections = append(sections, tabs)
+		}
+	}
+
+	// Main content
+	sections = append(sections, baseView)
+
+	// Footer (if available)
+	if s.footerComponent != nil {
+		footer := s.footerComponent.View()
+		if footer != "" {
+			sections = append(sections, footer)
+		}
+	}
+
+	// Combine all sections
+	fullView := strings.Join(sections, "\n")
 
 	// Render overlays on top (command input and help have higher priority)
 	// Command input renders on top when active
@@ -549,12 +662,12 @@ func (s *IntegratedShell) View() string {
 			overlayView := s.helpOverlay.View()
 			if overlayView != "" {
 				// Center the overlay on the screen
-				return s.centerOverlay(baseView, overlayView)
+				return s.centerOverlay(fullView, overlayView)
 			}
 		}
 	}
 
-	return baseView
+	return fullView
 }
 
 // centerOverlay centers an overlay on top of the base view

@@ -310,6 +310,11 @@ func runApp(cmd *cobra.Command, args []string) {
 		}
 	})
 
+	// Display startup message
+	if noTUI {
+		fmt.Printf("🚀 Brummer started (headless mode)\n")
+	}
+
 	// Handle CLI arguments to start scripts
 	var startedFromCLI bool
 	if len(args) > 0 {
@@ -441,6 +446,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		mcpServerInterface = mcpServer
 
 		// Start MCP server in background regardless of TUI mode
+		mcpStarted := make(chan error, 1)
 		go func() {
 			if !noTUI {
 				// Give TUI time to initialize subscriptions
@@ -448,6 +454,16 @@ func runApp(cmd *cobra.Command, args []string) {
 			}
 
 			if err := mcpServerInterface.Start(); err != nil {
+				mcpStarted <- err
+				return
+			}
+
+			mcpStarted <- nil // Signal successful start
+		}()
+
+		select {
+		case err := <-mcpStarted:
+			if err != nil {
 				if noTUI {
 					log.Fatal("MCP server error:", err)
 				} else {
@@ -466,10 +482,23 @@ func runApp(cmd *cobra.Command, args []string) {
 					})
 				}
 			}
-		}()
-
-		// Give the server a moment to start and potentially change ports
-		time.Sleep(200 * time.Millisecond)
+		case <-time.After(5 * time.Second):
+			// Timeout waiting for MCP server to start
+			if noTUI {
+				log.Fatal("MCP server failed to start within 5 seconds")
+			} else {
+				errorMsg := "❌ MCP server failed to start within 5 seconds (timeout)"
+				logStore.Add("system", "MCP", errorMsg, true)
+				eventBus.Publish(events.Event{
+					Type: events.EventType("system.message"),
+					Data: map[string]interface{}{
+						"level":   "error",
+						"context": "MCP Server",
+						"message": errorMsg,
+					},
+				})
+			}
+		}
 
 		// Get actual port and register instance (same for both TUI and no-TUI)
 		actualPort := mcpPort
@@ -524,7 +553,7 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		if noTUI {
 			// Display the actual port being used (may be different if there was a conflict)
-			fmt.Printf("MCP server URL: http://localhost:%d/mcp\n", actualPort)
+			fmt.Printf("MCP server started on http://localhost:%d/mcp\n", actualPort)
 			fmt.Printf("Press Ctrl+C to stop.\n")
 
 			// Wait for signal (handler already set up at top of runApp)
@@ -566,6 +595,16 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Create IntegratedShell
 		shell := components.NewIntegratedShell()
 
+		// Create chrome components (header, tabs, footer)
+		headerComponent := components.NewHeaderComponent("🐝 Brummer - Development Buddy")
+		shell.SetHeaderComponent(headerComponent)
+
+		tabsComponent := components.NewTabsComponent()
+		shell.SetTabsComponent(tabsComponent)
+
+		footerComponent := components.NewFooterComponent()
+		shell.SetFooterComponent(footerComponent)
+
 		// Create all view components
 		logsView := components.NewLogsViewComponent(logStore)
 		shell.SetLogsView(logsView)
@@ -581,6 +620,10 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		webView := components.NewWebViewComponent(proxyServer)
 		shell.SetWebView(webView)
+
+		// Create diagnostic view for troubleshooting
+		diagnosticView := components.NewDiagnosticViewComponent()
+		shell.SetDiagnosticView(diagnosticView)
 
 		// Register all commands from services
 		registry := shell.GetCommandRegistry()
@@ -605,8 +648,19 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Create ServiceBridge to connect services to UI
 		serviceBridge := bridge.NewServiceBridge(processMgr, logStore, proxyServer, eventBus)
 
-		// Create BubbleTea program
-		p := tea.NewProgram(shell, tea.WithAltScreen())
+		// TTY TESTING WARNING: See internal/tui/components/diagnostic_view.go for critical guidelines
+	// This BubbleTea initialization requires proper TTY allocation for WindowSizeMsg support.
+	// Do NOT test using Bash tools that lack TTY support - use direct terminal execution.
+	//
+	// Let BubbleTea handle TTY detection naturally - no special cases or hardcoded error handling.
+	// Previous hardcoded TTY error checks were forcing fallback to non-AltScreen mode in WSL2,
+	// which broke WindowSizeMsg functionality. Standard BubbleTea initialization works correctly.
+
+	// Create BubbleTea program with standard AltScreen initialization
+	var p *tea.Program
+
+		// Standard BubbleTea initialization
+	p = tea.NewProgram(shell, tea.WithAltScreen())
 
 		// Set ServiceBridge on shell - it will be started via Init() lifecycle
 		// This is the proper BubbleTea pattern - no sleep needed!
@@ -623,6 +677,9 @@ func runApp(cmd *cobra.Command, args []string) {
 		select {
 		case err := <-done:
 			if err != nil {
+				// Let BubbleTea handle TTY errors naturally - no special cases
+				// Previous hardcoded TTY error handling forced fallback to non-AltScreen mode
+				// which broke WindowSizeMsg functionality in WSL2 + Windows Terminal environments
 				log.Fatal("Failed to run TUI:", err)
 			}
 		case <-sigChan:
