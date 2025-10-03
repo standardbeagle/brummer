@@ -785,12 +785,15 @@ func (s *MCPServer) Start() error {
 		})
 	}
 
-	// Start the server (blocking call)
-	err = s.server.ListenAndServe()
-	if err != nil && s.logStore != nil {
-		s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("❌ MCP server error: %v", err), true)
-	}
-	return err
+	// Start the server in background
+	go func() {
+		err := s.server.ListenAndServe()
+		if err != nil && s.logStore != nil {
+			s.logStore.Add("mcp-server", "MCP", fmt.Sprintf("❌ MCP server error: %v", err), true)
+		}
+	}()
+
+	return nil
 }
 
 // Stop stops the MCP server

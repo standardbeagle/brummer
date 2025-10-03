@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -11,24 +12,35 @@ import (
 )
 
 // MockProgram captures messages sent via program.Send()
+// Thread-safe implementation to match ServiceBridge's concurrent usage
 type MockProgram struct {
+	mu       sync.Mutex
 	messages []tea.Msg
 	sendFunc func(tea.Msg)
 }
 
 func (m *MockProgram) Send(msg tea.Msg) {
+	m.mu.Lock()
 	m.messages = append(m.messages, msg)
 	if m.sendFunc != nil {
 		m.sendFunc(msg)
 	}
+	m.mu.Unlock()
 }
 
 func (m *MockProgram) GetMessages() []tea.Msg {
-	return m.messages
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Return a copy to avoid race conditions
+	result := make([]tea.Msg, len(m.messages))
+	copy(result, m.messages)
+	return result
 }
 
 func (m *MockProgram) ClearMessages() {
+	m.mu.Lock()
 	m.messages = []tea.Msg{}
+	m.mu.Unlock()
 }
 
 // Test that ServiceBridge converts LogStore.Add() to LogAddedMsg

@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"sync/atomic"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -16,6 +17,11 @@ type Program interface {
 	Send(tea.Msg)
 }
 
+// programHolder wraps Program to allow atomic.Value to store nil
+type programHolder struct {
+	prog Program
+}
+
 // ServiceBridge is the adapter layer that converts service events into BubbleTea messages.
 // This is the ONLY place where services communicate with the UI.
 //
@@ -25,12 +31,16 @@ type Program interface {
 // 3. All service state changes flow through this bridge as messages
 // 4. Bridge subscribes to service events and converts them to tea.Msg
 // 5. BubbleTea program.Send() is thread-safe and non-blocking
+// 6. atomic.Value provides lock-free thread-safe access to program reference
 type ServiceBridge struct {
 	processMgr  *process.Manager
 	logStore    *logs.Store
 	proxyServer *proxy.Server
 	eventBus    *events.EventBus
-	program     Program
+
+	// Thread-safe program reference using atomic.Value
+	// Stores *programHolder (never nil, but holder.prog can be nil)
+	program atomic.Value // *programHolder
 
 	// Cleanup functions for subscriptions
 	subscriptions []func()
@@ -44,13 +54,16 @@ func NewServiceBridge(
 	proxyServer *proxy.Server,
 	eventBus *events.EventBus,
 ) *ServiceBridge {
-	return &ServiceBridge{
+	sb := &ServiceBridge{
 		processMgr:    processMgr,
 		logStore:      logStore,
 		proxyServer:   proxyServer,
 		eventBus:      eventBus,
 		subscriptions: []func(){},
 	}
+	// Initialize atomic.Value with empty holder
+	sb.program.Store(&programHolder{prog: nil})
+	return sb
 }
 
 // Start begins converting service events to BubbleTea messages.
@@ -58,13 +71,20 @@ func NewServiceBridge(
 //
 // This must be called AFTER the tea.Program is created but BEFORE program.Run().
 func (b *ServiceBridge) Start(program Program) {
-	b.program = program
+	// Store program reference atomically (lock-free, thread-safe)
+	b.program.Store(&programHolder{prog: program})
 
 	// Subscribe to all service event sources
 	b.subscribeToProcessManager()
 	b.subscribeToLogStore()
 	b.subscribeToEventBus()
 	b.subscribeToProxyServer()
+}
+
+// getProgram atomically loads the program reference (lock-free, thread-safe)
+func (b *ServiceBridge) getProgram() Program {
+	holder := b.program.Load().(*programHolder)
+	return holder.prog
 }
 
 // subscribeToProcessManager converts ProcessManager callbacks to messages
@@ -91,8 +111,9 @@ func (b *ServiceBridge) subscribeToLogStore() {
 
 	// Subscribe to log additions using observer pattern
 	unsubscribe := b.logStore.OnAdd(func(entry *logs.LogEntry) {
-		if b.program != nil {
-			b.program.Send(messages.LogAddedMsg{
+		// Atomically load program reference (lock-free, thread-safe)
+		if prog := b.getProgram(); prog != nil {
+			prog.Send(messages.LogAddedMsg{
 				Entry: entry,
 			})
 		}
@@ -109,7 +130,8 @@ func (b *ServiceBridge) subscribeToEventBus() {
 
 	// Process started events
 	b.eventBus.Subscribe(events.ProcessStarted, func(evt events.Event) {
-		if b.program != nil {
+		// Atomically load program reference (lock-free, thread-safe)
+		if prog := b.getProgram(); prog != nil {
 			name := ""
 			script := ""
 			if n, ok := evt.Data["name"].(string); ok {
@@ -119,7 +141,7 @@ func (b *ServiceBridge) subscribeToEventBus() {
 				script = s
 			}
 
-			b.program.Send(messages.ProcessStartedMsg{
+			prog.Send(messages.ProcessStartedMsg{
 				ProcessID: evt.ProcessID,
 				Name:      name,
 				Script:    script,
@@ -130,7 +152,8 @@ func (b *ServiceBridge) subscribeToEventBus() {
 
 	// Process exited events (map to ProcessStoppedMsg)
 	b.eventBus.Subscribe(events.ProcessExited, func(evt events.Event) {
-		if b.program != nil {
+		// Atomically load program reference (lock-free, thread-safe)
+		if prog := b.getProgram(); prog != nil {
 			name := ""
 			exitCode := -1
 			if n, ok := evt.Data["name"].(string); ok {
@@ -140,7 +163,7 @@ func (b *ServiceBridge) subscribeToEventBus() {
 				exitCode = ec
 			}
 
-			b.program.Send(messages.ProcessStoppedMsg{
+			prog.Send(messages.ProcessStoppedMsg{
 				ProcessID: evt.ProcessID,
 				Name:      name,
 				ExitCode:  exitCode,
@@ -151,7 +174,8 @@ func (b *ServiceBridge) subscribeToEventBus() {
 
 	// URL detection events
 	b.eventBus.Subscribe(events.URLDetected, func(evt events.Event) {
-		if b.program != nil {
+		// Atomically load program reference (lock-free, thread-safe)
+		if prog := b.getProgram(); prog != nil {
 			url := ""
 			urlType := "http"
 			hasProxy := false
@@ -178,7 +202,7 @@ func (b *ServiceBridge) subscribeToEventBus() {
 				proxyLabel = pl
 			}
 
-			b.program.Send(messages.URLDetectedMsg{
+			prog.Send(messages.URLDetectedMsg{
 				URL:        url,
 				ProcessID:  evt.ProcessID,
 				Type:       urlType,
@@ -207,6 +231,10 @@ func (b *ServiceBridge) subscribeToProxyServer() {
 
 // Stop cleanly shuts down the ServiceBridge
 func (b *ServiceBridge) Stop() {
+	// Atomically clear program reference (lock-free, thread-safe)
+	// This prevents observers from sending messages after shutdown
+	b.program.Store(&programHolder{prog: nil})
+
 	// Unsubscribe from LogStore observers
 	for _, unsub := range b.subscriptions {
 		if unsub != nil {
@@ -214,7 +242,6 @@ func (b *ServiceBridge) Stop() {
 		}
 	}
 	b.subscriptions = nil
-	b.program = nil
 
 	// Note: EventBus subscriptions don't have unsubscribe in this version
 	// If needed, can be implemented by tracking handlers and removing them
