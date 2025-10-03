@@ -1,5 +1,25 @@
 # CLAUDE.md
 
+## 🚨 CRITICAL TUI TESTING RULE
+
+**The Bash tool runs in a non-TTY environment, but the system has TTY support available.**
+
+- **Bash tool**: `timeout 5s ./brum --no-tui` ✅ Works (no TTY needed)
+- **Bash tool**: `timeout 5s ./brum` ❌ Fails (needs TTY, no /dev/tty)
+- **TUI testing**: MUST use integration tests or scripts with TTY allocation
+
+### **How to Test TUI Properly:**
+```bash
+# ✅ Use integration tests (they have TTY allocation)
+BRUMMER_BINARY=./brum go test -tags=integration ./test -v -run TestFullStackTUI
+
+# ✅ Use scripts that allocate TTY properly
+./test-tty-script.sh  # if exists
+
+# ❌ NEVER use direct Bash tool for TUI testing
+timeout 5s ./brum  # This will fail with "no such device or address"
+```
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Current Development Status
