@@ -596,7 +596,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		shell := components.NewIntegratedShell()
 
 		// Create chrome components (header, tabs, footer)
-		headerComponent := components.NewHeaderComponent("🐝 Brummer - Development Buddy")
+		headerComponent := components.NewSimpleHeaderComponent("Brummer")
 		shell.SetHeaderComponent(headerComponent)
 
 		tabsComponent := components.NewTabsComponent()
@@ -620,6 +620,14 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		webView := components.NewWebViewComponent(proxyServer)
 		shell.SetWebView(webView)
+
+		// Create AI coders view
+		aicodersView := components.NewAICodersViewComponent()
+		shell.SetAICodersView(aicodersView)
+
+		// Create MCP view
+		mcpView := components.NewMCPViewComponent()
+		shell.SetMCPView(mcpView)
 
 		// Create diagnostic view for troubleshooting
 		diagnosticView := components.NewDiagnosticViewComponent()

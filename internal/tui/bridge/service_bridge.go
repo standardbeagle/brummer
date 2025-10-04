@@ -1,6 +1,7 @@
 package bridge
 
 import (
+	"fmt"
 	"sync/atomic"
 	"time"
 
@@ -79,6 +80,9 @@ func (b *ServiceBridge) Start(program Program) {
 	b.subscribeToLogStore()
 	b.subscribeToEventBus()
 	b.subscribeToProxyServer()
+
+	// Send initial status updates for services that are already running
+	b.sendInitialStatusUpdates()
 }
 
 // getProgram atomically loads the program reference (lock-free, thread-safe)
@@ -150,6 +154,39 @@ func (b *ServiceBridge) subscribeToEventBus() {
 		}
 	})
 
+	// Process started events (also update process count)
+	b.eventBus.Subscribe(events.ProcessStarted, func(evt events.Event) {
+		// Atomically load program reference (lock-free, thread-safe)
+		if prog := b.getProgram(); prog != nil {
+			name := ""
+			script := ""
+			if n, ok := evt.Data["name"].(string); ok {
+				name = n
+			}
+			if s, ok := evt.Data["script"].(string); ok {
+				script = s
+			}
+
+			prog.Send(messages.ProcessStartedMsg{
+				ProcessID: evt.ProcessID,
+				Name:      name,
+				Script:    script,
+				StartTime: time.Now(),
+			})
+
+			// Also send process count update
+			if b.processMgr != nil {
+				if processes := b.processMgr.GetAllProcesses(); len(processes) > 0 {
+					prog.Send(messages.ServiceStatusUpdateMsg{
+						Service: "processes",
+						Status:  "running",
+						Details: fmt.Sprintf("%d active", len(processes)),
+					})
+				}
+			}
+		}
+	})
+
 	// Process exited events (map to ProcessStoppedMsg)
 	b.eventBus.Subscribe(events.ProcessExited, func(evt events.Event) {
 		// Atomically load program reference (lock-free, thread-safe)
@@ -168,6 +205,90 @@ func (b *ServiceBridge) subscribeToEventBus() {
 				Name:      name,
 				ExitCode:  exitCode,
 				EndTime:   time.Now(),
+			})
+
+			// Also send process count update
+			if b.processMgr != nil {
+				if processes := b.processMgr.GetAllProcesses(); len(processes) > 0 {
+					prog.Send(messages.ServiceStatusUpdateMsg{
+						Service: "processes",
+						Status:  "running",
+						Details: fmt.Sprintf("%d active", len(processes)),
+					})
+				} else {
+					prog.Send(messages.ServiceStatusUpdateMsg{
+						Service: "processes",
+						Status:  "stopped",
+						Details: "No active processes",
+					})
+				}
+			}
+		}
+	})
+
+	// MCP activity events
+	b.eventBus.Subscribe(events.MCPConnected, func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			prog.Send(messages.ServiceStatusUpdateMsg{
+				Service: "mcp",
+				Status:  "running",
+				Details: "MCP server connected",
+			})
+		}
+	})
+
+	b.eventBus.Subscribe(events.MCPDisconnected, func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			prog.Send(messages.ServiceStatusUpdateMsg{
+				Service: "mcp",
+				Status:  "stopped",
+				Details: "MCP server disconnected",
+			})
+		}
+	})
+
+	// AI coder events
+	b.eventBus.Subscribe(events.EventAICoderStarted, func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			details := "AI coder started"
+			if name, ok := evt.Data["coder_name"].(string); ok {
+				details = fmt.Sprintf("%s started", name)
+			}
+			prog.Send(messages.ServiceStatusUpdateMsg{
+				Service: "ai_coders",
+				Status:  "running",
+				Details: details,
+			})
+		}
+	})
+
+	b.eventBus.Subscribe(events.EventAICoderStopped, func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			details := "AI coder stopped"
+			if name, ok := evt.Data["coder_name"].(string); ok {
+				details = fmt.Sprintf("%s stopped", name)
+			}
+			prog.Send(messages.ServiceStatusUpdateMsg{
+				Service: "ai_coders",
+				Status:  "stopped",
+				Details: details,
+			})
+		}
+	})
+
+	b.eventBus.Subscribe(events.EventAICoderFailed, func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			details := "AI coder failed"
+			if name, ok := evt.Data["coder_name"].(string); ok {
+				details = fmt.Sprintf("%s failed", name)
+			}
+			if errMsg, ok := evt.Data["error_message"].(string); ok && errMsg != "" {
+				details += ": " + errMsg
+			}
+			prog.Send(messages.ServiceStatusUpdateMsg{
+				Service: "ai_coders",
+				Status:  "error",
+				Details: details,
 			})
 		}
 	})
@@ -245,4 +366,44 @@ func (b *ServiceBridge) Stop() {
 
 	// Note: EventBus subscriptions don't have unsubscribe in this version
 	// If needed, can be implemented by tracking handlers and removing them
+}
+
+// sendInitialStatusUpdates sends status updates for services that are already running
+func (b *ServiceBridge) sendInitialStatusUpdates() {
+	prog := b.getProgram()
+	if prog == nil {
+		return
+	}
+
+	// Check process manager for existing processes
+	if b.processMgr != nil {
+		if processes := b.processMgr.GetAllProcesses(); len(processes) > 0 {
+			prog.Send(messages.ServiceStatusUpdateMsg{
+				Service: "processes",
+				Status:  "running",
+				Details: fmt.Sprintf("%d active", len(processes)),
+			})
+		} else {
+			prog.Send(messages.ServiceStatusUpdateMsg{
+				Service: "processes",
+				Status:  "stopped",
+				Details: "No active processes",
+			})
+		}
+	}
+
+	// Check proxy server status
+	if b.proxyServer != nil && b.proxyServer.IsRunning() {
+		prog.Send(messages.ServiceStatusUpdateMsg{
+			Service: "proxy",
+			Status:  "running",
+			Details: fmt.Sprintf("Port %d", b.proxyServer.GetPort()),
+		})
+	} else {
+		prog.Send(messages.ServiceStatusUpdateMsg{
+			Service: "proxy",
+			Status:  "stopped",
+			Details: "Proxy server stopped",
+		})
+	}
 }
