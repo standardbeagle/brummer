@@ -222,7 +222,8 @@ func (c *WebViewComponent) View() string {
 		if c.showDetail && c.selectedRequest != nil {
 			return c.renderDetailView()
 		} else {
-			return c.renderListView()
+			// Use viewport for list view with proper footer
+			return c.renderListViewWithViewport()
 		}
 	}
 }
@@ -239,8 +240,55 @@ func (c *WebViewComponent) SetSize(width, height int) {
 
 // updateViewport updates the viewport content when in single view mode
 func (c *WebViewComponent) updateViewport() {
-	// This method is now only used for single view mode
-	// Split view and detail view are handled by their respective render methods
+	var lines []string
+
+	// Header with filter info
+	lines = append(lines, c.renderHeaderLines()...)
+
+	// Table header
+	lines = append(lines, c.headerStyle.Render(fmt.Sprintf("%-8s %-6s %-40s %-10s %s",
+		"METHOD", "STATUS", "URL", "DURATION", "PROCESS")))
+	lines = append(lines, strings.Repeat("─", c.width))
+
+	// Request rows
+	filteredRequests := c.getFilteredRequests()
+	if len(filteredRequests) == 0 {
+		lines = append(lines, c.normalStyle.Render("No matching requests"))
+	} else {
+		// Show most recent requests first
+		for i := len(filteredRequests) - 1; i >= 0; i-- {
+			req := filteredRequests[i]
+			line := c.formatRequestRow(req)
+
+			// Highlight if this is the selected request
+			if i == c.selectedIndex {
+				line = lipgloss.NewStyle().Background(lipgloss.Color("237")).Render(line)
+			}
+			lines = append(lines, line)
+		}
+	}
+
+	// Set content in viewport
+	content := strings.Join(lines, "\n")
+	c.viewport.SetContent(content)
+
+	// Auto-scroll to show selected item
+	if c.selectedIndex >= 0 && c.selectedIndex < len(filteredRequests) {
+		// Calculate where the selected item should be visible
+		totalLines := len(lines)
+		viewportHeight := c.viewport.Height
+		selectedLineIndex := totalLines - len(filteredRequests) + c.selectedIndex // Reverse order mapping
+
+		// Scroll to keep selected item in view
+		if selectedLineIndex < c.viewport.YOffset {
+			c.viewport.YOffset = selectedLineIndex
+		} else if selectedLineIndex >= c.viewport.YOffset+viewportHeight {
+			c.viewport.YOffset = selectedLineIndex - viewportHeight + 1
+		}
+	} else if c.autoScroll {
+		// Auto-scroll to bottom (most recent)
+		c.viewport.GotoBottom()
+	}
 }
 
 // formatRequestRow formats a single request row
@@ -419,84 +467,60 @@ func (c *WebViewComponent) isImageRequest(req *RequestInfo) bool {
 
 // Rendering methods
 
-// renderListView renders the list view with filters and status
-func (c *WebViewComponent) renderListView() string {
-	var content strings.Builder
+// renderListViewWithViewport renders the list view using the viewport system
+func (c *WebViewComponent) renderListViewWithViewport() string {
+	// Update viewport content first
+	c.updateViewport()
 
-	// Header with filter info
-	content.WriteString(c.renderHeader())
-
-	// Calculate available height for content
-	headerLines := 2 // header title + separator
-	footerLines := 3 // navigation help lines
-	contentHeight := c.height - headerLines - footerLines
-
-	if contentHeight < 1 {
-		contentHeight = 1
+	// Calculate viewport height (leave space for footer)
+	footerHeight := 3 // navigation help lines
+	viewportHeight := c.height - footerHeight
+	if viewportHeight < 1 {
+		viewportHeight = 1
 	}
 
-	// Requests table
-	filteredRequests := c.getFilteredRequests()
-	if len(filteredRequests) == 0 {
-		// Show empty message in the middle of available space
-		emptyLines := contentHeight - 1
-		if emptyLines > 0 {
-			content.WriteString(strings.Repeat("\n", emptyLines/2))
-		}
-		content.WriteString(c.normalStyle.Render("No matching requests"))
-	} else {
-		// Table header
-		content.WriteString(c.headerStyle.Render(fmt.Sprintf("%-8s %-6s %-40s %-10s %s",
-			"METHOD", "STATUS", "URL", "DURATION", "PROCESS")) + "\n")
-		content.WriteString(strings.Repeat("─", c.width) + "\n")
+	// Set viewport height and render
+	c.viewport.Height = viewportHeight
+	c.viewport.Width = c.width
 
-		// Calculate how many request rows we can show
-		tableHeaderLines := 2 // method/status header + separator
-		availableRequestLines := contentHeight - tableHeaderLines
+	// Build the complete view with viewport and footer
+	var result strings.Builder
+	result.WriteString(c.viewport.View())
 
-		if availableRequestLines < 1 {
-			availableRequestLines = 1
-		}
-
-		// Show most recent requests that fit in available space
-		startIdx := len(filteredRequests) - availableRequestLines
-		if startIdx < 0 {
-			startIdx = 0
-		}
-
-		// Render request rows
-		for i := startIdx; i < len(filteredRequests); i++ {
-			req := filteredRequests[i]
-			line := c.formatRequestRow(req)
-
-			// Highlight if this is the selected request
-			if i == c.selectedIndex {
-				line = lipgloss.NewStyle().Background(lipgloss.Color("237")).Render(line)
-			}
-			content.WriteString(line + "\n")
-		}
-
-		// If we have fewer requests than available lines, add spacing
-		renderedLines := len(filteredRequests) - startIdx
-		remainingLines := availableRequestLines - renderedLines
-		if remainingLines > 0 {
-			for i := 0; i < remainingLines; i++ {
-				content.WriteString("\n")
-			}
-		}
-	}
-
-	// Add spacing before footer
-	content.WriteString(strings.Repeat("\n", footerLines))
-
-	// Navigation help (always at bottom)
-	content.WriteString(c.normalStyle.Render("↑/↓ navigate, Enter details, f filter, Space auto-scroll"))
-	content.WriteString("\n" + c.normalStyle.Render("Filter: "+c.filter+" | Auto-scroll: "+func() string {
+	// Add spacing and footer
+	result.WriteString("\n\n")
+	result.WriteString(c.normalStyle.Render("↑/↓ navigate, Enter details, f filter, Space auto-scroll"))
+	result.WriteString("\n" + c.normalStyle.Render("Filter: "+c.filter+" | Auto-scroll: "+func() string {
 		if c.autoScroll { return "ON" } else { return "OFF" }
 	}()))
-	content.WriteString("\n" + c.normalStyle.Render("Indicators: ❌ error, 🔐 auth, 📊 telemetry"))
+	result.WriteString("\n" + c.normalStyle.Render("Indicators: ❌ error, 🔐 auth, 📊 telemetry"))
 
-	return content.String()
+	return result.String()
+}
+
+// renderHeaderLines returns the header content as separate lines for viewport
+func (c *WebViewComponent) renderHeaderLines() []string {
+	var lines []string
+
+	// Title and filter
+	title := c.headerStyle.Render("Web Proxy Requests") + " "
+
+	// Filter indicator
+	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+
+	title += filterStyle.Render("Filter: ") + activeFilterStyle.Render("["+c.filter+"]") + " "
+
+	// Auto-scroll indicator
+	if !c.autoScroll {
+		pausedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Background(lipgloss.Color("235"))
+		title += pausedStyle.Render("⏸ PAUSED")
+	}
+
+	lines = append(lines, title)
+	lines = append(lines, strings.Repeat("─", c.width))
+
+	return lines
 }
 
 // renderDetailView renders the detailed view for selected request
@@ -547,13 +571,61 @@ func (c *WebViewComponent) renderDetailView() string {
 		content.WriteString(c.labelStyle.Render("Session ID: ") + c.detailStyle.Render(req.SessionID) + "\n")
 	}
 
-	// Help
+	// Use lipgloss to push help text to bottom
+	remainingLines := c.height - strings.Count(content.String(), "\n") - 3 // -3 for help text
+	if remainingLines > 0 {
+		paddingStyle := lipgloss.NewStyle().Height(remainingLines)
+		content.WriteString(paddingStyle.Render(""))
+	}
+
+	// Help text (always at bottom)
 	content.WriteString("\n" + c.normalStyle.Render("Press Enter to return to list"))
 
 	return content.String()
 }
 
-// renderDetailViewWithFooter renders the detailed view for selected request with proper height management
+// buildListViewContent builds list content for both single and split view modes
+func (c *WebViewComponent) buildListViewContent(width int, compactMode bool) string {
+	var content strings.Builder
+
+	// Header for list side
+	content.WriteString(c.headerStyle.Render("Web Requests") + "\n")
+	content.WriteString(strings.Repeat("─", width) + "\n")
+
+	// Get filtered requests
+	filteredRequests := c.getFilteredRequests()
+
+	if len(filteredRequests) == 0 {
+		content.WriteString(c.normalStyle.Render("No requests"))
+	} else {
+		// Show most recent requests (viewport will handle scrolling)
+		startIdx := len(filteredRequests) - 50 // Show last 50 to match old behavior
+		if startIdx < 0 {
+			startIdx = 0
+		}
+
+		// Render request rows
+		for i := startIdx; i < len(filteredRequests); i++ {
+			req := filteredRequests[i]
+			var line string
+			if compactMode {
+				line = c.formatCompactRequestRow(req, width)
+			} else {
+				line = c.formatRequestRow(req)
+			}
+
+			// Highlight if this is the selected request
+			if i == c.selectedIndex {
+				line = lipgloss.NewStyle().Background(lipgloss.Color("237")).Render(line)
+			}
+			content.WriteString(line + "\n")
+		}
+	}
+
+	return content.String()
+}
+
+// renderDetailViewWithFooter renders the detailed view with proper footer positioning
 func (c *WebViewComponent) renderDetailViewWithFooter() string {
 	if c.selectedRequest == nil {
 		return c.normalStyle.Render("No request selected")
@@ -601,19 +673,14 @@ func (c *WebViewComponent) renderDetailViewWithFooter() string {
 		content.WriteString(c.labelStyle.Render("Session ID: ") + c.detailStyle.Render(req.SessionID) + "\n")
 	}
 
-	// Calculate how many lines we've rendered so far
-	renderedLines := strings.Count(content.String(), "\n") + 1
-	availableHeight := c.height
-
-	// Add spacing to push help text to bottom
-	footerLines := 2 // help text + spacing
-	remainingSpace := availableHeight - renderedLines - footerLines
-
-	if remainingSpace > 0 {
-		content.WriteString(strings.Repeat("\n", remainingSpace))
+	// Add padding to push help to bottom using lipgloss styling
+	remainingLines := c.height - strings.Count(content.String(), "\n") - 3 // -3 for help text
+	if remainingLines > 0 {
+		paddingStyle := lipgloss.NewStyle().Height(remainingLines)
+		content.WriteString(paddingStyle.Render(""))
 	}
 
-	// Help text (always at bottom)
+	// Help text
 	content.WriteString("\n" + c.normalStyle.Render("Press Enter to return to list"))
 
 	return content.String()
@@ -625,59 +692,10 @@ func (c *WebViewComponent) renderSplitView() string {
 	listWidth := int(float64(c.width) * 0.4)
 	detailWidth := c.width - listWidth - 3 // Account for separator
 
-	// Get filtered requests
-	filteredRequests := c.getFilteredRequests()
+	// Build list content using viewport
+	listContent := c.buildListViewContent(listWidth, true) // true = compact mode
 
-	// Build list content with proper height management
-	var listContent strings.Builder
-
-	// Header for list side
-	listContent.WriteString(c.headerStyle.Render("Web Requests") + "\n")
-	listContent.WriteString(strings.Repeat("─", listWidth) + "\n")
-
-	// Calculate available height for list content (account for header)
-	listHeaderLines := 2
-	availableListHeight := c.height - listHeaderLines - 1 // -1 for bottom margin
-
-	if availableListHeight < 1 {
-		availableListHeight = 1
-	}
-
-	if len(filteredRequests) == 0 {
-		// Center empty message
-		emptyLines := availableListHeight - 1
-		if emptyLines > 0 {
-			listContent.WriteString(strings.Repeat("\n", emptyLines/2))
-		}
-		listContent.WriteString(c.normalStyle.Render("No requests"))
-	} else {
-		// Show most recent requests that fit in available space
-		startIdx := len(filteredRequests) - availableListHeight
-		if startIdx < 0 {
-			startIdx = 0
-		}
-
-		// Render request rows
-		for i := startIdx; i < len(filteredRequests); i++ {
-			req := filteredRequests[i]
-			line := c.formatCompactRequestRow(req, listWidth)
-			if i == c.selectedIndex {
-				line = lipgloss.NewStyle().Background(lipgloss.Color("237")).Render(line)
-			}
-			listContent.WriteString(line + "\n")
-		}
-
-		// Fill remaining space if we have fewer requests than available lines
-		renderedLines := len(filteredRequests) - startIdx
-		remainingLines := availableListHeight - renderedLines
-		if remainingLines > 0 {
-			for i := 0; i < remainingLines; i++ {
-				listContent.WriteString("\n")
-			}
-		}
-	}
-
-	// Build detail content
+	// Build detail content with proper footer
 	detailContent := c.renderDetailViewWithFooter()
 
 	// Apply borders
@@ -685,7 +703,7 @@ func (c *WebViewComponent) renderSplitView() string {
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("240"))
 
-	listView := borderStyle.Width(listWidth).Height(c.height).Render(listContent.String())
+	listView := borderStyle.Width(listWidth).Height(c.height).Render(listContent)
 	detailView := borderStyle.Width(detailWidth).Height(c.height).Render(detailContent)
 
 	// Combine views
@@ -693,27 +711,6 @@ func (c *WebViewComponent) renderSplitView() string {
 }
 
 // renderHeader renders the header with filter and status information
-func (c *WebViewComponent) renderHeader() string {
-	var header strings.Builder
-
-	// Title and filter
-	header.WriteString(c.headerStyle.Render("Web Proxy Requests") + " ")
-
-	// Filter indicator
-	activeFilterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
-	filterStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-
-	header.WriteString(filterStyle.Render("Filter: ") + activeFilterStyle.Render("["+c.filter+"]") + " ")
-
-	// Auto-scroll indicator
-	if !c.autoScroll {
-		pausedStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("226")).Background(lipgloss.Color("235"))
-		header.WriteString(pausedStyle.Render("⏸ PAUSED"))
-	}
-
-	header.WriteString("\n" + strings.Repeat("─", c.width) + "\n")
-	return header.String()
-}
 
 // formatCompactRequestRow formats a request row for compact display
 func (c *WebViewComponent) formatCompactRequestRow(req *RequestInfo, maxWidth int) string {
