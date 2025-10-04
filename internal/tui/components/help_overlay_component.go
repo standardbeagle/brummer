@@ -3,8 +3,8 @@ package components
 import (
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -19,18 +19,18 @@ import (
 type HelpOverlayComponent struct {
 	BaseComponent
 
-	viewport      viewport.Model
-	active        bool
-	currentView   string
-	helpSections  []HelpSection
+	viewport     viewport.Model
+	active       bool
+	currentView  string
+	helpSections []HelpSection
 
 	// Styles
-	overlayStyle   lipgloss.Style
-	titleStyle     lipgloss.Style
-	sectionStyle   lipgloss.Style
-	keyStyle       lipgloss.Style
-	descStyle      lipgloss.Style
-	borderStyle    lipgloss.Style
+	overlayStyle lipgloss.Style
+	titleStyle   lipgloss.Style
+	sectionStyle lipgloss.Style
+	keyStyle     lipgloss.Style
+	descStyle    lipgloss.Style
+	borderStyle  lipgloss.Style
 }
 
 // HelpSection represents a category of shortcuts

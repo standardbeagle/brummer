@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -81,7 +81,7 @@ type DiagnosticViewComponent struct {
 func NewDiagnosticViewComponent() *DiagnosticViewComponent {
 	c := &DiagnosticViewComponent{
 		BaseComponent: NewBaseComponent(),
-		viewport:     viewport.New(80, 24), // Default size, will be updated in SetSize
+		viewport:      viewport.New(80, 24), // Default size, will be updated in SetSize
 
 		titleStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("226")). // Yellow
@@ -201,9 +201,9 @@ func (c *DiagnosticViewComponent) calculateExpectedHeights() {
 	data := c.getData()
 
 	// These are the expected heights based on the actual component implementations
-	headerHeight := int32(2)  // SimpleHeaderComponent uses 2 lines (header + divider)
-	tabsHeight := int32(1)     // TabsComponent renders on 1 line
-	footerHeight := int32(1)   // FooterComponent renders on 1 line
+	headerHeight := int32(2) // SimpleHeaderComponent uses 2 lines (header + divider)
+	tabsHeight := int32(1)   // TabsComponent renders on 1 line
+	footerHeight := int32(1) // FooterComponent renders on 1 line
 
 	contentHeight := data.TerminalHeight - headerHeight - tabsHeight - footerHeight
 
@@ -503,7 +503,7 @@ func (c *DiagnosticViewComponent) isWindowsTerminal() bool {
 	// Check for Windows Terminal in terminal program name
 	if termProgram := os.Getenv("TERM_PROGRAM"); termProgram != "" {
 		if strings.Contains(strings.ToLower(termProgram), "vscode") ||
-		   strings.Contains(strings.ToLower(termProgram), "windows terminal") {
+			strings.Contains(strings.ToLower(termProgram), "windows terminal") {
 			return true
 		}
 	}

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
@@ -33,12 +33,12 @@ type URLsViewComponent struct {
 
 // URLInfo holds display information for a detected URL
 type URLInfo struct {
-	URL         string
-	ProcessID   string
-	Type        string // "http", "https", "ws", "wss"
-	HasProxy    bool
-	ProxyURL    string
-	ProxyLabel  string
+	URL        string
+	ProcessID  string
+	Type       string // "http", "https", "ws", "wss"
+	HasProxy   bool
+	ProxyURL   string
+	ProxyLabel string
 }
 
 // NewURLsViewComponent creates a URLs view
@@ -47,10 +47,10 @@ func NewURLsViewComponent() *URLsViewComponent {
 		BaseComponent: NewBaseComponent(),
 		viewport:      viewport.New(80, 24),
 		urls:          []*URLInfo{},
-		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),  // Bright Blue
-		urlStyle:      lipgloss.NewStyle().Foreground(lipgloss.Color("14")),             // Bright Cyan
-		proxyStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("10")),             // Bright Green
-		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),             // White
+		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")), // Bright Blue
+		urlStyle:      lipgloss.NewStyle().Foreground(lipgloss.Color("14")),            // Bright Cyan
+		proxyStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("10")),            // Bright Green
+		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),            // White
 	}
 
 	c.updateViewport()
@@ -171,10 +171,10 @@ func (c *URLsViewComponent) formatURLRow(info *URLInfo) string {
 	// Format proxy status
 	proxyStatus := "-"
 	if info.HasProxy {
-		if info.ProxyLabel != "" {
-			proxyStatus = info.ProxyLabel
-		} else if info.ProxyURL != "" {
+		if info.ProxyURL != "" {
 			proxyStatus = info.ProxyURL
+		} else if info.ProxyLabel != "" {
+			proxyStatus = info.ProxyLabel
 		} else {
 			proxyStatus = "✓"
 		}

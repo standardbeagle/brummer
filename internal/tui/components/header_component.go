@@ -48,7 +48,7 @@ func (c *SimpleHeaderComponent) View() string {
 	// Create a simple, visible header with fixed height
 	headerStyle := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(lipgloss.Color("12")). // Bright Blue
+		Foreground(lipgloss.Color("12")).  // Bright Blue
 		Background(lipgloss.Color("236")). // Dark Gray background
 		Padding(0, 2).
 		MaxWidth(c.width) // Constrain width
@@ -63,7 +63,7 @@ func (c *SimpleHeaderComponent) View() string {
 
 	// Apply fixed height constraints - header always takes exactly 2 lines
 	headerContainer := lipgloss.NewStyle().
-		Height(2).  // Exactly 2 lines (header + divider)
+		Height(2). // Exactly 2 lines (header + divider)
 		Width(c.width)
 
 	return headerContainer.Render(fmt.Sprintf("%s\n%s", header, divider))

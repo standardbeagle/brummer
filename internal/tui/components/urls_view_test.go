@@ -201,8 +201,8 @@ func TestURLsViewComponent_URLTypes(t *testing.T) {
 
 	// Add URLs of different types
 	types := []struct {
-		url      string
-		urlType  string
+		url     string
+		urlType string
 	}{
 		{"http://localhost:3000", "http"},
 		{"https://localhost:3001", "https"},

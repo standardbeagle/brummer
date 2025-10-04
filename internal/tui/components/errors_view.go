@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
@@ -32,12 +32,12 @@ type ErrorsViewComponent struct {
 	selectedIndex int
 
 	// Styles
-	headerStyle    lipgloss.Style
-	errorStyle     lipgloss.Style
-	warningStyle   lipgloss.Style
-	criticalStyle  lipgloss.Style
-	normalStyle    lipgloss.Style
-	selectedStyle  lipgloss.Style
+	headerStyle   lipgloss.Style
+	errorStyle    lipgloss.Style
+	warningStyle  lipgloss.Style
+	criticalStyle lipgloss.Style
+	normalStyle   lipgloss.Style
+	selectedStyle lipgloss.Style
 }
 
 // ErrorInfo holds display information for an error context
@@ -55,17 +55,17 @@ type ErrorInfo struct {
 // NewErrorsViewComponent creates an errors view with initial error contexts
 func NewErrorsViewComponent(logStore *logs.Store) *ErrorsViewComponent {
 	c := &ErrorsViewComponent{
-		BaseComponent:  NewBaseComponent(),
-		logStore:       logStore,
-		viewport:       viewport.New(80, 24),
-		errors:         []*ErrorInfo{},
-		selectedIndex:  0,
-		headerStyle:    lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),  // Bright Blue
-		errorStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color("9")),              // Bright Red
-		warningStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("11")),             // Bright Yellow
-		criticalStyle:  lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9")),   // Bold Red
-		normalStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("15")),             // White
-		selectedStyle:  lipgloss.NewStyle().Background(lipgloss.Color("8")),              // Gray background
+		BaseComponent: NewBaseComponent(),
+		logStore:      logStore,
+		viewport:      viewport.New(80, 24),
+		errors:        []*ErrorInfo{},
+		selectedIndex: 0,
+		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")), // Bright Blue
+		errorStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("9")),             // Bright Red
+		warningStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color("11")),            // Bright Yellow
+		criticalStyle: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9")),  // Bold Red
+		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),            // White
+		selectedStyle: lipgloss.NewStyle().Background(lipgloss.Color("8")),             // Gray background
 	}
 
 	// Load existing errors

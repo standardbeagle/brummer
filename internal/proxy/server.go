@@ -282,7 +282,7 @@ func (s *Server) setupHandlers() {
 
 			// Publish event
 			s.eventBus.Publish(events.Event{
-				Type:      events.EventType("proxy.request"),
+				Type:      events.ProxyRequest,
 				ProcessID: req.ProcessName,
 				Data: map[string]interface{}{
 					"method":      req.Method,
@@ -1053,7 +1053,7 @@ func (s *Server) SwitchMode(newMode ProxyMode) error {
 
 		// Publish mode switch event
 		s.eventBus.Publish(events.Event{
-			Type: events.EventType("proxy.mode_switched"),
+			Type: events.ProxyModeSwitched,
 			Data: map[string]interface{}{
 				"old_mode": string(oldMode),
 				"new_mode": string(newMode),
@@ -1142,7 +1142,7 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 
 			// Publish event
 			s.eventBus.Publish(events.Event{
-				Type:      events.EventType("proxy.request"),
+				Type:      events.ProxyRequest,
 				ProcessID: reqRecord.ProcessName,
 				Data: map[string]interface{}{
 					"method":      reqRecord.Method,
@@ -1250,17 +1250,31 @@ func (s *Server) RegisterURLWithLabel(urlStr, processName, label string) string 
 			}
 			// Publish event for TUI to show in system messages instead of stdout
 			s.eventBus.Publish(events.Event{
-				Type: events.EventType("system.message"),
+				Type: events.SystemMessage,
 				Data: map[string]interface{}{
 					"level":   "info",
 					"context": "Proxy",
 					"message": msg,
 				},
 			})
+
+			// Also publish URLDetected event so URLs view gets updated
+			s.eventBus.Publish(events.Event{
+				Type:      events.URLDetected,
+				ProcessID: processName,
+				Data: map[string]interface{}{
+					"url":         normalized,
+					"type":        "http",
+					"has_proxy":   true,
+					"proxy_port":  port,
+					"proxy_url":   mapping.ProxyURL,
+					"proxy_label": label,
+				},
+			})
 			if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 				errorMsg := fmt.Sprintf("Reverse proxy error for %s: %v", normalized, err)
 				s.eventBus.Publish(events.Event{
-					Type: events.EventType("system.message"),
+					Type: events.SystemMessage,
 					Data: map[string]interface{}{
 						"level":   "error",
 						"context": "Proxy",
@@ -1397,7 +1411,7 @@ func (s *Server) handleTelemetry(w http.ResponseWriter, r *http.Request) {
 
 	// Publish telemetry event
 	s.eventBus.Publish(events.Event{
-		Type:      events.EventType("telemetry.received"),
+		Type:      events.TelemetryReceived,
 		ProcessID: processName,
 		Data: map[string]interface{}{
 			"sessionId":  batch.SessionID,
@@ -1598,7 +1612,7 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 		if data, ok := msg.Data.(map[string]interface{}); ok {
 			// Forward to MCP server via event bus
 			s.eventBus.Publish(events.Event{
-				Type: events.EventType("queue.message"),
+				Type: events.QueueMessage,
 				Data: data,
 			})
 			response.Data = map[string]interface{}{
@@ -1683,7 +1697,7 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 
 			// Publish telemetry event
 			s.eventBus.Publish(events.Event{
-				Type:      events.EventType("telemetry.received"),
+				Type:      events.TelemetryReceived,
 				ProcessID: processName,
 				Data: map[string]interface{}{
 					"sessionId":  batch.SessionID,
@@ -1718,7 +1732,7 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 			} else {
 				// Forward the response to MCP server via event bus
 				s.eventBus.Publish(events.Event{
-					Type: events.EventType("repl.response"),
+					Type: events.REPLResponse,
 					Data: map[string]interface{}{
 						"responseId": responseID,
 						"result":     data["result"],

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
@@ -30,14 +30,14 @@ type WebViewComponent struct {
 	proxyServer *proxy.Server
 
 	// Selection and detail view
-	selectedIndex int
+	selectedIndex   int
 	selectedRequest *RequestInfo
-	showDetail bool
-	filter string
-	autoScroll bool
+	showDetail      bool
+	filter          string
+	autoScroll      bool
 
 	// Layout
-	width int
+	width  int
 	height int
 
 	// Styles
@@ -85,11 +85,11 @@ func NewWebViewComponent(proxyServer *proxy.Server) *WebViewComponent {
 		requests:      []*RequestInfo{},
 
 		// Selection and detail view
-		selectedIndex:  -1,
+		selectedIndex:   -1,
 		selectedRequest: nil,
-		showDetail:    false,
-		filter:        "all",
-		autoScroll:    true,
+		showDetail:      false,
+		filter:          "all",
+		autoScroll:      true,
 
 		// Layout
 		width:  80,
@@ -491,7 +491,11 @@ func (c *WebViewComponent) renderListViewWithViewport() string {
 	result.WriteString("\n\n")
 	result.WriteString(c.normalStyle.Render("↑/↓ navigate, Enter details, f filter, Space auto-scroll"))
 	result.WriteString("\n" + c.normalStyle.Render("Filter: "+c.filter+" | Auto-scroll: "+func() string {
-		if c.autoScroll { return "ON" } else { return "OFF" }
+		if c.autoScroll {
+			return "ON"
+		} else {
+			return "OFF"
+		}
 	}()))
 	result.WriteString("\n" + c.normalStyle.Render("Indicators: ❌ error, 🔐 auth, 📊 telemetry"))
 

@@ -41,7 +41,7 @@ func TestNotificationComponent_AddNotification(t *testing.T) {
 func TestNotificationComponent_NotificationTypes(t *testing.T) {
 	component := NewNotificationComponent(PositionTop)
 	component.SetSize(200, 24) // Wide viewport
-	component.SetMaxVisible(4)  // Show all notifications
+	component.SetMaxVisible(4) // Show all notifications
 
 	component.AddNotification(NotificationInfo, "Info message", 0)
 	component.AddNotification(NotificationSuccess, "Success message", 0)

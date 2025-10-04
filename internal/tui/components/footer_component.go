@@ -23,9 +23,9 @@ type FooterComponent struct {
 	showHelp         bool
 
 	// Styles
-	keyStyle    lipgloss.Style
-	labelStyle  lipgloss.Style
-	helpStyle   lipgloss.Style
+	keyStyle     lipgloss.Style
+	labelStyle   lipgloss.Style
+	helpStyle    lipgloss.Style
 	dividerStyle lipgloss.Style
 }
 
@@ -109,7 +109,7 @@ func (c *FooterComponent) View() string {
 
 	// Apply fixed height constraints - footer always takes exactly 1 line
 	footerStyle := lipgloss.NewStyle().
-		Height(1).      // Exactly 1 line
+		Height(1).        // Exactly 1 line
 		MaxWidth(c.width) // Constrain width to available space
 
 	return footerStyle.Render(result)

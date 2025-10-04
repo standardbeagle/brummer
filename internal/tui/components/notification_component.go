@@ -71,7 +71,7 @@ func NewNotificationComponent(position NotificationPosition) *NotificationCompon
 		position:      position,
 		maxVisible:    3,
 		infoStyle: lipgloss.NewStyle().
-			Foreground(lipgloss.Color("12")). // Bright Blue
+			Foreground(lipgloss.Color("12")).  // Bright Blue
 			Background(lipgloss.Color("236")). // Dark Gray
 			Padding(0, 1).
 			Border(lipgloss.RoundedBorder()).

@@ -14,14 +14,14 @@ import (
 type CommandInputComponent struct {
 	BaseComponent
 
-	input           textinput.Model
-	registry        *CommandRegistry
-	active          bool
-	suggestions     []string
+	input              textinput.Model
+	registry           *CommandRegistry
+	active             bool
+	suggestions        []string
 	selectedSuggestion int
-	showSuggestions bool
-	currentCommand  *messages.Command
-	argumentIndex   int // Which argument we're currently filling
+	showSuggestions    bool
+	currentCommand     *messages.Command
+	argumentIndex      int // Which argument we're currently filling
 }
 
 // NewCommandInputComponent creates a new command input with autocomplete
@@ -32,8 +32,8 @@ func NewCommandInputComponent(registry *CommandRegistry) *CommandInputComponent 
 	input.CharLimit = 200
 
 	return &CommandInputComponent{
-		registry:        registry,
-		input:           input,
+		registry:           registry,
+		input:              input,
 		selectedSuggestion: 0,
 	}
 }

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -24,21 +24,21 @@ type MCPViewComponent struct {
 	status   MCPStatus
 
 	// Styles
-	headerStyle  lipgloss.Style
-	activeStyle  lipgloss.Style
+	headerStyle   lipgloss.Style
+	activeStyle   lipgloss.Style
 	inactiveStyle lipgloss.Style
-	toolStyle    lipgloss.Style
-	normalStyle  lipgloss.Style
+	toolStyle     lipgloss.Style
+	normalStyle   lipgloss.Style
 }
 
 // MCPStatus holds display information for MCP server
 type MCPStatus struct {
-	Active        bool
-	Port          int
-	Address       string
-	ToolsCount    int
-	RequestCount  int
-	SessionCount  int
+	Active         bool
+	Port           int
+	Address        string
+	ToolsCount     int
+	RequestCount   int
+	SessionCount   int
 	AvailableTools []string
 }
 
@@ -60,11 +60,11 @@ func NewMCPViewComponent() *MCPViewComponent {
 				"repl/execute",
 			},
 		},
-		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),  // Bright Blue
-		activeStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("10")),             // Bright Green
-		inactiveStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("9")),              // Bright Red
-		toolStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color("14")),             // Bright Cyan
-		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),             // White
+		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")), // Bright Blue
+		activeStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("10")),            // Bright Green
+		inactiveStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("9")),             // Bright Red
+		toolStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color("14")),            // Bright Cyan
+		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),            // White
 	}
 
 	c.updateViewport()

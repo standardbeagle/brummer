@@ -24,14 +24,14 @@ type IntegratedShell struct {
 	height int
 
 	// View Components (nil until initialized)
-	logsView     Component
-	processView  Component
-	urlsView     Component
-	errorsView   Component
-	webView      Component
-	aicodersView Component
-	mcpView      Component
-	settingsView Component
+	logsView       Component
+	processView    Component
+	urlsView       Component
+	errorsView     Component
+	webView        Component
+	aicodersView   Component
+	mcpView        Component
+	settingsView   Component
 	diagnosticView Component
 
 	// Chrome Components (optional)

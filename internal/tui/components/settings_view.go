@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -44,11 +44,11 @@ func NewSettingsViewComponent() *SettingsViewComponent {
 		BaseComponent: NewBaseComponent(),
 		viewport:      viewport.New(80, 24),
 		settings:      []SettingInfo{},
-		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),  // Bright Blue
-		categoryStyle: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")),  // Bright Cyan
-		keyStyle:      lipgloss.NewStyle().Foreground(lipgloss.Color("10")),             // Bright Green
-		valueStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("11")),             // Bright Yellow
-		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),             // White
+		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")), // Bright Blue
+		categoryStyle: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")), // Bright Cyan
+		keyStyle:      lipgloss.NewStyle().Foreground(lipgloss.Color("10")),            // Bright Green
+		valueStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("11")),            // Bright Yellow
+		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),            // White
 	}
 
 	// Initialize with default settings

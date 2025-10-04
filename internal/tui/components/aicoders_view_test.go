@@ -27,14 +27,14 @@ func TestAICodersViewComponent_AddSession(t *testing.T) {
 	component.SetSize(80, 24)
 
 	session := &SessionInfo{
-		ID:            "session-123",
-		Name:          "test-session",
-		Status:        "active",
-		ProcessID:     "proc-456",
-		StartTime:     time.Now(),
-		LastActivity:  time.Now(),
+		ID:             "session-123",
+		Name:           "test-session",
+		Status:         "active",
+		ProcessID:      "proc-456",
+		StartTime:      time.Now(),
+		LastActivity:   time.Now(),
 		LinesExchanged: 42,
-		CurrentTask:   "Implementing feature X",
+		CurrentTask:    "Implementing feature X",
 	}
 
 	component.AddSession(session)
@@ -59,11 +59,11 @@ func TestAICodersViewComponent_MultipleSession(t *testing.T) {
 	statuses := []string{"active", "idle", "error"}
 	for i, status := range statuses {
 		session := &SessionInfo{
-			ID:            string(rune('a' + i)),
-			Name:          status + "-session",
-			Status:        status,
-			StartTime:     time.Now(),
-			LastActivity:  time.Now(),
+			ID:             string(rune('a' + i)),
+			Name:           status + "-session",
+			Status:         status,
+			StartTime:      time.Now(),
+			LastActivity:   time.Now(),
 			LinesExchanged: i * 10,
 		}
 		component.AddSession(session)
@@ -106,11 +106,11 @@ func TestAICodersViewComponent_UpdateSession(t *testing.T) {
 	component.SetSize(80, 24)
 
 	session := &SessionInfo{
-		ID:            "session-123",
-		Name:          "test-session",
-		Status:        "idle",
-		StartTime:     time.Now(),
-		LastActivity:  time.Now(),
+		ID:             "session-123",
+		Name:           "test-session",
+		Status:         "idle",
+		StartTime:      time.Now(),
+		LastActivity:   time.Now(),
 		LinesExchanged: 10,
 	}
 
@@ -137,7 +137,7 @@ func TestAICodersViewComponent_KeyboardNavigation(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		session := &SessionInfo{
 			ID:           string(rune('a' + i)),
-			Name:         "session-" + string(rune('0' + i)),
+			Name:         "session-" + string(rune('0'+i)),
 			Status:       "active",
 			StartTime:    time.Now(),
 			LastActivity: time.Now(),
@@ -214,11 +214,11 @@ func TestAICodersViewComponent_StatusDisplay(t *testing.T) {
 	statuses := []string{"active", "idle", "error", "stopped"}
 	for i, status := range statuses {
 		session := &SessionInfo{
-			ID:            string(rune('a' + i)),
-			Name:          status + "-session",
-			Status:        status,
-			StartTime:     time.Now(),
-			LastActivity:  time.Now(),
+			ID:             string(rune('a' + i)),
+			Name:           status + "-session",
+			Status:         status,
+			StartTime:      time.Now(),
+			LastActivity:   time.Now(),
 			LinesExchanged: i * 10,
 		}
 		component.AddSession(session)
@@ -302,13 +302,13 @@ func TestAICodersViewComponent_CurrentTaskDisplay(t *testing.T) {
 	component.SetSize(80, 100) // Tall viewport
 
 	session := &SessionInfo{
-		ID:            "session-123",
-		Name:          "test-session",
-		Status:        "active",
-		StartTime:     time.Now(),
-		LastActivity:  time.Now(),
+		ID:             "session-123",
+		Name:           "test-session",
+		Status:         "active",
+		StartTime:      time.Now(),
+		LastActivity:   time.Now(),
 		LinesExchanged: 42,
-		CurrentTask:   "Implementing authentication system with JWT tokens",
+		CurrentTask:    "Implementing authentication system with JWT tokens",
 	}
 
 	component.AddSession(session)
@@ -327,13 +327,13 @@ func TestAICodersViewComponent_ErrorMessageDisplay(t *testing.T) {
 	component.SetSize(80, 100) // Tall viewport
 
 	session := &SessionInfo{
-		ID:            "session-123",
-		Name:          "test-session",
-		Status:        "error",
-		StartTime:     time.Now(),
-		LastActivity:  time.Now(),
+		ID:             "session-123",
+		Name:           "test-session",
+		Status:         "error",
+		StartTime:      time.Now(),
+		LastActivity:   time.Now(),
 		LinesExchanged: 10,
-		ErrorMessage:  "Connection timeout - failed to reach AI service",
+		ErrorMessage:   "Connection timeout - failed to reach AI service",
 	}
 
 	component.AddSession(session)

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/viewport"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -27,25 +27,25 @@ type AICodersViewComponent struct {
 	selectedIndex int
 
 	// Styles
-	headerStyle    lipgloss.Style
-	activeStyle    lipgloss.Style
-	idleStyle      lipgloss.Style
-	errorStyle     lipgloss.Style
-	selectedStyle  lipgloss.Style
-	normalStyle    lipgloss.Style
+	headerStyle   lipgloss.Style
+	activeStyle   lipgloss.Style
+	idleStyle     lipgloss.Style
+	errorStyle    lipgloss.Style
+	selectedStyle lipgloss.Style
+	normalStyle   lipgloss.Style
 }
 
 // SessionInfo holds display information for an AI coder session
 type SessionInfo struct {
-	ID            string
-	Name          string
-	Status        string // "active", "idle", "error", "stopped"
-	ProcessID     string
-	StartTime     time.Time
-	LastActivity  time.Time
+	ID             string
+	Name           string
+	Status         string // "active", "idle", "error", "stopped"
+	ProcessID      string
+	StartTime      time.Time
+	LastActivity   time.Time
 	LinesExchanged int
-	CurrentTask   string
-	ErrorMessage  string
+	CurrentTask    string
+	ErrorMessage   string
 }
 
 // NewAICodersViewComponent creates an AI coders view

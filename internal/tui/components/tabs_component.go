@@ -58,7 +58,7 @@ func NewTabsComponent() *TabsComponent {
 		},
 		activeTabStyle: lipgloss.NewStyle().
 			Bold(true).
-			Foreground(lipgloss.Color("12")). // Bright Blue
+			Foreground(lipgloss.Color("12")).  // Bright Blue
 			Background(lipgloss.Color("236")). // Dark Gray
 			Padding(0, 1),
 		inactiveTabStyle: lipgloss.NewStyle().
@@ -140,7 +140,7 @@ func (c *TabsComponent) View() string {
 
 	// Apply fixed height constraints - tabs always take exactly 1 line
 	tabsStyle := lipgloss.NewStyle().
-		Height(1).  // Exactly 1 line
+		Height(1).        // Exactly 1 line
 		MaxWidth(c.width) // Constrain width to available space
 
 	return tabsStyle.Render(tabLine)

@@ -29,6 +29,12 @@ const (
 	MCPDisconnected    EventType = "mcp.disconnected"
 	URLDetected        EventType = "url.detected"
 	DockerPortDetected EventType = "docker.port.detected"
+	SystemMessage      EventType = "system.message"
+	ProxyRequest       EventType = "proxy.request"
+	ProxyModeSwitched  EventType = "proxy.mode_switched"
+	TelemetryReceived  EventType = "telemetry.received"
+	QueueMessage       EventType = "queue.message"
+	REPLResponse       EventType = "repl.response"
 )
 
 type Event struct {
