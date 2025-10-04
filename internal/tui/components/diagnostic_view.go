@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -64,6 +65,9 @@ type DiagnosticViewComponent struct {
 	// Store diagnostic information atomically in a single struct
 	data atomic.Value // stores *DiagnosticData
 
+	// Viewport for scrolling content
+	viewport viewport.Model
+
 	// Styles (immutable, no atomic needed)
 	titleStyle   lipgloss.Style
 	labelStyle   lipgloss.Style
@@ -77,6 +81,7 @@ type DiagnosticViewComponent struct {
 func NewDiagnosticViewComponent() *DiagnosticViewComponent {
 	c := &DiagnosticViewComponent{
 		BaseComponent: NewBaseComponent(),
+		viewport:     viewport.New(80, 24), // Default size, will be updated in SetSize
 
 		titleStyle: lipgloss.NewStyle().
 			Foreground(lipgloss.Color("226")). // Yellow
@@ -164,9 +169,18 @@ func (c *DiagnosticViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return tea.WindowSizeMsg{Width: msg.Width, Height: msg.Height}
 		}
 
+	case tea.KeyMsg:
+		// Forward keyboard input to viewport for scrolling
+		var cmd tea.Cmd
+		c.viewport, cmd = c.viewport.Update(msg)
+		return c, cmd
+
 	case tea.MouseMsg:
 		// Update on mouse activity - no logging needed
 	}
+
+	// Forward other messages to viewport
+	c.viewport, _ = c.viewport.Update(msg)
 
 	// Update base component size
 	data := c.getData()
@@ -175,14 +189,21 @@ func (c *DiagnosticViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return c, nil
 }
 
+// SetSize updates component dimensions
+func (c *DiagnosticViewComponent) SetSize(width, height int) {
+	c.BaseComponent.SetSize(width, height)
+	c.viewport.Width = width
+	c.viewport.Height = height
+}
+
 // calculateExpectedHeights calculates expected heights for each component
 func (c *DiagnosticViewComponent) calculateExpectedHeights() {
 	data := c.getData()
 
-	// These are the expected heights based on the component implementations
-	headerHeight := int32(3)  // HeaderComponent typically uses 3 lines
-	tabsHeight := int32(3)     // TabsComponent typically uses 3 lines
-	footerHeight := int32(2)   // FooterComponent typically uses 2 lines
+	// These are the expected heights based on the actual component implementations
+	headerHeight := int32(2)  // SimpleHeaderComponent uses 2 lines (header + divider)
+	tabsHeight := int32(1)     // TabsComponent renders on 1 line
+	footerHeight := int32(1)   // FooterComponent renders on 1 line
 
 	contentHeight := data.TerminalHeight - headerHeight - tabsHeight - footerHeight
 
@@ -252,10 +273,11 @@ func (c *DiagnosticViewComponent) View() string {
 	// Join all sections
 	content := strings.Join(sections, "\n")
 
-	// Apply border styling
-	borderedContent := c.borderStyle.Render(content)
+	// Set content in viewport and let it handle scrolling
+	c.viewport.SetContent(content)
+	c.viewport.GotoTop() // Start at top for new content
 
-	return borderedContent
+	return c.viewport.View()
 }
 
 // buildTerminalInfo creates the terminal information section

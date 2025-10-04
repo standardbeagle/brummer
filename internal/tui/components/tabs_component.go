@@ -136,7 +136,14 @@ func (c *TabsComponent) View() string {
 		Foreground(lipgloss.Color("240")).
 		Render(" │ ")
 
-	return strings.Join(tabs, separator)
+	tabLine := strings.Join(tabs, separator)
+
+	// Apply fixed height constraints - tabs always take exactly 1 line
+	tabsStyle := lipgloss.NewStyle().
+		Height(1).  // Exactly 1 line
+		MaxWidth(c.width) // Constrain width to available space
+
+	return tabsStyle.Render(tabLine)
 }
 
 // SetSize updates component dimensions

@@ -195,7 +195,6 @@ func (s *IntegratedShell) SetTabsComponent(component Component) {
 
 // Init initializes the shell
 func (s *IntegratedShell) Init() tea.Cmd {
-
 	var cmds []tea.Cmd
 
 	if s.logsView != nil {
@@ -280,33 +279,39 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		s.width = msg.Width
 		s.height = msg.Height
 
-		// Propagate size to all components
+		// Calculate content area height (terminal height minus chrome components)
+		contentHeight := msg.Height - 2 - 1 - 1 // header(2) + tabs(1) + footer(1) = 4 lines
+		if contentHeight < 1 {
+			contentHeight = 1
+		}
+
+		// Propagate size to all components with constrained content height
 		if s.logsView != nil {
-			s.logsView.SetSize(msg.Width, msg.Height)
+			s.logsView.SetSize(msg.Width, contentHeight)
 		}
 		if s.processView != nil {
-			s.processView.SetSize(msg.Width, msg.Height)
+			s.processView.SetSize(msg.Width, contentHeight)
 		}
 		if s.urlsView != nil {
-			s.urlsView.SetSize(msg.Width, msg.Height)
+			s.urlsView.SetSize(msg.Width, contentHeight)
 		}
 		if s.errorsView != nil {
-			s.errorsView.SetSize(msg.Width, msg.Height)
+			s.errorsView.SetSize(msg.Width, contentHeight)
 		}
 		if s.webView != nil {
-			s.webView.SetSize(msg.Width, msg.Height)
+			s.webView.SetSize(msg.Width, contentHeight)
 		}
 		if s.aicodersView != nil {
-			s.aicodersView.SetSize(msg.Width, msg.Height)
+			s.aicodersView.SetSize(msg.Width, contentHeight)
 		}
 		if s.mcpView != nil {
-			s.mcpView.SetSize(msg.Width, msg.Height)
+			s.mcpView.SetSize(msg.Width, contentHeight)
 		}
 		if s.settingsView != nil {
-			s.settingsView.SetSize(msg.Width, msg.Height)
+			s.settingsView.SetSize(msg.Width, contentHeight)
 		}
 		if s.diagnosticView != nil {
-			s.diagnosticView.SetSize(msg.Width, msg.Height)
+			s.diagnosticView.SetSize(msg.Width, contentHeight)
 			// Also send the WindowSizeMsg to diagnostic view for processing
 			_, cmd := s.diagnosticView.Update(msg)
 			cmds = append(cmds, cmd)
@@ -630,8 +635,10 @@ func (s *IntegratedShell) View() string {
 		}
 	}
 
-	// Main content
-	sections = append(sections, baseView)
+	// Main content - viewports now handle their own sizing
+	if baseView != "" {
+		sections = append(sections, baseView)
+	}
 
 	// Footer (if available)
 	if s.footerComponent != nil {
@@ -644,7 +651,7 @@ func (s *IntegratedShell) View() string {
 	// Combine all sections
 	fullView := strings.Join(sections, "\n")
 
-	// Render overlays on top (command input and help have higher priority)
+	// Handle overlays (command input and help have higher priority)
 	// Command input renders on top when active
 	if s.commandInput != nil {
 		if cmdComponent, ok := s.commandInput.(*CommandInputComponent); ok && cmdComponent.IsActive() {

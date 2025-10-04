@@ -107,13 +107,13 @@ func (c *FooterComponent) View() string {
 	// Join with dividers
 	result := strings.Join(parts, c.dividerStyle.String())
 
-	// Pad to full width if needed
-	if c.width > 0 && len(result) < c.width {
-		padding := strings.Repeat(" ", c.width-len(result))
-		result = result + padding
-	}
+	// Apply fixed height constraints - footer always takes exactly 1 line
+	footerStyle := lipgloss.NewStyle().
+		Height(1).      // Exactly 1 line
+		MaxWidth(c.width) // Constrain width to available space
 
-	return result
+	return footerStyle.Render(result)
+
 }
 
 // formatShortcut formats a single shortcut
