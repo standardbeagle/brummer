@@ -426,9 +426,23 @@ func (c *WebViewComponent) renderListView() string {
 	// Header with filter info
 	content.WriteString(c.renderHeader())
 
+	// Calculate available height for content
+	headerLines := 2 // header title + separator
+	footerLines := 3 // navigation help lines
+	contentHeight := c.height - headerLines - footerLines
+
+	if contentHeight < 1 {
+		contentHeight = 1
+	}
+
 	// Requests table
 	filteredRequests := c.getFilteredRequests()
 	if len(filteredRequests) == 0 {
+		// Show empty message in the middle of available space
+		emptyLines := contentHeight - 1
+		if emptyLines > 0 {
+			content.WriteString(strings.Repeat("\n", emptyLines/2))
+		}
 		content.WriteString(c.normalStyle.Render("No matching requests"))
 	} else {
 		// Table header
@@ -436,18 +450,47 @@ func (c *WebViewComponent) renderListView() string {
 			"METHOD", "STATUS", "URL", "DURATION", "PROCESS")) + "\n")
 		content.WriteString(strings.Repeat("─", c.width) + "\n")
 
-		// Request rows
-		for i, req := range filteredRequests {
+		// Calculate how many request rows we can show
+		tableHeaderLines := 2 // method/status header + separator
+		availableRequestLines := contentHeight - tableHeaderLines
+
+		if availableRequestLines < 1 {
+			availableRequestLines = 1
+		}
+
+		// Show most recent requests that fit in available space
+		startIdx := len(filteredRequests) - availableRequestLines
+		if startIdx < 0 {
+			startIdx = 0
+		}
+
+		// Render request rows
+		for i := startIdx; i < len(filteredRequests); i++ {
+			req := filteredRequests[i]
 			line := c.formatRequestRow(req)
+
+			// Highlight if this is the selected request
 			if i == c.selectedIndex {
 				line = lipgloss.NewStyle().Background(lipgloss.Color("237")).Render(line)
 			}
 			content.WriteString(line + "\n")
 		}
+
+		// If we have fewer requests than available lines, add spacing
+		renderedLines := len(filteredRequests) - startIdx
+		remainingLines := availableRequestLines - renderedLines
+		if remainingLines > 0 {
+			for i := 0; i < remainingLines; i++ {
+				content.WriteString("\n")
+			}
+		}
 	}
 
-	// Navigation help
-	content.WriteString("\n" + c.normalStyle.Render("↑/↓ navigate, Enter details, f filter, Space auto-scroll"))
+	// Add spacing before footer
+	content.WriteString(strings.Repeat("\n", footerLines))
+
+	// Navigation help (always at bottom)
+	content.WriteString(c.normalStyle.Render("↑/↓ navigate, Enter details, f filter, Space auto-scroll"))
 	content.WriteString("\n" + c.normalStyle.Render("Filter: "+c.filter+" | Auto-scroll: "+func() string {
 		if c.autoScroll { return "ON" } else { return "OFF" }
 	}()))
@@ -510,6 +553,72 @@ func (c *WebViewComponent) renderDetailView() string {
 	return content.String()
 }
 
+// renderDetailViewWithFooter renders the detailed view for selected request with proper height management
+func (c *WebViewComponent) renderDetailViewWithFooter() string {
+	if c.selectedRequest == nil {
+		return c.normalStyle.Render("No request selected")
+	}
+
+	var content strings.Builder
+	req := c.selectedRequest
+
+	// Header
+	content.WriteString(c.headerStyle.Render("Request Details") + "\n\n")
+
+	// Basic information
+	content.WriteString(c.labelStyle.Render("Method: ") + c.detailStyle.Render(req.Method) + "\n")
+	content.WriteString(c.labelStyle.Render("URL: ") + c.detailStyle.Render(req.URL) + "\n")
+	content.WriteString(c.labelStyle.Render("Status: ") + c.formatStatus(req.StatusCode) + "\n")
+	content.WriteString(c.labelStyle.Render("Duration: ") + c.detailStyle.Render(c.formatDuration(req.Duration)) + "\n")
+	content.WriteString(c.labelStyle.Render("Time: ") + c.detailStyle.Render(req.Timestamp.Format("15:04:05")) + "\n")
+	content.WriteString(c.labelStyle.Render("Process: ") + c.detailStyle.Render(req.ProcessName) + "\n")
+
+	if req.Size > 0 {
+		content.WriteString(c.labelStyle.Render("Size: ") + c.detailStyle.Render(c.formatBytes(req.Size)) + "\n")
+	}
+
+	if req.Error != "" {
+		content.WriteString(c.labelStyle.Render("Error: ") + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(req.Error) + "\n")
+	}
+
+	// Authentication section
+	if req.HasAuth {
+		content.WriteString("\n" + c.headerStyle.Render("🔐 Authentication") + "\n\n")
+		content.WriteString(c.labelStyle.Render("Type: ") + c.detailStyle.Render(req.AuthType) + "\n")
+
+		if req.JWTError != "" {
+			content.WriteString(c.labelStyle.Render("JWT Error: ") + lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Render(req.JWTError) + "\n")
+		} else if req.JWTClaims != nil && len(req.JWTClaims) > 0 {
+			content.WriteString(c.labelStyle.Render("JWT Claims:") + "\n")
+			c.renderJWTClaims(&content, req.JWTClaims)
+		}
+	}
+
+	// Telemetry section
+	if req.HasTelemetry {
+		content.WriteString("\n" + c.headerStyle.Render("📊 Telemetry") + "\n\n")
+		content.WriteString(c.detailStyle.Render("Telemetry data available for this request") + "\n")
+		content.WriteString(c.labelStyle.Render("Session ID: ") + c.detailStyle.Render(req.SessionID) + "\n")
+	}
+
+	// Calculate how many lines we've rendered so far
+	renderedLines := strings.Count(content.String(), "\n") + 1
+	availableHeight := c.height
+
+	// Add spacing to push help text to bottom
+	footerLines := 2 // help text + spacing
+	remainingSpace := availableHeight - renderedLines - footerLines
+
+	if remainingSpace > 0 {
+		content.WriteString(strings.Repeat("\n", remainingSpace))
+	}
+
+	// Help text (always at bottom)
+	content.WriteString("\n" + c.normalStyle.Render("Press Enter to return to list"))
+
+	return content.String()
+}
+
 // renderSplitView renders the split view with list and detail side by side
 func (c *WebViewComponent) renderSplitView() string {
 	// Calculate split
@@ -519,25 +628,57 @@ func (c *WebViewComponent) renderSplitView() string {
 	// Get filtered requests
 	filteredRequests := c.getFilteredRequests()
 
-	// Build list content
+	// Build list content with proper height management
 	var listContent strings.Builder
+
+	// Header for list side
 	listContent.WriteString(c.headerStyle.Render("Web Requests") + "\n")
 	listContent.WriteString(strings.Repeat("─", listWidth) + "\n")
 
+	// Calculate available height for list content (account for header)
+	listHeaderLines := 2
+	availableListHeight := c.height - listHeaderLines - 1 // -1 for bottom margin
+
+	if availableListHeight < 1 {
+		availableListHeight = 1
+	}
+
 	if len(filteredRequests) == 0 {
+		// Center empty message
+		emptyLines := availableListHeight - 1
+		if emptyLines > 0 {
+			listContent.WriteString(strings.Repeat("\n", emptyLines/2))
+		}
 		listContent.WriteString(c.normalStyle.Render("No requests"))
 	} else {
-		for i, req := range filteredRequests {
+		// Show most recent requests that fit in available space
+		startIdx := len(filteredRequests) - availableListHeight
+		if startIdx < 0 {
+			startIdx = 0
+		}
+
+		// Render request rows
+		for i := startIdx; i < len(filteredRequests); i++ {
+			req := filteredRequests[i]
 			line := c.formatCompactRequestRow(req, listWidth)
 			if i == c.selectedIndex {
 				line = lipgloss.NewStyle().Background(lipgloss.Color("237")).Render(line)
 			}
 			listContent.WriteString(line + "\n")
 		}
+
+		// Fill remaining space if we have fewer requests than available lines
+		renderedLines := len(filteredRequests) - startIdx
+		remainingLines := availableListHeight - renderedLines
+		if remainingLines > 0 {
+			for i := 0; i < remainingLines; i++ {
+				listContent.WriteString("\n")
+			}
+		}
 	}
 
 	// Build detail content
-	detailContent := c.renderDetailView()
+	detailContent := c.renderDetailViewWithFooter()
 
 	// Apply borders
 	borderStyle := lipgloss.NewStyle().
