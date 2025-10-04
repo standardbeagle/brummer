@@ -293,6 +293,48 @@ func (b *ServiceBridge) subscribeToEventBus() {
 		}
 	})
 
+	// Proxy request events for web view
+	b.eventBus.Subscribe(events.ProxyRequest, func(evt events.Event) {
+		// Atomically load program reference (lock-free, thread-safe)
+		if prog := b.getProgram(); prog != nil {
+			method := ""
+			url := ""
+			statusCode := 0
+			durationMs := 0
+			processName := ""
+
+			if m, ok := evt.Data["method"].(string); ok {
+				method = m
+			}
+			if u, ok := evt.Data["url"].(string); ok {
+				url = u
+			}
+			if sc, ok := evt.Data["status"].(int); ok {
+				statusCode = sc
+			}
+			if dm, ok := evt.Data["duration"].(int); ok {
+				durationMs = dm
+			}
+			if pn, ok := evt.Data["processName"].(string); ok {
+				processName = pn
+			}
+
+			// Convert milliseconds to time.Duration
+			duration := time.Duration(durationMs) * time.Millisecond
+
+			prog.Send(messages.ProxyRequestMsg{
+				RequestID:   fmt.Sprintf("%d", time.Now().UnixNano()), // Generate unique ID
+				Method:      method,
+				URL:         url,
+				Path:        "", // Extract from URL if needed
+				StatusCode:  statusCode,
+				Duration:    duration,
+				ProcessName: processName,
+				Timestamp:   time.Now(),
+			})
+		}
+	})
+
 	// URL detection events
 	b.eventBus.Subscribe(events.URLDetected, func(evt events.Event) {
 		// Atomically load program reference (lock-free, thread-safe)
@@ -347,6 +389,36 @@ func (b *ServiceBridge) subscribeToProxyServer() {
 	}
 
 	// Proxy server doesn't currently emit events beyond URL detection (handled by EventBus)
+	// System message events (proxy registration, errors, etc.)
+	b.eventBus.Subscribe(events.SystemMessage, func(evt events.Event) {
+		// Atomically load program reference (lock-free, thread-safe)
+		if prog := b.getProgram(); prog != nil {
+			level := "info"
+			context := ""
+			message := ""
+
+			if l, ok := evt.Data["level"].(string); ok {
+				level = l
+			}
+			if c, ok := evt.Data["context"].(string); ok {
+				context = c
+			}
+			if m, ok := evt.Data["message"].(string); ok {
+				message = m
+			}
+
+			// Create a formatted log entry
+			formattedMsg := fmt.Sprintf("[%s] %s: %s", context, message, level)
+
+			// Add to appropriate log store based on level
+			if level == "error" {
+				b.logStore.Add("system", context, formattedMsg, true)
+			} else {
+				b.logStore.Add("system", context, formattedMsg, false)
+			}
+		}
+	})
+
 	// Future: Add proxy request/response events here if needed
 }
 
