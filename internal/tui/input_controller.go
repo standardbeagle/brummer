@@ -6,6 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/internal/tui/system"
 )
 
@@ -17,6 +18,9 @@ type InputController struct {
 	viewConfigs map[View]ViewConfig
 	debugMode   bool
 
+	// Hierarchical key handling system
+	keyHandler *components.HierarchicalKeyHandler
+
 	// Double-press quit tracking
 	lastQuitPress time.Time
 	quitTimeout   time.Duration
@@ -24,18 +28,24 @@ type InputController struct {
 
 // NewInputController creates a new input controller
 func NewInputController(model *Model, keys keyMap, viewConfigs map[View]ViewConfig, debugMode bool) *InputController {
-	return &InputController{
+	ic := &InputController{
 		model:       model,
 		keys:        keys,
 		viewConfigs: viewConfigs,
 		debugMode:   debugMode,
 		quitTimeout: 2 * time.Second, // 2 second window for double Ctrl+C
+		keyHandler:  components.NewHierarchicalKeyHandler(),
 	}
+
+	// Initialize hierarchical key handler context
+	ic.setupHierarchicalKeyHandlers()
+
+	return ic
 }
 
-// HandleKeyMsg processes keyboard input and returns whether it was handled
+// HandleKeyMsg processes keyboard input using the hierarchical key handler
 func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	// Handle script selector view
+	// Handle script selector view (special case - highest priority)
 	if ic.model.currentView() == ViewScriptSelector && ic.model.scriptSelectorController != nil {
 		handled, cmd := ic.model.scriptSelectorController.HandleKeyMsg(msg)
 		if handled {
@@ -43,10 +53,50 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 		}
 	}
 
-	// Handle command window first
-	if ic.model.commandWindowController.IsShowingCommandWindow() {
-		return ic.handleCommandWindow(msg)
+	// Update hierarchical context based on current state
+	ic.UpdateHierarchicalContext()
+
+	// Try the hierarchical key handler first
+	newModel, cmd := ic.keyHandler.HandleKey(msg, ic.model)
+
+	// Check if the key was handled by examining if a command was returned
+	// The hierarchical handler returns (originalModel, nil) if not handled
+	// and (handledModel, cmd) where cmd may be nil but the key was still handled
+	if cmd != nil {
+		// A command was returned, so the key was definitely handled
+		ic.model = newModel.(*Model)
+		return ic.model, cmd, true
+	} else if newModel != ic.model {
+		// Model changed, so the key was handled
+		ic.model = newModel.(*Model)
+		return ic.model, cmd, true
+	} else {
+		// Check if the key was handled by seeing if any handler could process it
+		// We need to check if the key was handled even if no command was returned
+		// and the model reference is the same (e.g., for navigation keys)
+
+		// Check if this is a global key that should be handled
+		keyStr := msg.String()
+		globalKeys := []string{"q", "ctrl+c", "left", "right", "up", "down", "tab", "shift+tab", "?"}
+
+		// Also check for number keys
+		if len(msg.Runes) == 1 && msg.Runes[0] >= '1' && msg.Runes[0] <= '9' {
+			// This is a number key (1-9)
+			ic.model = newModel.(*Model)
+			return ic.model, cmd, true
+		}
+
+		for _, globalKey := range globalKeys {
+			if keyStr == globalKey {
+				// This is a global key that should be handled
+				// Update the model reference and mark as handled
+				ic.model = newModel.(*Model)
+				return ic.model, cmd, true
+			}
+		}
 	}
+
+	// Handle special cases not covered by hierarchical handler
 
 	// Handle "/" key for Brummer commands - check if we should intercept it
 	if msg.String() == "/" || (msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '/') {
@@ -81,12 +131,7 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 		// For other keys, continue to global key handling
 	}
 
-	// Handle global keys
-	if model, cmd, handled := ic.handleGlobalKeys(msg); handled {
-		return model, cmd, true
-	}
-
-	// Handle view-specific keys
+	// Handle view-specific keys not covered by hierarchical handler
 	switch {
 	case key.Matches(msg, ic.keys.ClearErrors):
 		if ic.model.currentView() == ViewErrors {
@@ -110,10 +155,11 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 
 // handleGlobalKeys handles keys that work across all views
 func (ic *InputController) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	switch {
-	case key.Matches(msg, ic.keys.Quit):
+	if key.Matches(msg, ic.keys.Quit) {
 		return ic.handleQuit()
+	}
 
+	switch {
 	case key.Matches(msg, ic.keys.Tab):
 		ic.model.cycleView()
 		return ic.model, nil, true
@@ -122,6 +168,15 @@ func (ic *InputController) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd,
 		ic.model.cyclePrevView()
 		return ic.model, nil, true
 
+	case key.Matches(msg, ic.keys.Left):
+		ic.model.cyclePrevView()
+		return ic.model, nil, true
+
+	case key.Matches(msg, ic.keys.Right):
+		ic.model.cycleView()
+		return ic.model, nil, true
+
+	// Fallback for string-based detection
 	case msg.String() == "left":
 		ic.model.cyclePrevView()
 		return ic.model, nil, true
@@ -262,40 +317,149 @@ func (ic *InputController) handleCommandWindow(msg tea.KeyMsg) (tea.Model, tea.C
 	return ic.model, cmd, true
 }
 
-// handleQuit handles the quit functionality requiring double Ctrl+C
+// handleQuit handles the quit functionality
 func (ic *InputController) handleQuit() (tea.Model, tea.Cmd, bool) {
 	now := time.Now()
 
-	// Check if this is within the timeout window of the last quit press
+	// Check if this is a 'q' key press (immediate quit)
+	// We differentiate by checking if this is not a Ctrl+C or if enough time has passed
 	if !ic.lastQuitPress.IsZero() && now.Sub(ic.lastQuitPress) <= ic.quitTimeout {
-		// Second Ctrl+C within timeout - actually quit
-		runningProcesses := 0
-		for _, proc := range ic.model.processMgr.GetAllProcesses() {
-			if proc.GetStatus() == process.StatusRunning {
-				runningProcesses++
-			}
-		}
-
-		if runningProcesses > 0 {
-			return ic.model, tea.Sequence(
-				tea.Printf("Stopping %d running processes...\n", runningProcesses),
-				func() tea.Msg {
-					_ = ic.model.processMgr.Cleanup() // Ignore cleanup errors during shutdown
-					return tea.Msg(nil)
-				},
-				tea.Printf("%s", renderExitScreen()),
-				tea.Quit,
-			), true
-		} else {
-			return ic.model, tea.Sequence(
-				tea.Printf("%s", renderExitScreen()),
-				tea.Quit,
-			), true
-		}
+		// This is the second quit press within timeout - actually quit
+		return ic.performQuit()
 	} else {
-		// First Ctrl+C - set timestamp and show warning
+		// Check if this was a 'q' key press (not Ctrl+C)
+		// For now, we'll treat any quit as needing confirmation to be safe
 		ic.lastQuitPress = now
-		ic.model.logStore.Add("system", "System", "Press Ctrl+C again within 2 seconds to exit", false)
+		ic.model.logStore.Add("system", "System", "Press quit key again within 2 seconds to exit", false)
 		return ic.model, nil, true
 	}
+}
+
+// performQuit performs the actual quit operation
+func (ic *InputController) performQuit() (tea.Model, tea.Cmd, bool) {
+	runningProcesses := 0
+	for _, proc := range ic.model.processMgr.GetAllProcesses() {
+		if proc.GetStatus() == process.StatusRunning {
+			runningProcesses++
+		}
+	}
+
+	if runningProcesses > 0 {
+		return ic.model, tea.Sequence(
+			tea.Printf("Stopping %d running processes...\n", runningProcesses),
+			func() tea.Msg {
+				_ = ic.model.processMgr.Cleanup() // Ignore cleanup errors during shutdown
+				return tea.Msg(nil)
+			},
+			tea.Printf("%s", renderExitScreen()),
+			tea.Quit,
+		), true
+	} else {
+		return ic.model, tea.Sequence(
+			tea.Printf("%s", renderExitScreen()),
+			tea.Quit,
+		), true
+	}
+}
+
+// setupHierarchicalKeyHandlers initializes the hierarchical key handler with global handlers
+func (ic *InputController) setupHierarchicalKeyHandlers() {
+	// Create global key handler for navigation and system-wide commands
+	globalHandler := components.NewComponentKeyHandler("global", components.PriorityGlobal, ic.model)
+
+	// Add global key bindings
+	globalHandler.AddKeys(map[string]func(tea.KeyMsg) (tea.Model, tea.Cmd){
+		"1": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewProcesses)
+			return ic.model, nil
+		},
+		"2": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewLogs)
+			return ic.model, nil
+		},
+		"3": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewErrors)
+			return ic.model, nil
+		},
+		"4": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewURLs)
+			return ic.model, nil
+		},
+		"5": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewWeb)
+			return ic.model, nil
+		},
+		"6": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewAICoders)
+			return ic.model, nil
+		},
+		"7": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewMCPConnections)
+			return ic.model, nil
+		},
+		"8": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewSettings)
+			return ic.model, nil
+		},
+		"tab": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.cycleView()
+			return ic.model, nil
+		},
+		"shift+tab": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.cyclePrevView()
+			return ic.model, nil
+		},
+		"left": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.cyclePrevView()
+			return ic.model, nil
+		},
+		"right": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.cycleView()
+			return ic.model, nil
+		},
+		"?": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			return ic.showHelpOverlay()
+		},
+		"q": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			return ic.handleQuitWithHierarchical()
+		},
+		"ctrl+c": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			return ic.handleQuitWithHierarchical()
+		},
+	})
+
+	// Set up the initial context
+	ctx := &components.KeyHandlerContext{
+		GlobalHandlers: []components.KeyHandler{globalHandler},
+	}
+
+	ic.keyHandler.SetContext(ctx)
+}
+
+// handleQuitWithHierarchical handles quit using the hierarchical system
+func (ic *InputController) handleQuitWithHierarchical() (tea.Model, tea.Cmd) {
+	_, cmd, _ := ic.handleQuit()
+	return ic.model, cmd
+}
+
+// showHelpOverlay shows the help overlay
+func (ic *InputController) showHelpOverlay() (tea.Model, tea.Cmd) {
+	// For now, add a help message to logs
+	ic.model.logStore.Add("system", "System", "Help: Use number keys 1-8 to switch views, / for commands, q/Ctrl+C to quit", false)
+	return ic.model, nil
+}
+
+// UpdateHierarchicalContext updates the hierarchical key handler context based on current state
+func (ic *InputController) UpdateHierarchicalContext() {
+	// Get current context or create a new one
+	ctx := ic.keyHandler.GetContext()
+	if ctx == nil {
+		ctx = &components.KeyHandlerContext{}
+	}
+
+	// For now, we only use global handlers
+	// Overlays and focused components will be handled by the existing system
+	// This provides a clean integration path without disrupting current functionality
+
+	ic.keyHandler.SetContext(ctx)
 }

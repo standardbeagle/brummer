@@ -74,7 +74,7 @@ func NewBrummerTest(t *testing.T) *BrummerTest {
 	}
 
 	// Copy fixtures
-	if err := copyFixtures(fixturesDir, workDir); err != nil {
+	if err := CopyFixtures(fixturesDir, workDir); err != nil {
 		t.Fatalf("failed to copy fixtures from %s: %v", fixturesDir, err)
 	}
 
@@ -220,8 +220,8 @@ func (bt *BrummerTest) Cleanup() {
 	bt.Stop()
 }
 
-// copyFixtures copies test fixtures to the work directory
-func copyFixtures(src, dst string) error {
+// CopyFixtures copies test fixtures to the work directory
+func CopyFixtures(src, dst string) error {
 	return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err

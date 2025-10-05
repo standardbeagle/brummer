@@ -1,0 +1,224 @@
+#!/usr/bin/expect -f
+
+# Shutdown Sequences Test
+# Tests various ways to shut down the application
+
+set timeout 30
+if {[info exists env(BRUMMER_BINARY)]} {
+    set binary_path $env(BRUMMER_BINARY)
+} else {
+    set binary_path "./brum"
+}
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "🚪 Testing Shutdown Sequences"
+puts "============================="
+
+# Test 1: Normal quit with 'q'
+puts ""
+puts "🔍 Test 1: Normal quit with 'q'"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "q"
+expect {
+    timeout {
+        puts "❌ 'q' command failed to quit"
+        send "\x03"  # Force quit
+        expect eof
+    }
+    eof {
+        puts "✅ Normal quit with 'q' successful"
+    }
+}
+
+# Test 2: CTRL+C shutdown
+puts ""
+puts "🔍 Test 2: CTRL+C shutdown"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "\003"  # CTRL+C
+expect {
+    timeout {
+        puts "❌ CTRL+C failed to quit"
+        close
+    }
+    eof {
+        puts "✅ CTRL+C shutdown successful"
+    }
+}
+
+# Test 3: CTRL+D (EOF) shutdown
+puts ""
+puts "🔍 Test 3: CTRL+D (EOF) shutdown"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "\004"  # CTRL+D
+expect {
+    timeout {
+        puts "❌ CTRL+D failed to quit"
+        send "\x03"  # Force quit
+        expect eof
+    }
+    eof {
+        puts "✅ CTRL+D shutdown successful"
+    }
+}
+
+# Test 4: Multiple CTRL+C attempts
+puts ""
+puts "🔍 Test 4: Multiple CTRL+C attempts"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "\x03"
+sleep 1
+send "\x03"
+sleep 1
+send "\x03"
+expect {
+    timeout {
+        puts "❌ Multiple CTRL+C failed"
+        close
+    }
+    eof {
+        puts "✅ Multiple CTRL+C shutdown successful"
+    }
+}
+
+# Test 5: Navigate then quit
+puts ""
+puts "🔍 Test 5: Navigate then quit"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Navigate around first
+send "2"
+sleep 1
+send "6"
+sleep 1
+send "1"
+sleep 1
+
+# Then quit
+send "q"
+expect {
+    timeout {
+        puts "❌ Quit after navigation failed"
+        send "\x03"
+        expect eof
+    }
+    eof {
+        puts "✅ Navigation + quit successful"
+    }
+}
+
+# Test 6: Quit from AI Coders tab specifically
+puts ""
+puts "🔍 Test 6: Quit from AI Coders tab"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Go to AI Coders tab
+send "6"
+sleep 2
+
+# Try to quit
+send "q"
+expect {
+    timeout {
+        puts "❌ Quit from AI Coders failed"
+        send "\x03"
+        expect eof
+    }
+    eof {
+        puts "✅ Quit from AI Coders successful"
+    }
+}
+
+# Test 7: Force quit scenario
+puts ""
+puts "🔍 Test 7: Force quit scenario"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Send various quit attempts
+send "q"
+sleep 1
+send "\x03"
+sleep 1
+send "\x04"
+sleep 1
+send "quit"
+sleep 1
+send "exit"
+sleep 1
+
+expect {
+    timeout {
+        puts "⚠️  Force quit failed, closing connection"
+        close
+    }
+    eof {
+        puts "✅ Force quit successful"
+    }
+}
+
+# Test 8: Signal handling test
+puts ""
+puts "🔍 Test 8: Signal handling test"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Try to interrupt during activity
+send "/"  # Open command
+sleep 1
+send "help"
+sleep 1
+send "\x03"  # Interrupt during command
+sleep 2
+
+expect {
+    timeout {
+        puts "❌ Signal during command failed"
+        send "\x03"
+        expect eof
+    }
+    eof {
+        puts "✅ Signal during command handled"
+    }
+}
+
+puts ""
+puts "🎉 Shutdown sequences test completed!"
+puts ""
+puts "📊 Summary:"
+puts "  - Tested normal quit ('q')"
+puts "  - Tested interrupt (CTRL+C)"
+puts "  - Tested EOF (CTRL+D)"
+puts "  - Tested multiple interrupt attempts"
+puts "  - Tested quit after navigation"
+puts "  - Tested quit from specific tabs"
+puts "  - Tested force quit scenarios"
+puts "  - Tested signal handling during operations"

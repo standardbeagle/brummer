@@ -1,0 +1,201 @@
+#!/usr/bin/expect -f
+
+# Global Commands Test
+# Tests global commands like CTRL+C, '?', 'q', and other keyboard shortcuts
+
+set timeout 30
+if {[info exists env(BRUMMER_BINARY)]} {
+    set binary_path $env(BRUMMER_BINARY)
+} else {
+    set binary_path "./brum"
+}
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "⌨️  Testing Global Commands"
+puts "=========================="
+
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Test 1: Help command (?)
+puts ""
+puts "🔍 Test 1: Help command (?)"
+send "?"
+sleep 2
+puts "✅ Help command executed"
+
+# Test 2: Try invalid keys and see response
+puts ""
+puts "🔍 Test 2: Invalid key handling"
+send "x"
+sleep 1
+puts "✅ Invalid key 'x' handled"
+
+send "ctrl"
+sleep 1
+puts "✅ Invalid key sequence 'ctrl' handled"
+
+# Test 3: Navigate to different tabs and test global commands work everywhere
+puts ""
+puts "🔍 Test 3: Global commands work in different contexts"
+
+# Navigate to Processes tab
+send "2"
+sleep 1
+
+# Test help in Processes context
+send "?"
+sleep 1
+puts "✅ Help works in Processes tab"
+
+# Navigate to AI Coders tab
+send "6"
+sleep 1
+
+# Test help in AI Coders context
+send "?"
+sleep 1
+puts "✅ Help works in AI Coders tab"
+
+# Navigate back to Logs
+send "1"
+sleep 1
+
+# Test 4: Try CTRL+C (this should trigger interrupt)
+puts ""
+puts "🔍 Test 4: CTRL+C interrupt"
+send -raw "\003"  # CTRL+C
+sleep 2
+
+# Check if app is still running
+expect {
+    timeout {
+        puts "✅ App survived CTRL+C (continuing with other tests)"
+    }
+    eof {
+        puts "✅ App exited cleanly with CTRL+C"
+        exit 0
+    }
+}
+
+# Test 5: Try other control sequences
+puts ""
+puts "🔍 Test 5: Other control sequences"
+
+# Try CTRL+Z (suspend)
+send -raw "\032"  # CTRL+Z
+sleep 1
+
+# Try CTRL+D (EOF)
+send "\004"  # CTRL+D
+sleep 1
+
+# Try ESC key
+send "\033"
+sleep 1
+
+puts "✅ Control sequences tested"
+
+# Test 6: Arrow keys (if supported)
+puts ""
+puts "🔍 Test 6: Arrow keys"
+send "\033\[A"  # Up arrow
+sleep 1
+
+send "\033\[B"  # Down arrow
+sleep 1
+
+send "\033\[C"  # Right arrow
+sleep 1
+
+send "\033\[D"  # Left arrow
+sleep 1
+
+puts "✅ Arrow keys tested"
+
+# Test 7: Function keys (F1-F4)
+puts ""
+puts "🔍 Test 7: Function keys"
+send "\033OP"  # F1
+sleep 1
+
+send "\033OQ"  # F2
+sleep 1
+
+send "\033OR"  # F3
+sleep 1
+
+send "\033OS"  # F4
+sleep 1
+
+puts "✅ Function keys tested"
+
+# Test 8: Tab and Enter keys
+puts ""
+puts "🔍 Test 8: Tab and Enter keys"
+send "\011"    # Tab
+sleep 1
+
+send "\015"    # Enter
+sleep 1
+
+puts "✅ Tab and Enter tested"
+
+# Test 9: Space bar
+puts ""
+puts "🔍 Test 9: Space bar"
+send " "
+sleep 1
+
+puts "✅ Space bar tested"
+
+# Test 10: Multiple rapid keystrokes
+puts ""
+puts "🔍 Test 10: Rapid keystroke handling"
+send "abc123"
+sleep 1
+
+send "\003\003\003"  # Multiple CTRL+C
+sleep 2
+
+puts "✅ Rapid keystrokes tested"
+
+# Test 11: Final shutdown attempt
+puts ""
+puts "🔍 Test 11: Final shutdown"
+
+# Try 'q' key first
+send "q"
+sleep 2
+
+# If still running, try CTRL+C again
+expect {
+    timeout {
+        puts "⚠️  App still running, trying CTRL+C"
+        send "\003"
+        sleep 2
+    }
+    eof {
+        puts "✅ App exited with 'q' command"
+        exit 0
+    }
+}
+
+# Check final state
+expect {
+    timeout {
+        puts "⚠️  App still running, force closing"
+        close
+    }
+    eof {
+        puts "✅ App exited cleanly"
+    }
+}
+
+puts ""
+puts "🎉 Global commands test completed!"

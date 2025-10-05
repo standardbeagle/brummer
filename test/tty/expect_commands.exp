@@ -1,0 +1,65 @@
+#!/usr/bin/expect -f
+
+# Slash Commands Test
+# Tests slash command functionality
+
+set timeout 45
+if {[info exists env(BRUMMER_BINARY)]} {
+    set binary_path $env(BRUMMER_BINARY)
+} else {
+    set binary_path "./brum"
+}
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "💬 Testing Slash Commands"
+puts "========================"
+
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Test help command
+send "/"
+expect {
+    timeout { puts "⏰ Command prompt timeout"; exit 1 }
+    ":" { puts "✅ Command prompt opened" }
+}
+
+send "help"
+send "\r"
+sleep 2
+puts "✅ Help command executed"
+
+# Test run command (if package.json exists)
+send "/"
+expect ":"
+send "run --help"
+send "\r"
+sleep 3
+puts "✅ Run command help executed"
+
+# Test settings command
+send "/"
+expect ":"
+send "settings"
+send "\r"
+sleep 2
+puts "✅ Settings command executed"
+
+# Test quit command
+send "/"
+expect ":"
+send "quit"
+send "\r"
+sleep 2
+puts "✅ Quit command executed"
+
+# If still running, try 'q' key
+send "q"
+expect eof
+
+puts "🎉 Commands test completed successfully!"

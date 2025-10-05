@@ -1,0 +1,67 @@
+#!/usr/bin/expect -f
+
+# Debug Quit Test
+# Test the quit mechanism step by step
+
+set timeout 10
+if {[info exists env(BRUMMER_BINARY)]} {
+    set binary_path $env(BRUMMER_BINARY)
+} else {
+    set binary_path "./brum"
+}
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "🔧 Debug Quit Test"
+puts "=================="
+
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+puts "🔍 Testing single 'q' key press..."
+send "q"
+sleep 2
+
+# Look for the warning message in the output
+expect {
+    "Press quit key again within 2 seconds to exit" {
+        puts "✅ Warning message found"
+    }
+    timeout {
+        puts "⚠️  Warning message not found in timeout"
+    }
+}
+
+puts "🔍 Testing second 'q' key press..."
+send "q"
+sleep 3
+
+expect {
+    eof {
+        puts "✅ App quit successfully with double 'q'"
+    }
+    timeout {
+        puts "❌ App did not quit - there might be an issue"
+        # Try CTRL+C as fallback
+        puts "🔍 Trying CTRL+C as fallback..."
+        send "\003"
+        sleep 1
+        send "\003"
+        expect {
+            eof {
+                puts "✅ App quit with double CTRL+C"
+            }
+            timeout {
+                puts "❌ Even CTRL+C failed - closing connection"
+                close
+            }
+        }
+    }
+}
+
+puts ""
+puts "🎉 Debug test completed!"

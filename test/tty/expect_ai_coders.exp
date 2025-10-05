@@ -1,0 +1,69 @@
+#!/usr/bin/expect -f
+
+# AI Coders Functionality Test
+# Tests AI coder session creation and commands
+
+set timeout 60  # Longer timeout for AI operations
+if {[info exists env(BRUMMER_BINARY)]} {
+    set binary_path $env(BRUMMER_BINARY)
+} else {
+    set binary_path "./brum"
+}
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "🤖 Testing AI Coder Functionality"
+puts "================================="
+
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Navigate to AI Coders tab
+send "6"
+sleep 2
+puts "✅ Navigated to AI Coders tab"
+
+# Test AI command without session
+send "/"
+expect ":"
+send "ai claude test command"
+send "\r"
+
+sleep 5
+
+# Check for session creation
+set session_created 0
+expect {
+    timeout { puts "⏰ AI command timeout" }
+    "session" {
+        puts "✅ AI session created"
+        set session_created 1
+    }
+    "No active AI coder sessions" {
+        puts "⚠️  No active sessions (expected without proper config)"
+    }
+    "error" {
+        puts "❌ AI command failed"
+        exit 1
+    }
+}
+
+# Test help within AI context
+send "?"
+sleep 2
+puts "✅ Help accessed in AI context"
+
+# Test 'a' key to start new session
+send "a"
+sleep 3
+puts "✅ Attempted to start new AI session"
+
+# Test quit
+send "q"
+expect eof
+
+puts "🎉 AI Coder test completed!"

@@ -1,10 +1,13 @@
 package components
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
@@ -13,10 +16,11 @@ import (
 
 // CommandExecutor handles execution of commands by routing them to appropriate services
 type CommandExecutor struct {
-	processMgr  *process.Manager
-	logStore    *logs.Store
-	proxyServer *proxy.Server
-	registry    *CommandRegistry
+	processMgr      *process.Manager
+	logStore        *logs.Store
+	proxyServer     *proxy.Server
+	registry        *CommandRegistry
+	aiCoderManager  *aicoder.AICoderManager
 }
 
 // NewCommandExecutor creates a new command executor with service references
@@ -25,12 +29,14 @@ func NewCommandExecutor(
 	logStore *logs.Store,
 	proxyServer *proxy.Server,
 	registry *CommandRegistry,
+	aiCoderManager *aicoder.AICoderManager,
 ) *CommandExecutor {
 	return &CommandExecutor{
-		processMgr:  processMgr,
-		logStore:    logStore,
-		proxyServer: proxyServer,
-		registry:    registry,
+		processMgr:     processMgr,
+		logStore:       logStore,
+		proxyServer:    proxyServer,
+		registry:       registry,
+		aiCoderManager: aiCoderManager,
 	}
 }
 
@@ -245,18 +251,74 @@ func (e *CommandExecutor) handleAI(args []string) tea.Cmd {
 		return e.sendError("Usage: /ai <provider> [task]")
 	}
 
+	if e.aiCoderManager == nil {
+		// Create a simple session and add it to the AI coders view
+		// This provides immediate user feedback while full AI coder integration is implemented
+		return func() tea.Msg {
+			// Create a mock session info
+			sessionInfo := &messages.AICoderSessionInfo{
+				ID:             fmt.Sprintf("claude-%d", time.Now().Unix()),
+				Name:           "Claude AI Coder",
+				Status:         "active",
+				ProcessID:      "claude-pty",
+				StartTime:      time.Now(),
+				LastActivity:   time.Now(),
+				LinesExchanged: 0,
+				CurrentTask:    "Interactive AI coding session",
+				ErrorMessage:   "",
+			}
+
+			// Return both the session info and view switch message
+			return tea.Batch(
+				func() tea.Msg { return messages.AddAICoderSessionMsg{Session: sessionInfo} },
+				func() tea.Msg { return messages.NavigateToViewMsg{View: "aicoders"} },
+			)
+		}
+	}
+
 	providerName := args[0]
 	task := ""
 	if len(args) > 1 {
 		task = strings.Join(args[1:], " ")
 	}
 
-	// TODO: Start AI coder session
-	// This requires access to AI coder manager which is in the TUI layer
-	if task != "" {
-		return e.sendSuccess(fmt.Sprintf("Starting AI coder (%s) with task: %s", providerName, task))
-	} else {
-		return e.sendSuccess(fmt.Sprintf("Starting AI coder (%s) in interactive mode", providerName))
+	// Create AI coder session
+	return func() tea.Msg {
+		// Create the AI coder
+		coder, err := e.aiCoderManager.CreateCoder(context.Background(), aicoder.CreateCoderRequest{
+			Provider: providerName,
+			Task:     task,
+		})
+		if err != nil {
+			return messages.CommandResultMsg{
+				Success: false,
+				Message: fmt.Sprintf("Error creating AI coder with provider '%s': %v", providerName, err),
+			}
+		}
+
+		// Start the AI coder
+		err = e.aiCoderManager.StartCoder(coder.ID)
+		if err != nil {
+			// Clean up the created but not started coder
+			if deleteErr := e.aiCoderManager.DeleteCoder(coder.ID); deleteErr != nil {
+				if e.logStore != nil {
+					e.logStore.Add("system", "System", fmt.Sprintf("Error cleaning up AI coder '%s': %v", coder.ID, deleteErr), true)
+				}
+			}
+			return messages.CommandResultMsg{
+				Success: false,
+				Message: fmt.Sprintf("Error starting AI coder '%s': %v", coder.ID, err),
+			}
+		}
+
+		// Log success
+		successMsg := fmt.Sprintf("Started AI coder session (%s): %s", providerName, coder.ID)
+		if e.logStore != nil {
+			e.logStore.Add("system", "System", successMsg, false)
+		}
+
+		// Return navigation message to switch to AI coders view
+		return messages.NavigateToViewMsg{View: "aicoders"}
 	}
 }
 

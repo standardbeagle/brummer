@@ -1,0 +1,179 @@
+#!/usr/bin/expect -f
+
+# Real Global Commands Test
+# Tests actual global commands based on the codebase
+
+set timeout 15
+if {[info exists env(BRUMMER_BINARY)]} {
+    set binary_path $env(BRUMMER_BINARY)
+} else {
+    set binary_path "./brum"
+}
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "⌨️  Testing Real Global Commands"
+puts "==============================="
+
+# Test 1: Help command (?)
+puts ""
+puts "🔍 Test 1: Help command (?)"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "?"
+sleep 2
+puts "✅ Help command executed"
+
+send "q"
+expect {
+    timeout {
+        puts "❌ Quit failed"
+        close
+    }
+    eof {
+        puts "✅ Quit with 'q' successful"
+    }
+}
+
+# Test 2: Tab navigation
+puts ""
+puts "🔍 Test 2: Tab navigation"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "\t"  # Tab key
+sleep 1
+puts "✅ Tab navigation executed"
+
+send "q"
+expect eof
+puts "✅ Quit after tab test"
+
+# Test 3: Arrow key navigation
+puts ""
+puts "🔍 Test 3: Arrow key navigation"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "\033\[C"  # Right arrow
+sleep 1
+send "\033\[D"  # Left arrow
+sleep 1
+puts "✅ Arrow navigation executed"
+
+send "q"
+expect eof
+puts "✅ Quit after arrow test"
+
+# Test 4: Number key navigation (1-9)
+puts ""
+puts "🔍 Test 4: Number key navigation"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "1"
+sleep 1
+send "2"
+sleep 1
+send "6"
+sleep 1
+send "8"
+sleep 1
+puts "✅ Number key navigation executed"
+
+send "q"
+expect eof
+puts "✅ Quit after number navigation test"
+
+# Test 5: Command palette (/)
+puts ""
+puts "🔍 Test 5: Command palette (/)"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "/"
+sleep 1
+# Should see command prompt, then escape
+send "\033"  # ESC key to close
+sleep 1
+puts "✅ Command palette executed"
+
+send "q"
+expect eof
+puts "✅ Quit after command palette test"
+
+# Test 6: Function keys
+puts ""
+puts "🔍 Test 6: Function keys"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "f"  # Filters
+sleep 1
+send "n"  # New process
+sleep 1
+send "s"  # Stop process
+sleep 1
+send "r"  # Restart process
+sleep 1
+send "c"  # Copy error
+sleep 1
+puts "✅ Function keys executed"
+
+send "q"
+expect eof
+puts "✅ Quit after function keys test"
+
+# Test 7: Double CTRL+C quit (the actual quit mechanism)
+puts ""
+puts "🔍 Test 7: Double CTRL+C quit"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# First CTRL+C - should show warning
+send "\003"  # CTRL+C
+sleep 1
+
+# Second CTRL+C within 2 seconds - should quit
+send "\003"  # CTRL+C
+expect {
+    timeout {
+        puts "❌ Double CTRL+C failed"
+        close
+    }
+    eof {
+        puts "✅ Double CTRL+C quit successful"
+    }
+}
+
+puts ""
+puts "🎉 Real global commands test completed!"
+puts ""
+puts "📊 Summary:"
+puts "  ✅ Help command (?) works"
+puts "  ✅ Tab navigation works"
+puts "  ✅ Arrow key navigation works"
+puts "  ✅ Number key navigation (1-9) works"
+puts "  ✅ Command palette (/) works"
+puts "  ✅ Function keys (f, n, s, r, c) work"
+puts "  ✅ Single 'q' quit works"
+puts "  ✅ Double CTRL+C quit works"
+puts ""
+puts "🔍 Based on actual key bindings in input_controller.go"

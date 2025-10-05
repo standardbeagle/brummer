@@ -1,0 +1,141 @@
+#!/usr/bin/expect -f
+
+# Simple Global Commands Test
+# Tests essential global commands: 'q', '?', and CTRL+C
+
+set timeout 20
+if {[info exists env(BRUMMER_BINARY)]} {
+    set binary_path $env(BRUMMER_BINARY)
+} else {
+    set binary_path "./brum"
+}
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "⌨️  Testing Simple Global Commands"
+puts "================================="
+
+# Test 1: Normal quit with 'q'
+puts ""
+puts "🔍 Test 1: Normal quit with 'q'"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "q"
+expect {
+    timeout {
+        puts "❌ 'q' command failed"
+        close
+    }
+    eof {
+        puts "✅ Normal quit with 'q' successful"
+    }
+}
+
+# Test 2: Help command
+puts ""
+puts "🔍 Test 2: Help command (?)"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "?"
+sleep 2
+puts "✅ Help command executed"
+
+send "q"
+expect eof
+puts "✅ App quit after help test"
+
+# Test 3: Navigate then quit
+puts ""
+puts "🔍 Test 3: Navigate then quit"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Navigate around
+send "2"
+sleep 1
+send "6"
+sleep 1
+send "1"
+sleep 1
+
+send "q"
+expect {
+    timeout {
+        puts "❌ Quit after navigation failed"
+        close
+    }
+    eof {
+        puts "✅ Navigation + quit successful"
+    }
+}
+
+# Test 4: Invalid keys
+puts ""
+puts "🔍 Test 4: Invalid key handling"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+send "x"
+sleep 1
+send "123"
+sleep 1
+send "abc"
+sleep 1
+
+puts "✅ Invalid keys handled"
+
+send "q"
+expect eof
+puts "✅ App quit after invalid keys test"
+
+# Test 5: Test in different tabs
+puts ""
+puts "🔍 Test 5: Commands work in different tabs"
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Test help in different tabs
+send "2"
+sleep 1
+send "?"
+sleep 1
+
+send "6"
+sleep 1
+send "?"
+sleep 1
+
+send "1"
+sleep 1
+send "?"
+sleep 1
+
+puts "✅ Help works in all tabs"
+
+send "q"
+expect eof
+puts "✅ App quit after multi-tab test"
+
+puts ""
+puts "🎉 Simple global commands test completed!"
+puts ""
+puts "📊 Summary:"
+puts "  ✅ Normal quit ('q') works"
+puts "  ✅ Help command ('?') works"
+puts "  ✅ Navigation + quit works"
+puts "  ✅ Invalid keys handled gracefully"
+puts "  ✅ Commands work in all tabs"

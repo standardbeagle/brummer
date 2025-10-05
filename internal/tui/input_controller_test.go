@@ -158,6 +158,87 @@ func TestInputController_SearchMode(t *testing.T) {
 	_ = handled // The actual search behavior is tested in logs view controller tests
 }
 
+// TestInputController_HierarchicalKeyHandling tests that the InputController properly handles
+// global keys through the hierarchical key handler system
+func TestInputController_HierarchicalKeyHandling(t *testing.T) {
+	// Create a test model
+	model := createTestModel()
+
+	// Initialize the model
+	model.Init()
+
+	// Create input controller
+	ic := NewInputController(model, keys, viewConfigs, false)
+
+	// Test cases for keys that should be handled by the hierarchical system
+	testCases := []struct {
+		name           string
+		keyMsg         tea.KeyMsg
+		shouldBeHandled bool
+	}{
+		{
+			name:           "Number key 1",
+			keyMsg:         tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}},
+			shouldBeHandled: true,
+		},
+		{
+			name:           "Number key 2",
+			keyMsg:         tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}},
+			shouldBeHandled: true,
+		},
+		{
+			name:           "Left arrow",
+			keyMsg:         tea.KeyMsg{Type: tea.KeyLeft},
+			shouldBeHandled: true,
+		},
+		{
+			name:           "Right arrow",
+			keyMsg:         tea.KeyMsg{Type: tea.KeyRight},
+			shouldBeHandled: true,
+		},
+		{
+			name:           "Tab key",
+			keyMsg:         tea.KeyMsg{Type: tea.KeyTab},
+			shouldBeHandled: true,
+		},
+		{
+			name:           "q key",
+			keyMsg:         tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}},
+			shouldBeHandled: true,
+		},
+		{
+			name:           "Ctrl+C",
+			keyMsg:         tea.KeyMsg{Type: tea.KeyCtrlC},
+			shouldBeHandled: true,
+		},
+		{
+			name:           "Question mark",
+			keyMsg:         tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}},
+			shouldBeHandled: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Reset model to a known state
+			model.navController.SwitchTo(ViewProcesses)
+
+			// Handle the key
+			_, _, handled := ic.HandleKeyMsg(tc.keyMsg)
+
+			if tc.shouldBeHandled && !handled {
+				t.Errorf("Expected key %s to be handled, but it wasn't", tc.name)
+			}
+
+			if !tc.shouldBeHandled && handled {
+				t.Errorf("Expected key %s to NOT be handled, but it was", tc.name)
+			}
+
+			t.Logf("Key %s: handled=%v", tc.name, handled)
+		})
+	}
+}
+
 // Helper function to create a test model
 func createTestModel() *Model {
 	// This would need to be implemented based on your actual model initialization

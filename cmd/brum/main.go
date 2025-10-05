@@ -26,6 +26,7 @@ import (
 	"github.com/standardbeagle/brummer/internal/tui/bridge"
 	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/internal/aicoder"
 )
 
 var (
@@ -120,6 +121,28 @@ func init() {
 	rootCmd.Version = Version
 }
 
+// aicoderEventBusAdapter adapts the main events.EventBus to the aicoder.EventBus interface
+type aicoderEventBusAdapter struct {
+	eventBus *events.EventBus
+}
+
+func (a *aicoderEventBusAdapter) Emit(eventType string, data interface{}) {
+	// Convert aicoder events to main event bus events
+	// For now, just log the event - can be expanded later
+	log.Printf("AI Coder Event: %s - %v", eventType, data)
+}
+
+// simpleAICoderConfig provides a minimal implementation of aicoder.Config
+type simpleAICoderConfig struct {
+	*config.ConfigWithSources
+}
+
+func (s *simpleAICoderConfig) GetProviderConfigs() map[string]*aicoder.ProviderConfig {
+	// Return empty provider configs for now
+	// This can be expanded later to read from the actual config
+	return make(map[string]*aicoder.ProviderConfig)
+}
+
 func main() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -173,6 +196,31 @@ func runApp(cmd *cobra.Command, args []string) {
 
 	logStore := logs.NewStore(10000, eventBus)
 	detector := logs.NewEventDetector(eventBus)
+
+	// Initialize AI coder manager
+	var aiCoderManager *aicoder.AICoderManager
+
+	// Create adapter for event bus to match aicoder.EventBus interface
+	eventBusAdapter := &aicoderEventBusAdapter{eventBus: eventBus}
+
+	// Load configuration for AI coder manager
+	configWithSources, err := config.LoadWithSources()
+	if err != nil {
+		log.Printf("Warning: Failed to load configuration for AI coder manager: %v", err)
+		// Create a minimal default config
+		configWithSources = &config.ConfigWithSources{}
+	}
+
+	// Wrap the config to implement the aicoder.Config interface
+	aiCoderConfig := &simpleAICoderConfig{ConfigWithSources: configWithSources}
+
+	aiCoderManager, err = aicoder.NewAICoderManagerWithoutMockProvider(aiCoderConfig, eventBusAdapter)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize AI coder manager: %v", err)
+		aiCoderManager = nil // Continue without AI coder functionality
+	} else {
+		log.Println("AI coder manager initialized successfully")
+	}
 
 	// Initialize proxy server if enabled
 	var proxyServer *proxy.Server
@@ -642,7 +690,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		registry.RegisterMultiple(components.GetDockerCommands())
 
 		// Create command executor
-		executor := components.NewCommandExecutor(processMgr, logStore, proxyServer, registry)
+		executor := components.NewCommandExecutor(processMgr, logStore, proxyServer, registry, aiCoderManager)
 		shell.SetCommandExecutor(executor)
 
 		// Create command input overlay

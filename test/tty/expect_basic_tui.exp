@@ -1,0 +1,73 @@
+#!/usr/bin/expect -f
+
+# Basic TUI Functionality Test
+# Tests that the TUI loads correctly and basic navigation works
+
+set timeout 30
+if {[info exists env(BRUMMER_BINARY)]} {
+    set binary_path $env(BRUMMER_BINARY)
+} else {
+    set binary_path "./brum"
+}
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "🚀 Testing Basic TUI Functionality"
+puts "================================="
+
+# Spawn application
+spawn $binary_path -d $test_dir --debug
+
+# Wait for startup
+expect {
+    timeout { puts "❌ Startup timeout"; exit 1 }
+    "AI coder manager initialized successfully" {
+        puts "✅ App started successfully"
+    }
+    eof { puts "❌ App exited unexpectedly"; exit 1 }
+}
+
+# Wait for TUI to initialize
+sleep 3
+
+# Verify TUI elements
+set tui_detected 0
+expect {
+    timeout { puts "⚠️  TUI detection timeout" }
+    -re "🐝 Brummer.*Development Buddy" {
+        puts "✅ Header detected"
+        set tui_detected 1
+    }
+    -re "│.*│" {
+        puts "✅ Tab separators detected"
+        set tui_detected 1
+    }
+}
+
+if {$tui_detected} {
+    puts "✅ TUI loaded successfully"
+} else {
+    puts "❌ TUI failed to load"
+    exit 1
+}
+
+# Test basic navigation
+send "2"
+sleep 1
+puts "✅ Navigated to Processes tab"
+
+send "6"
+sleep 1
+puts "✅ Navigated to AI Coders tab"
+
+send "1"
+sleep 1
+puts "✅ Navigated to Logs tab"
+
+# Test quit
+send "q"
+expect eof
+
+puts "🎉 Basic TUI test completed successfully!"

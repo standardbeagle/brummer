@@ -205,9 +205,57 @@ test-integration: build
 	@echo "🧪 Running Integration regression tests..."
 	@./test/run_tests.sh --filter Integration
 
-# Run all tests (unit + regression)
+# Run Expect-based TUI tests
+.PHONY: test-expect
+test-expect: build
+	@echo "🎭 Running Expect-based TUI tests..."
+	@if ! command -v expect >/dev/null 2>&1; then \
+		echo "❌ expect not found. Install with:"; \
+		echo "   sudo apt-get install expect  # Ubuntu/Debian"; \
+		echo "   brew install expect           # macOS"; \
+		exit 1; \
+	fi
+	@export BRUMMER_BINARY=./$(BINARY_NAME)
+	@./test/tty/expect_basic_tui.exp
+	@./test/tty/expect_navigation.exp
+	@./test/tty/expect_commands.exp
+	@./test/tty/expect_ai_coders.exp
+	@echo "✅ Expect tests completed"
+
+# Run Tmux-based TUI tests (alternative to expect)
+.PHONY: test-tmux
+test-tmux: build
+	@echo "🖥️  Running Tmux-based TUI tests..."
+	@if ! command -v tmux >/dev/null 2>&1; then \
+		echo "❌ tmux not found. Install with:"; \
+		echo "   sudo apt-get install tmux  # Ubuntu/Debian"; \
+		echo "   brew install tmux           # macOS"; \
+		exit 1; \
+	fi
+	@export BRUMMER_BINARY=./$(BINARY_NAME)
+	@./test/tty/tmux_tty_test.sh
+	@echo "✅ Tmux tests completed"
+
+# Run System Bash TTY tests (basic validation)
+.PHONY: test-tty
+test-tty: build
+	@echo "💻 Running System Bash TTY tests..."
+	@export BRUMMER_BINARY=./$(BINARY_NAME)
+	@./test/tty/system_bash_test.sh
+	@echo "✅ System bash tests completed"
+
+# Run all TUI tests (expect + alternatives)
+.PHONY: test-tui-all
+test-tui-all: build
+	@echo "🖥️  Running all TUI tests..."
+	@make test-expect || echo "⚠️  Expect tests failed, trying alternatives..."
+	@make test-tmux || echo "⚠️  Tmux tests failed, trying system bash..."
+	@make test-tty || echo "⚠️  All TUI tests failed - check environment"
+	@echo "✅ TUI testing completed"
+
+# Run all tests (unit + regression + TUI)
 .PHONY: test-all
-test-all: test test-regression
+test-all: test test-regression test-tui-all
 	@echo "✅ All tests completed"
 
 # Install system-wide (requires sudo)

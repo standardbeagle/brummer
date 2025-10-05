@@ -1,5 +1,7 @@
 package messages
 
+import "time"
+
 // CommandResultMsg is a message that indicates the result of a command.
 type CommandResultMsg struct {
 	Success bool
@@ -19,4 +21,22 @@ type ServiceStatusUpdateMsg struct {
 	Service string // "mcp", "proxy", "ai_coders", "processes"
 	Status  string // "running", "stopped", "error", "starting"
 	Details string // Optional details like port count, error message, etc.
+}
+
+// AICoderSessionInfo holds information about an AI coder session for display
+type AICoderSessionInfo struct {
+	ID             string
+	Name           string
+	Status         string // "active", "idle", "error", "stopped"
+	ProcessID      string
+	StartTime      time.Time
+	LastActivity   time.Time
+	LinesExchanged int
+	CurrentTask    string
+	ErrorMessage   string
+}
+
+// AddAICoderSessionMsg is a message that adds a new AI coder session to the view
+type AddAICoderSessionMsg struct {
+	Session *AICoderSessionInfo
 }

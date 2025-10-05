@@ -1,0 +1,162 @@
+#!/usr/bin/expect -f
+
+# Expect TTY Test Script
+# This provides full TTY control for testing Brummer
+
+set timeout 30
+set binary_path [getenv BRUMMER_BINARY "./brum"]
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "🎭 EXPECT TTY TEST"
+puts "=================="
+puts "📋 Binary: $binary_path"
+puts "📁 Test directory: $test_dir"
+
+# Check if we're in a TTY
+if {! [isatty stdin]} {
+    puts "❌ Not running in a TTY environment"
+    exit 1
+}
+
+puts "✅ TTY environment detected"
+puts "🚀 Starting Brummer with expect control..."
+
+# Spawn the application
+spawn $binary_path -d $test_dir --debug
+set app_pid $spawn_id
+
+puts "📱 App spawned with PID: $app_pid"
+
+# Expect initial startup messages
+expect {
+    timeout { puts "❌ Timeout waiting for startup"; exit 1 }
+    "AI coder manager initialized successfully" { puts "✅ AI coder manager initialized" }
+    eof { puts "❌ App exited unexpectedly"; exit 1 }
+}
+
+# Wait a bit more for TUI to initialize
+sleep 3
+
+# Test 1: Check if TUI interface is visible
+puts ""
+puts "🔍 Test 1: Checking TUI interface..."
+
+# Try to detect TUI elements
+set found_tui 0
+
+# Look for header (this might be tricky with escape sequences)
+expect {
+    timeout { puts "⏱️  Timeout detecting TUI" }
+    -re "Brummer.*Development Buddy" {
+        puts "✅ TUI header detected"
+        set found_tui 1
+    }
+    -re "│.*│" {
+        puts "✅ Tab separators detected"
+        set found_tui 1
+    }
+}
+
+if {$found_tui} {
+    puts "✅ TUI interface appears to be loaded"
+} else {
+    puts "❌ TUI interface not clearly detected"
+    puts "📋 Current screen content:"
+    # Try to capture current screen
+    send " "
+    expect -re ".*" { puts "Screen content: $expect_out(buffer)" }
+}
+
+# Test 2: Test tab navigation
+puts ""
+puts "🔄 Test 2: Testing tab navigation..."
+
+# Try pressing '2' for Processes tab
+send "2"
+sleep 1
+
+# Try pressing '6' for AI Coders tab
+send "6"
+sleep 1
+
+# Try pressing '1' for Logs tab
+send "1"
+sleep 1
+
+puts "✅ Tab navigation keys sent"
+
+# Test 3: Test slash command
+puts ""
+puts "💬 Test 3: Testing slash command..."
+
+# Press '/' to open command input
+send "/"
+sleep 1
+
+# Type 'help' command
+send "help"
+sleep 1
+
+# Press Enter
+send "\r"
+sleep 2
+
+puts "✅ Help command sent"
+
+# Test 4: Test AI command
+puts ""
+puts "🤖 Test 4: Testing AI command..."
+
+# Press '/' to open command input
+send "/"
+sleep 1
+
+# Type AI command
+send "ai claude test expect script"
+sleep 1
+
+# Press Enter
+send "\r"
+sleep 3
+
+puts "✅ AI command sent"
+
+# Test 5: Try to capture final state
+puts ""
+puts "📊 Test 5: Final state check..."
+
+# Try pressing '?' for help
+send "?"
+sleep 2
+
+puts "✅ Help key pressed"
+
+# Wait a bit more
+sleep 3
+
+# Test 6: Try to quit
+puts ""
+puts "🚪 Test 6: Attempting to quit..."
+
+# Try 'q' to quit
+send "q"
+sleep 2
+
+# Try Ctrl+C if still running
+send "\x03"
+sleep 1
+
+# Wait for app to exit
+expect {
+    timeout { puts "⚠️  App still running, forcing exit"; close }
+    eof { puts "✅ App exited cleanly" }
+}
+
+puts ""
+puts "🎯 EXPECT TTY TEST COMPLETED"
+puts "==========================="
+puts "💡 This test demonstrates full TTY control is possible"
+puts "💡 For automated testing, consider extending this expect script"

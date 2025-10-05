@@ -339,6 +339,69 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			s.helpOverlay.SetSize(msg.Width, msg.Height)
 		}
 
+	case messages.NavigateToViewMsg:
+		// Handle view navigation requests
+		switch msg.View {
+		case "logs":
+			if s.logsView != nil {
+				s.currentView = "logs"
+			}
+		case "processes":
+			if s.processView != nil {
+				s.currentView = "processes"
+			}
+		case "urls":
+			if s.urlsView != nil {
+				s.currentView = "urls"
+			}
+		case "errors":
+			if s.errorsView != nil {
+				s.currentView = "errors"
+			}
+		case "web":
+			if s.webView != nil {
+				s.currentView = "web"
+			}
+		case "aicoders":
+			if s.aicodersView != nil {
+				s.currentView = "aicoders"
+			}
+		case "mcp":
+			if s.mcpView != nil {
+				s.currentView = "mcp"
+			}
+		case "settings":
+			if s.settingsView != nil {
+				s.currentView = "settings"
+			}
+		case "diagnostic":
+			if s.diagnosticView != nil {
+				s.currentView = "diagnostic"
+			}
+		default:
+			// Unknown view, ignore
+		}
+
+	case messages.AddAICoderSessionMsg:
+		// Add session to AI coders view
+		if s.aicodersView != nil {
+			if aiCodersView, ok := s.aicodersView.(*AICodersViewComponent); ok {
+				// Convert message session info to component session info
+				sessionInfo := &SessionInfo{
+					ID:             msg.Session.ID,
+					Name:           msg.Session.Name,
+					Status:         msg.Session.Status,
+					ProcessID:      msg.Session.ProcessID,
+					StartTime:      msg.Session.StartTime,
+					LastActivity:   msg.Session.LastActivity,
+					LinesExchanged: msg.Session.LinesExchanged,
+					CurrentTask:    msg.Session.CurrentTask,
+					ErrorMessage:   msg.Session.ErrorMessage,
+				}
+				aiCodersView.AddSession(sessionInfo)
+			}
+		}
+
 	case messages.LogAddedMsg:
 		// Route log messages to logs component
 		if s.logsView != nil {
@@ -542,6 +605,11 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	return s, tea.Batch(cmds...)
+}
+
+// GetCurrentView returns the current view name (for testing/debugging)
+func (s *IntegratedShell) GetCurrentView() string {
+	return s.currentView
 }
 
 // View renders the current component

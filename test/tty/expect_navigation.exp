@@ -1,0 +1,62 @@
+#!/usr/bin/expect -f
+
+# Tab Navigation Test
+# Tests comprehensive tab navigation functionality
+
+set timeout 30
+if {[info exists env(BRUMMER_BINARY)]} {
+    set binary_path $env(BRUMMER_BINARY)
+} else {
+    set binary_path "./brum"
+}
+set test_dir [lindex $argv 0]
+if {$test_dir == ""} {
+    set test_dir [pwd]
+}
+
+puts "🔄 Testing Tab Navigation"
+puts "========================="
+
+spawn $binary_path -d $test_dir --debug
+
+expect "AI coder manager initialized successfully"
+sleep 3
+
+# Test all tabs (1-8)
+set tabs {
+    "1" "Logs"
+    "2" "Processes"
+    "3" "Proxy"
+    "4" "AI Chat"
+    "5" "Config"
+    "6" "AI Coders"
+    "7" "MCP"
+    "8" "Help"
+}
+
+foreach {tab_num tab_name} $tabs {
+    send "$tab_num"
+    sleep 1
+    puts "✅ Navigated to $tab_name tab (key $tab_num)"
+}
+
+# Test reverse navigation
+for {set i 8} {$i >= 1} {incr i -1} {
+    send "$i"
+    sleep 1
+    puts "✅ Navigated to tab $i"
+}
+
+# Test invalid tab numbers
+send "9"
+sleep 1
+puts "✅ Handled invalid tab number (9)"
+
+send "0"
+sleep 1
+puts "✅ Handled invalid tab number (0)"
+
+send "q"
+expect eof
+
+puts "🎉 Navigation test completed successfully!"

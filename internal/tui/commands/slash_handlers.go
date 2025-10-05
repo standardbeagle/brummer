@@ -112,6 +112,8 @@ func HandleSlashCommand(ctx *SlashCommandContext, input string) {
 		}
 		providerName := parts[1]
 		ctx.StartAICoder(providerName)
+		// Switch to AI Coders view
+		*ctx.CurrentView = "ai-coders"
 
 	case "/term":
 		ctx.ShowTerminal()

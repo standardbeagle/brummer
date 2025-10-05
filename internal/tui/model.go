@@ -186,6 +186,8 @@ type keyMap struct {
 	Back          key.Binding
 	Quit          key.Binding
 	Tab           key.Binding
+	Left          key.Binding
+	Right         key.Binding
 	Command       key.Binding
 	Filter        key.Binding
 	Stop          key.Binding
@@ -227,6 +229,14 @@ var keys = keyMap{
 	Tab: key.NewBinding(
 		key.WithKeys("tab"),
 		key.WithHelp("tab", "switch view"),
+	),
+	Left: key.NewBinding(
+		key.WithKeys("left"),
+		key.WithHelp("←", "previous view"),
+	),
+	Right: key.NewBinding(
+		key.WithKeys("right"),
+		key.WithHelp("→", "next view"),
 	),
 	Command: key.NewBinding(
 		key.WithKeys("/"),
