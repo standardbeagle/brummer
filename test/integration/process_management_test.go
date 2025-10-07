@@ -51,18 +51,19 @@ func TestProcessManagementWorkflow(t *testing.T) {
 	// Test Step 3: Press Enter to start a stopped process
 	t.Run("start_process", func(t *testing.T) {
 		// Start the "dev" process
-		processID, err := ctx.ProcessMgr.StartScript("dev")
+		proc, err := ctx.ProcessMgr.StartScript("dev")
 		assert.NoError(t, err, "Should start dev script")
+		assert.NotNil(t, proc, "Process should not be nil")
 
 		// Wait for process to reach running status
-		ctx.WaitForProcess(processID, process.ProcessStatusRunning, 3*time.Second)
+		ctx.WaitForProcess(proc.ID, process.ProcessStatusRunning, 3*time.Second)
 
 		// Verify process is running
-		ctx.AssertProcessStatus(processID, process.ProcessStatusRunning)
+		ctx.AssertProcessStatus(proc.ID, process.ProcessStatusRunning)
 
 		// Check that logs are being captured
 		time.Sleep(500 * time.Millisecond)
-		logs := ctx.LogStore.GetLogs(processID, 10)
+		logs := ctx.LogStore.GetByProcess(proc.ID)
 		assert.NotEmpty(t, logs, "Should have captured logs from process")
 	})
 
@@ -186,7 +187,7 @@ func TestProcessStartStop(t *testing.T) {
 	defer ctx.StopTestProcess(processID)
 
 	// Verify process is running
-	proc := ctx.ProcessMgr.GetProcess(processID)
+	proc, _ := ctx.ProcessMgr.GetProcess(processID)
 	assert.NotNil(t, proc)
 	assert.Equal(t, process.ProcessStatusRunning, proc.Status)
 	assert.Equal(t, "test", proc.Script)
@@ -222,7 +223,7 @@ func TestProcessRestart(t *testing.T) {
 	time.Sleep(500 * time.Millisecond)
 
 	// Verify process is still running
-	proc := ctx.ProcessMgr.GetProcess(processID)
+	proc, _ := ctx.ProcessMgr.GetProcess(processID)
 	assert.NotNil(t, proc)
 	assert.Equal(t, process.ProcessStatusRunning, proc.Status)
 }
@@ -260,14 +261,14 @@ func TestProcessErrorHandling(t *testing.T) {
 	defer ctx.Cleanup()
 
 	// Try to start a process that will fail
-	processID, err := ctx.ProcessMgr.StartScript("error")
-	if err == nil {
+	proc, err := ctx.ProcessMgr.StartScript("error")
+	if err == nil && proc != nil {
 		// Process started but will exit with error
 		// Wait for it to fail
 		time.Sleep(1 * time.Second)
 
-		proc := ctx.ProcessMgr.GetProcess(processID)
-		if proc != nil {
+		proc, exists := ctx.ProcessMgr.GetProcess(proc.ID)
+		if exists && proc != nil {
 			// Process should have failed
 			assert.NotEqual(t, process.ProcessStatusRunning, proc.Status)
 		}

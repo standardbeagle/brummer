@@ -30,7 +30,7 @@ func TestLogViewingAndFiltering(t *testing.T) {
 		ctx.WaitForLog("", 2*time.Second)
 
 		// Verify logs were captured
-		logs := ctx.LogStore.GetLogs(processID, 100)
+		logs := ctx.LogStore.GetByProcess(processID)
 		assert.NotEmpty(t, logs, "Should have captured logs")
 	})
 
@@ -57,7 +57,7 @@ func TestLogViewingAndFiltering(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		// Verify logs are displayed
-		logs := ctx.LogStore.GetLogs(processID, 100)
+		logs := ctx.LogStore.GetByProcess(processID)
 		assert.NotEmpty(t, logs, "Should have logs")
 
 		// Get initial log count
@@ -67,7 +67,7 @@ func TestLogViewingAndFiltering(t *testing.T) {
 		time.Sleep(500 * time.Millisecond)
 
 		// Verify more logs were added (real-time updates)
-		newLogs := ctx.LogStore.GetLogs(processID, 100)
+		newLogs := ctx.LogStore.GetByProcess(processID)
 		// Note: This might not always increase for fast-completing processes
 		assert.GreaterOrEqual(t, len(newLogs), initialCount, "Logs should update in real-time")
 	})
@@ -130,7 +130,7 @@ func TestLogFiltering(t *testing.T) {
 	})
 
 	// Get all logs
-	allLogs := ctx.LogStore.GetLogs("test-process", 100)
+	allLogs := ctx.LogStore.GetByProcess("test-process")
 	assert.Len(t, allLogs, 3, "Should have 3 logs")
 
 	// Verify different log levels exist
@@ -172,14 +172,14 @@ func TestLogClear(t *testing.T) {
 	})
 
 	// Verify logs exist
-	logs := ctx.LogStore.GetLogs("test-process", 100)
+	logs := ctx.LogStore.GetByProcess("test-process")
 	assert.Len(t, logs, 2, "Should have 2 logs before clear")
 
 	// Clear logs
 	ctx.LogStore.Clear("test-process")
 
 	// Verify logs were cleared
-	logs = ctx.LogStore.GetLogs("test-process", 100)
+	logs = ctx.LogStore.GetByProcess("test-process")
 	assert.Empty(t, logs, "Should have no logs after clear")
 }
 
@@ -204,8 +204,8 @@ func TestLogClearAll(t *testing.T) {
 	})
 
 	// Verify logs exist
-	logs1 := ctx.LogStore.GetLogs("process-1", 100)
-	logs2 := ctx.LogStore.GetLogs("process-2", 100)
+	logs1 := ctx.LogStore.GetByProcess("process-1")
+	logs2 := ctx.LogStore.GetByProcess("process-2")
 	assert.Len(t, logs1, 1, "Process 1 should have logs")
 	assert.Len(t, logs2, 1, "Process 2 should have logs")
 
@@ -213,8 +213,8 @@ func TestLogClearAll(t *testing.T) {
 	ctx.LogStore.Clear("")
 
 	// Verify all logs were cleared
-	logs1 = ctx.LogStore.GetLogs("process-1", 100)
-	logs2 = ctx.LogStore.GetLogs("process-2", 100)
+	logs1 = ctx.LogStore.GetByProcess("process-1")
+	logs2 = ctx.LogStore.GetByProcess("process-2")
 	assert.Empty(t, logs1, "Process 1 logs should be cleared")
 	assert.Empty(t, logs2, "Process 2 logs should be cleared")
 }
@@ -246,10 +246,10 @@ func TestLogProcessFilter(t *testing.T) {
 	})
 
 	// Get logs for specific process
-	devLogs := ctx.LogStore.GetLogs("dev", 100)
+	devLogs := ctx.LogStore.GetByProcess("dev")
 	assert.Len(t, devLogs, 2, "Should have 2 logs for dev process")
 
-	testLogs := ctx.LogStore.GetLogs("test", 100)
+	testLogs := ctx.LogStore.GetByProcess("test")
 	assert.Len(t, testLogs, 1, "Should have 1 log for test process")
 
 	// Verify log content
@@ -275,14 +275,14 @@ func TestLogRealTimeUpdates(t *testing.T) {
 
 	// Wait for initial logs
 	time.Sleep(500 * time.Millisecond)
-	initialLogs := ctx.LogStore.GetLogs(processID, 100)
+	initialLogs := ctx.LogStore.GetByProcess(processID)
 	initialCount := len(initialLogs)
 
 	// Wait for more logs to be generated
 	time.Sleep(1 * time.Second)
 
 	// Get updated logs
-	updatedLogs := ctx.LogStore.GetLogs(processID, 100)
+	updatedLogs := ctx.LogStore.GetByProcess(processID)
 	updatedCount := len(updatedLogs)
 
 	// Verify logs increased (real-time updates working)
@@ -407,7 +407,7 @@ func TestLogLevelDisplay(t *testing.T) {
 	}
 
 	// Verify all logs were added
-	logs := ctx.LogStore.GetLogs("test", 100)
+	logs := ctx.LogStore.GetByProcess("test")
 	assert.Len(t, logs, 4, "Should have logs for all levels")
 
 	// Verify each level exists
