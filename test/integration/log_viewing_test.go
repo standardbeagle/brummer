@@ -86,13 +86,13 @@ func TestLogDisplay(t *testing.T) {
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "test-process",
 		Level:     logs.LogLevelInfo,
-		Message:   "Test log message 1",
+		Content:   "Test log message 1",
 	})
 
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "test-process",
 		Level:     logs.LogLevelError,
-		Message:   "Test error message",
+		Content:   "Test error message",
 	})
 
 	// Switch to logs view
@@ -114,19 +114,19 @@ func TestLogFiltering(t *testing.T) {
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "test-process",
 		Level:     logs.LogLevelInfo,
-		Message:   "Info message",
+		Content:   "Info message",
 	})
 
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "test-process",
 		Level:     logs.LogLevelError,
-		Message:   "Error message",
+		Content:   "Error message",
 	})
 
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "test-process",
 		Level:     logs.LogLevelWarn,
-		Message:   "Warning message",
+		Content:   "Warning message",
 	})
 
 	// Get all logs
@@ -162,13 +162,13 @@ func TestLogClear(t *testing.T) {
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "test-process",
 		Level:     logs.LogLevelInfo,
-		Message:   "Test message 1",
+		Content:   "Test message 1",
 	})
 
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "test-process",
 		Level:     logs.LogLevelInfo,
-		Message:   "Test message 2",
+		Content:   "Test message 2",
 	})
 
 	// Verify logs exist
@@ -194,13 +194,13 @@ func TestLogClearAll(t *testing.T) {
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "process-1",
 		Level:     logs.LogLevelInfo,
-		Message:   "Process 1 message",
+		Content:   "Process 1 message",
 	})
 
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "process-2",
 		Level:     logs.LogLevelInfo,
-		Message:   "Process 2 message",
+		Content:   "Process 2 message",
 	})
 
 	// Verify logs exist
@@ -230,19 +230,19 @@ func TestLogProcessFilter(t *testing.T) {
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "dev",
 		Level:     logs.LogLevelInfo,
-		Message:   "Dev process message",
+		Content:   "Dev process message",
 	})
 
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "test",
 		Level:     logs.LogLevelInfo,
-		Message:   "Test process message",
+		Content:   "Test process message",
 	})
 
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "dev",
 		Level:     logs.LogLevelError,
-		Message:   "Dev error message",
+		Content:   "Dev error message",
 	})
 
 	// Get logs for specific process
@@ -303,7 +303,7 @@ func TestLogViewNavigation(t *testing.T) {
 		ctx.LogStore.AddLog(logs.LogEntry{
 			ProcessID: "test-process",
 			Level:     logs.LogLevelInfo,
-			Message:   "Test log message",
+			Content:   "Test log message",
 		})
 	}
 
@@ -365,7 +365,7 @@ func TestLogViewKeyboardShortcuts(t *testing.T) {
 	ctx.LogStore.AddLog(logs.LogEntry{
 		ProcessID: "test",
 		Level:     logs.LogLevelInfo,
-		Message:   "Test message",
+		Content:   "Test message",
 	})
 
 	// Switch to logs view
@@ -402,7 +402,7 @@ func TestLogLevelDisplay(t *testing.T) {
 		ctx.LogStore.AddLog(logs.LogEntry{
 			ProcessID: "test",
 			Level:     level,
-			Message:   "Test message",
+			Content:   "Test message",
 		})
 	}
 

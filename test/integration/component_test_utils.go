@@ -66,20 +66,16 @@ func (m *MockProcessManager) RestartProcess(id string) error {
 	return args.Error(0)
 }
 
-func (m *MockProcessManager) GetURLs() []process.URL {
-	args := m.Called()
-	if result := args.Get(0); result != nil {
-		return result.([]process.URL)
-	}
-	return []process.URL{}
-}
+// Note: GetURLs is actually on logs.Store, not process.Manager
+// This method is here for backward compatibility in tests
 
 // AddTestProcess adds a test process to the mock
-func (m *MockProcessManager) AddTestProcess(id string, scriptName string, status process.Status) {
+func (m *MockProcessManager) AddTestProcess(id string, name string, status process.ProcessStatus) {
 	m.processes[id] = &process.Process{
-		ID:         id,
-		ScriptName: scriptName,
-		Status:     status,
+		ID:     id,
+		Name:   name,
+		Script: name,
+		Status: status,
 	}
 }
 
@@ -144,11 +140,11 @@ func (m *MockLogStore) Subscribe(handler func(logs.LogEntry)) {
 }
 
 // AddTestLog adds a test log entry
-func (m *MockLogStore) AddTestLog(processID string, level logs.LogLevel, message string) {
+func (m *MockLogStore) AddTestLog(processID string, level logs.LogLevel, content string) {
 	m.logs = append(m.logs, logs.LogEntry{
 		ProcessID: processID,
 		Level:     level,
-		Message:   message,
+		Content:   content,
 	})
 }
 
@@ -184,10 +180,10 @@ func (m *MockProxyServer) GetRequests(processName string, limit int) []proxy.Req
 	return m.requests
 }
 
-func (m *MockProxyServer) GetRequestDetail(id string) (*proxy.RequestDetail, error) {
+func (m *MockProxyServer) GetRequestDetail(id string) (*proxy.Request, error) {
 	args := m.Called(id)
 	if result := args.Get(0); result != nil {
-		return result.(*proxy.RequestDetail), args.Error(1)
+		return result.(*proxy.Request), args.Error(1)
 	}
 	return nil, args.Error(1)
 }

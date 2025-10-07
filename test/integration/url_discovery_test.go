@@ -28,7 +28,7 @@ func TestURLDiscoveryAndDisplay(t *testing.T) {
 		time.Sleep(1 * time.Second)
 
 		// Verify URL was discovered
-		urls := ctx.ProcessMgr.GetURLs()
+		urls := ctx.LogStore.GetURLs()
 		assert.NotEmpty(t, urls, "Should have discovered URL from logs")
 	})
 
@@ -66,7 +66,7 @@ func TestURLDisplay(t *testing.T) {
 	ctx.AssertViewContains("URLs")
 
 	// Check for URL in display
-	urls := ctx.ProcessMgr.GetURLs()
+	urls := ctx.LogStore.GetURLs()
 	if len(urls) > 0 {
 		// URL was detected successfully
 		assert.NotEmpty(t, urls, "Should have detected URL")

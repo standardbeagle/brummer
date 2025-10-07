@@ -203,7 +203,7 @@ func (ctx *TestContext) WaitForCondition(condition func() bool, timeout time.Dur
 }
 
 // WaitForProcess waits for a process to reach expected status
-func (ctx *TestContext) WaitForProcess(processID string, expectedStatus process.Status, timeout time.Duration) {
+func (ctx *TestContext) WaitForProcess(processID string, expectedStatus process.ProcessStatus, timeout time.Duration) {
 	ctx.T.Helper()
 
 	ctx.WaitForCondition(func() bool {
@@ -219,7 +219,7 @@ func (ctx *TestContext) WaitForLog(contains string, timeout time.Duration) {
 	ctx.WaitForCondition(func() bool {
 		logs := ctx.LogStore.GetLogs("", 100)
 		for _, log := range logs {
-			if contains == "" || len(log.Message) > 0 {
+			if contains == "" || len(log.Content) > 0 {
 				// Simple check for any log
 				return true
 			}
@@ -250,7 +250,7 @@ func (ctx *TestContext) AssertCurrentView(expectedView string) {
 }
 
 // AssertProcessStatus verifies a process has expected status
-func (ctx *TestContext) AssertProcessStatus(processID string, expectedStatus process.Status) {
+func (ctx *TestContext) AssertProcessStatus(processID string, expectedStatus process.ProcessStatus) {
 	ctx.T.Helper()
 	proc := ctx.ProcessMgr.GetProcess(processID)
 	require.NotNil(ctx.T, proc, "Process should exist: %s", processID)
