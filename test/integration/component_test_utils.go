@@ -206,13 +206,13 @@ func (m *MockProxyServer) ClearRequests(processName string) {
 }
 
 // AddTestRequest adds a test HTTP request
-func (m *MockProxyServer) AddTestRequest(processName string, method string, url string, status int) {
+func (m *MockProxyServer) AddTestRequest(processName string, method string, url string, statusCode int) {
 	m.requests = append(m.requests, proxy.Request{
 		ID:          "test-req-id",
 		ProcessName: processName,
 		Method:      method,
 		URL:         url,
-		Status:      status,
+		StatusCode:  statusCode,
 	})
 }
 
@@ -233,9 +233,16 @@ func (m *MockEventBus) Emit(eventName string, data interface{}) {
 	_ = args
 
 	// Call registered handlers
+	var eventData map[string]interface{}
+	if dataMap, ok := data.(map[string]interface{}); ok {
+		eventData = dataMap
+	} else {
+		eventData = map[string]interface{}{"data": data}
+	}
+
 	event := events.Event{
-		Name: eventName,
-		Data: data,
+		Type: events.EventType(eventName),
+		Data: eventData,
 	}
 
 	if handlers, ok := m.handlers[eventName]; ok {
@@ -314,8 +321,6 @@ type ViewAssertion struct {
 
 // Assert performs the view assertions
 func (a *ViewAssertion) Assert(ctx *TestContext) {
-	view := ctx.Model.View()
-
 	for _, text := range a.Contains {
 		ctx.AssertViewContains(text)
 	}

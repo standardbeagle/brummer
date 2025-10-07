@@ -74,19 +74,24 @@ func NewTestContext(t *testing.T) *TestContext {
 	})
 
 	// Create services
-	cfg := config.NewConfig()
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
+		cfg = &config.Config{} // Use empty config for tests
+	}
 	eventBus := events.NewEventBus()
-	processMgr := process.NewManager(tempDir, eventBus)
-	logStore := logs.NewStore(eventBus)
+	processMgr, err := process.NewManager(tempDir, eventBus, true) // hasPackageJSON = true
+	require.NoError(t, err, "Failed to create process manager")
+	logStore := logs.NewStore(10000, eventBus) // maxEntries = 10000
 
 	// Create model
 	model := tui.NewModel(
-		cfg,
 		processMgr,
 		logStore,
-		nil, // proxyServer not needed for most tests
-		nil, // aiCoderMgr not needed for most tests
 		eventBus,
+		nil,  // mcpServer not needed for most tests
+		nil,  // proxyServer not needed for most tests
+		7777, // mcpPort default
+		cfg,
 	)
 
 	return &TestContext{
@@ -106,9 +111,12 @@ func NewTestContextWithProxy(t *testing.T) *TestContext {
 	ctx := NewTestContext(t)
 
 	// Add proxy server
-	cfg := config.NewConfig()
+	cfg, err := config.Load()
+	if err != nil || cfg == nil {
+		cfg = &config.Config{}
+	}
 	proxyServer := proxy.NewServer(cfg, ctx.ProcessMgr, ctx.EventBus)
-	err := proxyServer.Start()
+	err = proxyServer.Start()
 	require.NoError(t, err, "Failed to start proxy server")
 
 	t.Cleanup(func() {
@@ -117,12 +125,13 @@ func NewTestContextWithProxy(t *testing.T) *TestContext {
 
 	// Recreate model with proxy
 	ctx.Model = tui.NewModel(
-		cfg,
 		ctx.ProcessMgr,
 		ctx.LogStore,
-		proxyServer,
-		nil,
 		ctx.EventBus,
+		nil,
+		proxyServer,
+		7777,
+		cfg,
 	)
 
 	return ctx
