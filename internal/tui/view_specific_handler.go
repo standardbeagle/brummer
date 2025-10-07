@@ -57,68 +57,63 @@ func (h *ViewSpecificHandler) handleWebViewKeys(msg tea.KeyMsg, model *Model) (t
 	switch msg.String() {
 	case "f":
 		// Cycle through filters: all -> pages -> api -> images -> other -> all
-		currentFilter := model.webViewController.GetWebFilter()
+		currentFilter := model.webView.GetWebFilter()
 		switch currentFilter {
 		case "all":
-			model.webViewController.SetWebFilter("pages")
+			model.webView.SetWebFilter("pages")
 		case "pages":
-			model.webViewController.SetWebFilter("api")
+			model.webView.SetWebFilter("api")
 		case "api":
-			model.webViewController.SetWebFilter("images")
+			model.webView.SetWebFilter("images")
 		case "images":
-			model.webViewController.SetWebFilter("other")
+			model.webView.SetWebFilter("other")
 		case "other":
-			model.webViewController.SetWebFilter("all")
+			model.webView.SetWebFilter("all")
 		default:
-			model.webViewController.SetWebFilter("all")
+			model.webView.SetWebFilter("all")
 		}
 
 		// Reset selection to first item if available
-		if len(model.webViewController.GetWebRequestsList().Items()) > 0 {
-			model.webViewController.GetWebRequestsList().Select(0)
-		}
+		model.webView.SelectFirst()
 		return model, nil
 
 	case "up", "k":
-		// Navigate up in request list - delegate to list component
-		*model.webViewController.GetWebRequestsList(), _ = model.webViewController.GetWebRequestsList().Update(msg)
-		model.webViewController.SetWebAutoScroll(false) // Disable auto-scroll when manually navigating
+		// Navigate up in request list
+		model.webView.NavigateUp()
+		model.webView.SetWebAutoScroll(false) // Disable auto-scroll when manually navigating
 		return model, nil
 
 	case "down", "j":
-		// Navigate down in request list - delegate to list component
-		*model.webViewController.GetWebRequestsList(), _ = model.webViewController.GetWebRequestsList().Update(msg)
-		model.webViewController.SetWebAutoScroll(false) // Disable auto-scroll when manually navigating
+		// Navigate down in request list
+		model.webView.NavigateDown()
+		model.webView.SetWebAutoScroll(false) // Disable auto-scroll when manually navigating
 		return model, nil
 
 	case "enter":
-		// Select request for detail view - handled by controller
+		// Select request for detail view - handled by component
 		return model, nil
 
 	case "pgup":
 		// Page up in web list, disable auto-scroll
-		model.webViewController.SetWebAutoScroll(false)
-		*model.webViewController.GetWebRequestsList(), _ = model.webViewController.GetWebRequestsList().Update(msg)
+		model.webView.SetWebAutoScroll(false)
+		model.webView.PageUp()
 		return model, nil
 
 	case "pgdown":
 		// Page down in web list
-		*model.webViewController.GetWebRequestsList(), _ = model.webViewController.GetWebRequestsList().Update(msg)
+		model.webView.PageDown()
 		return model, nil
 
 	case "end":
 		// End key re-enables auto-scroll and goes to bottom
-		model.webViewController.SetWebAutoScroll(true)
-		// Go to last item in list
-		if len(model.webViewController.GetWebRequestsList().Items()) > 0 {
-			model.webViewController.GetWebRequestsList().Select(len(model.webViewController.GetWebRequestsList().Items()) - 1)
-		}
+		model.webView.SetWebAutoScroll(true)
+		model.webView.SelectLast()
 		return model, nil
 
 	case "home":
 		// Home key goes to top and disables auto-scroll
-		model.webViewController.SetWebAutoScroll(false)
-		model.webViewController.GetWebRequestsList().Select(0)
+		model.webView.SetWebAutoScroll(false)
+		model.webView.SelectFirst()
 		return model, nil
 	}
 

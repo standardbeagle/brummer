@@ -94,7 +94,7 @@ func min(a, b int) int {
 
 // getTerminalSize returns the terminal width and height
 // This uses golang.org/x/term to get the size directly from the terminal
-func getTerminalSize() (width, height int, err error) {
+func GetTerminalSize() (width, height int, err error) {
 	// Try stdout first
 	fd := int(os.Stdout.Fd())
 	width, height, err = term.GetSize(fd)

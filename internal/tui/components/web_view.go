@@ -238,6 +238,35 @@ func (c *WebViewComponent) SetSize(width, height int) {
 	c.updateViewport()
 }
 
+// UpdateSize updates dimensions with pre-calculated content height (Component interface)
+func (c *WebViewComponent) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
+	c.width = width
+	c.height = height
+	c.viewport.Width = width
+	c.viewport.Height = contentHeight
+	c.updateViewport()
+}
+
+// Focus gives keyboard focus to the component (Component interface)
+func (c *WebViewComponent) Focus() tea.Cmd {
+	return nil
+}
+
+// Blur removes keyboard focus from the component (Component interface)
+func (c *WebViewComponent) Blur() tea.Cmd {
+	return nil
+}
+
+// GetSize returns current dimensions (Component interface)
+func (c *WebViewComponent) GetSize() (width, height int) {
+	return c.width, c.height
+}
+
+// Render renders the web view (for compatibility with controller API)
+func (c *WebViewComponent) Render() string {
+	return c.View()
+}
+
 // updateViewport updates the viewport content when in single view mode
 func (c *WebViewComponent) updateViewport() {
 	var lines []string
@@ -813,4 +842,66 @@ func (c *WebViewComponent) formatBytes(bytes int64) string {
 		exp++
 	}
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// Accessor methods for compatibility with input handlers
+
+// GetWebFilter returns the current filter setting
+func (c *WebViewComponent) GetWebFilter() string {
+	return c.filter
+}
+
+// SetWebFilter sets the filter and updates the view
+func (c *WebViewComponent) SetWebFilter(filter string) {
+	c.filter = filter
+	c.updateViewport()
+}
+
+// SetWebAutoScroll sets auto-scroll behavior
+func (c *WebViewComponent) SetWebAutoScroll(enabled bool) {
+	c.autoScroll = enabled
+}
+
+// NavigateUp moves selection up in the request list
+func (c *WebViewComponent) NavigateUp() {
+	c.moveSelection(-1)
+}
+
+// NavigateDown moves selection down in the request list
+func (c *WebViewComponent) NavigateDown() {
+	c.moveSelection(1)
+}
+
+// SelectFirst selects the first item in the list
+func (c *WebViewComponent) SelectFirst() {
+	if len(c.getFilteredRequests()) > 0 {
+		c.selectedIndex = 0
+		c.updateViewport()
+	}
+}
+
+// SelectLast selects the last item in the list
+func (c *WebViewComponent) SelectLast() {
+	filtered := c.getFilteredRequests()
+	if len(filtered) > 0 {
+		c.selectedIndex = len(filtered) - 1
+		c.updateViewport()
+	}
+}
+
+// PageUp moves selection up by one page
+func (c *WebViewComponent) PageUp() {
+	pageSize := c.viewport.Height
+	c.moveSelection(-pageSize)
+}
+
+// PageDown moves selection down by one page
+func (c *WebViewComponent) PageDown() {
+	pageSize := c.viewport.Height
+	c.moveSelection(pageSize)
+}
+
+// HasRequests returns true if there are any filtered requests
+func (c *WebViewComponent) HasRequests() bool {
+	return len(c.getFilteredRequests()) > 0
 }

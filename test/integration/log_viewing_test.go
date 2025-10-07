@@ -7,7 +7,6 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
 )
 
 // TestLogViewingAndFiltering tests the complete log viewing workflow
@@ -83,17 +82,8 @@ func TestLogDisplay(t *testing.T) {
 	ctx.SetWindowSize(120, 40)
 
 	// Add some test logs
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "test-process",
-		Level:     logs.LogLevelInfo,
-		Content:   "Test log message 1",
-	})
-
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "test-process",
-		Level:     logs.LogLevelError,
-		Content:   "Test error message",
-	})
+	ctx.LogStore.Add("test-process", "test-process", "Test log message 1", false)
+	ctx.LogStore.Add("test-process", "test-process", "Test error message", true)
 
 	// Switch to logs view
 	ctx.SendKeyMsg("2")
@@ -111,23 +101,9 @@ func TestLogFiltering(t *testing.T) {
 	defer ctx.Cleanup()
 
 	// Add test logs with different levels
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "test-process",
-		Level:     logs.LogLevelInfo,
-		Content:   "Info message",
-	})
-
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "test-process",
-		Level:     logs.LogLevelError,
-		Content:   "Error message",
-	})
-
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "test-process",
-		Level:     logs.LogLevelWarn,
-		Content:   "Warning message",
-	})
+	ctx.LogStore.Add("test-process", "test-process", "Info message", false)
+	ctx.LogStore.Add("test-process", "test-process", "Error message", true)
+	ctx.LogStore.Add("test-process", "test-process", "Warning message", false)
 
 	// Get all logs
 	allLogs := ctx.LogStore.GetByProcess("test-process")
@@ -137,11 +113,11 @@ func TestLogFiltering(t *testing.T) {
 	var infoCount, errorCount, warnCount int
 	for _, log := range allLogs {
 		switch log.Level {
-		case logs.LogLevelInfo:
+		case logs.LevelInfo:
 			infoCount++
-		case logs.LogLevelError:
+		case logs.LevelError:
 			errorCount++
-		case logs.LogLevelWarn:
+		case logs.LevelWarn:
 			warnCount++
 		}
 	}
@@ -159,24 +135,15 @@ func TestLogClear(t *testing.T) {
 	defer ctx.Cleanup()
 
 	// Add test logs
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "test-process",
-		Level:     logs.LogLevelInfo,
-		Content:   "Test message 1",
-	})
-
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "test-process",
-		Level:     logs.LogLevelInfo,
-		Content:   "Test message 2",
-	})
+	ctx.LogStore.Add("test-process", "test-process", "Test message 1", false)
+	ctx.LogStore.Add("test-process", "test-process", "Test message 2", false)
 
 	// Verify logs exist
 	logs := ctx.LogStore.GetByProcess("test-process")
 	assert.Len(t, logs, 2, "Should have 2 logs before clear")
 
 	// Clear logs
-	ctx.LogStore.Clear("test-process")
+	ctx.LogStore.ClearLogsForProcess("test-process")
 
 	// Verify logs were cleared
 	logs = ctx.LogStore.GetByProcess("test-process")
@@ -191,17 +158,8 @@ func TestLogClearAll(t *testing.T) {
 	defer ctx.Cleanup()
 
 	// Add logs for multiple processes
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "process-1",
-		Level:     logs.LogLevelInfo,
-		Content:   "Process 1 message",
-	})
-
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "process-2",
-		Level:     logs.LogLevelInfo,
-		Content:   "Process 2 message",
-	})
+	ctx.LogStore.Add("process-1", "process-1", "Process 1 message", false)
+	ctx.LogStore.Add("process-2", "process-2", "Process 2 message", false)
 
 	// Verify logs exist
 	logs1 := ctx.LogStore.GetByProcess("process-1")
@@ -210,7 +168,7 @@ func TestLogClearAll(t *testing.T) {
 	assert.Len(t, logs2, 1, "Process 2 should have logs")
 
 	// Clear all logs
-	ctx.LogStore.Clear("")
+	ctx.LogStore.ClearLogs()
 
 	// Verify all logs were cleared
 	logs1 = ctx.LogStore.GetByProcess("process-1")
@@ -227,23 +185,9 @@ func TestLogProcessFilter(t *testing.T) {
 	defer ctx.Cleanup()
 
 	// Add logs for different processes
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "dev",
-		Level:     logs.LogLevelInfo,
-		Content:   "Dev process message",
-	})
-
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "test",
-		Level:     logs.LogLevelInfo,
-		Content:   "Test process message",
-	})
-
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "dev",
-		Level:     logs.LogLevelError,
-		Content:   "Dev error message",
-	})
+	ctx.LogStore.Add("dev", "dev", "Dev process message", false)
+	ctx.LogStore.Add("test", "test", "Test process message", false)
+	ctx.LogStore.Add("dev", "dev", "Dev error message", true)
 
 	// Get logs for specific process
 	devLogs := ctx.LogStore.GetByProcess("dev")
@@ -300,11 +244,7 @@ func TestLogViewNavigation(t *testing.T) {
 
 	// Add many test logs to enable scrolling
 	for i := 0; i < 50; i++ {
-		ctx.LogStore.AddLog(logs.LogEntry{
-			ProcessID: "test-process",
-			Level:     logs.LogLevelInfo,
-			Content:   "Test log message",
-		})
+		ctx.LogStore.Add("test-process", "test-process", "Test log message", false)
 	}
 
 	// Switch to logs view
@@ -362,11 +302,7 @@ func TestLogViewKeyboardShortcuts(t *testing.T) {
 	ctx.SetWindowSize(120, 40)
 
 	// Add test logs
-	ctx.LogStore.AddLog(logs.LogEntry{
-		ProcessID: "test",
-		Level:     logs.LogLevelInfo,
-		Content:   "Test message",
-	})
+	ctx.LogStore.Add("test", "test", "Test message", false)
 
 	// Switch to logs view
 	ctx.SendKeyMsg("2")
@@ -390,33 +326,24 @@ func TestLogLevelDisplay(t *testing.T) {
 	ctx := NewTestContext(t)
 	defer ctx.Cleanup()
 
-	// Add logs with all levels
-	levels := []logs.LogLevel{
-		logs.LogLevelDebug,
-		logs.LogLevelInfo,
-		logs.LogLevelWarn,
-		logs.LogLevelError,
-	}
-
-	for _, level := range levels {
-		ctx.LogStore.AddLog(logs.LogEntry{
-			ProcessID: "test",
-			Level:     level,
-			Content:   "Test message",
-		})
-	}
+	// Add logs with all levels - using Add() method with isError flag
+	ctx.LogStore.Add("test", "test", "Debug message", false)
+	ctx.LogStore.Add("test", "test", "Info message", false)
+	ctx.LogStore.Add("test", "test", "Warn message", false)
+	ctx.LogStore.Add("test", "test", "Error message", true)
 
 	// Verify all logs were added
 	logs := ctx.LogStore.GetByProcess("test")
 	assert.Len(t, logs, 4, "Should have logs for all levels")
 
-	// Verify each level exists
-	levelCount := make(map[logs.LogLevel]int)
+	// Verify content exists
+	contents := make(map[string]bool)
 	for _, log := range logs {
-		levelCount[log.Level]++
+		contents[log.Content] = true
 	}
 
-	for _, level := range levels {
-		assert.Equal(t, 1, levelCount[level], "Should have 1 log for level %v", level)
-	}
+	assert.True(t, contents["Debug message"], "Should have debug message")
+	assert.True(t, contents["Info message"], "Should have info message")
+	assert.True(t, contents["Warn message"], "Should have warn message")
+	assert.True(t, contents["Error message"], "Should have error message")
 }

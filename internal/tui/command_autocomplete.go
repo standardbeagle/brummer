@@ -607,3 +607,55 @@ func (c *CommandAutocomplete) ClearError() {
 func (c *CommandAutocomplete) SetError(message string) {
 	c.errorMessage = message
 }
+
+// Accessor methods for ScriptSelectorAutocompleteInterface
+
+// SetPlaceholder sets the input placeholder text
+func (c *CommandAutocomplete) SetPlaceholder(placeholder string) {
+	c.input.Placeholder = placeholder
+}
+
+// SetSelected sets the selected suggestion index
+func (c *CommandAutocomplete) SetSelected(index int) {
+	c.selected = index
+}
+
+// SetSuggestions sets the suggestion list
+func (c *CommandAutocomplete) SetSuggestions(suggestions []string) {
+	c.suggestions = suggestions
+}
+
+// IsShowingDropdown returns whether the dropdown is visible
+func (c CommandAutocomplete) IsShowingDropdown() bool {
+	return c.showDropdown
+}
+
+// SetShowDropdown sets dropdown visibility
+func (c *CommandAutocomplete) SetShowDropdown(show bool) {
+	c.showDropdown = show
+}
+
+// SetErrorMessage sets an error message (same as SetError but matches interface)
+func (c *CommandAutocomplete) SetErrorMessage(msg string) {
+	c.errorMessage = msg
+}
+
+// IsArbitraryMode returns whether in arbitrary command mode
+func (c CommandAutocomplete) IsArbitraryMode() bool {
+	return c.arbitraryMode
+}
+
+// SetArbitraryMode sets arbitrary command mode
+func (c *CommandAutocomplete) SetArbitraryMode(mode bool) {
+	c.arbitraryMode = mode
+}
+
+// UpdateSuggestions updates suggestions (delegates to updateSuggestions)
+func (c *CommandAutocomplete) UpdateSuggestions() {
+	c.updateSuggestions()
+}
+
+// GetAvailableScripts returns the map of available scripts
+func (c CommandAutocomplete) GetAvailableScripts() map[string]string {
+	return c.availableScripts
+}

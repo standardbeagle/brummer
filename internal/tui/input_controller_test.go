@@ -45,7 +45,7 @@ func TestInputController_HandleKeyMsg(t *testing.T) {
 			setupModel: func() *Model {
 				m := createTestModel()
 				// commandWindowController is already initialized, just hide it
-				m.commandWindowController.HideCommandWindow()
+				m.commandWindowView.HideCommandWindow()
 				return m
 			},
 			keyMsg:        tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}},
@@ -57,7 +57,7 @@ func TestInputController_HandleKeyMsg(t *testing.T) {
 			setupModel: func() *Model {
 				m := createTestModel()
 				// Show command window
-				m.commandWindowController.ShowCommandWindow(make(map[string]string), nil)
+				m.commandWindowView.ShowCommandWindow(make(map[string]string), nil)
 				return m
 			},
 			keyMsg:        tea.KeyMsg{Type: tea.KeyEsc},
@@ -133,7 +133,7 @@ func TestInputController_CommandModeNavigation(t *testing.T) {
 		"test":  "npm test",
 		"build": "npm run build",
 	}
-	model.commandWindowController.ShowCommandWindow(scripts, nil)
+	model.commandWindowView.ShowCommandWindow(scripts, nil)
 	ic := NewInputController(model, keys, GetViewConfigs(), false)
 
 	// Test arrow down navigation

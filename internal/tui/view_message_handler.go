@@ -44,31 +44,31 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 		model.width = m.Width
 		model.height = m.Height
 
-		// Update layout controller
-		if model.layoutController != nil {
-			model.layoutController.UpdateSize(m.Width, m.Height)
-		}
+		// Layout calculations now use components.LayoutManager (T021)
+		// Header and footer heights are constants
+		headerHeight := 3
+		footerHeight := 1
 
 		// Calculate content height once for all controllers
 		contentHeight := model.calculateContentHeight()
 
 		// Update all view controllers with new size including content height
-		if model.processViewController != nil {
-			model.processViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
+		if model.processesView != nil {
+			model.processesView.UpdateSize(m.Width, m.Height, headerHeight, footerHeight, contentHeight)
 		}
-		if model.logsViewController != nil {
-			model.logsViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
+		if model.logsView != nil {
+			model.logsView.UpdateSize(m.Width, m.Height, headerHeight, footerHeight, contentHeight)
 		}
-		if model.webViewController != nil {
-			model.webViewController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
+		if model.webView != nil {
+			model.webView.UpdateSize(m.Width, m.Height, headerHeight, footerHeight, contentHeight)
 		}
-		if model.settingsController != nil {
-			model.settingsController.UpdateSize(m.Width, m.Height, model.layoutController.GetHeaderHeight(), model.layoutController.GetFooterHeight(), contentHeight)
+		if model.settingsView != nil {
+			model.settingsView.UpdateSize(m.Width, m.Height, headerHeight, footerHeight, contentHeight)
 		}
 
 		// Update overlay controllers
-		if model.commandWindowController != nil {
-			model.commandWindowController.UpdateSize(m.Width, m.Height)
+		if model.commandWindowView != nil {
+			model.commandWindowView.UpdateSize(m.Width, m.Height)
 		}
 		// Note: ScriptSelectorController gets size directly via getTerminalSize()
 		// to ensure proper sizing for overlay rendering
@@ -79,14 +79,14 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 
 	case urlDetectedMsg:
 		// Handle URL detection - update web view
-		if model.webViewController != nil {
-			// URL detection is handled internally by the web view controller during updates
+		if model.webView != nil {
+			// URL detection is handled internally by the web view component during updates
 		}
 
 	case refreshMsg:
 		// Handle refresh request
 		// Could trigger data refreshes in various controllers
-		if model.currentView() == ViewProcesses && model.processViewController != nil {
+		if model.currentView() == ViewProcesses && model.processesView != nil {
 			// Refresh process list
 			model.updateProcessList()
 			cmds = append(cmds, model.waitForUpdates())

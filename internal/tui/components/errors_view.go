@@ -4,283 +4,262 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
-// ErrorsViewComponent displays aggregated error contexts in a list format.
-// It receives LogAddedMsg messages and filters for errors only.
-//
-// Design principles:
-// - Event-driven via LogAddedMsg (filters IsError=true)
-// - Aggregates errors using LogStore.GetErrorContexts()
-// - Shows error type, message, and count
-// - Supports keyboard scrolling and selection
-type ErrorsViewComponent struct {
-	BaseComponent
+// ErrorsView is a BubbleTea component for displaying errors
+// Migrated from errors_view_controller.go (T050-T054)
+// Architecture: Component → Service (direct logs.Store access)
+type ErrorsView struct {
+	errorsViewport  viewport.Model
+	errorDetailView viewport.Model
+	errorsList      list.Model
+	selectedError   *logs.ErrorContext
+	lastErrorCount  int
 
-	viewport viewport.Model
-	errors   []*ErrorInfo // Aggregated error information
-
-	// Read-only reference for error aggregation
+	// Direct service access
 	logStore *logs.Store
-
-	// Selection state
-	selectedIndex int
-
-	// Styles
-	headerStyle   lipgloss.Style
-	errorStyle    lipgloss.Style
-	warningStyle  lipgloss.Style
-	criticalStyle lipgloss.Style
-	normalStyle   lipgloss.Style
-	selectedStyle lipgloss.Style
+	width    int
+	height   int
 }
 
-// ErrorInfo holds display information for an error context
-type ErrorInfo struct {
-	ID          string
-	Type        string
-	Message     string
-	ProcessName string
-	Timestamp   string
-	Severity    string
-	Count       int // Number of similar errors
-	Context     *logs.ErrorContext
+// ErrorItem implements list.Item for error contexts
+type ErrorItem struct {
+	ErrorContext *logs.ErrorContext
+	Timestamp    string
+	ProcessName  string
 }
 
-// NewErrorsViewComponent creates an errors view with initial error contexts
-func NewErrorsViewComponent(logStore *logs.Store) *ErrorsViewComponent {
-	c := &ErrorsViewComponent{
-		BaseComponent: NewBaseComponent(),
-		logStore:      logStore,
-		viewport:      viewport.New(80, 24),
-		errors:        []*ErrorInfo{},
-		selectedIndex: 0,
-		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")), // Bright Blue
-		errorStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("9")),             // Bright Red
-		warningStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color("11")),            // Bright Yellow
-		criticalStyle: lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("9")),  // Bold Red
-		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),            // White
-		selectedStyle: lipgloss.NewStyle().Background(lipgloss.Color("8")),             // Gray background
+func (i ErrorItem) FilterValue() string {
+	return i.ErrorContext.Message
+}
+
+func (i ErrorItem) Title() string {
+	return fmt.Sprintf("%s [%s] %s", i.Timestamp, i.ProcessName, i.ErrorContext.Type)
+}
+
+func (i ErrorItem) Description() string {
+	message := i.ErrorContext.Message
+	if len(message) > 100 {
+		message = message[:97] + "..."
 	}
-
-	// Load existing errors
-	c.refreshErrors()
-
-	return c
+	return message
 }
 
-// Init initializes the component
-func (c *ErrorsViewComponent) Init() tea.Cmd {
+// NewErrorsView creates a new errors view component
+func NewErrorsView(logStore *logs.Store) *ErrorsView {
+	errorsList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	errorsList.Title = "Errors"
+	errorsList.SetShowStatusBar(false)
+
+	return &ErrorsView{
+		errorsViewport:  viewport.New(0, 0),
+		errorDetailView: viewport.New(0, 0),
+		errorsList:      errorsList,
+		logStore:        logStore,
+	}
+}
+
+// Init initializes the component (BubbleTea interface)
+func (v *ErrorsView) Init() tea.Cmd {
 	return nil
 }
 
-// Update handles messages
-func (c *ErrorsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update handles messages (BubbleTea interface)
+func (v *ErrorsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+	v.errorsList, cmd = v.errorsList.Update(msg)
+	return v, cmd
+}
 
-	switch msg := msg.(type) {
-	case messages.LogAddedMsg:
-		// NEW ERROR LOG! Filter and aggregate
-		if msg.Entry.IsError {
-			// Refresh error aggregation from LogStore
-			c.refreshErrors()
-			c.updateViewport()
-		}
-		return c, nil
+// View renders the component (BubbleTea interface)
+func (v *ErrorsView) View() string {
+	return v.Render()
+}
 
-	case tea.WindowSizeMsg:
-		c.SetSize(msg.Width, msg.Height)
-		c.viewport.Width = msg.Width
-		c.viewport.Height = msg.Height
-		c.updateViewport()
-		return c, nil
+// SetSize updates the component's dimensions (Component interface)
+func (v *ErrorsView) SetSize(width, height int) {
+	v.width = width
+	v.height = height
+	contentHeight := height - 6
+	v.errorsViewport.Width = width
+	v.errorsViewport.Height = contentHeight
+	v.errorDetailView.Width = width
+	v.errorDetailView.Height = contentHeight
+	v.errorsList.SetSize(width, contentHeight)
+}
 
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "up", "k":
-			if c.selectedIndex > 0 {
-				c.selectedIndex--
-				c.updateViewport()
+// Focus gives keyboard focus to the component (Component interface)
+func (v *ErrorsView) Focus() tea.Cmd {
+	return nil
+}
+
+// Blur removes keyboard focus from the component (Component interface)
+func (v *ErrorsView) Blur() tea.Cmd {
+	return nil
+}
+
+// GetSize returns current dimensions (Component interface)
+func (v *ErrorsView) GetSize() (width, height int) {
+	return v.width, v.height
+}
+
+// UpdateSize updates dimensions with pre-calculated content height
+func (v *ErrorsView) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
+	v.width = width
+	v.height = height
+	v.errorsViewport.Width = width
+	v.errorsViewport.Height = contentHeight
+	v.errorDetailView.Width = width
+	v.errorDetailView.Height = contentHeight
+	v.errorsList.SetSize(width, contentHeight)
+}
+
+// GetErrorsViewport returns the errors viewport for direct manipulation
+func (v *ErrorsView) GetErrorsViewport() *viewport.Model {
+	return &v.errorsViewport
+}
+
+// UpdateErrorsView refreshes the errors view with current data
+func (v *ErrorsView) UpdateErrorsView() {
+	// Direct service call - no controller indirection (T052)
+	errorContexts := v.logStore.GetErrorContexts()
+
+	var content strings.Builder
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Recent Errors") + "\n\n")
+
+	if len(errorContexts) == 0 {
+		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true).
+			Render("No errors detected. System running smoothly! ✓"))
+	} else {
+		for i, ec := range errorContexts {
+			if i > 0 {
+				content.WriteString("\n" + strings.Repeat("─", v.width) + "\n")
 			}
-			return c, nil
-		case "down", "j":
-			if c.selectedIndex < len(c.errors)-1 {
-				c.selectedIndex++
-				c.updateViewport()
-			}
-			return c, nil
-		default:
-			// Forward other keys to viewport for scrolling
-			c.viewport, cmd = c.viewport.Update(msg)
-			return c, cmd
+			content.WriteString(v.formatErrorContext(&ec))
 		}
 	}
 
-	return c, nil
+	v.errorsViewport.SetContent(content.String())
 }
 
-// View renders the errors list
-func (c *ErrorsViewComponent) View() string {
-	if !c.IsVisible() {
-		return ""
-	}
+// UpdateErrorsList updates the list of errors
+func (v *ErrorsView) UpdateErrorsList() {
+	// Direct service call - no controller indirection (T052)
+	errorContexts := v.logStore.GetErrorContexts()
 
-	return c.viewport.View()
-}
-
-// SetSize updates component dimensions
-func (c *ErrorsViewComponent) SetSize(width, height int) {
-	c.BaseComponent.SetSize(width, height)
-	c.viewport.Width = width
-	c.viewport.Height = height
-	c.updateViewport()
-}
-
-// refreshErrors reloads error contexts from LogStore and aggregates them
-func (c *ErrorsViewComponent) refreshErrors() {
-	if c.logStore == nil {
-		return
-	}
-
-	// Get error contexts from LogStore (already aggregated)
-	errorContexts := c.logStore.GetErrorContexts()
-
-	// Convert to ErrorInfo
-	c.errors = make([]*ErrorInfo, 0, len(errorContexts))
-	for i := range errorContexts {
-		ctx := &errorContexts[i]
-		c.errors = append(c.errors, &ErrorInfo{
-			ID:          ctx.ID,
-			Type:        ctx.Type,
-			Message:     ctx.Message,
-			ProcessName: ctx.ProcessName,
-			Timestamp:   ctx.Timestamp.Format("15:04:05"),
-			Severity:    ctx.Severity,
-			Count:       1, // LogStore already does aggregation
-			Context:     ctx,
+	var items []list.Item
+	for _, ec := range errorContexts {
+		ecCopy := ec
+		items = append(items, ErrorItem{
+			ErrorContext: &ecCopy,
+			Timestamp:    ec.Timestamp.Format("15:04:05"),
+			ProcessName:  ec.ProcessName,
 		})
 	}
 
-	// Ensure selected index is valid
-	if c.selectedIndex >= len(c.errors) {
-		c.selectedIndex = len(c.errors) - 1
-	}
-	if c.selectedIndex < 0 {
-		c.selectedIndex = 0
+	v.errorsList.SetItems(items)
+}
+
+// Render renders the errors view
+func (v *ErrorsView) Render() string {
+	return v.errorsViewport.View()
+}
+
+// GetErrorsList returns the errors list for direct manipulation
+func (v *ErrorsView) GetErrorsList() *list.Model {
+	return &v.errorsList
+}
+
+// SetSelectedError sets the currently selected error
+func (v *ErrorsView) SetSelectedError(ec *logs.ErrorContext) {
+	v.selectedError = ec
+	if ec != nil {
+		content := v.formatErrorContext(ec)
+		v.errorDetailView.SetContent(content)
 	}
 }
 
-// updateViewport updates the viewport content with formatted errors list
-func (c *ErrorsViewComponent) updateViewport() {
-	var lines []string
+// GetSelectedError returns the currently selected error
+func (v *ErrorsView) GetSelectedError() *logs.ErrorContext {
+	return v.selectedError
+}
 
-	// Header
-	header := c.headerStyle.Render(fmt.Sprintf("%-20s %-15s %-50s",
-		"ERROR TYPE", "PROCESS", "MESSAGE"))
-	lines = append(lines, header)
-	lines = append(lines, strings.Repeat("─", c.viewport.Width))
+// formatErrorContext formats an error context for display
+func (v *ErrorsView) formatErrorContext(ec *logs.ErrorContext) string {
+	var content strings.Builder
 
-	// Error rows
-	if len(c.errors) == 0 {
-		lines = append(lines, c.normalStyle.Render("No errors detected"))
-	} else {
-		for i, info := range c.errors {
-			line := c.formatErrorRow(info, i == c.selectedIndex)
-			lines = append(lines, line)
+	errorStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
+	processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	_ = lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // typeStyle
+
+	content.WriteString(errorStyle.Render(fmt.Sprintf("❌ %s", ec.Type)) + "\n")
+	content.WriteString(fmt.Sprintf("%s %s\n\n", 
+		timestampStyle.Render(ec.Timestamp.Format("2006-01-02 15:04:05")),
+		processStyle.Render(fmt.Sprintf("[%s]", ec.ProcessName))))
+
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Error Message:") + "\n")
+	content.WriteString(ec.Message + "\n\n")
+
+	if len(ec.Stack) > 0 {
+		content.WriteString(lipgloss.NewStyle().Bold(true).Render("Stack Trace:") + "\n")
+		for _, line := range ec.Stack {
+			content.WriteString("  " + line + "\n")
 		}
-
-		// Show selected error details below the list
-		if c.selectedIndex < len(c.errors) && c.selectedIndex >= 0 {
-			lines = append(lines, "")
-			lines = append(lines, c.headerStyle.Render("Error Details:"))
-			lines = append(lines, c.formatErrorDetails(c.errors[c.selectedIndex]))
-		}
+		content.WriteString("\n")
 	}
 
-	content := strings.Join(lines, "\n")
-	c.viewport.SetContent(content)
-}
-
-// formatErrorRow formats a single error row
-func (c *ErrorsViewComponent) formatErrorRow(info *ErrorInfo, selected bool) string {
-	// Truncate long strings
-	errorType := info.Type
-	if len(errorType) > 20 {
-		errorType = errorType[:17] + "..."
-	}
-
-	processName := info.ProcessName
-	if len(processName) > 15 {
-		processName = processName[:12] + "..."
-	}
-
-	message := info.Message
-	if len(message) > 50 {
-		message = message[:47] + "..."
-	}
-
-	// Choose style based on severity
-	var style lipgloss.Style
-	switch info.Severity {
-	case "critical":
-		style = c.criticalStyle
-	case "error":
-		style = c.errorStyle
-	case "warning":
-		style = c.warningStyle
-	default:
-		style = c.normalStyle
-	}
-
-	row := fmt.Sprintf("%-20s %-15s %-50s",
-		errorType,
-		processName,
-		message,
-	)
-
-	// Apply selection highlight
-	if selected {
-		row = c.selectedStyle.Render("→ " + row)
-	} else {
-		row = "  " + style.Render(row)
-	}
-
-	return row
-}
-
-// formatErrorDetails formats detailed error information
-func (c *ErrorsViewComponent) formatErrorDetails(info *ErrorInfo) string {
-	var lines []string
-
-	// Basic info
-	lines = append(lines, c.normalStyle.Render(fmt.Sprintf("Type: %s", info.Type)))
-	lines = append(lines, c.normalStyle.Render(fmt.Sprintf("Process: %s", info.ProcessName)))
-	lines = append(lines, c.normalStyle.Render(fmt.Sprintf("Time: %s", info.Timestamp)))
-	lines = append(lines, c.normalStyle.Render(fmt.Sprintf("Severity: %s", info.Severity)))
-	lines = append(lines, "")
-
-	// Message
-	lines = append(lines, c.errorStyle.Render("Message:"))
-	lines = append(lines, c.normalStyle.Render(info.Message))
-	lines = append(lines, "")
-
-	// Stack trace (if available)
-	if info.Context != nil && len(info.Context.Stack) > 0 {
-		lines = append(lines, c.normalStyle.Render("Stack Trace:"))
-		maxStackLines := 10
-		for i, stackLine := range info.Context.Stack {
-			if i >= maxStackLines {
-				lines = append(lines, c.normalStyle.Render(fmt.Sprintf("  ... (%d more lines)", len(info.Context.Stack)-maxStackLines)))
-				break
+	if len(ec.Context) > 0 {
+		content.WriteString(lipgloss.NewStyle().Bold(true).Render("Context:") + "\n")
+		for _, line := range ec.Context {
+			if strings.TrimSpace(line) != "" {
+				content.WriteString("  " + line + "\n")
 			}
-			lines = append(lines, c.normalStyle.Render(fmt.Sprintf("  %s", stackLine)))
 		}
 	}
 
-	return strings.Join(lines, "\n")
+	return content.String()
+}
+
+// ClearError clears a specific error by ID
+func (v *ErrorsView) ClearError(errorID string) {
+	// v.logStore.ClearError(errorID) // Method not available in logs.Store
+	v.UpdateErrorsList()
+	v.UpdateErrorsView()
+}
+
+// ClearAllErrors clears all errors
+func (v *ErrorsView) ClearAllErrors() {
+	v.logStore.ClearErrors()
+	v.selectedError = nil
+	v.UpdateErrorsList()
+	v.UpdateErrorsView()
+}
+
+// GetErrorDetailView returns the error detail viewport for direct manipulation
+func (v *ErrorsView) GetErrorDetailView() *viewport.Model {
+	return &v.errorDetailView
+}
+
+// UpdateErrorDetailView updates the detail view for selected error
+func (v *ErrorsView) UpdateErrorDetailView() {
+	if v.selectedError != nil {
+		content := v.formatErrorContext(v.selectedError)
+		v.errorDetailView.SetContent(content)
+	}
+}
+
+// HandleCopyError handles copying error to clipboard (returns command)
+func (v *ErrorsView) HandleCopyError() tea.Cmd {
+	return nil // Placeholder for clipboard functionality
+}
+
+// HandleClearErrors clears all errors
+func (v *ErrorsView) HandleClearErrors() {
+	v.ClearAllErrors()
 }

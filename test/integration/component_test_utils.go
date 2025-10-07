@@ -111,27 +111,42 @@ func (m *MockLogStore) GetLogs(processID string, limit int) []logs.LogEntry {
 	return m.logs
 }
 
-func (m *MockLogStore) AddLog(entry logs.LogEntry) {
-	args := m.Called(entry)
+func (m *MockLogStore) Add(processID, processName, content string, isError bool) *logs.LogEntry {
+	args := m.Called(processID, processName, content, isError)
 	_ = args
+
+	entry := logs.LogEntry{
+		ProcessID:   processID,
+		ProcessName: processName,
+		Content:     content,
+		IsError:     isError,
+	}
+	if isError {
+		entry.Level = logs.LevelError
+	} else {
+		entry.Level = logs.LevelInfo
+	}
 	m.logs = append(m.logs, entry)
+	return &entry
 }
 
-func (m *MockLogStore) Clear(processID string) {
-	args := m.Called(processID)
+func (m *MockLogStore) ClearLogs() {
+	args := m.Called()
+	_ = args
+	m.logs = []logs.LogEntry{}
+}
+
+func (m *MockLogStore) ClearLogsForProcess(processName string) {
+	args := m.Called(processName)
 	_ = args
 
-	if processID == "" {
-		m.logs = []logs.LogEntry{}
-	} else {
-		filtered := []logs.LogEntry{}
-		for _, log := range m.logs {
-			if log.ProcessID != processID {
-				filtered = append(filtered, log)
-			}
+	filtered := []logs.LogEntry{}
+	for _, log := range m.logs {
+		if log.ProcessID != processName {
+			filtered = append(filtered, log)
 		}
-		m.logs = filtered
 	}
+	m.logs = filtered
 }
 
 func (m *MockLogStore) Subscribe(handler func(logs.LogEntry)) {
@@ -141,11 +156,14 @@ func (m *MockLogStore) Subscribe(handler func(logs.LogEntry)) {
 
 // AddTestLog adds a test log entry
 func (m *MockLogStore) AddTestLog(processID string, level logs.LogLevel, content string) {
-	m.logs = append(m.logs, logs.LogEntry{
+	isError := level == logs.LevelError || level == logs.LevelCritical
+	entry := logs.LogEntry{
 		ProcessID: processID,
 		Level:     level,
 		Content:   content,
-	})
+		IsError:   isError,
+	}
+	m.logs = append(m.logs, entry)
 }
 
 // MockProxyServer is a mock implementation of proxy.Server for testing

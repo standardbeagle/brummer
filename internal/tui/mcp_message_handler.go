@@ -28,11 +28,11 @@ func (h *MCPMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model,
 
 	switch m := msg.(type) {
 	case mcpConnectionMsg:
-		// Handle MCP connection status change
-		if model.mcpDebugController != nil {
-			model.mcpDebugController.HandleConnection(m)
+		// Handle MCP connection status change (T029)
+		if model.mcpDebugView != nil {
+			model.mcpDebugView.HandleConnection(m.sessionId, m.clientInfo, m.connected, m.connectedAt, m.connectionType, m.method)
 			if model.currentView() == ViewMCPConnections {
-				model.mcpDebugController.UpdateConnectionsList()
+				model.mcpDebugView.UpdateConnectionsList()
 			}
 		}
 		cmds = append(cmds, model.waitForUpdates())

@@ -10,7 +10,7 @@ type NavigationAdapter struct {
 }
 
 // NewNavigationAdapter creates a new navigation adapter
-func NewNavigationAdapter(controller *navigation.Controller) NavigationControllerInterface {
+func NewNavigationAdapter(controller *navigation.Controller) *NavigationAdapter {
 	return &NavigationAdapter{controller: controller}
 }
 
@@ -20,7 +20,7 @@ func (na *NavigationAdapter) GetCurrentView() View {
 }
 
 // SwitchTo switches to a specific view
-func (na *NavigationAdapter) SwitchTo(view View) {
+func (na *NavigationAdapter) SwitchTo(view int) {
 	na.controller.SwitchTo(navigation.View(view))
 }
 

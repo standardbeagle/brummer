@@ -33,7 +33,7 @@ func (h *LogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model,
 		// If we're currently viewing logs, we need to refresh the viewport
 		if model.currentView() == ViewLogs || model.currentView() == ViewURLs {
 			// Force a viewport update to show new content
-			model.logsViewController.GetLogsViewport().GotoBottom()
+			model.logsView.GetLogsViewport().GotoBottom()
 		}
 		cmds = append(cmds, model.waitForUpdates())
 

@@ -1,20 +1,52 @@
-package tui
+package components
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/parser"
 	"github.com/standardbeagle/brummer/internal/process"
+	"golang.org/x/term"
 )
 
-// CommandWindowController manages command dialogs and their state
-type CommandWindowController struct {
+const (
+	DefaultCommandWindowWidth   = 60
+	CommandWindowPadding        = 10
+	MinTerminalWidth            = 20
+	MinTerminalHeight           = 10
+	MaxDropdownSuggestions      = 10
+	MaxDropdownSuggestionsSmall = 5
+)
+
+var ErrTerminalTooSmall = "Terminal too small"
+
+// CommandAutocompleteInterface defines the interface for command autocomplete
+// This avoids import cycle with internal/tui package
+type CommandAutocompleteInterface interface {
+	SetWidth(width int)
+	Focus()
+	View() string
+	RenderDropdown(maxSuggestions int) string
+	GetErrorMessage() string
+	SetAIProviders(providers []string)
+	Value() string
+	GetSuggestions() []string
+	Update(msg tea.Msg) (CommandAutocompleteInterface, tea.Cmd)
+	ValidateInput() (bool, string)
+	SetError(errMsg string)
+}
+
+// CommandWindowView manages command dialogs and their state
+// Migrated from command_window_controller.go (T033-T037)
+// Architecture: Component with direct process.Manager service access
+type CommandWindowView struct {
 	// Command window state
 	showingCommandWindow bool
-	commandAutocomplete  CommandAutocomplete
+	commandAutocomplete  CommandAutocompleteInterface
 
 	// Run dialog state
 	showingRunDialog bool
@@ -27,16 +59,21 @@ type CommandWindowController struct {
 	customCommandInput   textinput.Model
 
 	// Script selector state (for initial view)
-	scriptSelector CommandAutocomplete
+	scriptSelector CommandAutocompleteInterface
 
-	// Dependencies injected from parent Model
+	// Direct service access
 	processMgr *process.Manager
 	width      int
 	height     int
+
+	// Factory function for creating autocomplete instances
+	// Injected from parent to avoid import cycle
+	autocompleteFactory func(scripts map[string]string, processMgr *process.Manager) CommandAutocompleteInterface
 }
 
-// NewCommandWindowController creates a new command window controller
-func NewCommandWindowController(processMgr *process.Manager) *CommandWindowController {
+// NewCommandWindowView creates a new command window component
+// The autocompleteFactory is injected to avoid import cycle with internal/tui
+func NewCommandWindowView(processMgr *process.Manager, autocompleteFactory func(scripts map[string]string, processMgr *process.Manager) CommandAutocompleteInterface) *CommandWindowView {
 	// Initialize custom command input
 	customCommandInput := textinput.New()
 	customCommandInput.Placeholder = "Enter command (e.g., node server.js)"
@@ -49,148 +86,200 @@ func NewCommandWindowController(processMgr *process.Manager) *CommandWindowContr
 	commandsList.SetShowStatusBar(false)
 	commandsList.SetFilteringEnabled(true)
 
-	return &CommandWindowController{
-		processMgr:         processMgr,
-		customCommandInput: customCommandInput,
-		commandsList:       commandsList,
+	return &CommandWindowView{
+		processMgr:          processMgr,
+		customCommandInput:  customCommandInput,
+		commandsList:        commandsList,
+		autocompleteFactory: autocompleteFactory,
 	}
 }
 
+// Init initializes the component (BubbleTea interface)
+func (v *CommandWindowView) Init() tea.Cmd {
+	return nil
+}
+
+// Update handles messages (BubbleTea interface)
+func (v *CommandWindowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	// Command window is primarily controlled by input controller
+	// No automatic updates needed
+	return v, nil
+}
+
+// View renders the component (BubbleTea interface)
+func (v *CommandWindowView) View() string {
+	// Rendering is done via Render* methods called by parent model
+	return ""
+}
+
+// SetSize updates the component's dimensions (Component interface)
+func (v *CommandWindowView) SetSize(width, height int) {
+	v.width = width
+	v.height = height
+}
+
+// Focus gives keyboard focus to the component (Component interface)
+func (v *CommandWindowView) Focus() tea.Cmd {
+	return nil
+}
+
+// Blur removes keyboard focus from the component (Component interface)
+func (v *CommandWindowView) Blur() tea.Cmd {
+	return nil
+}
+
+// GetSize returns current dimensions (Component interface)
+func (v *CommandWindowView) GetSize() (width, height int) {
+	return v.width, v.height
+}
+
 // UpdateSize updates the controller dimensions
-func (c *CommandWindowController) UpdateSize(width, height int) {
-	c.width = width
-	c.height = height
+func (v *CommandWindowView) UpdateSize(width, height int) {
+	v.width = width
+	v.height = height
 
 	// Update command autocomplete width
-	if c.showingCommandWindow {
+	if v.showingCommandWindow && v.commandAutocomplete != nil {
 		windowWidth := DefaultCommandWindowWidth
 		if width-CommandWindowPadding < windowWidth {
 			windowWidth = width - CommandWindowPadding
 		}
-		c.commandAutocomplete.SetWidth(windowWidth)
+		v.commandAutocomplete.SetWidth(windowWidth)
 	}
 
 	// Update commands list size for run dialog
-	if c.showingRunDialog {
-		c.commandsList.SetSize(width-4, height-8)
+	if v.showingRunDialog {
+		v.commandsList.SetSize(width-4, height-8)
 	}
 }
 
 // ShowCommandWindow shows the command palette window
-func (c *CommandWindowController) ShowCommandWindow(scripts map[string]string, aiProviders []string) {
-	c.showingCommandWindow = true
-	c.commandAutocomplete = NewCommandAutocompleteWithProcessManager(scripts, c.processMgr)
+func (v *CommandWindowView) ShowCommandWindow(scripts map[string]string, aiProviders []string) {
+	v.showingCommandWindow = true
+	v.commandAutocomplete = v.autocompleteFactory(scripts, v.processMgr)
 
 	windowWidth := DefaultCommandWindowWidth
-	if c.width-CommandWindowPadding < windowWidth {
-		windowWidth = c.width - CommandWindowPadding
+	if v.width-CommandWindowPadding < windowWidth {
+		windowWidth = v.width - CommandWindowPadding
 	}
-	c.commandAutocomplete.SetWidth(windowWidth)
+	v.commandAutocomplete.SetWidth(windowWidth)
 
 	// Set AI providers if available
 	if len(aiProviders) > 0 {
-		c.commandAutocomplete.SetAIProviders(aiProviders)
+		v.commandAutocomplete.SetAIProviders(aiProviders)
 	}
 
-	c.commandAutocomplete.Focus()
+	v.commandAutocomplete.Focus()
 }
 
 // HideCommandWindow hides the command palette window
-func (c *CommandWindowController) HideCommandWindow() {
-	c.showingCommandWindow = false
+func (v *CommandWindowView) HideCommandWindow() {
+	v.showingCommandWindow = false
 }
 
 // IsShowingCommandWindow returns whether the command window is visible
-func (c *CommandWindowController) IsShowingCommandWindow() bool {
-	return c.showingCommandWindow
+func (v *CommandWindowView) IsShowingCommandWindow() bool {
+	return v.showingCommandWindow
 }
 
 // ShowRunDialog shows the run dialog with detected commands
-func (c *CommandWindowController) ShowRunDialog(commands []parser.ExecutableCommand, monorepoInfo *parser.MonorepoInfo) {
-	c.showingRunDialog = true
-	c.detectedCommands = commands
-	c.monorepoInfo = monorepoInfo
+func (v *CommandWindowView) ShowRunDialog(commands []parser.ExecutableCommand, monorepoInfo *parser.MonorepoInfo) {
+	v.showingRunDialog = true
+	v.detectedCommands = commands
+	v.monorepoInfo = monorepoInfo
 
 	// Convert commands to list items
 	var items []list.Item
 	for _, cmd := range commands {
-		items = append(items, cmdDialogItem{command: cmd})
+		items = append(items, CmdDialogItem{Command: cmd})
 	}
 
-	c.commandsList.SetItems(items)
+	v.commandsList.SetItems(items)
 	if len(items) > 0 {
-		c.commandsList.Select(0)
+		v.commandsList.Select(0)
 	}
 }
 
 // HideRunDialog hides the run dialog
-func (c *CommandWindowController) HideRunDialog() {
-	c.showingRunDialog = false
+func (v *CommandWindowView) HideRunDialog() {
+	v.showingRunDialog = false
 }
 
 // IsShowingRunDialog returns whether the run dialog is visible
-func (c *CommandWindowController) IsShowingRunDialog() bool {
-	return c.showingRunDialog
+func (v *CommandWindowView) IsShowingRunDialog() bool {
+	return v.showingRunDialog
 }
 
 // ShowCustomCommandDialog shows the custom command input dialog
-func (c *CommandWindowController) ShowCustomCommandDialog() {
-	c.showingCustomCommand = true
-	c.customCommandInput.Focus()
-	c.customCommandInput.SetValue("")
+func (v *CommandWindowView) ShowCustomCommandDialog() {
+	v.showingCustomCommand = true
+	v.customCommandInput.Focus()
+	v.customCommandInput.SetValue("")
 }
 
 // HideCustomCommandDialog hides the custom command dialog
-func (c *CommandWindowController) HideCustomCommandDialog() {
-	c.showingCustomCommand = false
+func (v *CommandWindowView) HideCustomCommandDialog() {
+	v.showingCustomCommand = false
 }
 
 // IsShowingCustomCommand returns whether the custom command dialog is visible
-func (c *CommandWindowController) IsShowingCustomCommand() bool {
-	return c.showingCustomCommand
+func (v *CommandWindowView) IsShowingCustomCommand() bool {
+	return v.showingCustomCommand
 }
 
 // GetCommandAutocomplete returns the command autocomplete for input handling
-func (c *CommandWindowController) GetCommandAutocomplete() *CommandAutocomplete {
-	return &c.commandAutocomplete
+func (v *CommandWindowView) GetCommandAutocomplete() CommandAutocompleteInterface {
+	return v.commandAutocomplete
 }
 
 // GetCustomCommandInput returns the custom command input for input handling
-func (c *CommandWindowController) GetCustomCommandInput() *textinput.Model {
-	return &c.customCommandInput
+func (v *CommandWindowView) GetCustomCommandInput() *textinput.Model {
+	return &v.customCommandInput
 }
 
 // GetCommandsList returns the commands list for input handling
-func (c *CommandWindowController) GetCommandsList() *list.Model {
-	return &c.commandsList
+func (v *CommandWindowView) GetCommandsList() *list.Model {
+	return &v.commandsList
 }
 
 // GetSelectedCommand returns the currently selected command from the run dialog
-func (c *CommandWindowController) GetSelectedCommand() *parser.ExecutableCommand {
-	if !c.showingRunDialog || len(c.detectedCommands) == 0 {
+func (v *CommandWindowView) GetSelectedCommand() *parser.ExecutableCommand {
+	if !v.showingRunDialog || len(v.detectedCommands) == 0 {
 		return nil
 	}
 
-	selectedItem := c.commandsList.SelectedItem()
+	selectedItem := v.commandsList.SelectedItem()
 	if selectedItem == nil {
 		return nil
 	}
 
-	if cmdItem, ok := selectedItem.(cmdDialogItem); ok {
-		return &cmdItem.command
+	if cmdItem, ok := selectedItem.(CmdDialogItem); ok {
+		return &cmdItem.Command
 	}
 
 	return nil
 }
 
+// getTerminalSize returns the terminal width and height
+func getTerminalSize() (width, height int, err error) {
+	fd := int(os.Stdout.Fd())
+	width, height, err = term.GetSize(fd)
+	if err == nil {
+		return width, height, nil
+	}
+	// Try stderr as fallback
+	fd = int(os.Stderr.Fd())
+	return term.GetSize(fd)
+}
+
 // RenderCommandWindow renders the command palette window
-func (c *CommandWindowController) RenderCommandWindow() string {
+func (v *CommandWindowView) RenderCommandWindow() string {
 	// Get terminal size directly to avoid dependency on model updates
 	termWidth, termHeight, err := getTerminalSize()
 	if err != nil || termWidth < MinTerminalWidth || termHeight < MinTerminalHeight {
 		// Fallback to stored values if terminal size can't be determined
-		termWidth = c.width
-		termHeight = c.height
+		termWidth = v.width
+		termHeight = v.height
 	}
 
 	// Safety check for minimum dimensions - use fallback for small terminals
@@ -226,10 +315,10 @@ func (c *CommandWindowController) RenderCommandWindow() string {
 		Width(windowWidth - 6).
 		MarginBottom(1)
 
-	inputView := inputStyle.Render(c.commandAutocomplete.View())
+	inputView := inputStyle.Render(v.commandAutocomplete.View())
 
 	// Get the dropdown suggestions
-	dropdownView := c.commandAutocomplete.RenderDropdown(maxSuggestions)
+	dropdownView := v.commandAutocomplete.RenderDropdown(maxSuggestions)
 
 	// Help text
 	helpStyle := lipgloss.NewStyle().
@@ -239,7 +328,7 @@ func (c *CommandWindowController) RenderCommandWindow() string {
 	helpText := helpStyle.Render("↑↓ Navigate • Tab/Enter Select • Esc Cancel")
 
 	// Error message if any
-	errorMsg := c.commandAutocomplete.GetErrorMessage()
+	errorMsg := v.commandAutocomplete.GetErrorMessage()
 	if errorMsg != "" {
 		errorStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("196")).
@@ -262,10 +351,10 @@ func (c *CommandWindowController) RenderCommandWindow() string {
 }
 
 // RenderRunDialog renders the run dialog with available commands
-func (c *CommandWindowController) RenderRunDialog() string {
+func (v *CommandWindowView) RenderRunDialog() string {
 	windowStyle := lipgloss.NewStyle().
-		Width(c.width - 4).
-		Height(c.height - 4).
+		Width(v.width - 4).
+		Height(v.height - 4).
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("39")).
 		Background(lipgloss.Color("235")).
@@ -277,7 +366,7 @@ func (c *CommandWindowController) RenderRunDialog() string {
 		MarginBottom(1)
 
 	title := "Available Commands"
-	if c.monorepoInfo != nil && c.monorepoInfo.Root != "" {
+	if v.monorepoInfo != nil && v.monorepoInfo.Root != "" {
 		title += " (Monorepo detected)"
 	}
 
@@ -289,7 +378,7 @@ func (c *CommandWindowController) RenderRunDialog() string {
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		titleStyle.Render(title),
-		c.commandsList.View(),
+		v.commandsList.View(),
 		helpStyle.Render(help),
 	)
 
@@ -297,12 +386,12 @@ func (c *CommandWindowController) RenderRunDialog() string {
 }
 
 // RenderCustomCommandDialog renders the custom command input dialog
-func (c *CommandWindowController) RenderCustomCommandDialog() string {
+func (v *CommandWindowView) RenderCustomCommandDialog() string {
 	// Get terminal size directly
 	termWidth, termHeight, err := getTerminalSize()
 	if err != nil || termWidth < MinTerminalWidth || termHeight < MinTerminalHeight {
-		termWidth = c.width
-		termHeight = c.height
+		termWidth = v.width
+		termHeight = v.height
 	}
 
 	windowWidth := DefaultCommandWindowWidth
@@ -332,7 +421,7 @@ func (c *CommandWindowController) RenderCustomCommandDialog() string {
 
 	content := lipgloss.JoinVertical(lipgloss.Left,
 		title,
-		c.customCommandInput.View(),
+		v.customCommandInput.View(),
 		helpText,
 	)
 
@@ -347,19 +436,19 @@ func (c *CommandWindowController) RenderCustomCommandDialog() string {
 	return overlayStyle.Render(window)
 }
 
-// cmdDialogItem implements list.Item for executable commands (to avoid conflict with existing commandItem)
-type cmdDialogItem struct {
-	command parser.ExecutableCommand
+// CmdDialogItem implements list.Item for executable commands
+type CmdDialogItem struct {
+	Command parser.ExecutableCommand
 }
 
-func (i cmdDialogItem) FilterValue() string {
-	return i.command.Name
+func (i CmdDialogItem) FilterValue() string {
+	return i.Command.Name
 }
 
-func (i cmdDialogItem) Title() string {
-	return i.command.Name
+func (i CmdDialogItem) Title() string {
+	return i.Command.Name
 }
 
-func (i cmdDialogItem) Description() string {
-	return i.command.Command
+func (i CmdDialogItem) Description() string {
+	return i.Command.Command
 }

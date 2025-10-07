@@ -2,144 +2,274 @@ package components
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
-// LogsViewComponent displays logs in real-time using a viewport.
-// It receives LogAddedMsg messages and appends them to the display.
-//
-// Design principles:
-// - No direct access to LogStore (read-only initial load is acceptable)
-// - All updates via LogAddedMsg messages
-// - Viewport auto-scrolls to bottom on new logs
-// - Supports scrolling with arrow keys and page up/down
-type LogsViewComponent struct {
-	BaseComponent
+// LogsView is a BubbleTea component for displaying process logs
+// Migrated from logs_view_controller.go (T044-T048)
+// Architecture: Component → Service (direct logs.Store access)
+type LogsView struct {
+	logsViewport     viewport.Model
+	searchInput      textinput.Model
+	searchResults    []logs.LogEntry
+	showHighPriority bool
+	showPattern      string
+	hidePattern      string
+	logsAutoScroll   bool
+	logsAtBottom     bool
 
-	viewport viewport.Model
-	logs     []string
-
-	// Read-only reference for initial load
-	logStore *logs.Store
-
-	// Styles
-	errorStyle  lipgloss.Style
-	normalStyle lipgloss.Style
+	// Direct service access
+	logStore        *logs.Store
+	selectedProcess string
+	width           int
+	height          int
 }
 
-// NewLogsViewComponent creates a logs view with initial logs from store
-func NewLogsViewComponent(logStore *logs.Store) *LogsViewComponent {
-	c := &LogsViewComponent{
-		BaseComponent: NewBaseComponent(),
-		logStore:      logStore,
-		viewport:      viewport.New(80, 24),
-		logs:          []string{},
-		errorStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("9")),  // Red
-		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")), // White
-	}
+// NewLogsView creates a new logs view component
+func NewLogsView(logStore *logs.Store) *LogsView {
+	searchInput := textinput.New()
+	searchInput.Placeholder = "Commands: /show <pattern> | /hide <pattern>"
+	searchInput.Focus()
 
-	// Load existing logs (one-time read)
-	// Note: LogStore.GetAll() returns a copy, so this is safe
-	if logStore != nil {
-		entries := logStore.GetAll()
-		c.logs = make([]string, 0, len(entries))
-		for i := range entries {
-			c.logs = append(c.logs, c.formatEntry(&entries[i]))
-		}
-		c.updateViewport()
+	return &LogsView{
+		logsViewport:   viewport.New(0, 0),
+		searchInput:    searchInput,
+		logStore:       logStore,
+		logsAutoScroll: true,
 	}
-
-	return c
 }
 
-// Init initializes the component
-func (c *LogsViewComponent) Init() tea.Cmd {
+// Init initializes the component (BubbleTea interface)
+func (v *LogsView) Init() tea.Cmd {
 	return nil
 }
 
-// Update handles messages
-func (c *LogsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+// Update handles messages (BubbleTea interface)
+func (v *LogsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
-
-	switch msg := msg.(type) {
-	case messages.LogAddedMsg:
-		// NEW LOG! This is the event-driven magic!
-		c.logs = append(c.logs, c.formatEntry(msg.Entry))
-		c.updateViewport()
-		return c, nil
-
-	case tea.WindowSizeMsg:
-		c.SetSize(msg.Width, msg.Height)
-		c.viewport.Width = msg.Width
-		c.viewport.Height = msg.Height
-		c.updateViewport()
-		return c, nil
-
-	case tea.KeyMsg:
-		// Forward keyboard input to viewport for scrolling
-		c.viewport, cmd = c.viewport.Update(msg)
-		return c, cmd
-	}
-
-	return c, nil
+	v.logsViewport, cmd = v.logsViewport.Update(msg)
+	return v, cmd
 }
 
-// View renders the logs viewport
-func (c *LogsViewComponent) View() string {
-	if !c.IsVisible() {
-		return ""
-	}
-
-	return c.viewport.View()
+// View renders the component (BubbleTea interface)
+func (v *LogsView) View() string {
+	return v.Render()
 }
 
-// SetSize updates component dimensions
-func (c *LogsViewComponent) SetSize(width, height int) {
-	c.BaseComponent.SetSize(width, height)
-	c.viewport.Width = width
-	c.viewport.Height = height
-	c.updateViewport()
+// SetSize updates the component's dimensions (Component interface)
+func (v *LogsView) SetSize(width, height int) {
+	v.width = width
+	v.height = height
+	contentHeight := height - 6
+	v.logsViewport.Width = width
+	v.logsViewport.Height = contentHeight
 }
 
-// formatEntry formats a log entry for display
-func (c *LogsViewComponent) formatEntry(entry *logs.LogEntry) string {
-	timestamp := entry.Timestamp.Format("15:04:05")
-	processName := entry.ProcessName
-
-	// Truncate long process names
-	if len(processName) > 12 {
-		processName = processName[:12]
-	}
-
-	style := c.normalStyle
-	if entry.IsError {
-		style = c.errorStyle
-	}
-
-	// Format: [HH:MM:SS] ProcessName: content
-	line := fmt.Sprintf("[%s] %-12s: %s",
-		timestamp,
-		processName,
-		entry.Content,
-	)
-
-	return style.Render(line)
+// Focus gives keyboard focus to the component (Component interface)
+func (v *LogsView) Focus() tea.Cmd {
+	return nil
 }
 
-// updateViewport updates the viewport content and scrolls to bottom
-func (c *LogsViewComponent) updateViewport() {
-	content := strings.Join(c.logs, "\n")
-	c.viewport.SetContent(content)
+// Blur removes keyboard focus from the component (Component interface)
+func (v *LogsView) Blur() tea.Cmd {
+	return nil
+}
 
-	// Auto-scroll to bottom if not manually scrolled
-	// Check if user is near the bottom (within last 5 lines)
-	if c.viewport.YOffset >= c.viewport.TotalLineCount()-c.viewport.Height-5 {
-		c.viewport.GotoBottom()
+// GetSize returns current dimensions (Component interface)
+func (v *LogsView) GetSize() (width, height int) {
+	return v.width, v.height
+}
+
+// UpdateSize updates the dimensions with pre-calculated content height
+func (v *LogsView) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
+	v.width = width
+	v.height = height
+	v.logsViewport.Width = width
+	v.logsViewport.Height = contentHeight
+}
+
+// SetSelectedProcess sets the currently selected process for filtering
+func (v *LogsView) SetSelectedProcess(processID string) {
+	v.selectedProcess = processID
+}
+
+// SetShowPattern sets the show filter pattern
+func (v *LogsView) SetShowPattern(pattern string) {
+	v.showPattern = pattern
+}
+
+// SetHidePattern sets the hide filter pattern
+func (v *LogsView) SetHidePattern(pattern string) {
+	v.hidePattern = pattern
+}
+
+// SetShowHighPriority sets whether to show only high priority logs
+func (v *LogsView) SetShowHighPriority(show bool) {
+	v.showHighPriority = show
+}
+
+// ToggleHighPriority toggles the high priority filter
+func (v *LogsView) ToggleHighPriority() {
+	v.showHighPriority = !v.showHighPriority
+}
+
+// GetShowPatternPtr returns a pointer to the show pattern
+func (v *LogsView) GetShowPatternPtr() *string {
+	return &v.showPattern
+}
+
+// GetHidePatternPtr returns a pointer to the hide pattern
+func (v *LogsView) GetHidePatternPtr() *string {
+	return &v.hidePattern
+}
+
+// GetSearchResultsPtr returns a pointer to the search results
+func (v *LogsView) GetSearchResultsPtr() *[]logs.LogEntry {
+	return &v.searchResults
+}
+
+// GetShowPattern returns the current show pattern
+func (v *LogsView) GetShowPattern() string {
+	return v.showPattern
+}
+
+// GetHidePattern returns the current hide pattern
+func (v *LogsView) GetHidePattern() string {
+	return v.hidePattern
+}
+
+// GetSearchResults returns the current search results
+func (v *LogsView) GetSearchResults() []logs.LogEntry {
+	return v.searchResults
+}
+
+// ToggleAutoScroll toggles auto-scroll behavior
+func (v *LogsView) ToggleAutoScroll() {
+	v.logsAutoScroll = !v.logsAutoScroll
+}
+
+// IsAutoScrollEnabled returns whether auto-scroll is enabled
+func (v *LogsView) IsAutoScrollEnabled() bool {
+	return v.logsAutoScroll
+}
+
+// GetLogsViewport returns the logs viewport for direct manipulation
+func (v *LogsView) GetLogsViewport() *viewport.Model {
+	return &v.logsViewport
+}
+
+// UpdateLogsView refreshes the logs view with current data
+func (v *LogsView) UpdateLogsView() {
+	var collapsedEntries []logs.CollapsedLogEntry
+
+	// Direct service call - no controller indirection (T046)
+	if v.selectedProcess != "" {
+		collapsedEntries = v.logStore.GetByProcessCollapsed(v.selectedProcess)
+	} else {
+		collapsedEntries = v.logStore.GetAllCollapsed()
 	}
+
+	collapsedEntries = v.applyFilters(collapsedEntries)
+	content := v.formatLogsForDisplay(collapsedEntries)
+	v.logsViewport.SetContent(content)
+
+	if v.logsAutoScroll {
+		v.logsViewport.GotoBottom()
+	}
+}
+
+// Render renders the logs view
+func (v *LogsView) Render() string {
+	return v.logsViewport.View()
+}
+
+// applyFilters applies show/hide patterns to logs
+func (v *LogsView) applyFilters(entries []logs.CollapsedLogEntry) []logs.CollapsedLogEntry {
+	if v.showPattern == "" && v.hidePattern == "" && !v.showHighPriority {
+		return entries
+	}
+
+	var filtered []logs.CollapsedLogEntry
+	var showRe, hideRe *regexp.Regexp
+	var err error
+
+	if v.showPattern != "" {
+		showRe, err = regexp.Compile(v.showPattern)
+		if err != nil {
+			showRe = nil
+		}
+	}
+
+	if v.hidePattern != "" {
+		hideRe, err = regexp.Compile(v.hidePattern)
+		if err != nil {
+			hideRe = nil
+		}
+	}
+
+	for _, entry := range entries {
+		if v.showHighPriority && entry.Priority == 0 {
+			continue
+		}
+
+		if showRe != nil && !showRe.MatchString(entry.Content) {
+			continue
+		}
+
+		if hideRe != nil && hideRe.MatchString(entry.Content) {
+			continue
+		}
+
+		filtered = append(filtered, entry)
+	}
+
+	return filtered
+}
+
+// formatLogsForDisplay formats collapsed log entries for display
+func (v *LogsView) formatLogsForDisplay(entries []logs.CollapsedLogEntry) string {
+	var builder strings.Builder
+
+	normalStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	errorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("196")).Bold(true)
+	countStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("220")).Bold(true)
+	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39")).Bold(true)
+
+	for _, entry := range entries {
+		ts := timestampStyle.Render(entry.Timestamp.Format("15:04:05"))
+
+		var content string
+		if entry.IsError {
+			content = errorStyle.Render(entry.Content)
+		} else {
+			content = normalStyle.Render(entry.Content)
+		}
+
+		processName := processStyle.Render(entry.ProcessName)
+
+		if entry.Count > 1 {
+			countText := countStyle.Render(fmt.Sprintf(" [%d times]", entry.Count))
+			builder.WriteString(fmt.Sprintf("%s [%s] %s%s\n", ts, processName, content, countText))
+		} else {
+			builder.WriteString(fmt.Sprintf("%s [%s] %s\n", ts, processName, content))
+		}
+	}
+
+	if builder.Len() == 0 {
+		emptyStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Italic(true).
+			Align(lipgloss.Center, lipgloss.Center)
+		return emptyStyle.Render("No logs to display")
+	}
+
+	return builder.String()
 }

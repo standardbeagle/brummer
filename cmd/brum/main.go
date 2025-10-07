@@ -667,16 +667,16 @@ func runApp(cmd *cobra.Command, args []string) {
 		shell.SetFooterComponent(footerComponent)
 
 		// Create all view components
-		logsView := components.NewLogsViewComponent(logStore)
+		logsView := components.NewLogsView(logStore)
 		shell.SetLogsView(logsView)
 
 		processView := components.NewProcessViewComponent(processMgr)
 		shell.SetProcessView(processView)
 
-		urlsView := components.NewURLsViewComponent()
+		urlsView := components.NewURLsView(logStore)
 		shell.SetURLsView(urlsView)
 
-		errorsView := components.NewErrorsViewComponent(logStore)
+		errorsView := components.NewErrorsView(logStore)
 		shell.SetErrorsView(errorsView)
 
 		webView := components.NewWebViewComponent(proxyServer)

@@ -28,10 +28,10 @@ func (h *DialogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 	var cmds []tea.Cmd
 
 	// Handle run dialog updates
-	if model.commandWindowController.IsShowingRunDialog() {
+	if model.commandWindowView.IsShowingRunDialog() {
 		// Handle escape key to close dialog
 		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, model.keys.Back) {
-			model.commandWindowController.HideRunDialog()
+			model.commandWindowView.HideRunDialog()
 			return model, nil
 		}
 
@@ -42,7 +42,7 @@ func (h *DialogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 		}
 
 		// Update the commands list
-		commandsList := model.commandWindowController.GetCommandsList()
+		commandsList := model.commandWindowView.GetCommandsList()
 		newList, cmd := commandsList.Update(msg)
 		*commandsList = newList
 		cmds = append(cmds, cmd)
@@ -51,18 +51,18 @@ func (h *DialogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 	}
 
 	// Handle custom command dialog
-	if model.commandWindowController.IsShowingCustomCommand() {
+	if model.commandWindowView.IsShowingCustomCommand() {
 		// Handle escape key to close dialog
 		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, model.keys.Back) {
-			model.commandWindowController.HideCustomCommandDialog()
+			model.commandWindowView.HideCustomCommandDialog()
 			return model, nil
 		}
 
 		// Handle enter key to run command
 		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, model.keys.Enter) {
-			command := strings.TrimSpace(model.commandWindowController.GetCustomCommandInput().Value())
+			command := strings.TrimSpace(model.commandWindowView.GetCustomCommandInput().Value())
 			if command != "" {
-				model.commandWindowController.HideCustomCommandDialog()
+				model.commandWindowView.HideCustomCommandDialog()
 				// Parse the command and arguments
 				parts := strings.Fields(command)
 				if len(parts) > 0 {
@@ -90,7 +90,7 @@ func (h *DialogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 		}
 
 		// Update the text input
-		customInput := model.commandWindowController.GetCustomCommandInput()
+		customInput := model.commandWindowView.GetCustomCommandInput()
 		newInput, cmd := customInput.Update(msg)
 		*customInput = newInput
 		cmds = append(cmds, cmd)

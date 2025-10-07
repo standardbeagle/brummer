@@ -518,14 +518,14 @@ func (c *AICoderController) HandleAICommand(providerName string) {
 						// Switch to AI Coders view to show the session
 						c.updateChan <- switchToAICodersMsg{}
 						// Trigger immediate update to show the session
-						c.updateChan <- processUpdateMsg{}
+						c.updateChan <- ProcessUpdateMsg{}
 					}
 				} else {
 					c.logStore.Add("system", "System", fmt.Sprintf("Provider %s does not have CLI tool configured", providerName), true)
 				}
 			}
 
-			c.updateChan <- processUpdateMsg{}
+			c.updateChan <- ProcessUpdateMsg{}
 		},
 		func(err error) {
 			c.isCreatingSession.Store(false) // Ensure flag is reset on panic

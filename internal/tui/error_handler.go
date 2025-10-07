@@ -83,7 +83,7 @@ func (h *StandardErrorHandler) HandleSuccess(message string, ctx ErrorContext) {
 
 	// Trigger UI update
 	if updateChan != nil {
-		updateChan <- processUpdateMsg{}
+		updateChan <- ProcessUpdateMsg{}
 	}
 }
 

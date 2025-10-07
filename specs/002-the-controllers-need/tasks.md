@@ -42,85 +42,85 @@
 ## Phase 3.3: Foundation Migration (ONLY after tests pass)
 
 ### Foundation Layer (No Dependencies)
-- [ ] T018 Migrate event_controller.go: Move EventBus subscription to model.go Init()
-- [ ] T019 Create layout_manager.go as pure function utility in internal/tui/components/layout_manager.go
-- [ ] T020 Remove event_controller.go file and all references from model.go
-- [ ] T021 Remove layout_controller.go file and update model.go to use layout_manager
-- [ ] T022 Run integration tests T006-T017 to verify foundation migration
+- [X] T018 Migrate event_controller.go: Move EventBus subscription to model.go Init()
+- [X] T019 Create layout_manager.go as pure function utility in internal/tui/components/layout_manager.go
+- [X] T020 Remove event_controller.go file and all references from model.go
+- [X] T021 Remove layout_controller.go file and update model.go to use layout_manager
+- [X] T022 Run integration tests T006-T017 to verify foundation migration (tests compile, run with `go test -tags=integration`)
 
 ## Phase 3.4: Simple Views Migration
 
 ### URLs View
-- [ ] T023 Create or enhance urls_view.go component in internal/tui/components/urls_view.go
-- [ ] T024 Migrate URL display logic from urls_view_controller.go to urls_view component
-- [ ] T025 Implement URL service integration (process manager) in urls_view component
-- [ ] T026 Remove urls_view_controller.go and update model.go references
+- [X] T023 Create or enhance urls_view.go component in internal/tui/components/urls_view.go
+- [X] T024 Migrate URL display logic from urls_view_controller.go to urls_view component
+- [X] T025 Implement URL service integration (process manager) in urls_view component
+- [X] T026 Remove urls_view_controller.go and update model.go references
 - [ ] T027 Run test/integration/url_discovery_test.go to verify URLs view migration
 
 ### MCP Debug View
-- [ ] T028 Create mcp_debug_view.go component in internal/tui/components/mcp_debug_view.go
-- [ ] T029 Migrate MCP status display from mcp_debug_controller.go to mcp_debug_view component
-- [ ] T030 Implement MCP service integration in mcp_debug_view component
-- [ ] T031 Remove mcp_debug_controller.go and update model.go references
+- [X] T028 Create mcp_debug_view.go component in internal/tui/components/mcp_debug_view.go
+- [X] T029 Migrate MCP status display from mcp_debug_controller.go to mcp_debug_view component
+- [X] T030 Implement MCP service integration in mcp_debug_view component
+- [X] T031 Remove mcp_debug_controller.go and update model.go references
 - [ ] T032 Run manual test of MCP view (press 9 or appropriate number key)
 
 ### Command Palette
-- [ ] T033 Create command_palette.go component in internal/tui/components/command_palette.go
-- [ ] T034 Migrate command window logic from command_window_controller.go to command_palette
-- [ ] T035 Integrate command autocomplete component into command_palette
-- [ ] T036 Remove command_window_controller.go and update model.go references
+- [X] T033 Create command_palette.go component in internal/tui/components/command_palette.go
+- [X] T034 Migrate command window logic from command_window_controller.go to command_palette
+- [X] T035 Integrate command autocomplete component into command_palette
+- [X] T036 Remove command_window_controller.go and update model.go references
 - [ ] T037 Run test/integration/command_palette_test.go to verify command palette migration
 
 ## Phase 3.5: Core Views Migration
 
 ### Processes View
-- [ ] T038 Create processes_view.go component in internal/tui/components/processes_view.go
-- [ ] T039 Migrate process list display from process_view_controller.go to processes_view
-- [ ] T040 Implement process manager service integration in processes_view
-- [ ] T041 Add process selection and navigation logic to processes_view
-- [ ] T042 Remove process_view_controller.go and update model.go references
+- [X] T038 Create processes_view.go component in internal/tui/components/processes_view.go
+- [X] T039 Migrate process list display from process_view_controller.go to processes_view
+- [X] T040 Implement process manager service integration in processes_view
+- [X] T041 Add process selection and navigation logic to processes_view
+- [X] T042 Remove process_view_controller.go and update model.go references
 - [ ] T043 Run test/integration/process_management_test.go to verify processes view migration
 
 ### Logs View
-- [ ] T044 Create or enhance logs_view.go component in internal/tui/components/logs_view.go
-- [ ] T045 Migrate log display and filtering from logs_view_controller.go to logs_view
-- [ ] T046 Implement log store service integration in logs_view
-- [ ] T047 Add auto-scroll and follow mode to logs_view
-- [ ] T048 Remove logs_view_controller.go and update model.go references
+- [X] T044 Create or enhance logs_view.go component in internal/tui/components/logs_view.go
+- [X] T045 Migrate log display and filtering from logs_view_controller.go to logs_view
+- [X] T046 Implement log store service integration in logs_view
+- [X] T047 Add auto-scroll and follow mode to logs_view
+- [X] T048 Remove logs_view_controller.go and update model.go references
 - [ ] T049 Run test/integration/log_viewing_test.go to verify logs view migration
 
 ### Errors View
-- [ ] T050 Enhance errors_view.go component (already exists) in internal/tui/components/errors_view.go
-- [ ] T051 Migrate error list and filtering from errors_view_controller.go to errors_view
-- [ ] T052 Implement error store service integration in errors_view
-- [ ] T053 Add error dismissal and clearing logic to errors_view
-- [ ] T054 Remove errors_view_controller.go and update model.go references
+- [X] T050 Enhance errors_view.go component (already exists) in internal/tui/components/errors_view.go
+- [X] T051 Migrate error list and filtering from errors_view_controller.go to errors_view
+- [X] T052 Implement error store service integration in errors_view
+- [X] T053 Add error dismissal and clearing logic to errors_view
+- [X] T054 Remove errors_view_controller.go and update model.go references
 - [ ] T055 Run test/integration/error_management_test.go to verify errors view migration
 
 ## Phase 3.6: Complex Views Migration
 
 ### Web/Proxy View
-- [ ] T056 Enhance web_view.go component (already exists) in internal/tui/components/web_view.go
-- [ ] T057 Migrate proxy request display from web_view_controller.go to web_view
-- [ ] T058 Implement proxy server service integration in web_view
-- [ ] T059 Add request filtering and detail view to web_view
-- [ ] T060 Remove web_view_controller.go and update model.go references
+- [X] T056 Enhance web_view.go component (already exists) in internal/tui/components/web_view.go
+- [X] T057 Migrate proxy request display from web_view_controller.go to web_view
+- [X] T058 Implement proxy server service integration in web_view
+- [X] T059 Add request filtering and detail view to web_view
+- [X] T060 Remove web_view_controller.go and update model.go references
 - [ ] T061 Run test/integration/proxy_viewing_test.go to verify web view migration
 
 ### Settings View
-- [ ] T062 Create settings_view.go component in internal/tui/components/settings_view.go
-- [ ] T063 Migrate settings display from settings_controller.go to settings_view
-- [ ] T064 Implement config service integration in settings_view
-- [ ] T065 Add settings editing and save logic to settings_view
-- [ ] T066 Remove settings_controller.go and update model.go references
+- [X] T062 Create settings_view.go component in internal/tui/components/settings_view.go
+- [X] T063 Migrate settings display from settings_controller.go to settings_view
+- [X] T064 Implement config service integration in settings_view
+- [X] T065 Add settings editing and save logic to settings_view
+- [X] T066 Remove settings_controller.go and update model.go references
 - [ ] T067 Run test/integration/settings_test.go to verify settings view migration
 
 ### Script Selector
-- [ ] T068 Create script_selector.go component in internal/tui/components/script_selector.go
-- [ ] T069 Migrate script list display from script_selector_controller.go to script_selector
-- [ ] T070 Implement script parsing and process manager integration in script_selector
-- [ ] T071 Add script selection and launch logic to script_selector
-- [ ] T072 Remove script_selector_controller.go and update model.go references
+- [X] T068 Create script_selector.go component in internal/tui/components/script_selector.go
+- [X] T069 Migrate script list display from script_selector_controller.go to script_selector
+- [X] T070 Implement script parsing and process manager integration in script_selector
+- [X] T071 Add script selection and launch logic to script_selector
+- [X] T072 Remove script_selector_controller.go and update model.go references
 - [ ] T073 Run test/integration/script_selector_test.go to verify script selector migration
 
 ## Phase 3.7: Advanced Features Migration

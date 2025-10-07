@@ -47,8 +47,8 @@ func NewInputController(model *Model, keys keyMap, viewConfigs map[View]ViewConf
 // HandleKeyMsg processes keyboard input using the hierarchical key handler
 func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
 	// Handle script selector view (special case - highest priority)
-	if ic.model.currentView() == ViewScriptSelector && ic.model.scriptSelectorController != nil {
-		handled, cmd := ic.model.scriptSelectorController.HandleKeyMsg(msg)
+	if ic.model.currentView() == ViewScriptSelector && ic.model.scriptSelector != nil {
+		handled, cmd := ic.model.scriptSelector.HandleKeyMsg(msg)
 		if handled {
 			return ic.model, cmd, true
 		}
@@ -145,7 +145,7 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 		return ic.model, cmd, true
 
 	case key.Matches(msg, ic.keys.RunDialog):
-		if !ic.model.commandWindowController.IsShowingRunDialog() {
+		if !ic.model.commandWindowView.IsShowingRunDialog() {
 			ic.model.showRunDialog()
 		}
 		return ic.model, nil, true
@@ -201,7 +201,7 @@ func (ic *InputController) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd,
 	case key.Matches(msg, ic.keys.Priority):
 		if ic.model.currentView() == ViewLogs {
 			// Toggle high priority in LogsViewController
-			ic.model.logsViewController.ToggleHighPriority()
+			ic.model.logsView.ToggleHighPriority()
 			ic.model.updateLogsView()
 		}
 		return ic.model, nil, true
@@ -224,11 +224,12 @@ func (ic *InputController) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd,
 
 	case key.Matches(msg, ic.keys.ToggleError):
 		if ic.model.systemController != nil && ic.model.systemController.HasMessages() {
+			// TODO: Implement system panel toggle when TabsComponent has the appropriate methods
 			// Toggle system panel via layout controller
-			if ic.model.layoutController != nil {
-				current := ic.model.layoutController.GetSystemPanelHeight() > 0
-				ic.model.layoutController.SetSystemPanelOpen(!current)
-			}
+			// if ic.model.tabsComponent != nil {
+			// 	current := ic.model.tabsComponent.GetSystemPanelHeight() > 0
+			// 	ic.model.tabsComponent.SetSystemPanelOpen(!current)
+			// }
 		}
 		return ic.model, nil, true
 
@@ -262,7 +263,7 @@ func (ic *InputController) handleGlobalKeys(msg tea.KeyMsg) (tea.Model, tea.Cmd,
 func (ic *InputController) handleEnter() tea.Cmd {
 	switch ic.model.currentView() {
 	case ViewProcesses:
-		if i, ok := ic.model.processViewController.GetProcessesList().SelectedItem().(processItem); ok {
+		if i, ok := ic.model.processesView.GetProcessesList().SelectedItem().(processItem); ok {
 			ic.model.selectedProcess = i.process.ID
 			ic.model.navController.SwitchTo(ViewLogs)
 			ic.model.updateLogsView()
@@ -274,27 +275,20 @@ func (ic *InputController) handleEnter() tea.Cmd {
 
 // handleCommandWindow handles input when command window is open
 func (ic *InputController) handleCommandWindow(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
-	commandAutocomplete := ic.model.commandWindowController.GetCommandAutocomplete()
+	commandAutocomplete := ic.model.commandWindowView.GetCommandAutocomplete()
 
 	switch msg.String() {
 	case "esc":
-		ic.model.commandWindowController.HideCommandWindow()
+		ic.model.commandWindowView.HideCommandWindow()
 		return ic.model, nil, true
 
 	case "backspace":
 		if commandAutocomplete.Value() == "" {
-			ic.model.commandWindowController.HideCommandWindow()
+			ic.model.commandWindowView.HideCommandWindow()
 			return ic.model, nil, true
 		}
 
 	case "enter":
-		// If there are suggestions available, apply the selected one first
-		if len(commandAutocomplete.GetSuggestions()) > 0 {
-			// Simulate a tab key press to apply the selected suggestion
-			tabMsg := tea.KeyMsg{Type: tea.KeyTab}
-			*commandAutocomplete, _ = commandAutocomplete.Update(tabMsg)
-		}
-
 		// Validate the command first
 		if valid, errMsg := commandAutocomplete.ValidateInput(); !valid {
 			// Set error message in the autocomplete component
@@ -304,7 +298,7 @@ func (ic *InputController) handleCommandWindow(msg tea.KeyMsg) (tea.Model, tea.C
 
 		// Execute the command
 		value := commandAutocomplete.Value()
-		ic.model.commandWindowController.HideCommandWindow()
+		ic.model.commandWindowView.HideCommandWindow()
 
 		// Handle the command through slash command handler
 		ic.model.handleSlashCommand(value)
@@ -312,8 +306,7 @@ func (ic *InputController) handleCommandWindow(msg tea.KeyMsg) (tea.Model, tea.C
 	}
 
 	// Update the autocomplete component
-	newAuto, cmd := commandAutocomplete.Update(msg)
-	*commandAutocomplete = newAuto
+	_, cmd := commandAutocomplete.Update(msg)
 
 	return ic.model, cmd, true
 }
