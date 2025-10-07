@@ -1,0 +1,262 @@
+# Key Handler Contract
+# Defines hierarchical key handling pattern
+
+name: HierarchicalKeyHandler
+description: Priority-based key handling system for components
+version: 1.0.0
+
+overview:
+  description: |
+    Key events flow through handlers in priority order:
+    1. Focused component (highest priority - e.g., terminal, dialog)
+    2. Overlay handlers (medium priority - e.g., command palette)
+    3. View-specific handlers (normal priority - e.g., process list)
+    4. Global handlers (lowest priority - e.g., quit, navigation)
+
+    First handler to return a command "handles" the key and stops propagation.
+
+priority_levels:
+  - level: 100
+    name: Focus
+    description: Focused component (terminal, text input)
+    example: PTY terminal in AI coder view
+
+  - level: 50
+    name: Overlay
+    description: Modal dialogs, command palette
+    example: Command palette when open
+
+  - level: 25
+    name: ViewSpecific
+    description: Current view's component
+    example: Process list in processes view
+
+  - level: 10
+    name: Global
+    description: Always-available shortcuts
+    example: Quit (q, Ctrl+C), navigation (1-9, Tab)
+
+interface:
+  key_handler:
+    methods:
+      - name: HandleKey
+        parameters:
+          - name: msg
+            type: tea.KeyMsg
+            description: Keyboard event
+          - name: model
+            type: tea.Model
+            description: Current model state
+        returns:
+          - type: tea.Model
+            description: Updated model (may be unchanged)
+          - type: tea.Cmd
+            description: Command to execute (nil if not handled)
+
+      - name: Priority
+        returns:
+          - type: HandlerPriority
+            description: Handler priority level
+
+  context:
+    description: Context holds active handlers at each priority level
+    structure: |
+      type KeyHandlerContext struct {
+          FocusedHandler  KeyHandler    // Priority 100
+          OverlayHandlers []KeyHandler  // Priority 50
+          ViewHandler     KeyHandler    // Priority 25
+          GlobalHandlers  []KeyHandler  // Priority 10
+      }
+
+implementation_pattern:
+  component_as_handler: |
+    // Component implements KeyHandler interface
+    type ProcessesViewComponent struct {
+        processMgr *process.Manager
+        list       bubbles.List
+        priority   HandlerPriority
+    }
+
+    func (p *ProcessesViewComponent) HandleKey(msg tea.KeyMsg, model tea.Model) (tea.Model, tea.Cmd) {
+        switch msg.String() {
+        case "enter":
+            // Handle Enter - navigate to logs
+            selectedID := p.getSelectedID()
+            return model, NavigateToLogsCmd(selectedID)
+
+        case "r":
+            // Handle R - restart process
+            return model, p.restartProcess()
+
+        case "up", "down":
+            // Delegate to list component
+            newList, cmd := p.list.Update(msg)
+            p.list = newList
+            return model, cmd
+
+        default:
+            // Not handled by this component
+            return model, nil
+        }
+    }
+
+    func (p *ProcessesViewComponent) Priority() HandlerPriority {
+        return PriorityViewSpecific  // 25
+    }
+
+  hierarchical_processing: |
+    // HierarchicalKeyHandler processes key through priority levels
+    func (h *HierarchicalKeyHandler) HandleKey(msg tea.KeyMsg, model tea.Model) (tea.Model, tea.Cmd) {
+        ctx := h.GetContext()
+
+        // Try focused handler first (Priority 100)
+        if ctx.FocusedHandler != nil {
+            if newModel, cmd := ctx.FocusedHandler.HandleKey(msg, model); cmd != nil {
+                return newModel, cmd  // Handled - stop propagation
+            }
+        }
+
+        // Try overlay handlers (Priority 50)
+        for _, handler := range ctx.OverlayHandlers {
+            if newModel, cmd := handler.HandleKey(msg, model); cmd != nil {
+                return newModel, cmd  // Handled - stop propagation
+            }
+        }
+
+        // Try view-specific handler (Priority 25)
+        if ctx.ViewHandler != nil {
+            if newModel, cmd := ctx.ViewHandler.HandleKey(msg, model); cmd != nil {
+                return newModel, cmd  // Handled - stop propagation
+            }
+        }
+
+        // Try global handlers (Priority 10)
+        for _, handler := range ctx.GlobalHandlers {
+            if newModel, cmd := handler.HandleKey(msg, model); cmd != nil {
+                return newModel, cmd  // Handled - stop propagation
+            }
+        }
+
+        // Not handled by any handler
+        return model, nil
+    }
+
+examples:
+  terminal_focus:
+    description: PTY terminal captures all keys when focused
+    pattern: |
+      // Terminal is focused - highest priority
+      ctx := &KeyHandlerContext{
+          FocusedHandler: p.ptyTerminal,  // Priority 100
+          ViewHandler:    p.aiCoderView,  // Priority 25
+          GlobalHandlers: []KeyHandler{globalNav},  // Priority 10
+      }
+
+      // User presses "q"
+      // 1. ptyTerminal.HandleKey() returns cmd (sends 'q' to PTY) - handled!
+      // 2. Other handlers not called (propagation stopped)
+
+  command_palette:
+    description: Command palette overlay captures keys
+    pattern: |
+      // Command palette is open - overlay priority
+      ctx := &KeyHandlerContext{
+          OverlayHandlers: []KeyHandler{commandPalette},  // Priority 50
+          ViewHandler:     processesView,  // Priority 25
+          GlobalHandlers:  []KeyHandler{globalNav},  // Priority 10
+      }
+
+      // User presses "1"
+      // 1. commandPalette.HandleKey() returns cmd (adds '1' to input) - handled!
+      // 2. processesView and globalNav not called (propagation stopped)
+
+  view_navigation:
+    description: View handles keys, global navigation available
+    pattern: |
+      // Normal view interaction
+      ctx := &KeyHandlerContext{
+          ViewHandler:    processesView,  // Priority 25
+          GlobalHandlers: []KeyHandler{globalNav},  // Priority 10
+      }
+
+      // User presses "enter"
+      // 1. processesView.HandleKey() returns cmd (navigate to logs) - handled!
+      // 2. globalNav not called
+
+      // User presses "q"
+      // 1. processesView.HandleKey() returns (model, nil) - not handled
+      // 2. globalNav.HandleKey() returns quit cmd - handled!
+
+global_keys:
+  description: Keys that work in all views unless overridden
+  keys:
+    - key: "q"
+      description: Quit (with confirmation)
+      priority: Global (10)
+
+    - key: "ctrl+c"
+      description: Quit (with confirmation)
+      priority: Global (10)
+
+    - key: "1-9"
+      description: Switch to numbered view
+      priority: Global (10)
+
+    - key: "tab"
+      description: Next view
+      priority: Global (10)
+
+    - key: "shift+tab"
+      description: Previous view
+      priority: Global (10)
+
+    - key: "?"
+      description: Show help
+      priority: Global (10)
+
+    - key: "/"
+      description: Open command palette
+      priority: Global (10)
+
+testing:
+  description: Test key handling at different priority levels
+  pattern: |
+    func TestKeyHandlerPriority(t *testing.T) {
+        // Setup handlers
+        focused := &MockFocusedHandler{Priority: 100}
+        view := &MockViewHandler{Priority: 25}
+        global := &MockGlobalHandler{Priority: 10}
+
+        ctx := &KeyHandlerContext{
+            FocusedHandler: focused,
+            ViewHandler:    view,
+            GlobalHandlers: []KeyHandler{global},
+        }
+
+        handler := NewHierarchicalKeyHandler()
+        handler.SetContext(ctx)
+
+        // Test: Focused handler captures key
+        focused.ShouldHandle = true
+        model, cmd := handler.HandleKey(tea.KeyMsg{Runes: []rune("a")}, model)
+        assert.NotNil(t, cmd)
+        assert.True(t, focused.WasCalled)
+        assert.False(t, view.WasCalled)  // Not reached
+        assert.False(t, global.WasCalled)  // Not reached
+
+        // Test: Key falls through to global
+        focused.ShouldHandle = false
+        view.ShouldHandle = false
+        global.ShouldHandle = true
+        model, cmd = handler.HandleKey(tea.KeyMsg{Runes: []rune("q")}, model)
+        assert.NotNil(t, cmd)
+        assert.True(t, global.WasCalled)
+    }
+
+best_practices:
+  - Always return (model, nil) if key not handled (allows propagation)
+  - Return (model, cmd) only when key is handled
+  - Keep handlers simple (single responsibility)
+  - Update context when focus changes (e.g., terminal focused)
+  - Test that keys reach correct priority level
+  - Document which keys each handler responds to

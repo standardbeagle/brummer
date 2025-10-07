@@ -1,0 +1,99 @@
+# Component Interface Contract
+# Defines standard BubbleTea component interface
+
+name: ViewComponent
+description: Standard interface for all TUI view components
+version: 1.0.0
+
+interface:
+  methods:
+    - name: Init
+      description: Initialize component and return initial commands
+      returns:
+        - type: tea.Cmd
+          description: Initial command to execute (or nil)
+
+    - name: Update
+      description: Handle BubbleTea messages and update component state
+      parameters:
+        - name: msg
+          type: tea.Msg
+          description: BubbleTea message (key event, window size, custom message)
+      returns:
+        - type: tea.Model
+          description: Updated model
+        - type: tea.Cmd
+          description: Command to execute (or nil)
+
+    - name: View
+      description: Render component as string
+      returns:
+        - type: string
+          description: Rendered view with ANSI styling
+
+example:
+  go_code: |
+    type ProcessesViewComponent struct {
+        processMgr *process.Manager
+        list       bubbles.List
+        width      int
+        height     int
+    }
+
+    func (p *ProcessesViewComponent) Init() tea.Cmd {
+        return nil
+    }
+
+    func (p *ProcessesViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+        switch msg := msg.(type) {
+        case tea.KeyMsg:
+            switch msg.String() {
+            case "enter":
+                return p, p.handleEnter()
+            }
+        case tea.WindowSizeMsg:
+            p.width = msg.Width
+            p.height = msg.Height
+            p.list.SetSize(p.width, p.height-2)
+        }
+
+        var cmd tea.Cmd
+        p.list, cmd = p.list.Update(msg)
+        return p, cmd
+    }
+
+    func (p *ProcessesViewComponent) View() string {
+        return lipgloss.JoinVertical(
+            lipgloss.Left,
+            p.renderHeader(),
+            p.list.View(),
+        )
+    }
+
+testing:
+  description: Components should be testable in isolation with mock services
+  example: |
+    func TestProcessesView(t *testing.T) {
+        mockMgr := &MockProcessManager{}
+        component := NewProcessesViewComponent(mockMgr)
+
+        // Test initialization
+        cmd := component.Init()
+        assert.Nil(t, cmd)
+
+        // Test key handling
+        model, cmd := component.Update(tea.KeyMsg{Type: tea.KeyDown})
+        assert.NotNil(t, model)
+
+        // Test rendering
+        view := component.View()
+        assert.Contains(t, view, "Processes")
+    }
+
+best_practices:
+  - Keep state minimal and component-specific
+  - Inject service dependencies at creation
+  - Use BubbleTea sub-components (list, viewport, etc.)
+  - Handle all messages gracefully (unknown types are OK to ignore)
+  - Return nil for commands when no side effect needed
+  - Use lipgloss for consistent styling

@@ -1,0 +1,193 @@
+# Service Interaction Contract
+# Defines how components interact with services
+
+name: ComponentServiceInteraction
+description: Pattern for components calling services directly
+version: 1.0.0
+
+pattern:
+  description: Components call services synchronously during Update() or asynchronously via tea.Cmd
+
+  synchronous_calls:
+    description: Read operations that return immediately
+    use_when:
+      - Getting current state from service
+      - Querying service for display data
+      - Validating input against service state
+    example: |
+      func (p *ProcessesViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+          // Synchronous service call during Update
+          processes := p.processMgr.GetAllProcesses()
+          p.updateList(processes)
+          return p, nil
+      }
+
+  asynchronous_calls:
+    description: Operations that may take time or have side effects
+    use_when:
+      - Starting/stopping processes
+      - Making network requests
+      - Writing files or logs
+      - Any operation that may block
+    example: |
+      func (p *ProcessesViewComponent) handleEnter() tea.Cmd {
+          selectedID := p.getSelectedID()
+
+          // Return command that executes asynchronously
+          return func() tea.Msg {
+              err := p.processMgr.StartProcess(selectedID)
+              if err != nil {
+                  return ProcessStartErrorMsg{ID: selectedID, Error: err}
+              }
+              return ProcessStartedMsg{ID: selectedID}
+          }
+      }
+
+service_interfaces:
+  process_manager:
+    description: Process lifecycle management
+    methods:
+      - name: GetAllProcesses
+        type: synchronous
+        returns: []Process
+        description: Get current process list for display
+
+      - name: StartProcess
+        type: asynchronous
+        returns: error
+        description: Start a process (may take time)
+
+      - name: StopProcess
+        type: asynchronous
+        returns: error
+        description: Stop a running process
+
+  log_store:
+    description: Log storage and retrieval
+    methods:
+      - name: GetLogs
+        type: synchronous
+        returns: []LogEntry
+        description: Get logs for display
+
+      - name: Subscribe
+        type: asynchronous
+        returns: Subscription
+        description: Subscribe to new logs (via EventBus)
+
+      - name: Clear
+        type: synchronous
+        returns: void
+        description: Clear logs (immediate operation)
+
+  proxy_server:
+    description: HTTP proxy request capture
+    methods:
+      - name: GetRequests
+        type: synchronous
+        returns: []Request
+        description: Get captured requests for display
+
+      - name: GetRequestDetail
+        type: synchronous
+        returns: RequestDetail, error
+        description: Get full request/response details
+
+      - name: ClearRequests
+        type: synchronous
+        returns: void
+        description: Clear captured requests
+
+event_bus_integration:
+  description: Services emit events via EventBus, converted to BubbleTea messages
+  pattern: |
+    // Service emits event
+    eventBus.Emit("process.started", ProcessEvent{ID: "dev"})
+
+    // Model subscribes and converts to message
+    eventBus.Subscribe("process.*", func(event Event) {
+        m.updateChan <- ProcessStartedMsg{ID: event.Data.ID}
+    })
+
+    // Component handles message in Update()
+    func (p *ProcessesViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+        switch msg := msg.(type) {
+        case ProcessStartedMsg:
+            p.updateProcessStatus(msg.ID, StatusRunning)
+        }
+        return p, nil
+    }
+
+error_handling:
+  description: Components handle errors from services and display to user
+  pattern: |
+    // Service call returns error
+    func (p *ProcessesViewComponent) handleEnter() tea.Cmd {
+        return func() tea.Msg {
+            err := p.processMgr.StartProcess(p.selectedID)
+            if err != nil {
+                // Return error message to display
+                return ProcessStartErrorMsg{
+                    ProcessID: p.selectedID,
+                    Error:     err,
+                }
+            }
+            return ProcessStartedMsg{ProcessID: p.selectedID}
+        }
+    }
+
+    // Component Update() handles error message
+    func (p *ProcessesViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+        switch msg := msg.(type) {
+        case ProcessStartErrorMsg:
+            // Show error notification
+            return p, ShowNotificationCmd(
+                "Error",
+                fmt.Sprintf("Failed to start %s: %v", msg.ProcessID, msg.Error),
+            )
+        }
+        return p, nil
+    }
+
+testing:
+  description: Mock services for component testing
+  pattern: |
+    // Mock service interface
+    type MockProcessManager struct {
+        Processes []Process
+        StartErr  error
+    }
+
+    func (m *MockProcessManager) GetAllProcesses() []Process {
+        return m.Processes
+    }
+
+    func (m *MockProcessManager) StartProcess(id string) error {
+        return m.StartErr
+    }
+
+    // Test with mock
+    func TestProcessStartError(t *testing.T) {
+        mock := &MockProcessManager{
+            StartErr: errors.New("process not found"),
+        }
+        component := NewProcessesViewComponent(mock)
+
+        // Trigger start
+        cmd := component.handleEnter()
+        msg := cmd()
+
+        // Verify error message
+        errMsg, ok := msg.(ProcessStartErrorMsg)
+        assert.True(t, ok)
+        assert.Contains(t, errMsg.Error.Error(), "process not found")
+    }
+
+best_practices:
+  - Always use asynchronous commands for operations with side effects
+  - Handle all possible error cases from services
+  - Use EventBus for service → component communication
+  - Mock services in tests (don't call real services)
+  - Keep service calls simple (no complex logic in components)
+  - Use typed messages for all async results
+  - Display errors to user (don't silently fail)
