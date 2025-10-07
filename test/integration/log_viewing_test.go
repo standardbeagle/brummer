@@ -6,8 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/beagleresearch/brummer/internal/logs"
-	"github.com/beagleresearch/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/process"
 )
 
 // TestLogViewingAndFiltering tests the complete log viewing workflow

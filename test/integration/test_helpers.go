@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/beagleresearch/brummer/internal/tui"
-	"github.com/beagleresearch/brummer/pkg/events"
-	"github.com/beagleresearch/brummer/internal/process"
-	"github.com/beagleresearch/brummer/internal/logs"
-	"github.com/beagleresearch/brummer/internal/proxy"
-	"github.com/beagleresearch/brummer/internal/config"
+	"github.com/standardbeagle/brummer/internal/tui"
+	"github.com/standardbeagle/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/proxy"
+	"github.com/standardbeagle/brummer/internal/config"
 )
 
 // TestContext holds test environment and utilities

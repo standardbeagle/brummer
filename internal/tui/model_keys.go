@@ -29,6 +29,7 @@ type KeyMap struct {
 	AutoScroll    key.Binding
 	ToggleError   key.Binding
 	ClearMessages key.Binding
+	TestView      key.Binding
 }
 
 // DefaultKeyMap returns the default keyboard configuration

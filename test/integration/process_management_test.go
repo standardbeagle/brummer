@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/beagleresearch/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/process"
 )
 
 // TestProcessManagementWorkflow tests the complete process management workflow

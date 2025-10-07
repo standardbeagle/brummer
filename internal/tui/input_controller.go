@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/tui/components"
+	"github.com/standardbeagle/brummer/internal/tui/navigation"
 	"github.com/standardbeagle/brummer/internal/tui/system"
 )
 
@@ -390,7 +391,7 @@ func (ic *InputController) setupHierarchicalKeyHandlers() {
 			return ic.model, nil
 		},
 		"6": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-			ic.model.switchToView(ViewTests)
+			ic.model.switchToView(navigation.ViewTests)
 			return ic.model, nil
 		},
 		"7": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -431,7 +432,7 @@ func (ic *InputController) setupHierarchicalKeyHandlers() {
 			return ic.handleQuitWithHierarchical()
 		},
 		"t": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-			ic.model.switchToView(ViewTests)
+			ic.model.switchToView(navigation.ViewTests)
 			return ic.model, nil
 		},
 	})

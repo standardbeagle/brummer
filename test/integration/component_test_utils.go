@@ -6,10 +6,10 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/beagleresearch/brummer/internal/process"
-	"github.com/beagleresearch/brummer/internal/logs"
-	"github.com/beagleresearch/brummer/internal/proxy"
-	"github.com/beagleresearch/brummer/pkg/events"
+	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/proxy"
+	"github.com/standardbeagle/brummer/pkg/events"
 )
 
 // MockProcessManager is a mock implementation of process.Manager for testing
@@ -321,15 +321,11 @@ func (a *ViewAssertion) Assert(ctx *TestContext) {
 	view := ctx.Model.View()
 
 	for _, text := range a.Contains {
-		if !mock.Mock{}.AssertContains(ctx.T, view, text) {
-			ctx.T.Errorf("View should contain: %s", text)
-		}
+		ctx.AssertViewContains(text)
 	}
 
 	for _, text := range a.NotContains {
-		if !mock.Mock{}.AssertNotContains(ctx.T, view, text) {
-			ctx.T.Errorf("View should not contain: %s", text)
-		}
+		ctx.AssertViewNotContains(text)
 	}
 }
 
