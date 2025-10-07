@@ -83,7 +83,7 @@ func TestInputController_HandleKeyMsg(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Setup
 			model := tt.setupModel()
-			ic := NewInputController(model, keys, viewConfigs, false)
+			ic := NewInputController(model, keys, GetViewConfigs(), false)
 
 			// Execute
 			returnedModel, cmd, handled := ic.HandleKeyMsg(tt.keyMsg)
@@ -112,7 +112,7 @@ func TestInputController_QuickScriptMode(t *testing.T) {
 	model := createTestModel()
 	// Switch to a view where quick script mode is available (not script selector view)
 	model.navController.SwitchTo(ViewProcesses)
-	ic := NewInputController(model, keys, viewConfigs, false)
+	ic := NewInputController(model, keys, GetViewConfigs(), false)
 
 	// Test entering quick script mode
 	_, _, handled := ic.HandleKeyMsg(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'s'}})
@@ -134,7 +134,7 @@ func TestInputController_CommandModeNavigation(t *testing.T) {
 		"build": "npm run build",
 	}
 	model.commandWindowController.ShowCommandWindow(scripts, nil)
-	ic := NewInputController(model, keys, viewConfigs, false)
+	ic := NewInputController(model, keys, GetViewConfigs(), false)
 
 	// Test arrow down navigation
 	_, _, handled := ic.HandleKeyMsg(tea.KeyMsg{Type: tea.KeyDown})
@@ -149,7 +149,7 @@ func TestInputController_SearchMode(t *testing.T) {
 	// Setup
 	model := createTestModel()
 	model.navController.SwitchTo(ViewLogs)
-	ic := NewInputController(model, keys, viewConfigs, false)
+	ic := NewInputController(model, keys, GetViewConfigs(), false)
 
 	// Enter search mode
 	_, _, handled := ic.HandleKeyMsg(tea.KeyMsg{Type: tea.KeyCtrlF})
@@ -168,7 +168,7 @@ func TestInputController_HierarchicalKeyHandling(t *testing.T) {
 	model.Init()
 
 	// Create input controller
-	ic := NewInputController(model, keys, viewConfigs, false)
+	ic := NewInputController(model, keys, GetViewConfigs(), false)
 
 	// Test cases for keys that should be handled by the hierarchical system
 	testCases := []struct {

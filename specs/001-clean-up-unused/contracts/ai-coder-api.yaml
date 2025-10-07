@@ -1,0 +1,175 @@
+# AI Coder Integration API Contract
+
+openapi: 3.0.0
+info:
+  title: AI Coder Service
+  description: API for AI coding sessions and browser integration
+  version: 1.0.0
+
+paths:
+  /api/v1/ai/sessions:
+    post:
+      summary: Create new AI coding session
+      operationId: createAISession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '201':
+          description: Session created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AISession'
+        '400':
+          description: Invalid session request
+
+  /api/v1/ai/sessions/{sessionId}/terminal:
+    post:
+      summary: Send terminal input to AI session
+      operationId: sendTerminalInput
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TerminalInput'
+      responses:
+        '200':
+          description: Input processed successfully
+        '404':
+          description: Session not found
+
+  /api/v1/ai/sessions/{sessionId}/browser:
+    post:
+      summary: Connect browser debug tools
+      operationId: connectBrowser
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BrowserConnection'
+      responses:
+        '200':
+          description: Browser connected successfully
+        '404':
+          description: Session not found
+
+  /api/v1/ai/sessions/{sessionId}/errors:
+    get:
+      summary: Stream errors from browser and server
+      operationId: streamErrors
+      parameters:
+        - name: sessionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Error stream established
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+components:
+  schemas:
+    CreateSessionRequest:
+      type: object
+      required:
+        - sessionType
+      properties:
+        sessionType:
+          type: string
+          enum: [chat, coding, debugging]
+        initialPrompt:
+          type: string
+        workingDirectory:
+          type: string
+        environment:
+          type: object
+          additionalProperties:
+            type: string
+
+    AISession:
+      type: object
+      properties:
+        sessionId:
+          type: string
+        sessionType:
+          type: string
+        status:
+          type: string
+          enum: [initializing, active, paused, closed]
+        createdAt:
+          type: string
+          format: date-time
+        terminalInfo:
+          $ref: '#/components/schemas/TerminalInfo'
+        browserConnections:
+          type: array
+          items:
+            $ref: '#/components/schemas/BrowserConnection'
+
+    TerminalInfo:
+      type: object
+      properties:
+        terminalType:
+          type: string
+        dimensions:
+          $ref: '#/components/schemas/TerminalDimensions'
+        activeProcess:
+          type: string
+
+    TerminalDimensions:
+      type: object
+      properties:
+        rows:
+          type: integer
+        columns:
+          type: integer
+
+    TerminalInput:
+      type: object
+      required:
+        - input
+      properties:
+        input:
+          type: string
+        eventType:
+          type: string
+          enum: [keystroke, command, signal]
+
+    BrowserConnection:
+      type: object
+      required:
+        - debugUrl
+        - proxyPort
+      properties:
+        debugUrl:
+          type: string
+        proxyPort:
+          type: integer
+        browserType:
+          type: string
+          enum: [chrome, firefox, safari, edge]
+        connectionStatus:
+          type: string
+          enum: [connecting, connected, disconnected, error]

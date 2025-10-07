@@ -229,7 +229,7 @@ func (tc *TabsComponent) renderTabs() string {
 	var tabs []string
 
 	for _, viewType := range tc.views {
-		if cfg, ok := viewConfigs[viewType]; ok {
+		if cfg, ok := GetViewConfigs()[viewType]; ok {
 			tab := tc.renderTabResponsive(viewType, cfg, mode)
 			tabs = append(tabs, tab)
 		}

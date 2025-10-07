@@ -26,10 +26,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ⚠️ **CRITICAL INSTRUCTION**: Always update this section when working on tasks to maintain continuity between sessions.
 
-- **Current State**: Stable codebase with comprehensive architecture
-- **Recent Work**: Message Router refactoring and lock-free architecture optimizations completed
-- **Architecture**: Event-driven with Process Manager, Hub System, and Proxy Server integration
-- **Branch**: main (stable)
+- **Current State**: Active refactoring for code cleanup and key handling fixes (001-clean-up-unused branch)
+- **Recent Work**: Code cleanup static analysis tools, key handler consistency fixes, AI coder terminal integration
+- **Architecture**: Event-driven with Process Manager, Hub System, Proxy Server, and AI Coder integration
+- **Branch**: 001-clean-up-unused (feature development)
 
 ### Major Completed Work:
 - ✅ Message Router pattern implementation for TUI model refactoring

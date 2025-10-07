@@ -29,6 +29,7 @@ type IntegratedShell struct {
 	urlsView       Component
 	errorsView     Component
 	webView        Component
+	testView       Component
 	aicodersView   Component
 	mcpView        Component
 	settingsView   Component
@@ -132,6 +133,14 @@ func (s *IntegratedShell) SetAICodersView(component Component) {
 // SetMCPView sets the MCP status component
 func (s *IntegratedShell) SetMCPView(component Component) {
 	s.mcpView = component
+	if s.width > 0 && s.height > 0 {
+		component.SetSize(s.width, s.height)
+	}
+}
+
+// SetTestView sets the test management component
+func (s *IntegratedShell) SetTestView(component Component) {
+	s.testView = component
 	if s.width > 0 && s.height > 0 {
 		component.SetSize(s.width, s.height)
 	}
@@ -362,6 +371,10 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if s.webView != nil {
 				s.currentView = "web"
 			}
+		case "tests":
+			if s.testView != nil {
+				s.currentView = "tests"
+			}
 		case "aicoders":
 			if s.aicodersView != nil {
 				s.currentView = "aicoders"
@@ -449,6 +462,20 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmds = append(cmds, cmd)
 		}
 
+	// Test-related messages
+	case messages.TestRunStartedMsg,
+		 messages.TestRunCompletedMsg,
+		 messages.TestCaseStartedMsg,
+		 messages.TestCaseCompletedMsg,
+		 messages.TestResultsClearedMsg,
+		 messages.TestCoverageUpdatedMsg,
+		 messages.TestPerformanceUpdatedMsg:
+		// Route to test component
+		if s.testView != nil {
+			_, cmd := s.testView.Update(msg)
+			cmds = append(cmds, cmd)
+		}
+
 	case messages.CommandExecuteMsg:
 		// Command execution - route to executor
 		if s.commandExecutor != nil {
@@ -529,15 +556,15 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return s, nil
 		case "6":
-			// Switch to AI Coders view
-			if s.aicodersView != nil {
-				s.currentView = "aicoders"
+			// Switch to Test view
+			if s.testView != nil {
+				s.currentView = "tests"
 			}
 			return s, nil
 		case "7":
-			// Switch to MCP view
-			if s.mcpView != nil {
-				s.currentView = "mcp"
+			// Switch to AI Coders view
+			if s.aicodersView != nil {
+				s.currentView = "aicoders"
 			}
 			return s, nil
 		case "8":
@@ -547,9 +574,9 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return s, nil
 		case "9":
-			// Switch to Diagnostic view
-			if s.diagnosticView != nil {
-				s.currentView = "diagnostic"
+			// Switch to MCP view
+			if s.mcpView != nil {
+				s.currentView = "mcp"
 			}
 			return s, nil
 		default:
@@ -578,6 +605,11 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "web":
 				if s.webView != nil {
 					_, cmd := s.webView.Update(msg)
+					cmds = append(cmds, cmd)
+				}
+			case "tests":
+				if s.testView != nil {
+					_, cmd := s.testView.Update(msg)
 					cmds = append(cmds, cmd)
 				}
 			case "aicoders":
@@ -650,6 +682,13 @@ func (s *IntegratedShell) View() string {
 			baseView = s.webView.View()
 		} else {
 			baseView = "Web view not initialized"
+		}
+
+	case "tests":
+		if s.testView != nil {
+			baseView = s.testView.View()
+		} else {
+			baseView = "Test view not initialized"
 		}
 
 	case "aicoders":

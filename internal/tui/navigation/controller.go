@@ -14,6 +14,7 @@ const (
 	ViewErrors         View = "errors"
 	ViewURLs           View = "urls"
 	ViewWeb            View = "web"
+	ViewTests          View = "tests"
 	ViewSettings       View = "settings"
 	ViewMCPConnections View = "mcp-connections"
 	ViewSearch         View = "search"
@@ -29,6 +30,7 @@ var ViewOrder = []View{
 	ViewErrors,
 	ViewURLs,
 	ViewWeb,
+	ViewTests,
 	ViewAICoders,
 	ViewSettings,
 	ViewMCPConnections,
@@ -227,10 +229,12 @@ func GetViewForNumber(num int) (View, bool) {
 	case 5:
 		return ViewWeb, true
 	case 6:
-		return ViewAICoders, true
+		return ViewTests, true
 	case 7:
-		return ViewSettings, true
+		return ViewAICoders, true
 	case 8:
+		return ViewSettings, true
+	case 9:
 		return ViewMCPConnections, true
 	default:
 		return "", false

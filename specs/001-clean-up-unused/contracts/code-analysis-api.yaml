@@ -1,0 +1,171 @@
+# Code Analysis API Contract
+
+openapi: 3.0.0
+info:
+  title: Code Analysis Service
+  description: API for static code analysis and cleanup operations
+  version: 1.0.0
+
+paths:
+  /api/v1/analysis:
+    post:
+      summary: Analyze code for unused elements
+      operationId: analyzeCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalysisRequest'
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResult'
+        '400':
+          description: Invalid analysis request
+        '500':
+          description: Analysis failed
+
+  /api/v1/cleanup:
+    post:
+      summary: Apply cleanup based on analysis results
+      operationId: cleanupCode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CleanupRequest'
+      responses:
+        '200':
+          description: Cleanup completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CleanupResult'
+        '400':
+          description: Invalid cleanup request
+        '500':
+          description: Cleanup failed
+
+components:
+  schemas:
+    AnalysisRequest:
+      type: object
+      required:
+        - targetPaths
+        - analysisType
+      properties:
+        targetPaths:
+          type: array
+          items:
+            type: string
+          description: List of file/directory paths to analyze
+        analysisType:
+          type: string
+          enum: [imports, functions, deadcode, all]
+          description: Type of analysis to perform
+        options:
+          type: object
+          description: Additional analysis options
+
+    AnalysisResult:
+      type: object
+      properties:
+        analysisId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        unusedImports:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnusedImport'
+        unreachableFunctions:
+          type: array
+          items:
+            $ref: '#/components/schemas/UnreachableFunction'
+        deadCodeBlocks:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeadCodeBlock'
+        affectedFiles:
+          type: array
+          items:
+            type: string
+
+    UnusedImport:
+      type: object
+      properties:
+        file:
+          type: string
+        importPath:
+          type: string
+        lineNumber:
+          type: integer
+
+    UnreachableFunction:
+      type: object
+      properties:
+        file:
+          type: string
+        functionName:
+          type: string
+        startLine:
+          type: integer
+        endLine:
+          type: integer
+
+    DeadCodeBlock:
+      type: object
+      properties:
+        file:
+          type: string
+        startLine:
+          type: integer
+        endLine:
+          type: integer
+        reason:
+          type: string
+
+    CleanupRequest:
+      type: object
+      required:
+        - analysisId
+        - cleanupOptions
+      properties:
+        analysisId:
+          type: string
+        cleanupOptions:
+          type: object
+          properties:
+            removeUnusedImports:
+              type: boolean
+            removeUnreachableFunctions:
+              type: boolean
+            removeDeadCode:
+              type: boolean
+            createBackup:
+              type: boolean
+
+    CleanupResult:
+      type: object
+      properties:
+        cleanupId:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        filesModified:
+          type: array
+          items:
+            type: string
+        backupCreated:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string

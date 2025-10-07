@@ -390,15 +390,19 @@ func (ic *InputController) setupHierarchicalKeyHandlers() {
 			return ic.model, nil
 		},
 		"6": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-			ic.model.switchToView(ViewAICoders)
+			ic.model.switchToView(ViewTests)
 			return ic.model, nil
 		},
 		"7": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-			ic.model.switchToView(ViewMCPConnections)
+			ic.model.switchToView(ViewAICoders)
 			return ic.model, nil
 		},
 		"8": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			ic.model.switchToView(ViewSettings)
+			return ic.model, nil
+		},
+		"9": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewMCPConnections)
 			return ic.model, nil
 		},
 		"tab": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -426,6 +430,10 @@ func (ic *InputController) setupHierarchicalKeyHandlers() {
 		"ctrl+c": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return ic.handleQuitWithHierarchical()
 		},
+		"t": func(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+			ic.model.switchToView(ViewTests)
+			return ic.model, nil
+		},
 	})
 
 	// Set up the initial context
@@ -445,7 +453,7 @@ func (ic *InputController) handleQuitWithHierarchical() (tea.Model, tea.Cmd) {
 // showHelpOverlay shows the help overlay
 func (ic *InputController) showHelpOverlay() (tea.Model, tea.Cmd) {
 	// For now, add a help message to logs
-	ic.model.logStore.Add("system", "System", "Help: Use number keys 1-8 to switch views, / for commands, q/Ctrl+C to quit", false)
+	ic.model.logStore.Add("system", "System", "Help: Use number keys 1-9 to switch views, t for test view, / for commands, q/Ctrl+C to quit", false)
 	return ic.model, nil
 }
 

@@ -17,16 +17,17 @@ import (
 	mcplib "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/spf13/cobra"
+	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/discovery"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
+	"github.com/standardbeagle/brummer/internal/test"
 	"github.com/standardbeagle/brummer/internal/tui/bridge"
 	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/pkg/events"
-	"github.com/standardbeagle/brummer/internal/aicoder"
 )
 
 var (
@@ -221,6 +222,18 @@ func runApp(cmd *cobra.Command, args []string) {
 	} else {
 		log.Println("AI coder manager initialized successfully")
 	}
+
+	// Initialize test runner service
+	testRunner := test.NewTestRunnerService()
+	log.Println("Test runner service initialized successfully")
+
+	// Initialize AI test context optimizer (disabled for now - TODO: fix event bus integration)
+	// var testContextOptimizer *ai.TestContextOptimizer
+	// if aiCoderManager != nil {
+	// 	// Create event bus adapter for test context optimizer
+	// 	testContextOptimizer = ai.NewTestContextOptimizer(testRunner, eventBusAdapter)
+	// 	log.Println("AI test context optimizer initialized successfully")
+	// }
 
 	// Initialize proxy server if enabled
 	var proxyServer *proxy.Server
@@ -668,6 +681,10 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		webView := components.NewWebViewComponent(proxyServer)
 		shell.SetWebView(webView)
+
+		// Create test view
+		testView := components.NewTestViewComponent(testRunner.GetManager(), 80, 24)
+		shell.SetTestView(testView)
 
 		// Create AI coders view
 		aicodersView := components.NewAICodersViewComponent()

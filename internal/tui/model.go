@@ -51,65 +51,7 @@ const (
 	ViewAICoders       = navigation.ViewAICoders
 )
 
-// ViewConfig holds configuration for each view
-type ViewConfig struct {
-	Title       string
-	Description string
-	KeyBinding  string
-	Icon        string
-}
-
-// viewConfigs defines the configuration for each view
-var viewConfigs = map[View]ViewConfig{
-	ViewProcesses: {
-		Title:       "Processes",
-		Description: "Process management",
-		KeyBinding:  "1",
-		Icon:        "🏃",
-	},
-	ViewLogs: {
-		Title:       "Logs",
-		Description: "Process logs",
-		KeyBinding:  "2",
-		Icon:        "📄",
-	},
-	ViewErrors: {
-		Title:       "Errors",
-		Description: "Error tracking",
-		KeyBinding:  "3",
-		Icon:        "❌",
-	},
-	ViewURLs: {
-		Title:       "URLs",
-		Description: "Detected URLs",
-		KeyBinding:  "4",
-		Icon:        "🔗",
-	},
-	ViewWeb: {
-		Title:       "Web",
-		Description: "Proxy requests",
-		KeyBinding:  "5",
-		Icon:        "🌐",
-	},
-	ViewAICoders: {
-		Title:       "AI Coders",
-		Description: "Manage and monitor agentic AI coding assistants",
-		KeyBinding:  "6",
-		Icon:        "🤖",
-	},
-	ViewSettings: {
-		Title:       "Settings",
-		Description: "Configuration",
-		KeyBinding:  "7",
-		Icon:        "⚙️",
-	},
-	ViewMCPConnections: {
-		Title:       "MCP",
-		Description: "MCP Connections",
-		KeyBinding:  "8",
-		Icon:        "🔌",
-	},
-}
+// View configuration is now handled in model_views.go
 
 // MCPServerInterface defines the methods needed by the TUI
 type MCPServerInterface interface {
@@ -675,7 +617,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// 8. Initialize input controller
 	//    - Required by: Keyboard handling
 	//    - Dependencies: Full model reference (uses &m)
-	m.inputController = NewInputController(&m, keys, viewConfigs, debugMode)
+	m.inputController = NewInputController(&m, keys, GetViewConfigs(), debugMode)
 
 	// 9. Initialize event controller
 	//    - Required by: Event bus integration
@@ -1219,7 +1161,7 @@ func (m *Model) renderHeader() string {
 		orderedViews = append(orderedViews, ViewMCPConnections)
 	}
 	for i, viewType := range orderedViews {
-		if cfg, ok := viewConfigs[viewType]; ok {
+		if cfg, ok := GetViewConfigs()[navigation.View(viewType)]; ok {
 			// Build the base label with icon and space before number
 			label := fmt.Sprintf("%s.%s", cfg.KeyBinding, cfg.Title)
 			if cfg.Icon != "" {
