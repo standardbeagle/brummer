@@ -222,13 +222,13 @@ go build ./internal/tui/messages
 - Create: `internal/tui/services/aicoder_service.go`
 
 **Acceptance Criteria**:
-- [ ] Struct matches design in `data-model.md` "AICoderService" section
-- [ ] Uses sync.Map for session registry
-- [ ] References EventBus for event publishing
-- [ ] Has shutdown channel and WaitGroup
-- [ ] Constructor `NewAICoderService()` implemented
-- [ ] Tests T003 now pass (service creation tests)
-- [ ] No race conditions detected (`go test -race`)
+- [x] Struct matches design in `data-model.md` "AICoderService" section
+- [x] Uses sync.Map for session registry
+- [x] References EventBus for event publishing
+- [x] Has shutdown channel and WaitGroup
+- [x] Constructor `NewAICoderService()` implemented
+- [x] Tests T003 now pass (service creation tests)
+- [x] No race conditions detected (`go test -race`)
 
 **Implementation Notes**:
 - Reference: `contracts/aicoder_service.go` interface
@@ -251,12 +251,12 @@ go test -race ./internal/tui/services -run TestNewAICoderService
 - Modify: `internal/tui/services/aicoder_service.go`
 
 **Acceptance Criteria**:
-- [ ] `CreateSession()` implemented with validation
-- [ ] `StartSession()` creates PTY manager and monitoring goroutine
-- [ ] `StopSession()` stops PTY and cleans up
-- [ ] Session status transitions enforced
-- [ ] EventBus events published (Created, Updated, Ended)
-- [ ] Tests T004 now pass (session lifecycle tests)
+- [x] `CreateSession()` implemented with validation
+- [~] `StartSession()` creates PTY manager and monitoring goroutine (TODO: needs PTY integration)
+- [~] `StopSession()` stops PTY and cleans up (basic implementation, needs PTY cleanup)
+- [x] Session status transitions enforced
+- [x] EventBus events published (Created, Updated, Ended)
+- [ ] Tests T004 now pass (session lifecycle tests) - BLOCKED by PTY integration
 - [ ] No race conditions detected
 
 **Implementation Notes**:
@@ -283,12 +283,12 @@ go test -race ./internal/tui/services -run TestSession
 - Modify: `internal/tui/services/aicoder_service.go`
 
 **Acceptance Criteria**:
-- [ ] `GetTerminalState()` returns read-only snapshot
-- [ ] `SendInput()` forwards to PTY with <50ms latency
-- [ ] `ResizePTY()` updates dimensions and sends SIGWINCH
-- [ ] Terminal state derived from PTY lock-free buffer
-- [ ] Tests T005 now pass (PTY integration tests)
-- [ ] Performance requirement met (<50ms SendInput)
+- [~] `GetTerminalState()` returns read-only snapshot (placeholder implementation)
+- [~] `SendInput()` forwards to PTY with <50ms latency (placeholder implementation)
+- [~] `ResizePTY()` updates dimensions and sends SIGWINCH (placeholder implementation)
+- [ ] Terminal state derived from PTY lock-free buffer - BLOCKED by PTY integration
+- [ ] Tests T005 now pass (PTY integration tests) - BLOCKED by PTY integration
+- [ ] Performance requirement met (<50ms SendInput) - BLOCKED by PTY integration
 - [ ] No race conditions detected
 
 **Implementation Notes**:
@@ -314,12 +314,12 @@ go test -race ./internal/tui/services
 - Modify: `internal/tui/services/aicoder_service.go`
 
 **Acceptance Criteria**:
-- [ ] `ListSessions()` returns sorted session summaries
-- [ ] `GetSession()` retrieves session by ID
-- [ ] `GetActiveSession()` returns most recent session ID
-- [ ] Efficient sync.Map iteration
-- [ ] Tests T006 now pass (concurrent sessions tests)
-- [ ] No race conditions detected
+- [x] `ListSessions()` returns sorted session summaries
+- [x] `GetSession()` retrieves session by ID
+- [x] `GetActiveSession()` returns most recent session ID
+- [x] Efficient sync.Map iteration
+- [ ] Tests T006 now pass (concurrent sessions tests) - Needs comprehensive tests
+- [ ] No race conditions detected - Needs comprehensive tests
 
 **Implementation Notes**:
 - Reference: `contracts/aicoder_service.go` query methods
@@ -343,13 +343,13 @@ go test -race ./internal/tui/services -run TestConcurrent
 - Modify: `internal/tui/services/aicoder_service.go`
 
 **Acceptance Criteria**:
-- [ ] All sentinel errors defined (ErrSessionNotFound, etc.)
-- [ ] Error validation in all public methods
-- [ ] AICoderErrorMsg published on errors
-- [ ] PTY crash detection triggers SessionError status
-- [ ] Resource cleanup on error paths
-- [ ] Tests T007 now pass (error handling tests)
-- [ ] No resource leaks on error paths
+- [x] All sentinel errors defined (ErrSessionNotFound, etc.)
+- [x] Error validation in all public methods
+- [ ] AICoderErrorMsg published on errors - Partially done (needs PTY error handling)
+- [ ] PTY crash detection triggers SessionError status - BLOCKED by PTY integration
+- [ ] Resource cleanup on error paths - Basic cleanup, needs PTY cleanup
+- [ ] Tests T007 now pass (error handling tests) - Needs comprehensive tests
+- [ ] No resource leaks on error paths - Needs comprehensive tests
 
 **Implementation Notes**:
 - Reference: `contracts/aicoder_service.go` error definitions
