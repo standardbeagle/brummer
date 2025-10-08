@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
@@ -35,8 +37,8 @@ type AICoderSession struct {
 	Command      string
 	WorkingDir   string
 
-	// PTY integration (placeholder - will be implemented when we integrate with actual PTY)
-	// PTYManager   *LockFreePTYManager
+	// PTY integration
+	PTYSession *aicoder.PTYSession
 
 	// Metrics
 	BytesRead    atomic.Uint64
@@ -143,8 +145,44 @@ func (s *AICoderService) StartSession(ctx context.Context, sessionID string, wid
 		return ErrSessionAlreadyStarted
 	}
 
-	// TODO: Create and start PTY manager here
-	// For now, just update status
+	// Parse command string into command + args
+	parts := strings.Fields(session.Command)
+	if len(parts) == 0 {
+		return ErrInvalidCommand
+	}
+
+	command := parts[0]
+	args := []string{}
+	if len(parts) > 1 {
+		args = parts[1:]
+	}
+
+	// Create PTY session (this also starts the PTY process and I/O loops)
+	// Note: NewPTYSession starts with default 80x24 dimensions
+	// TODO: Support custom dimensions in NewPTYSession or resize after creation
+	ptySession, err := aicoder.NewPTYSession(sessionID, session.Name, command, args)
+	if err != nil {
+		session.ErrorCount.Add(1)
+		s.publishError(sessionID, fmt.Errorf("failed to create PTY: %w", err))
+		return fmt.Errorf("failed to create PTY: %w", err)
+	}
+
+	// Resize to requested dimensions if different from default
+	if width != 80 || height != 24 {
+		if err := ptySession.Resize(width, height); err != nil {
+			// Log warning but don't fail - PTY is already running
+			s.publishError(sessionID, fmt.Errorf("failed to resize PTY: %w", err))
+		}
+	}
+
+	// Store PTY session
+	session.PTYSession = ptySession
+
+	// Start monitoring goroutine for PTY output
+	s.wg.Add(1)
+	go s.monitorPTYOutput(sessionID)
+
+	// Update status
 	session.Status = messages.SessionActive
 	session.LastActivity = time.Now()
 
@@ -163,6 +201,88 @@ func (s *AICoderService) StartSession(ctx context.Context, sessionID string, wid
 	return nil
 }
 
+// monitorPTYOutput monitors PTY output and publishes events
+func (s *AICoderService) monitorPTYOutput(sessionID string) {
+	defer s.wg.Done()
+
+	value, ok := s.sessions.Load(sessionID)
+	if !ok {
+		return
+	}
+	session := value.(*AICoderSession)
+
+	if session.PTYSession == nil {
+		return
+	}
+
+	sequence := atomic.Uint64{}
+
+	for {
+		select {
+		case <-s.shutdownCh:
+			return
+
+		case output, ok := <-session.PTYSession.OutputChan:
+			if !ok {
+				// PTY session ended
+				session.Status = messages.SessionStopped
+				s.eventBus.Publish(events.Event{
+					Type:      "aicoder.session.ended",
+					ProcessID: sessionID,
+					Timestamp: time.Now(),
+					Data: map[string]interface{}{
+						"sessionID": sessionID,
+						"reason":    "pty_closed",
+					},
+				})
+				return
+			}
+
+			// Update metrics
+			session.BytesRead.Add(uint64(len(output)))
+			session.LastActivity = time.Now()
+
+			// Publish PTY output event
+			s.eventBus.Publish(events.Event{
+				Type:      "aicoder.pty.output",
+				ProcessID: sessionID,
+				Timestamp: time.Now(),
+				Data: map[string]interface{}{
+					"sessionID": sessionID,
+					"data":      output,
+					"sequence":  sequence.Add(1),
+				},
+			})
+
+		case event, ok := <-session.PTYSession.EventChan:
+			if !ok {
+				return
+			}
+
+			// Handle PTY events (errors, state changes, etc.)
+			if event.Type == "error" {
+				session.ErrorCount.Add(1)
+				session.Status = messages.SessionError
+				s.publishError(sessionID, fmt.Errorf("PTY error: %v", event.Data))
+			}
+		}
+	}
+}
+
+// publishError publishes an error event for a session
+func (s *AICoderService) publishError(sessionID string, err error) {
+	s.eventBus.Publish(events.Event{
+		Type:      "aicoder.error",
+		ProcessID: sessionID,
+		Timestamp: time.Now(),
+		Data: map[string]interface{}{
+			"sessionID": sessionID,
+			"error":     err.Error(),
+			"severity":  "error",
+		},
+	})
+}
+
 // StopSession gracefully stops a session and cleans up resources
 func (s *AICoderService) StopSession(ctx context.Context, sessionID string) error {
 	// Get session
@@ -173,11 +293,18 @@ func (s *AICoderService) StopSession(ctx context.Context, sessionID string) erro
 	}
 	session := value.(*AICoderSession)
 
-	// TODO: Stop PTY manager and cleanup goroutines
-	// For now, just update status
+	// Stop PTY session if running
+	if session.PTYSession != nil {
+		if err := session.PTYSession.Close(); err != nil {
+			// Log error but continue cleanup
+			s.publishError(sessionID, fmt.Errorf("PTY cleanup error: %w", err))
+		}
+	}
+
+	// Update status
 	session.Status = messages.SessionStopped
 
-	// Remove from registry
+	// Remove from registry (monitoring goroutine will stop when channels close)
 	s.sessions.Delete(sessionID)
 
 	// Publish event
@@ -251,14 +378,26 @@ func (s *AICoderService) GetTerminalState(sessionID string) (*messages.TerminalS
 		return nil, ErrSessionNotStarted
 	}
 
-	// TODO: Get actual terminal state from PTY manager
-	// For now, return a placeholder
+	if session.PTYSession == nil {
+		return nil, ErrSessionNotStarted
+	}
+
+	// Get terminal state from PTY session
+	// Note: PTYSession.Terminal access should be thread-safe via vt10x
+	termContent := session.PTYSession.Terminal.String()
+	lines := strings.Split(termContent, "\n")
+
+	cursor := session.PTYSession.Terminal.Cursor()
+
+	// Get terminal dimensions - default to 80x24
+	width, height := 80, 24
+
 	return &messages.TerminalState{
-		Lines:       []string{"AI Coder Terminal", "Session: " + session.Name, "Status: " + string(session.Status)},
-		Cursor:      messages.CursorPos{Row: 0, Col: 0, Visible: true},
-		Width:       80,
-		Height:      24,
-		TotalLines:  3,
+		Lines:       lines,
+		Cursor:      messages.CursorPos{Row: cursor.Y, Col: cursor.X, Visible: true},
+		Width:       width,
+		Height:      height,
+		TotalLines:  len(lines),
 		ViewportTop: 0,
 		UpdatedAt:   time.Now(),
 	}, nil
@@ -279,12 +418,20 @@ func (s *AICoderService) SendInput(sessionID string, input []byte) error {
 		return nil
 	}
 
-	// TODO: Forward input to PTY manager
-	// For now, just update activity time
-	session.LastActivity = time.Now()
-	session.BytesWritten.Add(uint64(len(input)))
+	if session.PTYSession == nil {
+		return ErrSessionNotStarted
+	}
 
-	return nil
+	// Forward input to PTY session's input channel
+	select {
+	case session.PTYSession.InputChan <- input:
+		session.LastActivity = time.Now()
+		session.BytesWritten.Add(uint64(len(input)))
+		return nil
+	case <-time.After(50 * time.Millisecond):
+		// Timeout to meet <50ms latency requirement
+		return fmt.Errorf("input timeout: PTY not responsive")
+	}
 }
 
 // ResizePTY updates terminal dimensions
@@ -302,8 +449,14 @@ func (s *AICoderService) ResizePTY(sessionID string, width, height int) error {
 		return ErrSessionNotStarted
 	}
 
-	// TODO: Resize PTY manager and send SIGWINCH
-	// For now, just validate
+	if session.PTYSession == nil {
+		return ErrSessionNotStarted
+	}
+
+	// Resize the PTY
+	if err := session.PTYSession.Resize(width, height); err != nil {
+		return fmt.Errorf("failed to resize PTY: %w", err)
+	}
 
 	return nil
 }

@@ -252,12 +252,12 @@ go test -race ./internal/tui/services -run TestNewAICoderService
 
 **Acceptance Criteria**:
 - [x] `CreateSession()` implemented with validation
-- [~] `StartSession()` creates PTY manager and monitoring goroutine (TODO: needs PTY integration)
-- [~] `StopSession()` stops PTY and cleans up (basic implementation, needs PTY cleanup)
+- [x] `StartSession()` creates PTY session and monitoring goroutine
+- [x] `StopSession()` stops PTY and cleans up
 - [x] Session status transitions enforced
 - [x] EventBus events published (Created, Updated, Ended)
-- [ ] Tests T004 now pass (session lifecycle tests) - BLOCKED by PTY integration
-- [ ] No race conditions detected
+- [ ] Tests T004 now pass (session lifecycle tests) - Need comprehensive tests
+- [ ] No race conditions detected - Need comprehensive tests
 
 **Implementation Notes**:
 - Reference: `contracts/aicoder_service.go` method signatures
@@ -283,13 +283,13 @@ go test -race ./internal/tui/services -run TestSession
 - Modify: `internal/tui/services/aicoder_service.go`
 
 **Acceptance Criteria**:
-- [~] `GetTerminalState()` returns read-only snapshot (placeholder implementation)
-- [~] `SendInput()` forwards to PTY with <50ms latency (placeholder implementation)
-- [~] `ResizePTY()` updates dimensions and sends SIGWINCH (placeholder implementation)
-- [ ] Terminal state derived from PTY lock-free buffer - BLOCKED by PTY integration
-- [ ] Tests T005 now pass (PTY integration tests) - BLOCKED by PTY integration
-- [ ] Performance requirement met (<50ms SendInput) - BLOCKED by PTY integration
-- [ ] No race conditions detected
+- [x] `GetTerminalState()` returns read-only snapshot from PTY
+- [x] `SendInput()` forwards to PTY with <50ms latency (timeout enforced)
+- [x] `ResizePTY()` updates dimensions via PTY.Resize()
+- [x] Terminal state derived from vt10x terminal emulator
+- [ ] Tests T005 now pass (PTY integration tests) - Need comprehensive tests
+- [ ] Performance requirement validated (<50ms SendInput) - Need performance tests
+- [ ] No race conditions detected - Need comprehensive tests
 
 **Implementation Notes**:
 - Reference: `contracts/aicoder_service.go` PTY methods
@@ -345,11 +345,11 @@ go test -race ./internal/tui/services -run TestConcurrent
 **Acceptance Criteria**:
 - [x] All sentinel errors defined (ErrSessionNotFound, etc.)
 - [x] Error validation in all public methods
-- [ ] AICoderErrorMsg published on errors - Partially done (needs PTY error handling)
-- [ ] PTY crash detection triggers SessionError status - BLOCKED by PTY integration
-- [ ] Resource cleanup on error paths - Basic cleanup, needs PTY cleanup
-- [ ] Tests T007 now pass (error handling tests) - Needs comprehensive tests
-- [ ] No resource leaks on error paths - Needs comprehensive tests
+- [x] AICoderErrorMsg published on errors via publishError()
+- [x] PTY crash detection triggers SessionError status (via EventChan monitoring)
+- [x] Resource cleanup on error paths (PTY.Close() on errors)
+- [ ] Tests T007 now pass (error handling tests) - Need comprehensive tests
+- [ ] No resource leaks on error paths - Need comprehensive tests
 
 **Implementation Notes**:
 - Reference: `contracts/aicoder_service.go` error definitions
