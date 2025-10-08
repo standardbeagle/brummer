@@ -3,15 +3,15 @@ package components
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
 )
 
 // MockKeyComponent is a simple mock component for key handler testing
 type MockKeyComponent struct {
-	name   string
-	model  tea.Model
+	name    string
+	model   tea.Model
 	handled map[string]bool
 }
 
@@ -62,10 +62,10 @@ func TestHierarchicalKeyHandler_PriorityOrdering(t *testing.T) {
 
 	// Set up context
 	ctx := &KeyHandlerContext{
-		CatchAllHandler: catchAll,
-		GlobalHandlers:  []KeyHandler{global},
+		CatchAllHandler:  catchAll,
+		GlobalHandlers:   []KeyHandler{global},
 		FocusedComponent: focused,
-		ActiveOverlays:  []KeyHandler{overlay},
+		ActiveOverlays:   []KeyHandler{overlay},
 	}
 
 	handler.SetContext(ctx)
@@ -235,7 +235,7 @@ type TestItem struct {
 	title string
 }
 
-func (i TestItem) Title() string { return i.title }
+func (i TestItem) Title() string       { return i.title }
 func (i TestItem) Description() string { return "" }
 func (i TestItem) FilterValue() string { return i.title }
 

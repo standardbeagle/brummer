@@ -2,7 +2,6 @@ package tui
 
 import "github.com/standardbeagle/brummer/internal/tui/navigation"
 
-
 // ViewConfig holds configuration for each view
 type ViewConfig struct {
 	Title       string

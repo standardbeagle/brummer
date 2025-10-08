@@ -59,8 +59,8 @@ func NewHierarchicalKeyHandler() *HierarchicalKeyHandler {
 	return &HierarchicalKeyHandler{
 		handlers: make([]KeyHandler, 0),
 		context: &KeyHandlerContext{
-			ActiveOverlays:  make([]KeyHandler, 0),
-			GlobalHandlers:  make([]KeyHandler, 0),
+			ActiveOverlays: make([]KeyHandler, 0),
+			GlobalHandlers: make([]KeyHandler, 0),
 		},
 	}
 }
@@ -238,20 +238,24 @@ func (h *ComponentKeyHandler) SetModel(model tea.Model) {
 type BubbleTeaComponentAdapter struct {
 	name      string
 	priority  KeyHandlerPriority
-	component interface{ Update(tea.Msg) (tea.Model, tea.Cmd) }
-	model     tea.Model
+	component interface {
+		Update(tea.Msg) (tea.Model, tea.Cmd)
+	}
+	model tea.Model
 	// Keys that this component should handle (empty means handle all)
 	handledKeys map[string]bool
 }
 
 // NewBubbleTeaComponentAdapter creates an adapter for Bubble Tea components
-func NewBubbleTeaComponentAdapter(name string, priority KeyHandlerPriority, component interface{ Update(tea.Msg) (tea.Model, tea.Cmd) }, model tea.Model) *BubbleTeaComponentAdapter {
+func NewBubbleTeaComponentAdapter(name string, priority KeyHandlerPriority, component interface {
+	Update(tea.Msg) (tea.Model, tea.Cmd)
+}, model tea.Model) *BubbleTeaComponentAdapter {
 	return &BubbleTeaComponentAdapter{
-		name:         name,
-		priority:     priority,
-		component:    component,
-		model:        model,
-		handledKeys:  make(map[string]bool),
+		name:        name,
+		priority:    priority,
+		component:   component,
+		model:       model,
+		handledKeys: make(map[string]bool),
 	}
 }
 

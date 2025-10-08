@@ -75,14 +75,14 @@ type Model struct {
 	height        int
 
 	// View components (migrated from controllers)
-	processesView   *components.ProcessesView   // Processes view component
-	logsView        *components.LogsView        // Logs view component
-	errorsView      *components.ErrorsView      // Errors view component
-	urlsView        *components.URLsView        // URLs view component
-	webView         *components.WebViewComponent // Web view component (T056-T061)
+	processesView     *components.ProcessesView     // Processes view component
+	logsView          *components.LogsView          // Logs view component
+	errorsView        *components.ErrorsView        // Errors view component
+	urlsView          *components.URLsView          // URLs view component
+	webView           *components.WebViewComponent  // Web view component (T056-T061)
 	commandWindowView *components.CommandWindowView // Command window component
-	settingsView    *components.SettingsView    // Settings view component
-	inputController *InputController             // Input controller (T080-T087 - to be migrated)
+	settingsView      *components.SettingsView      // Settings view component
+	inputController   *InputController              // Input controller (T080-T087 - to be migrated)
 
 	// System message controller
 	systemController      *system.Controller
@@ -783,7 +783,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Always trigger a view update when PTY output arrives
 		cmds = append(cmds, m.waitForUpdates())
-		
+
 	case BatchPTYMsg:
 		// Handle batched PTY messages from lock-free architecture (Phase 3)
 		if m.currentView() == ViewAICoders && m.aiCoderController != nil {
@@ -827,7 +827,6 @@ func (m *Model) View() string {
 
 	// Debug: Log terminal dimensions
 	fmt.Printf("DEBUG M: Terminal dimensions - Width: %d, Height: %d\n", m.width, m.height)
-
 
 	// Special views that take over the entire screen
 	if m.currentView() == ViewScriptSelector && m.scriptSelector != nil {
@@ -1466,7 +1465,7 @@ func (m *Model) handleProxyCommand(urlStr string) {
 	// Log successful registration
 	m.logStore.Add("system", "System", fmt.Sprintf("🚀 Proxy registered: %s → %s", urlStr, proxyURL), false)
 	m.logStore.Add("system", "System", fmt.Sprintf("🔗 Access your app at: %s", proxyURL), false)
-	
+
 	// Switch to web view to show the new proxy
 	m.navController.SwitchTo(ViewWeb)
 }
@@ -1492,7 +1491,7 @@ func (m *Model) listProxies() {
 		}
 		m.logStore.Add("system", "System", fmt.Sprintf("  %d. %s → %s [%s]", i+1, mapping.TargetURL, mapping.ProxyURL, label), false)
 	}
-	
+
 	// Switch to web view to show proxy mappings
 	m.navController.SwitchTo(ViewWeb)
 }

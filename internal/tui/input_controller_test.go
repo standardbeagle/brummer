@@ -172,48 +172,48 @@ func TestInputController_HierarchicalKeyHandling(t *testing.T) {
 
 	// Test cases for keys that should be handled by the hierarchical system
 	testCases := []struct {
-		name           string
-		keyMsg         tea.KeyMsg
+		name            string
+		keyMsg          tea.KeyMsg
 		shouldBeHandled bool
 	}{
 		{
-			name:           "Number key 1",
-			keyMsg:         tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}},
+			name:            "Number key 1",
+			keyMsg:          tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}},
 			shouldBeHandled: true,
 		},
 		{
-			name:           "Number key 2",
-			keyMsg:         tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}},
+			name:            "Number key 2",
+			keyMsg:          tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}},
 			shouldBeHandled: true,
 		},
 		{
-			name:           "Left arrow",
-			keyMsg:         tea.KeyMsg{Type: tea.KeyLeft},
+			name:            "Left arrow",
+			keyMsg:          tea.KeyMsg{Type: tea.KeyLeft},
 			shouldBeHandled: true,
 		},
 		{
-			name:           "Right arrow",
-			keyMsg:         tea.KeyMsg{Type: tea.KeyRight},
+			name:            "Right arrow",
+			keyMsg:          tea.KeyMsg{Type: tea.KeyRight},
 			shouldBeHandled: true,
 		},
 		{
-			name:           "Tab key",
-			keyMsg:         tea.KeyMsg{Type: tea.KeyTab},
+			name:            "Tab key",
+			keyMsg:          tea.KeyMsg{Type: tea.KeyTab},
 			shouldBeHandled: true,
 		},
 		{
-			name:           "q key",
-			keyMsg:         tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}},
+			name:            "q key",
+			keyMsg:          tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}},
 			shouldBeHandled: true,
 		},
 		{
-			name:           "Ctrl+C",
-			keyMsg:         tea.KeyMsg{Type: tea.KeyCtrlC},
+			name:            "Ctrl+C",
+			keyMsg:          tea.KeyMsg{Type: tea.KeyCtrlC},
 			shouldBeHandled: true,
 		},
 		{
-			name:           "Question mark",
-			keyMsg:         tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}},
+			name:            "Question mark",
+			keyMsg:          tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'?'}},
 			shouldBeHandled: true,
 		},
 	}

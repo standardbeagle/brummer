@@ -9,19 +9,19 @@ import (
 
 type TestRunStartedMsg struct {
 	RunID       string
- Framework   string // "jest", "vitest", "go", "pytest", etc.
+	Framework   string // "jest", "vitest", "go", "pytest", etc.
 	TestPattern string // File pattern or test name filter
 	StartTime   time.Time
 }
 
 type TestRunCompletedMsg struct {
-	RunID       string
-	TotalTests  int
-	PassedTests int
-	FailedTests int
+	RunID        string
+	TotalTests   int
+	PassedTests  int
+	FailedTests  int
 	SkippedTests int
-	Duration    time.Duration
-	EndTime     time.Time
+	Duration     time.Duration
+	EndTime      time.Time
 }
 
 type TestCaseStartedMsg struct {
@@ -64,9 +64,9 @@ type TestWatchModeStoppedMsg struct {
 }
 
 type TestFileChangedMsg struct {
-	FilePath    string
+	FilePath     string
 	TriggeredRun bool
-	ChangeTime  time.Time
+	ChangeTime   time.Time
 }
 
 // Test coverage events
@@ -88,17 +88,17 @@ type TestCoverageFile struct {
 // Test performance events
 
 type TestPerformanceUpdatedMsg struct {
-	RunID      string
-	TestName   string
-	Duration   time.Duration
-	SlowTests  []TestPerformanceEntry
-	Timestamp  time.Time
+	RunID     string
+	TestName  string
+	Duration  time.Duration
+	SlowTests []TestPerformanceEntry
+	Timestamp time.Time
 }
 
 type TestPerformanceEntry struct {
-	TestName    string
-	FilePath    string
-	Duration    time.Duration
-	IsSlow      bool
+	TestName      string
+	FilePath      string
+	Duration      time.Duration
+	IsSlow        bool
 	SlowThreshold time.Duration
 }

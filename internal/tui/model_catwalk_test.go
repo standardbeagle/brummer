@@ -4,8 +4,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/knz/catwalk"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/knz/catwalk"
 	"github.com/stretchr/testify/require"
 )
 
@@ -157,8 +157,8 @@ func TestModelInvalidInput(t *testing.T) {
 			tea.KeyMsg{Type: tea.KeyBackspace},
 			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}, // Random character
 			tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'a'}}, // Random character
-			tea.MouseMsg{Type: tea.MouseLeft}, // Mouse event
-			tea.WindowSizeMsg{Width: 80, Height: 24}, // Window resize
+			tea.MouseMsg{Type: tea.MouseLeft},                  // Mouse event
+			tea.WindowSizeMsg{Width: 80, Height: 24},           // Window resize
 		}
 
 		for _, key := range testKeys {
@@ -188,10 +188,10 @@ func TestModelWindowResize(t *testing.T) {
 			width  int
 			height int
 		}{
-			{80, 24},   // Standard terminal
-			{120, 30},  // Large terminal
-			{40, 10},   // Small terminal
-			{200, 50},  // Very large terminal
+			{80, 24},  // Standard terminal
+			{120, 30}, // Large terminal
+			{40, 10},  // Small terminal
+			{200, 50}, // Very large terminal
 		}
 
 		for _, size := range sizes {

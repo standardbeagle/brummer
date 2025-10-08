@@ -4,10 +4,10 @@ package tui
 
 // RestartProcessMsg is sent when a process needs to be restarted
 type RestartProcessMsg struct {
-	processID  string
-	clearLogs  bool
-	message    string
-	isError    bool
+	processID string
+	clearLogs bool
+	message   string
+	isError   bool
 }
 
 // RestartAllMsg is sent when all processes need to be restarted
@@ -34,10 +34,10 @@ type ProcessUpdateMsg struct{}
 
 // MCPActivityMsg represents MCP server activity
 type MCPActivityMsg struct {
-	ClientID    string
-	Activity    string
-	Timestamp   int64
-	Details     map[string]interface{}
+	ClientID  string
+	Activity  string
+	Timestamp int64
+	Details   map[string]interface{}
 }
 
 // mcpConnectionMsg is sent when an MCP connection status changes

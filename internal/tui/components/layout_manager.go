@@ -17,13 +17,13 @@ type LayoutDimensions struct {
 
 // LayoutConfig holds configuration for layout calculations
 type LayoutConfig struct {
-	TermWidth          int
-	TermHeight         int
-	HeaderHeight       int  // Default: 3
-	FooterHeight       int  // Default: 1
-	SystemPanelHeight  int  // Default: 10
-	SystemPanelOpen    bool // Whether system panel is visible
-	ShowProcessBar     bool // Whether to show process selector bar
+	TermWidth         int
+	TermHeight        int
+	HeaderHeight      int  // Default: 3
+	FooterHeight      int  // Default: 1
+	SystemPanelHeight int  // Default: 10
+	SystemPanelOpen   bool // Whether system panel is visible
+	ShowProcessBar    bool // Whether to show process selector bar
 }
 
 // DefaultLayoutConfig returns the default layout configuration

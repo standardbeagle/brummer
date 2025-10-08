@@ -464,12 +464,12 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// Test-related messages
 	case messages.TestRunStartedMsg,
-		 messages.TestRunCompletedMsg,
-		 messages.TestCaseStartedMsg,
-		 messages.TestCaseCompletedMsg,
-		 messages.TestResultsClearedMsg,
-		 messages.TestCoverageUpdatedMsg,
-		 messages.TestPerformanceUpdatedMsg:
+		messages.TestRunCompletedMsg,
+		messages.TestCaseStartedMsg,
+		messages.TestCaseCompletedMsg,
+		messages.TestResultsClearedMsg,
+		messages.TestCoverageUpdatedMsg,
+		messages.TestPerformanceUpdatedMsg:
 		// Route to test component
 		if s.testView != nil {
 			_, cmd := s.testView.Update(msg)

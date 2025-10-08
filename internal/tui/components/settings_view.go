@@ -19,8 +19,11 @@ import (
 // Migrated from settings_controller.go (T062-T066)
 // Architecture: Component with multiple service dependencies
 type SettingsView struct {
-	config       *config.Config
-	mcpServer    interface{ IsRunning() bool; GetPort() int }
+	config    *config.Config
+	mcpServer interface {
+		IsRunning() bool
+		GetPort() int
+	}
 	processMgr   *process.Manager
 	workingDir   string
 	fileBrowser  *filebrowser.Controller
@@ -32,7 +35,10 @@ type SettingsView struct {
 }
 
 // NewSettingsView creates a new settings view component
-func NewSettingsView(cfg *config.Config, mcpServer interface{ IsRunning() bool; GetPort() int }, processMgr *process.Manager, workingDir string, fileBrowserController *filebrowser.Controller, logStore *logs.Store, proxyServer *proxy.Server) *SettingsView {
+func NewSettingsView(cfg *config.Config, mcpServer interface {
+	IsRunning() bool
+	GetPort() int
+}, processMgr *process.Manager, workingDir string, fileBrowserController *filebrowser.Controller, logStore *logs.Store, proxyServer *proxy.Server) *SettingsView {
 	settingsList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	settingsList.Title = "Package Manager Settings"
 	settingsList.SetShowStatusBar(false)
@@ -255,8 +261,8 @@ func (i MCPServerInfoItem) Description() string { return fmt.Sprintf("Port: %d",
 type InfoDisplayItem struct {
 	TitleText       string
 	DescriptionText string
-	Value       string
-	Copyable    bool
+	Value           string
+	Copyable        bool
 }
 
 func (i InfoDisplayItem) FilterValue() string { return i.TitleText }

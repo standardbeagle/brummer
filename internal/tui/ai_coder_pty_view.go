@@ -800,7 +800,6 @@ func (v *AICoderPTYView) renderViewportFromTerminal(terminal vt10x.Terminal, vie
 		viewportLines = append(viewportLines, line)
 	}
 
-
 	result := strings.Join(viewportLines, "\n")
 
 	// Add scroll indicator if scrolled

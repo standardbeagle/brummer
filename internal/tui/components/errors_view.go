@@ -199,7 +199,7 @@ func (v *ErrorsView) formatErrorContext(ec *logs.ErrorContext) string {
 	_ = lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // typeStyle
 
 	content.WriteString(errorStyle.Render(fmt.Sprintf("❌ %s", ec.Type)) + "\n")
-	content.WriteString(fmt.Sprintf("%s %s\n\n", 
+	content.WriteString(fmt.Sprintf("%s %s\n\n",
 		timestampStyle.Render(ec.Timestamp.Format("2006-01-02 15:04:05")),
 		processStyle.Render(fmt.Sprintf("[%s]", ec.ProcessName))))
 

@@ -52,14 +52,14 @@ type LogsClearedMsg struct {
 // These messages represent URLs detected in process output
 
 type URLDetectedMsg struct {
-	URL         string
-	ProcessID   string
-	Type        string // "http", "https", "ws", "wss"
-	Timestamp   time.Time
-	HasProxy    bool
-	ProxyPort   int
-	ProxyURL    string
-	ProxyLabel  string
+	URL        string
+	ProcessID  string
+	Type       string // "http", "https", "ws", "wss"
+	Timestamp  time.Time
+	HasProxy   bool
+	ProxyPort  int
+	ProxyURL   string
+	ProxyLabel string
 }
 
 // Error events

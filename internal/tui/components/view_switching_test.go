@@ -13,10 +13,10 @@ func TestNavigateToViewMsgMessages(t *testing.T) {
 
 	// Test cases for each view
 	testCases := []struct {
-		name          string
-		viewName      string
-		expectedView  string
-		shouldChange  bool
+		name         string
+		viewName     string
+		expectedView string
+		shouldChange bool
 	}{
 		{"Switch to logs", "logs", "logs", true},
 		{"Switch to processes", "processes", "processes", true},
@@ -203,7 +203,7 @@ func (m *MockComponent) SetSize(width, height int) {
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > len(substr) &&
 		(s[:len(substr)] == substr || s[len(s)-len(substr):] == substr ||
-		findSubstring(s, substr)))
+			findSubstring(s, substr)))
 }
 
 func findSubstring(s, substr string) bool {

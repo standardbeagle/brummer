@@ -23,7 +23,6 @@ func (i ScriptItem) FilterValue() string { return i.name }
 func (i ScriptItem) Title() string       { return i.name }
 func (i ScriptItem) Description() string { return i.script }
 
-
 // RunCustomItem represents the "run custom command" option
 type RunCustomItem struct{}
 

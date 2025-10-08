@@ -72,12 +72,12 @@ type MCPActivity struct {
 // Architecture: Component with internal state management (no service dependency)
 type MCPDebugView struct {
 	// View components
-	connectionsList  list.Model                     // List of MCP connections
-	activityViewport viewport.Model                 // Activity log for selected connection
-	selectedClient   string                         // Selected MCP client ID
-	connections      map[string]*MCPConnectionItem  // sessionId -> connection
-	activities       map[string][]MCPActivity       // sessionId -> activities
-	mu               sync.RWMutex                   // Protects both connections and activities maps
+	connectionsList  list.Model                    // List of MCP connections
+	activityViewport viewport.Model                // Activity log for selected connection
+	selectedClient   string                        // Selected MCP client ID
+	connections      map[string]*MCPConnectionItem // sessionId -> connection
+	activities       map[string][]MCPActivity      // sessionId -> activities
+	mu               sync.RWMutex                  // Protects both connections and activities maps
 
 	// Memory management
 	maxConnections       int           // Maximum number of connections to keep

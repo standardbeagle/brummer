@@ -555,13 +555,6 @@ func (c *DiagnosticViewComponent) getTerminalSizeWindowsTerminal() (width, heigh
 	return width, height
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // getTerminalSize attempts to get terminal dimensions directly
 func (c *DiagnosticViewComponent) getTerminalSize() (width, height int) {
 	// Detect the environment first

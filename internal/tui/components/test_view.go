@@ -24,30 +24,30 @@ import (
 type TestViewComponent struct {
 	BaseComponent
 
-	viewport    viewport.Model
-	testMgr     *test.TestManager
+	viewport     viewport.Model
+	testMgr      *test.TestManager
 	testExecutor *test.TestExecutor
-	activeRuns  []*test.TestRun
-	selectedRun string
-	selectedTab TestTab
+	activeRuns   []*test.TestRun
+	selectedRun  string
+	selectedTab  TestTab
 
 	// Cache for test results
-	results     map[string]*test.TestResults
-	lastUpdate  time.Time
+	results    map[string]*test.TestResults
+	lastUpdate time.Time
 
 	// Current execution state
-	isRunning   bool
-	currentRun  *test.TestRun
+	isRunning  bool
+	currentRun *test.TestRun
 
 	// Styles
-	headerStyle      lipgloss.Style
-	successStyle     lipgloss.Style
-	failureStyle     lipgloss.Style
-	skippedStyle     lipgloss.Style
-	runningStyle     lipgloss.Style
-	normalStyle      lipgloss.Style
-	selectedStyle    lipgloss.Style
-	borderStyle      lipgloss.Style
+	headerStyle   lipgloss.Style
+	successStyle  lipgloss.Style
+	failureStyle  lipgloss.Style
+	skippedStyle  lipgloss.Style
+	runningStyle  lipgloss.Style
+	normalStyle   lipgloss.Style
+	selectedStyle lipgloss.Style
+	borderStyle   lipgloss.Style
 }
 
 // TestTab represents the active tab in the test view
@@ -69,9 +69,9 @@ func NewTestViewComponent(testMgr *test.TestManager, width, height int) *TestVie
 
 	tv := &TestViewComponent{
 		BaseComponent: BaseComponent{
-			visible:  true,
-			width:    width,
-			height:   height,
+			visible: true,
+			width:   width,
+			height:  height,
 		},
 		viewport:     vp,
 		testMgr:      testMgr,
@@ -212,9 +212,9 @@ func (tv *TestViewComponent) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				Pattern:   "",
 				StartTime: time.Now(),
 				Status:    test.TestRunStatusRunning,
-				Options:   test.TestOptions{
+				Options: test.TestOptions{
 					Verbose: true,
-					Timeout:  5 * time.Minute,
+					Timeout: 5 * time.Minute,
 				},
 			}
 

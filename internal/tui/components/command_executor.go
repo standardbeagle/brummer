@@ -16,11 +16,11 @@ import (
 
 // CommandExecutor handles execution of commands by routing them to appropriate services
 type CommandExecutor struct {
-	processMgr      *process.Manager
-	logStore        *logs.Store
-	proxyServer     *proxy.Server
-	registry        *CommandRegistry
-	aiCoderManager  *aicoder.AICoderManager
+	processMgr     *process.Manager
+	logStore       *logs.Store
+	proxyServer    *proxy.Server
+	registry       *CommandRegistry
+	aiCoderManager *aicoder.AICoderManager
 }
 
 // NewCommandExecutor creates a new command executor with service references

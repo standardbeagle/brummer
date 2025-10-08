@@ -68,10 +68,10 @@ const (
 
 // Constants for terminal sizing
 const (
-	ScriptSelectorMargin              = 4
-	ScriptSelectorMinWidth            = 40
-	ScriptSelectorMaxWidth            = 100
-	SmallTerminalHeightThreshold      = 20
+	ScriptSelectorMargin         = 4
+	ScriptSelectorMinWidth       = 40
+	ScriptSelectorMaxWidth       = 100
+	SmallTerminalHeightThreshold = 20
 	// MaxDropdownSuggestions and MaxDropdownSuggestionsSmall defined in command_window_view.go
 )
 

@@ -13,20 +13,20 @@ type LockFreePTYBuffer struct {
 	buffer []*PTYMessage
 	size   uint64
 	mask   uint64 // size - 1 for fast modulo operation
-	
+
 	// Atomic cursors (aligned to cache line boundaries to prevent false sharing)
 	writePos uint64 // Next write position
 	readPos  uint64 // Next read position
-	
+
 	// Padding to prevent false sharing between atomic fields
 	_pad1 [56]byte
-	
+
 	// Performance metrics (atomic counters)
 	messagesWritten uint64
 	messagesDropped uint64
 	bufferFullCount uint64
 	maxUsedSlots    uint64
-	
+
 	// Additional padding
 	_pad2 [32]byte
 }
@@ -58,7 +58,7 @@ func NewLockFreePTYBuffer(bufferSize uint64) *LockFreePTYBuffer {
 		// Round up to next power of 2
 		bufferSize = nextPowerOfTwo(bufferSize)
 	}
-	
+
 	return &LockFreePTYBuffer{
 		buffer: make([]*PTYMessage, bufferSize),
 		size:   bufferSize,
@@ -73,10 +73,10 @@ func (b *LockFreePTYBuffer) TryWrite(msg *PTYMessage) bool {
 	// Load current positions atomically
 	currentWrite := atomic.LoadUint64(&b.writePos)
 	currentRead := atomic.LoadUint64(&b.readPos)
-	
+
 	// Calculate next write position
 	nextWrite := currentWrite + 1
-	
+
 	// Check if buffer would be full after write
 	// We keep one slot empty to distinguish full from empty
 	if nextWrite-currentRead >= b.size {
@@ -85,14 +85,14 @@ func (b *LockFreePTYBuffer) TryWrite(msg *PTYMessage) bool {
 		atomic.AddUint64(&b.bufferFullCount, 1)
 		return false
 	}
-	
+
 	// Store message in buffer
 	slot := currentWrite & b.mask
 	atomic.StorePointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&b.buffer[slot])),
 		unsafe.Pointer(msg),
 	)
-	
+
 	// Advance write position atomically
 	if !atomic.CompareAndSwapUint64(&b.writePos, currentWrite, nextWrite) {
 		// Someone else beat us to it - this is normal in high-contention scenarios
@@ -100,10 +100,10 @@ func (b *LockFreePTYBuffer) TryWrite(msg *PTYMessage) bool {
 		// Let the other writer handle the position update
 		return false
 	}
-	
+
 	// Update metrics
 	atomic.AddUint64(&b.messagesWritten, 1)
-	
+
 	// Update max used slots metric
 	used := nextWrite - currentRead
 	for {
@@ -112,7 +112,7 @@ func (b *LockFreePTYBuffer) TryWrite(msg *PTYMessage) bool {
 			break
 		}
 	}
-	
+
 	return true
 }
 
@@ -123,38 +123,38 @@ func (b *LockFreePTYBuffer) TryRead() (*PTYMessage, bool) {
 	// Load current positions atomically
 	currentRead := atomic.LoadUint64(&b.readPos)
 	currentWrite := atomic.LoadUint64(&b.writePos)
-	
+
 	// Check if buffer is empty
 	if currentRead >= currentWrite {
 		return nil, false
 	}
-	
+
 	// Read message from buffer
 	slot := currentRead & b.mask
 	msgPtr := atomic.LoadPointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&b.buffer[slot])),
 	)
-	
+
 	if msgPtr == nil {
 		// Message not yet written by writer (very rare race condition)
 		return nil, false
 	}
-	
+
 	msg := (*PTYMessage)(msgPtr)
-	
+
 	// Clear the slot (helps with GC and debugging)
 	atomic.StorePointer(
 		(*unsafe.Pointer)(unsafe.Pointer(&b.buffer[slot])),
 		nil,
 	)
-	
+
 	// Advance read position atomically
 	if !atomic.CompareAndSwapUint64(&b.readPos, currentRead, currentRead+1) {
 		// Another reader beat us to it - return the message anyway
 		// since we successfully read it
 		return msg, true
 	}
-	
+
 	return msg, true
 }
 
@@ -165,9 +165,9 @@ func (b *LockFreePTYBuffer) TryReadBatch(maxMessages int) ([]*PTYMessage, int) {
 	if maxMessages <= 0 {
 		return nil, 0
 	}
-	
+
 	batch := make([]*PTYMessage, 0, maxMessages)
-	
+
 	for len(batch) < maxMessages {
 		msg, ok := b.TryRead()
 		if !ok {
@@ -175,7 +175,7 @@ func (b *LockFreePTYBuffer) TryReadBatch(maxMessages int) ([]*PTYMessage, int) {
 		}
 		batch = append(batch, msg)
 	}
-	
+
 	return batch, len(batch)
 }
 
@@ -183,27 +183,27 @@ func (b *LockFreePTYBuffer) TryReadBatch(maxMessages int) ([]*PTYMessage, int) {
 func (b *LockFreePTYBuffer) GetMetrics() BufferMetrics {
 	currentWrite := atomic.LoadUint64(&b.writePos)
 	currentRead := atomic.LoadUint64(&b.readPos)
-	
+
 	return BufferMetrics{
-		BufferSize:       b.size,
-		CurrentUsed:      currentWrite - currentRead,
-		MaxUsedSlots:     atomic.LoadUint64(&b.maxUsedSlots),
-		MessagesWritten:  atomic.LoadUint64(&b.messagesWritten),
-		MessagesDropped:  atomic.LoadUint64(&b.messagesDropped),
-		BufferFullCount:  atomic.LoadUint64(&b.bufferFullCount),
-		SaturationRatio:  b.calculateSaturationRatio(),
+		BufferSize:      b.size,
+		CurrentUsed:     currentWrite - currentRead,
+		MaxUsedSlots:    atomic.LoadUint64(&b.maxUsedSlots),
+		MessagesWritten: atomic.LoadUint64(&b.messagesWritten),
+		MessagesDropped: atomic.LoadUint64(&b.messagesDropped),
+		BufferFullCount: atomic.LoadUint64(&b.bufferFullCount),
+		SaturationRatio: b.calculateSaturationRatio(),
 	}
 }
 
 // BufferMetrics contains performance statistics for the buffer
 type BufferMetrics struct {
-	BufferSize       uint64  // Total buffer capacity
-	CurrentUsed      uint64  // Currently used slots
-	MaxUsedSlots     uint64  // Peak usage
-	MessagesWritten  uint64  // Total successful writes
-	MessagesDropped  uint64  // Total dropped messages (backpressure)
-	BufferFullCount  uint64  // Number of times buffer was full
-	SaturationRatio  float64 // Percentage of messages dropped
+	BufferSize      uint64  // Total buffer capacity
+	CurrentUsed     uint64  // Currently used slots
+	MaxUsedSlots    uint64  // Peak usage
+	MessagesWritten uint64  // Total successful writes
+	MessagesDropped uint64  // Total dropped messages (backpressure)
+	BufferFullCount uint64  // Number of times buffer was full
+	SaturationRatio float64 // Percentage of messages dropped
 }
 
 // calculateSaturationRatio computes the ratio of dropped messages
@@ -211,11 +211,11 @@ func (b *LockFreePTYBuffer) calculateSaturationRatio() float64 {
 	written := atomic.LoadUint64(&b.messagesWritten)
 	dropped := atomic.LoadUint64(&b.messagesDropped)
 	total := written + dropped
-	
+
 	if total == 0 {
 		return 0.0
 	}
-	
+
 	return float64(dropped) / float64(total)
 }
 
@@ -242,11 +242,11 @@ func (b *LockFreePTYBuffer) Reset() {
 			nil,
 		)
 	}
-	
+
 	// Reset positions
 	atomic.StoreUint64(&b.writePos, 0)
 	atomic.StoreUint64(&b.readPos, 0)
-	
+
 	// Reset metrics
 	atomic.StoreUint64(&b.messagesWritten, 0)
 	atomic.StoreUint64(&b.messagesDropped, 0)
@@ -259,12 +259,12 @@ func nextPowerOfTwo(n uint64) uint64 {
 	if n <= 1 {
 		return 1
 	}
-	
+
 	// Handle edge case
 	if n > (1 << 62) {
 		return 1 << 62 // Largest power of 2 in uint64
 	}
-	
+
 	// Bit manipulation to find next power of 2
 	n--
 	n |= n >> 1
@@ -274,6 +274,6 @@ func nextPowerOfTwo(n uint64) uint64 {
 	n |= n >> 16
 	n |= n >> 32
 	n++
-	
+
 	return n
 }

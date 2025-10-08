@@ -84,14 +84,6 @@ func copyToClipboard(text string) error {
 	return cmd.Run()
 }
 
-// min returns the minimum of two integers
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // getTerminalSize returns the terminal width and height
 // This uses golang.org/x/term to get the size directly from the terminal
 func GetTerminalSize() (width, height int, err error) {
