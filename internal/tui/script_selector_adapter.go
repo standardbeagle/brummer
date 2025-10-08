@@ -64,3 +64,35 @@ func (a *ScriptSelectorAutocompleteAdapter) GetSuggestions() []string {
 func (a *ScriptSelectorAutocompleteAdapter) SetSuggestions(suggestions []string) {
 	a.autocomplete.SetSuggestions(suggestions)
 }
+
+func (a *ScriptSelectorAutocompleteAdapter) IsShowingDropdown() bool {
+	return a.autocomplete.IsShowingDropdown()
+}
+
+func (a *ScriptSelectorAutocompleteAdapter) SetShowDropdown(show bool) {
+	a.autocomplete.SetShowDropdown(show)
+}
+
+func (a *ScriptSelectorAutocompleteAdapter) GetErrorMessage() string {
+	return a.autocomplete.GetErrorMessage()
+}
+
+func (a *ScriptSelectorAutocompleteAdapter) SetErrorMessage(msg string) {
+	a.autocomplete.SetErrorMessage(msg)
+}
+
+func (a *ScriptSelectorAutocompleteAdapter) IsArbitraryMode() bool {
+	return a.autocomplete.IsArbitraryMode()
+}
+
+func (a *ScriptSelectorAutocompleteAdapter) SetArbitraryMode(mode bool) {
+	a.autocomplete.SetArbitraryMode(mode)
+}
+
+func (a *ScriptSelectorAutocompleteAdapter) UpdateSuggestions() {
+	a.autocomplete.UpdateSuggestions()
+}
+
+func (a *ScriptSelectorAutocompleteAdapter) GetAvailableScripts() map[string]string {
+	return a.autocomplete.GetAvailableScripts()
+}

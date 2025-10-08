@@ -358,6 +358,19 @@ func (ctx *TestContext) Cleanup() {
 	time.Sleep(100 * time.Millisecond)
 }
 
+// GetCurrentView returns the current rendered view
+func (ctx *TestContext) GetCurrentView() string {
+	ctx.T.Helper()
+	return ctx.Model.View()
+}
+
+// ProxyServer returns the proxy server (may be nil)
+func (ctx *TestContext) ProxyServer() interface{} {
+	// Proxy server is created in NewTestContextWithProxy
+	// For regular context, it's nil
+	return nil
+}
+
 // SkipIfShort skips test if running in short mode
 func SkipIfShort(t *testing.T, reason string) {
 	if testing.Short() {

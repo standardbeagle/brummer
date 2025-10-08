@@ -15,7 +15,7 @@ func NewProcessMessageHandler() MessageHandler {
 // CanHandle checks if this handler can process the message
 func (h *ProcessMessageHandler) CanHandle(msg tea.Msg) bool {
 	switch msg.(type) {
-	case processUpdateMsg, processStoppedMsg, processStartedMsg:
+	case ProcessUpdateMsg, processStoppedMsg, processStartedMsg:
 		return true
 	default:
 		return false
@@ -27,7 +27,7 @@ func (h *ProcessMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mo
 	var cmds []tea.Cmd
 
 	switch msg.(type) {
-	case processUpdateMsg:
+	case ProcessUpdateMsg:
 		// Update process list
 		model.updateProcessList()
 		cmds = append(cmds, model.waitForUpdates())

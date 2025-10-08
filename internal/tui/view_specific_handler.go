@@ -126,7 +126,7 @@ func (h *ViewSpecificHandler) handleProcessViewKeys(msg tea.KeyMsg, model *Model
 
 	switch {
 	case key.Matches(msg, model.keys.Stop):
-		if i, ok := model.processViewController.GetProcessesList().SelectedItem().(processItem); ok && !i.isHeader && i.process != nil {
+		if i, ok := model.processesView.GetProcessesList().SelectedItem().(processItem); ok && !i.isHeader && i.process != nil {
 			if err := model.processMgr.StopProcess(i.process.ID); err != nil {
 				msg := fmt.Sprintf("Failed to stop process %s: %v", i.process.Name, err)
 				model.logStore.Add("system", "System", msg, true)
@@ -145,7 +145,7 @@ func (h *ViewSpecificHandler) handleProcessViewKeys(msg tea.KeyMsg, model *Model
 		return model, tea.Batch(cmds...)
 
 	case key.Matches(msg, model.keys.Restart):
-		if i, ok := model.processViewController.GetProcessesList().SelectedItem().(processItem); ok && !i.isHeader && i.process != nil {
+		if i, ok := model.processesView.GetProcessesList().SelectedItem().(processItem); ok && !i.isHeader && i.process != nil {
 			cmds = append(cmds, model.handleRestartProcess(i.process))
 			msg := fmt.Sprintf("Restarting process: %s", i.process.Name)
 			model.logStore.Add("system", "System", msg, false)
@@ -159,8 +159,8 @@ func (h *ViewSpecificHandler) handleProcessViewKeys(msg tea.KeyMsg, model *Model
 	}
 
 	// Update the controller's list for other keys
-	newList, cmd := model.processViewController.GetProcessesList().Update(msg)
-	*model.processViewController.GetProcessesList() = newList
+	newList, cmd := model.processesView.GetProcessesList().Update(msg)
+	*model.processesView.GetProcessesList() = newList
 	cmds = append(cmds, cmd)
 
 	return model, tea.Batch(cmds...)
@@ -172,52 +172,52 @@ func (h *ViewSpecificHandler) handleLogsViewKeys(msg tea.KeyMsg, model *Model) (
 		switch {
 		case key.Matches(msg, model.keys.Up):
 			// Disable auto-scroll when user scrolls up
-			if model.logsViewController.IsAutoScrollEnabled() {
-				model.logsViewController.ToggleAutoScroll()
+			if model.logsView.IsAutoScrollEnabled() {
+				model.logsView.ToggleAutoScroll()
 			}
-			model.logsViewController.GetLogsViewport().LineUp(1)
+			model.logsView.GetLogsViewport().LineUp(1)
 			return model, nil
 
 		case key.Matches(msg, model.keys.Down):
-			model.logsViewController.GetLogsViewport().LineDown(1)
+			model.logsView.GetLogsViewport().LineDown(1)
 			// Check if we're at the bottom
-			if model.logsViewController.GetLogsViewport().AtBottom() {
-				if !model.logsViewController.IsAutoScrollEnabled() {
-					model.logsViewController.ToggleAutoScroll()
+			if model.logsView.GetLogsViewport().AtBottom() {
+				if !model.logsView.IsAutoScrollEnabled() {
+					model.logsView.ToggleAutoScroll()
 				}
 			}
 			return model, nil
 
 		case msg.String() == "pgup":
-			if model.logsViewController.IsAutoScrollEnabled() {
-				model.logsViewController.ToggleAutoScroll()
+			if model.logsView.IsAutoScrollEnabled() {
+				model.logsView.ToggleAutoScroll()
 			}
-			model.logsViewController.GetLogsViewport().ViewUp()
+			model.logsView.GetLogsViewport().ViewUp()
 			return model, nil
 
 		case msg.String() == "pgdown":
-			model.logsViewController.GetLogsViewport().ViewDown()
-			if model.logsViewController.GetLogsViewport().AtBottom() {
-				if !model.logsViewController.IsAutoScrollEnabled() {
-					model.logsViewController.ToggleAutoScroll()
+			model.logsView.GetLogsViewport().ViewDown()
+			if model.logsView.GetLogsViewport().AtBottom() {
+				if !model.logsView.IsAutoScrollEnabled() {
+					model.logsView.ToggleAutoScroll()
 				}
 			}
 			return model, nil
 
 		case msg.String() == "end":
 			// End key re-enables auto-scroll and goes to bottom
-			if !model.logsViewController.IsAutoScrollEnabled() {
-				model.logsViewController.ToggleAutoScroll()
+			if !model.logsView.IsAutoScrollEnabled() {
+				model.logsView.ToggleAutoScroll()
 			}
-			model.logsViewController.GetLogsViewport().GotoBottom()
+			model.logsView.GetLogsViewport().GotoBottom()
 			return model, nil
 
 		case msg.String() == "home":
 			// Home key goes to top and disables auto-scroll
-			if model.logsViewController.IsAutoScrollEnabled() {
-				model.logsViewController.ToggleAutoScroll()
+			if model.logsView.IsAutoScrollEnabled() {
+				model.logsView.ToggleAutoScroll()
 			}
-			model.logsViewController.GetLogsViewport().GotoTop()
+			model.logsView.GetLogsViewport().GotoTop()
 			return model, nil
 		}
 	}
@@ -228,9 +228,9 @@ func (h *ViewSpecificHandler) handleLogsViewKeys(msg tea.KeyMsg, model *Model) (
 // Placeholder handlers for other views
 func (h *ViewSpecificHandler) handleErrorsViewKeys(msg tea.KeyMsg, model *Model) (tea.Model, tea.Cmd) {
 	// Update the errors list
-	if model.errorsViewController != nil {
-		newList, cmd := model.errorsViewController.GetErrorsList().Update(msg)
-		*model.errorsViewController.GetErrorsList() = newList
+	if model.errorsView != nil {
+		newList, cmd := model.errorsView.GetErrorsList().Update(msg)
+		*model.errorsView.GetErrorsList() = newList
 		return model, cmd
 	}
 	return model, nil
@@ -238,9 +238,9 @@ func (h *ViewSpecificHandler) handleErrorsViewKeys(msg tea.KeyMsg, model *Model)
 
 func (h *ViewSpecificHandler) handleSettingsViewKeys(msg tea.KeyMsg, model *Model) (tea.Model, tea.Cmd) {
 	// Update the settings list
-	if model.settingsController != nil {
-		newList, cmd := model.settingsController.GetSettingsList().Update(msg)
-		*model.settingsController.GetSettingsList() = newList
+	if model.settingsView != nil {
+		newList, cmd := model.settingsView.GetSettingsList().Update(msg)
+		*model.settingsView.GetSettingsList() = newList
 		return model, cmd
 	}
 	return model, nil

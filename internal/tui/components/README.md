@@ -1,363 +1,467 @@
-# TUI Component Interface Documentation
+# TUI Components Architecture
+
+**Last Updated**: 2025-10-07
+**Migration Status**: Phase 3.6 Complete (11/13 controllers migrated)
 
 ## Overview
 
-This document defines the standard interface and patterns for all TUI view components in Brummer. Components follow the BubbleTea component pattern and call services directly without intermediate controllers.
+This directory contains BubbleTea components that implement the TUI (Terminal User Interface) for Brummer. Components follow a clean 2-layer architecture where components call services directly, eliminating the need for controller middleware.
 
-## Architecture Principles
+**Architecture**: Components → Services (no controllers between)
 
-### Component → Service Pattern
-Components interact **directly** with services (process.Manager, logs.Store, proxy.Server, etc.) without controller intermediaries:
+## Component Interface
 
-```
-User Input → BubbleTea Component → Service Layer → Storage/State
-         ↖                       ↗
-          Event Bus (for async updates)
-```
-
-### Component Responsibilities
-- **View State Management**: Own presentation state (selected item, scroll position, filter text)
-- **Service Integration**: Call services directly for data and actions
-- **Event Handling**: Subscribe to relevant EventBus events and convert to tea.Msg
-- **Key Handling**: Implement KeyHandler interface for hierarchical input routing
-- **Rendering**: Implement View() to render current state using lipgloss
-
-### What Components Should NOT Do
-- ❌ Manage service lifecycle (services are singletons managed by main model)
-- ❌ Directly modify other components' state
-- ❌ Make assumptions about other views or global state
-- ❌ Block on I/O operations (use async tea.Cmd pattern)
-
-## Standard Component Interface
-
-All view components must implement the BubbleTea Model interface:
+All TUI components implement the standard BubbleTea `tea.Model` interface:
 
 ```go
-type ViewComponent interface {
-    // BubbleTea Model interface
-    Init() tea.Cmd
-    Update(msg tea.Msg) (tea.Model, tea.Cmd)
-    View() string
-
-    // KeyHandler interface for hierarchical input
-    HandleKey(msg tea.KeyMsg, model tea.Model) (tea.Model, tea.Cmd)
-    Priority() HandlerPriority
+type Component interface {
+    Init() tea.Cmd              // Initialize component, return initial command
+    Update(tea.Msg) (tea.Model, tea.Cmd)  // Handle messages, return updated model and command
+    View() string               // Render component to string
 }
 ```
 
-### Init() - Initialization
-Returns initial commands to execute (subscriptions, initial data fetch, etc.)
+Additional component methods for integration:
 
 ```go
-func (p *ProcessesViewComponent) Init() tea.Cmd {
-    // Return batch of initialization commands
-    return tea.Batch(
-        p.subscribeToEvents(),
-        p.fetchInitialData(),
-    )
-}
+// Size management
+SetSize(width, height int)    // Update component dimensions
+GetSize() (width, height int) // Get current dimensions
+
+// Visibility control
+IsVisible() bool              // Check if component should render
+SetVisible(visible bool)      // Show/hide component
+
+// Focus management (for input components)
+Focus() tea.Cmd               // Give keyboard focus
+Blur() tea.Cmd                // Remove keyboard focus
 ```
 
-### Update() - Message Handling
-Handles all messages (keyboard, window size, custom events) and updates component state.
+## Component Types
 
-**Critical Rule**: This is the ONLY place component state should be modified.
+### View Components
 
-```go
-func (p *ProcessesViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-    switch msg := msg.(type) {
-    case tea.KeyMsg:
-        // Delegate to HandleKey for input routing
-        return p.HandleKey(msg, p)
+Display-only components that show data from services:
 
-    case tea.WindowSizeMsg:
-        // Update dimensions
-        p.width = msg.Width
-        p.height = msg.Height
-        p.list.SetSize(p.width, p.height-2)
+- **`processes_view.go`**: Process list with status, selection, control
+- **`logs_view.go`**: Log display with filtering, auto-scroll, search
+- **`errors_view.go`**: Error list with dismissal, details, clearing
+- **`urls_view.go`**: Detected URL list with copying, opening
+- **`web_view.go`**: Proxy request viewer with filtering, details
+- **`settings_view.go`**: Settings editor with save/cancel
+- **`mcp_debug_view.go`**: MCP connection status and diagnostics
+- **`aicoders_view.go`**: AI coder session list and status
 
-    case ProcessStartedMsg:
-        // Handle custom event message
-        p.updateProcessStatus(msg.ID, StatusRunning)
-        return p, p.showNotification("Process started")
-
-    case ProcessErrorMsg:
-        // Handle error from async operation
-        return p, p.showError(msg.Error)
-    }
-
-    // Delegate to sub-components
-    var cmd tea.Cmd
-    p.list, cmd = p.list.Update(msg)
-    return p, cmd
-}
-```
-
-### View() - Rendering
-Renders component as styled string. Should be **pure function** of component state.
-
-```go
-func (p *ProcessesViewComponent) View() string {
-    if p.width == 0 {
-        return "Loading..."
-    }
-
-    return lipgloss.JoinVertical(
-        lipgloss.Left,
-        p.renderHeader(),
-        p.list.View(),
-        p.renderFooter(),
-    )
-}
-```
-
-## Service Interaction Patterns
-
-### Synchronous Service Calls
-Use for immediate read operations during Update():
-
-```go
-// Get current data from service
-processes := p.processMgr.GetAllProcesses()
-p.updateList(processes)
-```
-
-### Asynchronous Service Calls
-Use tea.Cmd for operations with side effects:
-
-```go
-func (p *ProcessesViewComponent) startProcess(id string) tea.Cmd {
-    return func() tea.Msg {
-        err := p.processMgr.StartProcess(id)
-        if err != nil {
-            return ProcessErrorMsg{ID: id, Error: err}
-        }
-        return ProcessStartedMsg{ID: id}
-    }
-}
-```
-
-### EventBus Integration
-Services emit events, components convert to tea.Msg:
-
-```go
-// Service emits event
-eventBus.Emit("process.started", ProcessEvent{ID: "dev"})
-
-// Component subscribes in Init()
-func (p *ProcessesViewComponent) subscribeToEvents() tea.Cmd {
-    return func() tea.Msg {
-        p.eventBus.Subscribe("process.*", func(event Event) {
-            // Convert to BubbleTea message
-            p.updateChan <- ProcessEventMsg{Event: event}
-        })
-        return nil
-    }
-}
-```
-
-## Key Handling Pattern
-
-Components implement KeyHandler interface for hierarchical input routing:
-
-```go
-func (p *ProcessesViewComponent) HandleKey(msg tea.KeyMsg, model tea.Model) (tea.Model, tea.Cmd) {
-    switch msg.String() {
-    case "enter":
-        // Handle Enter - start/stop process
-        return p, p.toggleProcess()
-
-    case "r":
-        // Handle R - restart process
-        return p, p.restartProcess()
-
-    case "up", "down":
-        // Delegate to list component
-        newList, cmd := p.list.Update(msg)
-        p.list = newList
-        return p, cmd
-
-    default:
-        // Not handled - allow propagation to global handlers
-        return model, nil
-    }
-}
-
-func (p *ProcessesViewComponent) Priority() HandlerPriority {
-    return PriorityViewSpecific  // 25 - normal view priority
-}
-```
-
-### Key Handler Priority Levels
-- **100 (Focus)**: Terminal emulator, text input (captures all keys)
-- **50 (Overlay)**: Command palette, modal dialogs
-- **25 (ViewSpecific)**: Current view component
-- **10 (Global)**: Navigation shortcuts (q, 1-9, Tab, /)
-
-**Important**: Return `(model, nil)` if key not handled to allow propagation.
-
-## Component State Structure
-
-Components should maintain minimal, view-specific state:
-
+**Pattern**:
 ```go
 type ProcessesViewComponent struct {
-    // Service dependencies (injected at creation)
-    processMgr *process.Manager
-    eventBus   *events.EventBus
-
-    // BubbleTea sub-components
-    list bubbles.List
-
-    // View state
-    selectedID  string
-    showStopped bool
-    sortBy      SortOrder
-
-    // Presentation
-    width  int
-    height int
-
-    // Event handling
-    updateChan chan tea.Msg
+    BaseComponent                // Embedded base for common functionality
+    viewport viewport.Model      // Bubble Tea viewport for scrolling
+    processMgr *process.Manager  // Direct service reference
+    // ... component-specific state
 }
 ```
 
-## Error Handling
+### Interactive Components
 
-Components handle errors from services and display to user:
+Components that accept keyboard input and modify state:
+
+- **`command_palette.go`**: Command input with autocomplete
+- **`script_selector.go`**: Script selection with search, launch
+- **`hierarchical_key_handler.go`**: Priority-based key routing
+
+**Pattern**:
+```go
+type CommandPaletteComponent struct {
+    BaseComponent
+    input textinput.Model        // Bubble Tea text input
+    autocomplete *Autocomplete   // Custom autocomplete logic
+    processMgr *process.Manager  // Service for command execution
+}
+```
+
+### Layout Components
+
+Components that compose other components:
+
+- **`integrated_shell.go`**: Top-level shell routing messages to view components
+- **`layout_manager.go`**: Pure functions for calculating layouts
+
+**Pattern**:
+```go
+type IntegratedShell struct {
+    // View components
+    logsView Component
+    processesView Component
+    // ... other views
+
+    currentView string  // Active view name
+}
+```
+
+## Service Integration
+
+Components call services directly without controller intermediaries:
 
 ```go
-func (p *ProcessesViewComponent) handleEnter() tea.Cmd {
+// GOOD: Direct service call from component
+func (c *ProcessesViewComponent) handleStart(processName string) tea.Cmd {
     return func() tea.Msg {
-        err := p.processMgr.StartProcess(p.selectedID)
+        err := c.processMgr.StartScript(processName)
         if err != nil {
-            return ProcessErrorMsg{
-                ProcessID: p.selectedID,
-                Error:     err,
-            }
+            return ProcessStartErrorMsg{Name: processName, Err: err}
         }
-        return ProcessStartedMsg{ProcessID: p.selectedID}
+        return ProcessStartedMsg{Name: processName}
     }
 }
 
-// In Update()
-case ProcessErrorMsg:
-    return p, ShowNotificationCmd(
-        "Error",
-        fmt.Sprintf("Failed to start %s: %v", msg.ProcessID, msg.Error),
-    )
+// BAD: Controller wrapper (removed in migration)
+func (c *ProcessViewController) StartProcess(name string) {
+    c.processManager.StartScript(name) // Extra layer of indirection
+}
 ```
 
-## Testing Components
+### Available Services
 
-Components should be testable in isolation with mock services:
+Components can access these services:
+
+- **`process.Manager`**: Process lifecycle, script execution, status
+- **`logs.Store`**: Log storage, retrieval, filtering
+- **`proxy.Server`**: HTTP request capture, viewing
+- **`config.Config`**: Application configuration
+- **`events.EventBus`**: Cross-component event coordination
+- **`aicoder.AICoderManager`**: AI coding session management
+- **`aicoder.PTYManager`**: Terminal emulation
+
+## Message Patterns
+
+### Service → Component Messages
+
+Services send messages to components via BubbleTea's message system:
 
 ```go
-func TestProcessesView(t *testing.T) {
-    // Create mock service
-    mockMgr := &MockProcessManager{
-        Processes: []Process{
-            {ID: "dev", Status: StatusRunning},
-            {ID: "test", Status: StatusStopped},
-        },
+// Process state changes
+type ProcessStartedMsg struct {
+    ProcessID string
+    Name string
+}
+
+type ProcessStoppedMsg struct {
+    ProcessID string
+    ExitCode int
+}
+
+// Log updates
+type LogAddedMsg struct {
+    ProcessID string
+    Message string
+    IsError bool
+}
+
+// URL detection
+type URLDetectedMsg struct {
+    ProcessID string
+    URL string
+}
+```
+
+### Component → Service Calls
+
+Components return `tea.Cmd` functions that call services:
+
+```go
+func (c *Component) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+    switch msg := msg.(type) {
+    case tea.KeyMsg:
+        if msg.String() == "enter" {
+            // Return command that calls service
+            return c, c.startProcess()
+        }
     }
+    return c, nil
+}
 
-    // Create component with mock
-    component := NewProcessesViewComponent(mockMgr)
-
-    // Test initialization
-    cmd := component.Init()
-    assert.NotNil(t, cmd)
-
-    // Test key handling
-    model, cmd := component.HandleKey(
-        tea.KeyMsg{Type: tea.KeyEnter},
-        component,
-    )
-    assert.NotNil(t, cmd)
-
-    // Test rendering
-    view := component.View()
-    assert.Contains(t, view, "dev")
-    assert.Contains(t, view, "Running")
+func (c *Component) startProcess() tea.Cmd {
+    return func() tea.Msg {
+        // Call service directly
+        err := c.processMgr.StartScript(c.selectedScript)
+        if err != nil {
+            return ErrorMsg{Err: err}
+        }
+        return SuccessMsg{}
+    }
 }
 ```
 
 ## Component Lifecycle
 
-1. **Creation**: Component created with service dependencies injected
-2. **Initialization**: Init() returns commands for subscriptions/data fetch
-3. **Message Loop**: Update() handles all messages, modifies state, returns commands
-4. **Rendering**: View() called by BubbleTea to render current state
-5. **Cleanup**: Component removed when view changes (automatic cleanup via BubbleTea)
+### Initialization
+
+```go
+// 1. Create component with service dependencies
+component := NewProcessesViewComponent(processMgr, logStore)
+
+// 2. Set initial size
+component.SetSize(80, 24)
+
+// 3. Call Init() to get initial command
+cmd := component.Init()
+
+// 4. Send initial command to BubbleTea
+program.Send(cmd)
+```
+
+### Message Handling
+
+```go
+// BubbleTea calls Update() for each message
+newModel, cmd := component.Update(msg)
+
+// Update returns:
+// - Updated model (component state)
+// - Command to execute (or nil)
+
+// Common patterns:
+switch msg := msg.(type) {
+case tea.WindowSizeMsg:
+    // Resize component
+    component.SetSize(msg.Width, msg.Height)
+    return component, nil
+
+case tea.KeyMsg:
+    // Handle keyboard input
+    return component.handleKey(msg)
+
+case ServiceMsg:
+    // Handle service events
+    return component.handleServiceEvent(msg)
+}
+```
+
+### Rendering
+
+```go
+// BubbleTea calls View() to render
+output := component.View()
+
+// View() should:
+// 1. Check if visible
+// 2. Build layout with lipgloss
+// 3. Return string for terminal
+
+func (c *Component) View() string {
+    if !c.IsVisible() {
+        return ""
+    }
+
+    // Use lipgloss for styling
+    return lipgloss.NewStyle().
+        Width(c.width).
+        Height(c.height).
+        Render(c.buildContent())
+}
+```
+
+## Key Handling Architecture
+
+### Hierarchical Key Handler
+
+Components use priority-based key handling:
+
+```go
+type KeyHandler interface {
+    CanHandle(msg tea.KeyMsg) bool
+    Handle(msg tea.KeyMsg) (tea.Model, tea.Cmd)
+    Priority() KeyHandlerPriority
+    Name() string
+}
+
+// Priority levels (highest to lowest):
+const (
+    PriorityHighest  // System keys (quit, force quit)
+    PriorityOverlay  // Modal overlays
+    PriorityFocused  // Currently focused component
+    PriorityView     // Current view handlers
+    PriorityGlobal   // Global shortcuts
+    PriorityLowest   // Catch-all
+)
+```
+
+### Example Key Handler
+
+```go
+type ProcessViewKeyHandler struct {
+    component *ProcessesViewComponent
+}
+
+func (h *ProcessViewKeyHandler) CanHandle(msg tea.KeyMsg) bool {
+    // Check if this handler should process the key
+    return msg.String() == "enter" || msg.String() == "s"
+}
+
+func (h *ProcessViewKeyHandler) Handle(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+    switch msg.String() {
+    case "enter":
+        return h.component.startSelected()
+    case "s":
+        return h.component.stopSelected()
+    }
+    return h.component, nil
+}
+
+func (h *ProcessViewKeyHandler) Priority() KeyHandlerPriority {
+    return PriorityView
+}
+
+func (h *ProcessViewKeyHandler) Name() string {
+    return "ProcessViewKeys"
+}
+```
+
+## Testing Components
+
+### Unit Testing
+
+Test components in isolation:
+
+```go
+func TestProcessesView_SelectProcess(t *testing.T) {
+    // Create mock service
+    mockMgr := &MockProcessManager{
+        processes: []*process.Process{
+            {ID: "test-1", Name: "test"},
+        },
+    }
+
+    // Create component
+    component := NewProcessesViewComponent(mockMgr, nil)
+
+    // Send key message
+    newModel, _ := component.Update(tea.KeyMsg{
+        Type: tea.KeyDown,
+    })
+
+    // Verify state change
+    c := newModel.(*ProcessesViewComponent)
+    assert.Equal(t, 0, c.selectedIndex)
+}
+```
+
+### Integration Testing
+
+Test component with real services:
+
+```go
+func TestProcessesView_Integration(t *testing.T) {
+    // Create real service
+    processMgr := process.NewManager()
+    logStore := logs.NewStore()
+
+    // Create component
+    component := NewProcessesViewComponent(processMgr, logStore)
+
+    // Send messages
+    component.Update(ProcessStartedMsg{ProcessID: "test-1"})
+
+    // Verify service calls
+    processes := processMgr.GetAllProcesses()
+    assert.Len(t, processes, 1)
+}
+```
 
 ## Best Practices
 
-### Do ✅
-- Keep state minimal and component-specific
-- Inject service dependencies at creation
-- Use BubbleTea sub-components (list, viewport, textarea, etc.)
-- Handle all messages gracefully (unknown types OK to ignore)
-- Return nil for commands when no side effect needed
-- Use lipgloss for consistent styling
-- Make View() a pure function of state
-- Test with mock services
+### ✅ DO
 
-### Don't ❌
-- Don't call services from View() (use Update() instead)
-- Don't modify state outside Update() method
-- Don't block on I/O operations
-- Don't make assumptions about other components
-- Don't manage service lifecycle
-- Don't use global state
-- Don't ignore errors from services
-- Don't create goroutines without proper cleanup
+- **Call services directly** from components
+- **Use tea.Cmd** for async operations
+- **Return immutable state** from Update()
+- **Use lipgloss** for styling and layout
+- **Implement BaseComponent** for common functionality
+- **Handle window resize** with tea.WindowSizeMsg
+- **Use viewport** for scrolling content
+- **Test components** with mock services
+
+### ❌ DON'T
+
+- **Don't create controllers** between components and services
+- **Don't mutate state directly** (return new state)
+- **Don't block in Update()** (use tea.Cmd for long operations)
+- **Don't store UI state in services** (keep in components)
+- **Don't skip error handling** from service calls
+- **Don't hardcode dimensions** (use SetSize)
 
 ## Migration from Controllers
 
-When migrating from controller-based code:
+If migrating from controller-based code:
 
-1. **Move State**: Controller view state → Component struct fields
-2. **Direct Service Calls**: Remove controller wrapper, call service directly
-3. **Event Handling**: EventBus subscription → tea.Msg conversion in Update()
-4. **Key Handling**: Controller key routing → Component HandleKey() method
-5. **Cleanup**: Remove controller file and all references from model.go
-
-Example migration:
+### Before (Controller Pattern)
 ```go
-// Before (controller pattern)
+// Controller middleware
 type ProcessViewController struct {
-    state      ProcessViewState
-    processMgr *process.Manager
+    manager *process.Manager
 }
 
-func (c *ProcessViewController) HandleInput(key string) {
-    // Controller owns state and wraps service calls
-    c.state.selectedID = key
-    c.processMgr.StartProcess(key)
+func (c *ProcessViewController) StartProcess(name string) {
+    c.manager.StartScript(name)
 }
 
-// After (component pattern)
+// Component delegates to controller
+func (c *ProcessView) handleStart() {
+    c.controller.StartProcess(c.selected)
+}
+```
+
+### After (Component Pattern)
+```go
+// Component calls service directly
 type ProcessesViewComponent struct {
-    processMgr *process.Manager
-    selectedID string  // State moved to component
+    manager *process.Manager
 }
 
-func (p *ProcessesViewComponent) HandleKey(msg tea.KeyMsg, model tea.Model) (tea.Model, tea.Cmd) {
-    // Component calls service directly
-    p.selectedID = msg.String()
-    return p, func() tea.Msg {
-        err := p.processMgr.StartProcess(p.selectedID)
-        // ... handle result
+func (c *ProcessesViewComponent) handleStart() tea.Cmd {
+    return func() tea.Msg {
+        err := c.manager.StartScript(c.selected)
+        if err != nil {
+            return ErrorMsg{Err: err}
+        }
+        return SuccessMsg{}
     }
 }
 ```
 
-## See Also
+**Benefits**:
+- Fewer layers (2 instead of 4)
+- Clearer data flow
+- Easier testing
+- Better BubbleTea integration
 
-- [Service Interaction Contract](../../specs/002-the-controllers-need/contracts/service-interaction.yaml)
-- [Key Handler Contract](../../specs/002-the-controllers-need/contracts/key-handler.yaml)
-- [Component Interface Contract](../../specs/002-the-controllers-need/contracts/component-interface.yaml)
-- [Architecture Overview](../../docs/architecture/overview.md)
-- [Concurrency Patterns](../../docs/architecture/concurrency-patterns.md)
+## Component Checklist
+
+When creating a new component:
+
+- [ ] Implement tea.Model interface (Init, Update, View)
+- [ ] Embed BaseComponent for common functionality
+- [ ] Add service dependencies in constructor
+- [ ] Implement SetSize for responsive layout
+- [ ] Handle tea.WindowSizeMsg
+- [ ] Use lipgloss for styling
+- [ ] Return tea.Cmd for async operations
+- [ ] Implement KeyHandler if accepting input
+- [ ] Write unit tests with mocks
+- [ ] Write integration tests with real services
+- [ ] Document public methods
+- [ ] Add to integrated_shell.go routing
+
+## Further Reading
+
+- [BubbleTea Documentation](https://github.com/charmbracelet/bubbletea)
+- [Lipgloss Styling](https://github.com/charmbracelet/lipgloss)
+- [Bubbles Components](https://github.com/charmbracelet/bubbles)
+- [Brummer Architecture Overview](/docs/architecture/overview.md)
+- [Controller Migration Guide](/docs/architecture/controller-migration.md)
+- [Concurrency Patterns](/docs/architecture/concurrency-patterns.md)
+
+---
+
+*This documentation reflects the completed Phase 3.6 migration (11/13 controllers migrated)*

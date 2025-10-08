@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -30,7 +32,8 @@ func (h *MCPMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model,
 	case mcpConnectionMsg:
 		// Handle MCP connection status change (T029)
 		if model.mcpDebugView != nil {
-			model.mcpDebugView.HandleConnection(m.sessionId, m.clientInfo, m.connected, m.connectedAt, m.connectionType, m.method)
+			connectedTime := time.Unix(0, m.connectedAt)
+			model.mcpDebugView.HandleConnection(m.sessionId, m.clientInfo, m.connected, connectedTime, m.connectionType, m.method)
 			if model.currentView() == ViewMCPConnections {
 				model.mcpDebugView.UpdateConnectionsList()
 			}

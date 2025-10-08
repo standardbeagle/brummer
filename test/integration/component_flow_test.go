@@ -21,7 +21,7 @@ func TestEndToEndMessageFlow(t *testing.T) {
 	defer logStore.Close()
 
 	// Create components
-	logsView := components.NewLogsViewComponent(logStore)
+	logsView := components.NewLogsView(logStore)
 	shell := components.NewIntegratedShell()
 	shell.SetLogsView(logsView)
 
@@ -102,7 +102,7 @@ func TestEventBusIntegration(t *testing.T) {
 	logStore := logs.NewStore(1000, eventBus)
 	defer logStore.Close()
 
-	logsView := components.NewLogsViewComponent(logStore)
+	logsView := components.NewLogsView(logStore)
 	shell := components.NewIntegratedShell()
 	shell.SetLogsView(logsView)
 
@@ -144,7 +144,7 @@ func TestHighVolumeLogFlow(t *testing.T) {
 	logStore := logs.NewStore(10000, eventBus)
 	defer logStore.Close()
 
-	logsView := components.NewLogsViewComponent(logStore)
+	logsView := components.NewLogsView(logStore)
 	shell := components.NewIntegratedShell()
 	shell.SetLogsView(logsView)
 

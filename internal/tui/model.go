@@ -541,10 +541,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		errorsView:        components.NewErrorsView(logStore),
 		urlsView:          components.NewURLsView(logStore),
 		webView:           components.NewWebViewComponent(proxyServer),
-		commandWindowView: components.NewCommandWindowView(processMgr, func(scripts map[string]string, pm *process.Manager) components.CommandAutocompleteInterface {
-			ca := NewCommandAutocompleteWithProcessManager(scripts, pm)
-			return &ca
-		}),
+		commandWindowView: components.NewCommandWindowView(processMgr, NewCommandAutocompleteFactory()),
 		keys:              keys,
 		updateChan:        make(chan tea.Msg, UpdateChannelBufferSize),
 	}
@@ -977,7 +974,8 @@ func (m *Model) renderContent() string {
 		return m.settingsView.Render()
 	case ViewMCPConnections:
 		if m.debugMode {
-			return m.mcpDebugView.Render(m.width, m.height, m.headerHeight, m.footerHeight)
+			m.mcpDebugView.SetSize(m.width, m.height)
+			return m.mcpDebugView.Render()
 		}
 		// Fallback to settings if not in debug mode
 		m.settingsView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
@@ -1236,13 +1234,17 @@ type tickMsg struct{}
 type switchToAICodersMsg struct{}
 
 func (m *Model) waitForUpdates() tea.Cmd {
-	// Delegate to EventController
-	return m.eventController.WaitForUpdates()
+	// Wait for updates from the update channel (event_controller logic migrated)
+	return func() tea.Msg {
+		return <-m.updateChan
+	}
 }
 
 func (m *Model) tickCmd() tea.Cmd {
-	// Delegate to EventController
-	return m.eventController.TickCmd()
+	// Periodic tick for real-time updates (event_controller logic migrated)
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return tickMsg{}
+	})
 }
 
 func (m *Model) handleRestartProcess(proc *process.Process) tea.Cmd {
@@ -1342,15 +1344,10 @@ func (m *Model) handleRunCommand() tea.Cmd {
 }
 
 func (m *Model) updateErrorsList() {
-	// Delegate to ErrorsViewController and handle unread indicators
-	countChange := m.errorsView.UpdateErrorsList()
+	// Delegate to ErrorsView
+	m.errorsView.UpdateErrorsList()
 
-	// Update unread indicator if we have new errors
-	if countChange > 0 && m.currentView() != ViewErrors {
-		// Update system controller with current view and delegate
-		m.systemController.SetCurrentView(m.currentView())
-		m.systemController.UpdateUnreadIndicator(ViewErrors, "error", countChange)
-	}
+	// TODO: Re-implement unread indicators when UpdateErrorsList returns count
 }
 
 func (m *Model) updateErrorDetailView() {

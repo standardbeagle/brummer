@@ -73,44 +73,44 @@ func (ma *ModelAdapter) GetScripts() map[string]string {
 }
 
 func (ma *ModelAdapter) IsScriptSelectorVisible() bool {
-	return ma.model.scriptSelectorController != nil && ma.model.scriptSelectorController.IsVisible()
+	return ma.model.scriptSelector != nil && ma.model.scriptSelector.IsVisible()
 }
 
 func (ma *ModelAdapter) ShowScriptSelector() {
-	if ma.model.scriptSelectorController != nil {
-		ma.model.scriptSelectorController.Show(false)
+	if ma.model.scriptSelector != nil {
+		ma.model.scriptSelector.Show(false)
 	}
 }
 
 func (ma *ModelAdapter) HideScriptSelector() {
-	if ma.model.scriptSelectorController != nil {
-		ma.model.scriptSelectorController.Hide()
+	if ma.model.scriptSelector != nil {
+		ma.model.scriptSelector.Hide()
 	}
 }
 
 // Search
 func (ma *ModelAdapter) IsSearchActive() bool {
-	return ma.model.logsViewController != nil &&
-		(ma.model.logsViewController.GetShowPattern() != "" ||
-			ma.model.logsViewController.GetHidePattern() != "")
+	return ma.model.logsView != nil &&
+		(ma.model.logsView.GetShowPattern() != "" ||
+			ma.model.logsView.GetHidePattern() != "")
 }
 
 func (ma *ModelAdapter) GetSearchPattern() string {
-	if ma.model.logsViewController != nil {
-		return ma.model.logsViewController.GetShowPattern()
+	if ma.model.logsView != nil {
+		return ma.model.logsView.GetShowPattern()
 	}
 	return ""
 }
 
 func (ma *ModelAdapter) SetSearchPattern(pattern string) {
-	if ma.model.logsViewController != nil {
-		ma.model.logsViewController.SetShowPattern(pattern)
+	if ma.model.logsView != nil {
+		ma.model.logsView.SetShowPattern(pattern)
 	}
 }
 
 // Command window
 func (ma *ModelAdapter) IsCommandWindowVisible() bool {
-	return ma.model.commandWindowController.IsShowingCommandWindow()
+	return ma.model.commandWindowView.IsShowingCommandWindow()
 }
 
 func (ma *ModelAdapter) ShowCommandWindow() {
@@ -120,11 +120,11 @@ func (ma *ModelAdapter) ShowCommandWindow() {
 	if ma.model.aiCoderController != nil {
 		aiProviders = ma.model.aiCoderController.GetProviders()
 	}
-	ma.model.commandWindowController.ShowCommandWindow(scripts, aiProviders)
+	ma.model.commandWindowView.ShowCommandWindow(scripts, aiProviders)
 }
 
 func (ma *ModelAdapter) HideCommandWindow() {
-	ma.model.commandWindowController.HideCommandWindow()
+	ma.model.commandWindowView.HideCommandWindow()
 }
 
 // Settings
