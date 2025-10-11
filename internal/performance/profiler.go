@@ -12,21 +12,21 @@ import (
 
 // Profiler provides simple integration with Go's built-in profiling
 type Profiler struct {
-	sessionID     string
-	outputDir     string
-	collecting    int32 // 0 = not collecting, 1 = collecting
-	cpuFile       *os.File
-	memFile       *os.File
-	startTime     time.Time
-	sampleCount   int64
+	sessionID   string
+	outputDir   string
+	collecting  int32 // 0 = not collecting, 1 = collecting
+	cpuFile     *os.File
+	memFile     *os.File
+	startTime   time.Time
+	sampleCount int64
 }
 
 // ProfilerConfig configures profiler behavior
 type ProfilerConfig struct {
 	SessionID      string
-	OutputDir      string // Directory for profile files (defaults to .)
-	AutoStart      bool   // Start profiling immediately
-	SampleInterval  time.Duration // How often to sample (for custom sampling)
+	OutputDir      string        // Directory for profile files (defaults to .)
+	AutoStart      bool          // Start profiling immediately
+	SampleInterval time.Duration // How often to sample (for custom sampling)
 }
 
 // NewProfiler creates a new profiler instance
@@ -139,11 +139,11 @@ func (p *Profiler) RecordSample() {
 // GetStats returns basic profiling statistics
 func (p *Profiler) GetStats() map[string]interface{} {
 	stats := map[string]interface{}{
-		"sessionID":    p.sessionID,
-		"isRunning":    p.IsRunning(),
-		"sampleCount":  p.SampleCount(),
-		"startTime":    p.startTime,
-		"duration":     p.Duration(),
+		"sessionID":   p.sessionID,
+		"isRunning":   p.IsRunning(),
+		"sampleCount": p.SampleCount(),
+		"startTime":   p.startTime,
+		"duration":    p.Duration(),
 	}
 
 	if p.IsRunning() {
@@ -151,10 +151,10 @@ func (p *Profiler) GetStats() map[string]interface{} {
 		runtime.ReadMemStats(&m)
 		stats["memoryStats"] = map[string]interface{}{
 			"alloc":      m.Alloc,
-			"totalAlloc":  m.TotalAlloc,
-			"sys":         m.Sys,
+			"totalAlloc": m.TotalAlloc,
+			"sys":        m.Sys,
 			"numGC":      m.NumGC,
-			"goroutines":  runtime.NumGoroutine(),
+			"goroutines": runtime.NumGoroutine(),
 		}
 	}
 

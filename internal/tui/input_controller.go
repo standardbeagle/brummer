@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
@@ -54,6 +55,19 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 		}
 	}
 
+	// Handle command window dialogs (highest priority after script selector)
+	if ic.model.commandWindowView != nil {
+		if ic.model.commandWindowView.IsShowingCommandWindow() {
+			return ic.handleCommandWindow(msg)
+		}
+		if ic.model.commandWindowView.IsShowingRunDialog() {
+			return ic.handleRunDialog(msg)
+		}
+		if ic.model.commandWindowView.IsShowingCustomCommand() {
+			return ic.handleCustomCommandDialog(msg)
+		}
+	}
+
 	// Update hierarchical context based on current state
 	ic.UpdateHierarchicalContext()
 
@@ -103,8 +117,10 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 	if msg.String() == "/" || (msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '/') {
 		// Check if we should intercept the slash command
 		shouldIntercept := true
-		if ic.model.currentView() == ViewAICoders && ic.model.aiCoderController != nil {
-			shouldIntercept = ic.model.aiCoderController.ShouldInterceptSlashCommand()
+		if ic.model.currentView() == ViewAICoders && ic.model.aicodersView != nil {
+			// TODO(Feature 005): Component should determine if slash should be intercepted
+			// For now, always intercept "/" at start of line (standard behavior)
+			shouldIntercept = true
 		}
 
 		if shouldIntercept {
@@ -114,22 +130,16 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 		// If not intercepting, fall through to PTY handling
 	}
 
-	// Check if we're in AI Coders view - route input to the controller
-	// The controller will handle both focused and unfocused states
-	if ic.model.currentView() == ViewAICoders && ic.model.aiCoderController != nil {
-		// Route all input to the AI Coder controller when in AI Coders view
-		// It will handle Enter to focus, keys when focused, etc.
-		cmd := ic.model.aiCoderController.Update(msg)
-		// Only mark as handled if we're focused or it's a key the PTY view handles
-		if ic.model.aiCoderController.IsTerminalFocused() {
-			return ic.model, cmd, true
-		}
-		// Check if it's a key the PTY view handles when unfocused
-		switch msg.String() {
-		case "enter", "f11", "ctrl+h", "ctrl+n", "ctrl+shift+p", "ctrl+d", "f12", "pgup", "pgdown":
-			return ic.model, cmd, true
-		}
-		// For other keys, continue to global key handling
+	// Check if we're in AI Coders view - route input to the component
+	// The component will handle both list and PTY modes
+	if ic.model.currentView() == ViewAICoders && ic.model.aicodersView != nil {
+		// Route all input to the AI Coder component when in AI Coders view
+		// It will handle navigation in list mode and input forwarding in PTY mode
+		updatedComponent, cmd := ic.model.aicodersView.Update(msg)
+		ic.model.aicodersView = updatedComponent.(*components.AICodersViewComponent)
+		// TODO(Feature 005): Determine when input is handled vs fall-through
+		// For now, handle all keys when in AI Coders view
+		return ic.model, cmd, true
 	}
 
 	// Handle view-specific keys not covered by hierarchical handler
@@ -149,6 +159,9 @@ func (ic *InputController) HandleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd, boo
 			ic.model.showRunDialog()
 		}
 		return ic.model, nil, true
+
+		// Note: Command window dialogs are handled at the top of HandleKeyMsg
+		// for proper input routing when they are visible
 	}
 
 	return ic.model, nil, false
@@ -307,6 +320,67 @@ func (ic *InputController) handleCommandWindow(msg tea.KeyMsg) (tea.Model, tea.C
 
 	// Update the autocomplete component
 	_, cmd := commandAutocomplete.Update(msg)
+
+	return ic.model, cmd, true
+}
+
+// handleRunDialog handles input when run dialog is open
+func (ic *InputController) handleRunDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	switch msg.String() {
+	case "esc":
+		ic.model.commandWindowView.HideRunDialog()
+		return ic.model, nil, true
+
+	case "enter":
+		cmd := ic.model.handleRunCommand()
+		return ic.model, cmd, true
+	}
+
+	// Update the commands list
+	commandsList := ic.model.commandWindowView.GetCommandsList()
+	_, cmd := commandsList.Update(msg)
+
+	return ic.model, cmd, true
+}
+
+// handleCustomCommandDialog handles input when custom command dialog is open
+func (ic *InputController) handleCustomCommandDialog(msg tea.KeyMsg) (tea.Model, tea.Cmd, bool) {
+	customCommandInput := ic.model.commandWindowView.GetCustomCommandInput()
+
+	switch msg.String() {
+	case "esc":
+		ic.model.commandWindowView.HideCustomCommandDialog()
+		return ic.model, nil, true
+
+	case "enter":
+		commandText := customCommandInput.Value()
+		if commandText == "" {
+			return ic.model, nil, true
+		}
+
+		ic.model.commandWindowView.HideCustomCommandDialog()
+
+		// Execute the custom command
+		errorHandler := NewStandardErrorHandler(ic.model.logStore, ic.model.updateChan)
+		SafeGoroutine(
+			fmt.Sprintf("start custom command '%s'", commandText),
+			func() error {
+				_, err := ic.model.processMgr.StartCommand("custom", commandText, nil)
+				return err
+			},
+			func(err error) {
+				ctx := ProcessStartContext("custom", "Custom Command Dialog", ic.model.logStore, ic.model.updateChan)
+				errorHandler.HandleError(err, ctx)
+			},
+		)
+
+		ic.model.navController.SwitchTo(ViewProcesses)
+		ic.model.updateProcessList()
+		return ic.model, ic.model.waitForUpdates(), true
+	}
+
+	// Update the custom command input
+	_, cmd := customCommandInput.Update(msg)
 
 	return ic.model, cmd, true
 }

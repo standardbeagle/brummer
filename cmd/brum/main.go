@@ -24,9 +24,10 @@ import (
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
-	"github.com/standardbeagle/brummer/internal/test"
+	"github.com/standardbeagle/brummer/internal/startup"
+	"github.com/standardbeagle/brummer/internal/tui"
 	"github.com/standardbeagle/brummer/internal/tui/bridge"
-	"github.com/standardbeagle/brummer/internal/tui/components"
+	"github.com/standardbeagle/brummer/internal/tui/services"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -152,6 +153,9 @@ func main() {
 }
 
 func runApp(cmd *cobra.Command, args []string) {
+	// Set up error reporter for better startup error handling
+	errorReporter := startup.NewErrorReporter()
+
 	// Set up signal handling FIRST - before anything else
 	// This ensures Ctrl+C always works, even if startup hangs
 	sigChan := make(chan os.Signal, 1)
@@ -178,7 +182,7 @@ func runApp(cmd *cobra.Command, args []string) {
 	// Resolve working directory
 	absWorkDir, err := filepath.Abs(workDir)
 	if err != nil {
-		log.Fatal("Failed to resolve working directory:", err)
+		errorReporter.ReportError(errorReporter.CriticalWorkingDir(err, workDir), true)
 	}
 
 	// Check if package.json exists (not required - will use fallback mode if missing)
@@ -192,40 +196,13 @@ func runApp(cmd *cobra.Command, args []string) {
 
 	processMgr, err := process.NewManager(absWorkDir, eventBus, hasPackageJSON)
 	if err != nil {
-		log.Fatal("Failed to initialize process manager:", err)
+		errorReporter.ReportError(errorReporter.CriticalProcessManager(err), true)
 	}
 
 	logStore := logs.NewStore(10000, eventBus)
 	detector := logs.NewEventDetector(eventBus)
 
-	// Initialize AI coder manager
-	var aiCoderManager *aicoder.AICoderManager
-
-	// Create adapter for event bus to match aicoder.EventBus interface
-	eventBusAdapter := &aicoderEventBusAdapter{eventBus: eventBus}
-
-	// Load configuration for AI coder manager
-	configWithSources, err := config.LoadWithSources()
-	if err != nil {
-		log.Printf("Warning: Failed to load configuration for AI coder manager: %v", err)
-		// Create a minimal default config
-		configWithSources = &config.ConfigWithSources{}
-	}
-
-	// Wrap the config to implement the aicoder.Config interface
-	aiCoderConfig := &simpleAICoderConfig{ConfigWithSources: configWithSources}
-
-	aiCoderManager, err = aicoder.NewAICoderManagerWithoutMockProvider(aiCoderConfig, eventBusAdapter)
-	if err != nil {
-		log.Printf("Warning: Failed to initialize AI coder manager: %v", err)
-		aiCoderManager = nil // Continue without AI coder functionality
-	} else {
-		log.Println("AI coder manager initialized successfully")
-	}
-
-	// Initialize test runner service
-	testRunner := test.NewTestRunnerService()
-	log.Println("Test runner service initialized successfully")
+	// AI coder functionality is now handled by the service-based architecture in the Model
 
 	// Initialize AI test context optimizer (disabled for now - TODO: fix event bus integration)
 	// var testContextOptimizer *ai.TestContextOptimizer
@@ -526,7 +503,7 @@ func runApp(cmd *cobra.Command, args []string) {
 		case err := <-mcpStarted:
 			if err != nil {
 				if noTUI {
-					log.Fatal("MCP server error:", err)
+					errorReporter.ReportError(errorReporter.CriticalMCPServer(err, mcpPort), true)
 				} else {
 					// MCP server error (logged internally)
 					errorMsg := fmt.Sprintf("❌ MCP server failed to start: %v", err)
@@ -545,8 +522,9 @@ func runApp(cmd *cobra.Command, args []string) {
 			}
 		case <-time.After(5 * time.Second):
 			// Timeout waiting for MCP server to start
+			timeoutErr := fmt.Errorf("MCP server failed to start within 5 seconds")
 			if noTUI {
-				log.Fatal("MCP server failed to start within 5 seconds")
+				errorReporter.ReportError(errorReporter.CriticalMCPServer(timeoutErr, mcpPort), true)
 			} else {
 				errorMsg := "❌ MCP server failed to start within 5 seconds (timeout)"
 				logStore.Add("system", "MCP", errorMsg, true)
@@ -650,94 +628,61 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Signal handling already set up at top of runApp()
 
 		// ========================================
-		// COMPONENT-BASED UI SYSTEM
+		// MODEL-BASED UI SYSTEM with AI Coder Integration
 		// ========================================
 
-		// Create IntegratedShell
-		shell := components.NewIntegratedShell()
+		// Create Model with all services
+		configWithSources, err := config.LoadWithSources()
+		if err != nil {
+			log.Printf("Warning: Failed to load configuration: %v", err)
+			configWithSources = &config.ConfigWithSources{}
+		}
 
-		// Create chrome components (header, tabs, footer)
-		headerComponent := components.NewSimpleHeaderComponent("Brummer")
-		shell.SetHeaderComponent(headerComponent)
+		model := tui.NewModel(processMgr, logStore, eventBus, nil, proxyServer, mcpPort, &configWithSources.Config, absWorkDir)
 
-		tabsComponent := components.NewTabsComponent()
-		shell.SetTabsComponent(tabsComponent)
+		// Create TestManagementService with default config
+		testConfig := services.DefaultTestConfig()
+		testManagementService := services.NewTestManagementService(logStore, eventBus, testConfig)
 
-		footerComponent := components.NewFooterComponent()
-		shell.SetFooterComponent(footerComponent)
+		// Create FileBrowserService with default config
+		fileBrowserConfig := services.DefaultFileBrowserConfig()
+		fileBrowserService := services.NewFileBrowserService(eventBus, fileBrowserConfig)
 
-		// Create all view components
-		logsView := components.NewLogsView(logStore)
-		shell.SetLogsView(logsView)
-
-		processView := components.NewProcessViewComponent(processMgr)
-		shell.SetProcessView(processView)
-
-		urlsView := components.NewURLsView(logStore)
-		shell.SetURLsView(urlsView)
-
-		errorsView := components.NewErrorsView(logStore)
-		shell.SetErrorsView(errorsView)
-
-		webView := components.NewWebViewComponent(proxyServer)
-		shell.SetWebView(webView)
-
-		// Create test view
-		testView := components.NewTestViewComponent(testRunner.GetManager(), 80, 24)
-		shell.SetTestView(testView)
-
-		// Create AI coders view
-		aicodersView := components.NewAICodersViewComponent()
-		shell.SetAICodersView(aicodersView)
-
-		// Create MCP view
-		mcpView := components.NewMCPViewComponent()
-		shell.SetMCPView(mcpView)
-
-		// Create diagnostic view for troubleshooting
-		diagnosticView := components.NewDiagnosticViewComponent()
-		shell.SetDiagnosticView(diagnosticView)
-
-		// Register all commands from services
-		registry := shell.GetCommandRegistry()
-		registry.RegisterMultiple(components.GetProcessCommands(processMgr))
-		registry.RegisterMultiple(components.GetLogCommands(logStore))
-		registry.RegisterMultiple(components.GetProxyCommands(proxyServer))
-		registry.RegisterMultiple(components.GetAICommands([]string{"claude", "gpt4"}))
-		registry.RegisterMultiple(components.GetDockerCommands())
-
-		// Create command executor
-		executor := components.NewCommandExecutor(processMgr, logStore, proxyServer, registry, aiCoderManager)
-		shell.SetCommandExecutor(executor)
-
-		// Create command input overlay
-		commandInput := components.NewCommandInputComponent(registry)
-		shell.SetCommandInput(commandInput)
-
-		// Create help overlay
-		helpOverlay := components.NewHelpOverlayComponent()
-		shell.SetHelpOverlay(helpOverlay)
+		// Create SettingsService with default config
+		settingsConfig := services.DefaultSettingsConfig()
+		settingsService := services.NewSettingsService(
+			logStore,
+			eventBus,
+			&configWithSources.Config,
+			absWorkDir,
+			processMgr,
+			proxyServer,
+			mcpServer,
+			settingsConfig,
+		)
 
 		// Create ServiceBridge to connect services to UI
-		serviceBridge := bridge.NewServiceBridge(processMgr, logStore, proxyServer, eventBus)
+		serviceBridge := bridge.NewServiceBridge(processMgr, logStore, proxyServer, eventBus, testManagementService, fileBrowserService, settingsService)
 
-		// TTY TESTING WARNING: See internal/tui/components/diagnostic_view.go for critical guidelines
-	// This BubbleTea initialization requires proper TTY allocation for WindowSizeMsg support.
-	// Do NOT test using Bash tools that lack TTY support - use direct terminal execution.
-	//
-	// Let BubbleTea handle TTY detection naturally - no special cases or hardcoded error handling.
-	// Previous hardcoded TTY error checks were forcing fallback to non-AltScreen mode in WSL2,
-	// which broke WindowSizeMsg functionality. Standard BubbleTea initialization works correctly.
+		// Connect AI coder service to ServiceBridge for event routing
+		model.ConnectAICoderServiceToBridge(serviceBridge)
 
-	// Create BubbleTea program with standard AltScreen initialization
-	var p *tea.Program
+		// TTY TESTING WARNING: See internal/tui/components/integrated_shell.go for critical guidelines
+		// This BubbleTea initialization requires proper TTY allocation for WindowSizeMsg support.
+		// Do NOT test using Bash tools that lack TTY support - use direct terminal execution.
+		//
+		// Let BubbleTea handle TTY detection naturally - no special cases or hardcoded error handling.
+		// Previous hardcoded TTY error checks were forcing fallback to non-AltScreen mode in WSL2,
+		// which broke WindowSizeMsg functionality. Standard BubbleTea initialization works correctly.
 
-		// Standard BubbleTea initialization
-	p = tea.NewProgram(shell, tea.WithAltScreen())
+		// Create BubbleTea program with standard AltScreen initialization
+		var p *tea.Program
 
-		// Set ServiceBridge on shell - it will be started via Init() lifecycle
-		// This is the proper BubbleTea pattern - no sleep needed!
-		shell.SetServiceBridge(serviceBridge, p)
+		// Standard BubbleTea initialization with Model
+		p = tea.NewProgram(model, tea.WithAltScreen())
+
+		// Start ServiceBridge to begin event routing (but defer initial messages)
+		serviceBridge.StartWithoutInitialMessages(p)
 
 		// Run TUI in goroutine so we can handle signals
 		done := make(chan error)
@@ -750,10 +695,8 @@ func runApp(cmd *cobra.Command, args []string) {
 		select {
 		case err := <-done:
 			if err != nil {
-				// Let BubbleTea handle TTY errors naturally - no special cases
-				// Previous hardcoded TTY error handling forced fallback to non-AltScreen mode
-				// which broke WindowSizeMsg functionality in WSL2 + Windows Terminal environments
-				log.Fatal("Failed to run TUI:", err)
+				// Use improved error reporting for TUI startup failures
+				errorReporter.ReportError(errorReporter.CriticalTUI(err), true)
 			}
 		case <-sigChan:
 			fmt.Println("\nShutting down gracefully...")

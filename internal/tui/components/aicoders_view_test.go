@@ -9,7 +9,7 @@ import (
 )
 
 func TestAICodersViewComponent_NewComponent(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 24)
 
 	if len(component.sessions) != 0 {
@@ -23,7 +23,7 @@ func TestAICodersViewComponent_NewComponent(t *testing.T) {
 }
 
 func TestAICodersViewComponent_AddSession(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 24)
 
 	session := &SessionInfo{
@@ -53,7 +53,7 @@ func TestAICodersViewComponent_AddSession(t *testing.T) {
 }
 
 func TestAICodersViewComponent_MultipleSession(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 24)
 
 	statuses := []string{"active", "idle", "error"}
@@ -82,7 +82,7 @@ func TestAICodersViewComponent_MultipleSession(t *testing.T) {
 }
 
 func TestAICodersViewComponent_RemoveSession(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 24)
 
 	session1 := &SessionInfo{ID: "session-1", Name: "Session 1", Status: "active", StartTime: time.Now(), LastActivity: time.Now()}
@@ -102,7 +102,7 @@ func TestAICodersViewComponent_RemoveSession(t *testing.T) {
 }
 
 func TestAICodersViewComponent_UpdateSession(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 24)
 
 	session := &SessionInfo{
@@ -130,7 +130,7 @@ func TestAICodersViewComponent_UpdateSession(t *testing.T) {
 }
 
 func TestAICodersViewComponent_KeyboardNavigation(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 24)
 
 	// Add 3 sessions
@@ -175,7 +175,7 @@ func TestAICodersViewComponent_KeyboardNavigation(t *testing.T) {
 }
 
 func TestAICodersViewComponent_GetSelectedSession(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 24)
 
 	// No sessions - should return nil
@@ -207,7 +207,7 @@ func TestAICodersViewComponent_GetSelectedSession(t *testing.T) {
 }
 
 func TestAICodersViewComponent_StatusDisplay(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 100) // Tall viewport
 
 	// Test different statuses
@@ -235,7 +235,7 @@ func TestAICodersViewComponent_StatusDisplay(t *testing.T) {
 }
 
 func TestAICodersViewComponent_SetSize(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 
 	component.SetSize(100, 50)
 
@@ -254,7 +254,7 @@ func TestAICodersViewComponent_SetSize(t *testing.T) {
 }
 
 func TestAICodersViewComponent_Visibility(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 24)
 
 	// Default is visible
@@ -276,7 +276,7 @@ func TestAICodersViewComponent_Visibility(t *testing.T) {
 }
 
 func TestAICodersViewComponent_WindowSizeMsg(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 24)
 
 	// Simulate window resize
@@ -298,7 +298,7 @@ func TestAICodersViewComponent_WindowSizeMsg(t *testing.T) {
 }
 
 func TestAICodersViewComponent_CurrentTaskDisplay(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 100) // Tall viewport
 
 	session := &SessionInfo{
@@ -323,7 +323,7 @@ func TestAICodersViewComponent_CurrentTaskDisplay(t *testing.T) {
 }
 
 func TestAICodersViewComponent_ErrorMessageDisplay(t *testing.T) {
-	component := NewAICodersViewComponent()
+	component := NewAICodersViewComponent(nil)
 	component.SetSize(80, 100) // Tall viewport
 
 	session := &SessionInfo{

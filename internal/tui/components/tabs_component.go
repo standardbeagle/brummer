@@ -54,7 +54,6 @@ func NewTabsComponent() *TabsComponent {
 			{ID: "aicoders", Title: "AI Coders", Icon: "🤖", Shortcut: "6", Enabled: true},
 			{ID: "mcp", Title: "MCP", Icon: "🔌", Shortcut: "7", Enabled: true},
 			{ID: "settings", Title: "Settings", Icon: "⚙", Shortcut: "8", Enabled: true},
-			{ID: "diagnostic", Title: "Diagnostic", Icon: "🔍", Shortcut: "9", Enabled: true},
 		},
 		activeTabStyle: lipgloss.NewStyle().
 			Bold(true).

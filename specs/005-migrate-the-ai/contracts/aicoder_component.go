@@ -192,115 +192,134 @@ type ViewMode string
 // FetchSessionListCmd fetches session list from service.
 //
 // Returns:
-//   tea.Cmd: Command that fetches sessions and returns SessionListMsg
+//
+//	tea.Cmd: Command that fetches sessions and returns SessionListMsg
 //
 // Example:
-//   cmd := FetchSessionListCmd(service)
-//   return component, cmd
+//
+//	cmd := FetchSessionListCmd(service)
+//	return component, cmd
 //
 // Implementation:
-//   return func() tea.Msg {
-//       sessions := service.ListSessions()
-//       return SessionListMsg{Sessions: sessions}
-//   }
+//
+//	return func() tea.Msg {
+//	    sessions := service.ListSessions()
+//	    return SessionListMsg{Sessions: sessions}
+//	}
 func FetchSessionListCmd(service AICoderService) tea.Cmd
 
 // FetchTerminalStateCmd fetches terminal state for a session.
 //
 // Parameters:
-//   service: Service to query
-//   sessionID: Session to fetch state for
+//
+//	service: Service to query
+//	sessionID: Session to fetch state for
 //
 // Returns:
-//   tea.Cmd: Command that fetches terminal state and returns TerminalStateMsg
+//
+//	tea.Cmd: Command that fetches terminal state and returns TerminalStateMsg
 //
 // Example:
-//   cmd := FetchTerminalStateCmd(service, sessionID)
-//   return component, cmd
+//
+//	cmd := FetchTerminalStateCmd(service, sessionID)
+//	return component, cmd
 //
 // Implementation:
-//   return func() tea.Msg {
-//       state, err := service.GetTerminalState(sessionID)
-//       if err != nil {
-//           return AICoderErrorMsg{SessionID: sessionID, Error: err}
-//       }
-//       return TerminalStateMsg{SessionID: sessionID, State: state}
-//   }
+//
+//	return func() tea.Msg {
+//	    state, err := service.GetTerminalState(sessionID)
+//	    if err != nil {
+//	        return AICoderErrorMsg{SessionID: sessionID, Error: err}
+//	    }
+//	    return TerminalStateMsg{SessionID: sessionID, State: state}
+//	}
 func FetchTerminalStateCmd(service AICoderService, sessionID string) tea.Cmd
 
 // StartSessionCmd starts a new AI coder session.
 //
 // Parameters:
-//   service: Service to call
-//   name: Session name
-//   command: Command to execute
-//   workingDir: Working directory
-//   width: Terminal width
-//   height: Terminal height
+//
+//	service: Service to call
+//	name: Session name
+//	command: Command to execute
+//	workingDir: Working directory
+//	width: Terminal width
+//	height: Terminal height
 //
 // Returns:
-//   tea.Cmd: Command that creates and starts session
+//
+//	tea.Cmd: Command that creates and starts session
 //
 // Example:
-//   cmd := StartSessionCmd(service, "Debug", "npx code", ".", 80, 24)
-//   return component, cmd
+//
+//	cmd := StartSessionCmd(service, "Debug", "npx code", ".", 80, 24)
+//	return component, cmd
 //
 // Implementation:
-//   return func() tea.Msg {
-//       sessionID, err := service.CreateSession(ctx, name, command, workingDir)
-//       if err != nil {
-//           return AICoderErrorMsg{Error: err}
-//       }
-//       if err := service.StartSession(ctx, sessionID, width, height); err != nil {
-//           return AICoderErrorMsg{SessionID: sessionID, Error: err}
-//       }
-//       return AICoderSessionCreatedMsg{SessionID: sessionID, Name: name}
-//   }
+//
+//	return func() tea.Msg {
+//	    sessionID, err := service.CreateSession(ctx, name, command, workingDir)
+//	    if err != nil {
+//	        return AICoderErrorMsg{Error: err}
+//	    }
+//	    if err := service.StartSession(ctx, sessionID, width, height); err != nil {
+//	        return AICoderErrorMsg{SessionID: sessionID, Error: err}
+//	    }
+//	    return AICoderSessionCreatedMsg{SessionID: sessionID, Name: name}
+//	}
 func StartSessionCmd(service AICoderService, name, command, workingDir string, width, height int) tea.Cmd
 
 // StopSessionCmd stops a session.
 //
 // Parameters:
-//   service: Service to call
-//   sessionID: Session to stop
+//
+//	service: Service to call
+//	sessionID: Session to stop
 //
 // Returns:
-//   tea.Cmd: Command that stops session
+//
+//	tea.Cmd: Command that stops session
 //
 // Example:
-//   cmd := StopSessionCmd(service, sessionID)
-//   return component, cmd
+//
+//	cmd := StopSessionCmd(service, sessionID)
+//	return component, cmd
 //
 // Implementation:
-//   return func() tea.Msg {
-//       if err := service.StopSession(ctx, sessionID); err != nil {
-//           return AICoderErrorMsg{SessionID: sessionID, Error: err}
-//       }
-//       return AICoderSessionEndedMsg{SessionID: sessionID, Reason: "stopped"}
-//   }
+//
+//	return func() tea.Msg {
+//	    if err := service.StopSession(ctx, sessionID); err != nil {
+//	        return AICoderErrorMsg{SessionID: sessionID, Error: err}
+//	    }
+//	    return AICoderSessionEndedMsg{SessionID: sessionID, Reason: "stopped"}
+//	}
 func StopSessionCmd(service AICoderService, sessionID string) tea.Cmd
 
 // SendInputCmd sends keyboard input to PTY.
 //
 // Parameters:
-//   service: Service to call
-//   sessionID: Session to send input to
-//   input: Raw bytes to send
+//
+//	service: Service to call
+//	sessionID: Session to send input to
+//	input: Raw bytes to send
 //
 // Returns:
-//   tea.Cmd: Command that sends input (may return error msg)
+//
+//	tea.Cmd: Command that sends input (may return error msg)
 //
 // Example:
-//   cmd := SendInputCmd(service, sessionID, []byte("ls\n"))
-//   return component, cmd
+//
+//	cmd := SendInputCmd(service, sessionID, []byte("ls\n"))
+//	return component, cmd
 //
 // Implementation:
-//   return func() tea.Msg {
-//       if err := service.SendInput(sessionID, input); err != nil {
-//           return AICoderErrorMsg{SessionID: sessionID, Error: err}
-//       }
-//       return nil  // Silent success
-//   }
+//
+//	return func() tea.Msg {
+//	    if err := service.SendInput(sessionID, input); err != nil {
+//	        return AICoderErrorMsg{SessionID: sessionID, Error: err}
+//	    }
+//	    return nil  // Silent success
+//	}
 func SendInputCmd(service AICoderService, sessionID string, input []byte) tea.Cmd
 
 // Internal Message Types (Component-only)
@@ -321,48 +340,56 @@ type TerminalStateMsg struct {
 // RenderSessionList renders the session list view.
 //
 // Parameters:
-//   sessions: Sessions to display
-//   selectedIndex: Currently selected index
-//   width: Viewport width
-//   height: Viewport height
-//   styles: Styling configuration
+//
+//	sessions: Sessions to display
+//	selectedIndex: Currently selected index
+//	width: Viewport width
+//	height: Viewport height
+//	styles: Styling configuration
 //
 // Returns:
-//   string: Rendered session list
+//
+//	string: Rendered session list
 //
 // Format:
-//   Active Sessions (3)
-//   ───────────────────
-//   ▸ Debug API      [ACTIVE]   2m ago
-//     Test Runner    [IDLE]     5m ago
-//     Build Watch    [ERROR]    10m ago
+//
+//	Active Sessions (3)
+//	───────────────────
+//	▸ Debug API      [ACTIVE]   2m ago
+//	  Test Runner    [IDLE]     5m ago
+//	  Build Watch    [ERROR]    10m ago
 //
 // Example:
-//   output := RenderSessionList(sessions, 0, 80, 24, styles)
+//
+//	output := RenderSessionList(sessions, 0, 80, 24, styles)
 func RenderSessionList(sessions []SessionSummary, selectedIndex, width, height int, styles AICoderStyles) string
 
 // RenderPTYView renders the terminal view.
 //
 // Parameters:
-//   state: Terminal state to render
-//   width: Viewport width
-//   height: Viewport height
-//   styles: Styling configuration
+//
+//	state: Terminal state to render
+//	width: Viewport width
+//	height: Viewport height
+//	styles: Styling configuration
 //
 // Returns:
-//   string: Rendered terminal view
+//
+//	string: Rendered terminal view
 //
 // Format:
-//   Session: Debug API
-//   ────────────────────────────────────
-//   [Terminal Output Lines]
-//   ...
-//   [Cursor Indicator]
-//   ────────────────────────────────────
-//   ESC=List | ?=Help | ↑↓=Scroll
+//
+//	Session: Debug API
+//	────────────────────────────────────
+//	[Terminal Output Lines]
+//	...
+//	[Cursor Indicator]
+//	────────────────────────────────────
+//	ESC=List | ?=Help | ↑↓=Scroll
 //
 // Example:
-//   output := RenderPTYView(state, 80, 24, styles)
+//
+//	output := RenderPTYView(state, 80, 24, styles)
 func RenderPTYView(state *TerminalState, width, height int, styles AICoderStyles) string
 
 // Performance Requirements

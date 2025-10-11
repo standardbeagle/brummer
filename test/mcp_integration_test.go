@@ -49,14 +49,14 @@ func createMockMCPServer() *httptest.Server {
 		case "initialize":
 			response := map[string]interface{}{
 				"jsonrpc": "2.0",
-				"id": id,
+				"id":      id,
 				"result": map[string]interface{}{
 					"protocolVersion": "2024-11-05",
 					"capabilities": map[string]interface{}{
 						"tools": map[string]interface{}{},
 					},
 					"serverInfo": map[string]interface{}{
-						"name": "brummer",
+						"name":    "brummer",
 						"version": "1.0.0",
 					},
 				},
@@ -66,25 +66,25 @@ func createMockMCPServer() *httptest.Server {
 		case "tools/list":
 			response := map[string]interface{}{
 				"jsonrpc": "2.0",
-				"id": id,
+				"id":      id,
 				"result": map[string]interface{}{
 					"tools": []map[string]interface{}{
 						{
-							"name": "scripts_list",
+							"name":        "scripts_list",
 							"description": "List all available npm/yarn/pnpm/bun scripts from package.json",
 							"inputSchema": map[string]interface{}{
-								"type": "object",
+								"type":       "object",
 								"properties": map[string]interface{}{},
 							},
 						},
 						{
-							"name": "scripts_run",
+							"name":        "scripts_run",
 							"description": "Run a script from package.json with live log streaming",
 							"inputSchema": map[string]interface{}{
 								"type": "object",
 								"properties": map[string]interface{}{
 									"name": map[string]interface{}{
-										"type": "string",
+										"type":        "string",
 										"description": "Script name to run",
 									},
 								},
@@ -92,36 +92,36 @@ func createMockMCPServer() *httptest.Server {
 							},
 						},
 						{
-							"name": "logs_stream",
+							"name":        "logs_stream",
 							"description": "Stream real-time logs from running processes",
 							"inputSchema": map[string]interface{}{
 								"type": "object",
 								"properties": map[string]interface{}{
 									"processId": map[string]interface{}{
-										"type": "string",
+										"type":        "string",
 										"description": "Optional process ID to filter logs",
 									},
 									"level": map[string]interface{}{
-										"type": "string",
-										"enum": []string{"all", "error", "warn", "info"},
+										"type":        "string",
+										"enum":        []string{"all", "error", "warn", "info"},
 										"description": "Log level filter",
 									},
 								},
 							},
 						},
 						{
-							"name": "proxy_requests",
+							"name":        "proxy_requests",
 							"description": "Get HTTP requests captured by the proxy server",
 							"inputSchema": map[string]interface{}{
 								"type": "object",
 								"properties": map[string]interface{}{
 									"processName": map[string]interface{}{
-										"type": "string",
+										"type":        "string",
 										"description": "Filter by process name",
 									},
 									"status": map[string]interface{}{
-										"type": "string",
-										"enum": []string{"all", "success", "error"},
+										"type":        "string",
+										"enum":        []string{"all", "success", "error"},
 										"description": "Filter by status",
 									},
 								},
@@ -149,7 +149,7 @@ func createMockMCPServer() *httptest.Server {
 			case "scripts_list":
 				response := map[string]interface{}{
 					"jsonrpc": "2.0",
-					"id": id,
+					"id":      id,
 					"result": map[string]interface{}{
 						"content": []map[string]interface{}{
 							{
@@ -183,7 +183,7 @@ func createMockMCPServer() *httptest.Server {
 
 				response := map[string]interface{}{
 					"jsonrpc": "2.0",
-					"id": id,
+					"id":      id,
 					"result": map[string]interface{}{
 						"content": []map[string]interface{}{
 							{
@@ -199,7 +199,7 @@ func createMockMCPServer() *httptest.Server {
 			case "logs_stream":
 				response := map[string]interface{}{
 					"jsonrpc": "2.0",
-					"id": id,
+					"id":      id,
 					"result": map[string]interface{}{
 						"content": []map[string]interface{}{
 							{
@@ -217,7 +217,7 @@ func createMockMCPServer() *httptest.Server {
 			case "proxy_requests":
 				response := map[string]interface{}{
 					"jsonrpc": "2.0",
-					"id": id,
+					"id":      id,
 					"result": map[string]interface{}{
 						"content": []map[string]interface{}{
 							{
@@ -249,9 +249,9 @@ func createMockMCPServer() *httptest.Server {
 			default:
 				errorResponse := map[string]interface{}{
 					"jsonrpc": "2.0",
-					"id": id,
+					"id":      id,
 					"error": map[string]interface{}{
-						"code": -32601,
+						"code":    -32601,
 						"message": fmt.Sprintf("Method not found: %s", toolName),
 					},
 				}
@@ -261,9 +261,9 @@ func createMockMCPServer() *httptest.Server {
 		default:
 			errorResponse := map[string]interface{}{
 				"jsonrpc": "2.0",
-				"id": id,
+				"id":      id,
 				"error": map[string]interface{}{
-					"code": -32601,
+					"code":    -32601,
 					"message": fmt.Sprintf("Method not found: %s", method),
 				},
 			}
@@ -274,9 +274,9 @@ func createMockMCPServer() *httptest.Server {
 	router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		response := map[string]interface{}{
-			"status": "healthy",
+			"status":    "healthy",
 			"timestamp": time.Now().Format(time.RFC3339),
-			"version": "1.0.0",
+			"version":   "1.0.0",
 		}
 		json.NewEncoder(w).Encode(response)
 	})
@@ -315,15 +315,15 @@ func TestMCPServerIntegration(t *testing.T) {
 	t.Run("MCP Initialize", func(t *testing.T) {
 		requestBody := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"id": 1,
-			"method": "initialize",
+			"id":      1,
+			"method":  "initialize",
 			"params": map[string]interface{}{
 				"protocolVersion": "2024-11-05",
 				"capabilities": map[string]interface{}{
 					"tools": map[string]interface{}{},
 				},
 				"clientInfo": map[string]interface{}{
-					"name": "test-client",
+					"name":    "test-client",
 					"version": "1.0.0",
 				},
 			},
@@ -363,8 +363,8 @@ func TestMCPServerIntegration(t *testing.T) {
 	t.Run("Tools List", func(t *testing.T) {
 		requestBody := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"id": 2,
-			"method": "tools/list",
+			"id":      2,
+			"method":  "tools/list",
 		}
 
 		jsonBody, err := json.Marshal(requestBody)
@@ -415,8 +415,8 @@ func TestMCPServerIntegration(t *testing.T) {
 	t.Run("Invalid Method", func(t *testing.T) {
 		requestBody := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"id": 3,
-			"method": "invalid/method",
+			"id":      3,
+			"method":  "invalid/method",
 		}
 
 		jsonBody, err := json.Marshal(requestBody)
@@ -458,8 +458,8 @@ func TestMCPToolsIntegration(t *testing.T) {
 	t.Run("Call scripts_list tool", func(t *testing.T) {
 		requestBody := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"id": 1,
-			"method": "tools/call",
+			"id":      1,
+			"method":  "tools/call",
 			"params": map[string]interface{}{
 				"name": "scripts_list",
 			},
@@ -504,8 +504,8 @@ func TestMCPToolsIntegration(t *testing.T) {
 	t.Run("Call scripts_run tool", func(t *testing.T) {
 		requestBody := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"id": 2,
-			"method": "tools/call",
+			"id":      2,
+			"method":  "tools/call",
 			"params": map[string]interface{}{
 				"name": "scripts_run",
 				"arguments": map[string]interface{}{
@@ -553,8 +553,8 @@ func TestMCPToolsIntegration(t *testing.T) {
 	t.Run("Call logs_stream tool", func(t *testing.T) {
 		requestBody := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"id": 3,
-			"method": "tools/call",
+			"id":      3,
+			"method":  "tools/call",
 			"params": map[string]interface{}{
 				"name": "logs_stream",
 				"arguments": map[string]interface{}{
@@ -601,8 +601,8 @@ func TestMCPToolsIntegration(t *testing.T) {
 	t.Run("Call proxy_requests tool", func(t *testing.T) {
 		requestBody := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"id": 4,
-			"method": "tools/call",
+			"id":      4,
+			"method":  "tools/call",
 			"params": map[string]interface{}{
 				"name": "proxy_requests",
 			},
@@ -646,8 +646,8 @@ func TestMCPToolsIntegration(t *testing.T) {
 	t.Run("Invalid tool call", func(t *testing.T) {
 		requestBody := map[string]interface{}{
 			"jsonrpc": "2.0",
-			"id": 5,
-			"method": "tools/call",
+			"id":      5,
+			"method":  "tools/call",
 			"params": map[string]interface{}{
 				"name": "invalid_tool",
 			},

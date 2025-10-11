@@ -30,8 +30,9 @@ func NewMessageRouter() *MessageRouter {
 	router.RegisterHandler(NewLogMessageHandler())
 	router.RegisterHandler(NewMCPMessageHandler())
 	router.RegisterHandler(NewAICoderMessageHandler())
-	router.RegisterHandler(NewViewSpecificHandler()) // View-specific keyboard interactions
-	router.RegisterHandler(NewViewMessageHandler())  // General view messages (lowest priority)
+	router.RegisterHandler(NewSettingsMessageHandler()) // Settings service messages
+	router.RegisterHandler(NewViewSpecificHandler())    // View-specific keyboard interactions
+	router.RegisterHandler(NewViewMessageHandler())     // General view messages (lowest priority)
 
 	return router
 }

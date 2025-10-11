@@ -286,7 +286,7 @@ func (te *TestExecutor) processNodeOutputLine(line string, results *TestResults)
 func (te *TestExecutor) updateTestCaseStatus(results *TestResults, identifier string, status TestCaseStatus) {
 	for i := range results.TestCases {
 		if strings.Contains(results.TestCases[i].Name, identifier) ||
-		   strings.Contains(identifier, results.TestCases[i].Name) {
+			strings.Contains(identifier, results.TestCases[i].Name) {
 			results.TestCases[i].Status = status
 			results.TestCases[i].EndTime = time.Now()
 

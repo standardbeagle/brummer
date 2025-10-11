@@ -1,56 +1,32 @@
 package components
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/config"
-	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/mcp"
-	"github.com/standardbeagle/brummer/internal/process"
-	"github.com/standardbeagle/brummer/internal/proxy"
-	"github.com/standardbeagle/brummer/internal/tui/filebrowser"
+	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
 // SettingsView is a BubbleTea component for displaying settings
-// Migrated from settings_controller.go (T062-T066)
-// Architecture: Component with multiple service dependencies
+// Refactored to use ServiceBridge message-based architecture
 type SettingsView struct {
-	config    *config.Config
-	mcpServer interface {
-		IsRunning() bool
-		GetPort() int
-	}
-	processMgr   *process.Manager
-	workingDir   string
-	fileBrowser  *filebrowser.Controller
 	settingsList list.Model
-	logStore     *logs.Store
-	proxyServer  *proxy.Server
 	width        int
 	height       int
+	// Cached settings information from ServiceBridge
+	cachedSettingsInfo *messages.SettingsInfo
+	lastUpdateTime     time.Time
 }
 
 // NewSettingsView creates a new settings view component
-func NewSettingsView(cfg *config.Config, mcpServer interface {
-	IsRunning() bool
-	GetPort() int
-}, processMgr *process.Manager, workingDir string, fileBrowserController *filebrowser.Controller, logStore *logs.Store, proxyServer *proxy.Server) *SettingsView {
+func NewSettingsView() *SettingsView {
 	settingsList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
-	settingsList.Title = "Package Manager Settings"
+	settingsList.Title = "Settings"
 	settingsList.SetShowStatusBar(false)
 
 	return &SettingsView{
-		config:       cfg,
-		mcpServer:    mcpServer,
-		processMgr:   processMgr,
-		workingDir:   workingDir,
-		fileBrowser:  fileBrowserController,
-		logStore:     logStore,
-		proxyServer:  proxyServer,
 		settingsList: settingsList,
 	}
 }
@@ -64,6 +40,23 @@ func (v *SettingsView) Init() tea.Cmd {
 func (v *SettingsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	v.settingsList, cmd = v.settingsList.Update(msg)
+
+	switch msg := msg.(type) {
+	case messages.SettingsRefreshedMsg:
+		// Update cached settings information
+		v.cachedSettingsInfo = msg.SettingsInfo
+		v.lastUpdateTime = msg.Timestamp
+		v.updateSettingsListFromCache()
+
+	case messages.SettingsMCPInstalledMsg:
+		// MCP configuration was installed - could trigger a refresh
+		// This will be handled by the main model requesting a settings refresh
+
+	case messages.SettingsErrorMsg:
+		// Handle settings errors - could display error state
+		// For now, just log or could update UI to show error
+	}
+
 	return v, cmd
 }
 
@@ -106,10 +99,15 @@ func (v *SettingsView) GetSettingsList() *list.Model {
 	return &v.settingsList
 }
 
-// UpdateSettingsList updates the settings list with all configuration options
-func (v *SettingsView) UpdateSettingsList() {
-	installedMgrs := v.processMgr.GetInstalledPackageManagers()
-	currentMgr := v.processMgr.GetCurrentPackageManager()
+// updateSettingsListFromCache updates the settings list using cached service information
+func (v *SettingsView) updateSettingsListFromCache() {
+	if v.cachedSettingsInfo == nil {
+		// Show loading state
+		v.settingsList.SetItems([]list.Item{
+			SettingsSectionItem{TitleText: "⏳ Loading Settings..."},
+		})
+		return
+	}
 
 	items := make([]list.Item, 0)
 
@@ -117,41 +115,33 @@ func (v *SettingsView) UpdateSettingsList() {
 	items = append(items, SettingsSectionItem{TitleText: "🔗 Server Information"})
 
 	// MCP Server info
-	mcpStatus := "🔴 Not Running"
-	actualPort := 7777
-	if v.mcpServer != nil && v.mcpServer.IsRunning() {
-		mcpStatus = "🟢 Running"
-		actualPort = v.mcpServer.GetPort()
-	}
-
 	items = append(items, MCPServerInfoItem{
-		Port:   actualPort,
-		Status: mcpStatus,
+		Port:   v.cachedSettingsInfo.ServerInfo.MCPServer.Port,
+		Status: v.cachedSettingsInfo.ServerInfo.MCPServer.Status,
 	})
 
-	mcpURL := fmt.Sprintf("http://localhost:%d/mcp", actualPort)
 	items = append(items, InfoDisplayItem{
 		TitleText:       "🔗 MCP Endpoint",
-		DescriptionText: fmt.Sprintf("%s (JSON-RPC 2.0 - all tools, resources & prompts)", mcpURL),
-		Value:           mcpURL,
+		DescriptionText: fmt.Sprintf("%s (JSON-RPC 2.0 - all tools, resources & prompts)", v.cachedSettingsInfo.ServerInfo.MCPServer.URL),
+		Value:           v.cachedSettingsInfo.ServerInfo.MCPServer.URL,
 		Copyable:        true,
 	})
 
 	// Proxy info
-	if v.proxyServer != nil && v.proxyServer.IsRunning() && v.proxyServer.GetMode() == proxy.ProxyModeFull {
+	if v.cachedSettingsInfo.ServerInfo.ProxyServer.Running {
 		items = append(items, ProxyInfoItem{
-			PacURL: v.proxyServer.GetPACURL(),
-			Mode:   v.proxyServer.GetMode(),
-			Port:   v.proxyServer.GetPort(),
+			PacURL: v.cachedSettingsInfo.ServerInfo.ProxyServer.PacURL,
+			Mode:   v.cachedSettingsInfo.ServerInfo.ProxyServer.Mode,
+			Port:   v.cachedSettingsInfo.ServerInfo.ProxyServer.Port,
 		})
 	}
 
 	// Package manager section
 	items = append(items, SettingsSectionItem{TitleText: "📦 Package Manager"})
-	for _, mgr := range installedMgrs {
+	for _, mgr := range v.cachedSettingsInfo.PackageMgr.Available {
 		items = append(items, PackageManagerItem{
-			Name:      string(mgr.Manager),
-			IsCurrent: mgr.Manager == currentMgr,
+			Name:      mgr,
+			IsCurrent: mgr == v.cachedSettingsInfo.PackageMgr.Current,
 		})
 	}
 
@@ -159,8 +149,29 @@ func (v *SettingsView) UpdateSettingsList() {
 	items = append(items, SettingsSectionItem{TitleText: "📁 Working Directory"})
 	items = append(items, InfoDisplayItem{
 		TitleText:       "Current Directory",
-		DescriptionText: v.workingDir,
-		Value:           v.workingDir,
+		DescriptionText: v.cachedSettingsInfo.WorkingDir,
+		Value:           v.cachedSettingsInfo.WorkingDir,
+		Copyable:        false,
+	})
+
+	// MCP Configuration status
+	items = append(items, SettingsSectionItem{TitleText: "⚙️ Configuration"})
+	mcpStatus := "❌ Not Configured"
+	if v.cachedSettingsInfo.MCPConfigured {
+		mcpStatus = "✅ Configured"
+	}
+	items = append(items, InfoDisplayItem{
+		TitleText:       "Claude Desktop MCP",
+		DescriptionText: fmt.Sprintf("MCP configuration status: %s", mcpStatus),
+		Value:           mcpStatus,
+		Copyable:        false,
+	})
+
+	// Last refresh info
+	items = append(items, InfoDisplayItem{
+		TitleText:       "Last Updated",
+		DescriptionText: v.lastUpdateTime.Format("2006-01-02 15:04:05"),
+		Value:           "",
 		Copyable:        false,
 	})
 
@@ -172,70 +183,29 @@ func (v *SettingsView) Render() string {
 	return v.settingsList.View()
 }
 
-// InstallMCP installs MCP configuration to Claude desktop config file
-func (v *SettingsView) InstallMCP() {
-	if v.fileBrowser != nil {
-		v.fileBrowser.Show()
-		v.UpdateSettingsList()
+// RequestSettingsRefresh returns a command to request settings refresh
+func (v *SettingsView) RequestSettingsRefresh() tea.Cmd {
+	return func() tea.Msg {
+		return messages.SettingsUpdateMsg{
+			Refresh: true,
+		}
 	}
 }
 
-// InstallMCPToFile installs MCP configuration to a specific file
-func (v *SettingsView) InstallMCPToFile(filePath string) {
-	execPath, err := os.Executable()
-	if err != nil {
-		if v.logStore != nil {
-			v.logStore.Add("system", "System", fmt.Sprintf("Error getting executable path: %v", err), true)
+// RequestMCPInstall returns a command to request MCP installation
+func (v *SettingsView) RequestMCPInstall() tea.Cmd {
+	return func() tea.Msg {
+		return messages.SettingsUpdateMsg{
+			InstallMCP: true,
 		}
-		return
 	}
+}
 
-	config := mcp.GenerateBrummerConfig(execPath, 7777)
-	data, err := os.ReadFile(filePath)
-	if err != nil {
-		if v.logStore != nil {
-			v.logStore.Add("system", "System", fmt.Sprintf("Error reading file %s: %v", filePath, err), true)
-		}
-		return
-	}
-
-	var existingData map[string]interface{}
-	if err := json.Unmarshal(data, &existingData); err != nil {
-		if v.logStore != nil {
-			v.logStore.Add("system", "System", fmt.Sprintf("Error parsing JSON in %s: %v", filePath, err), true)
-		}
-		return
-	}
-
-	if existingData["mcpServers"] == nil {
-		existingData["mcpServers"] = make(map[string]interface{})
-	}
-
-	servers := existingData["mcpServers"].(map[string]interface{})
-	servers["brummer"] = map[string]interface{}{
-		"command": config.Command,
-		"args":    config.Args,
-		"env":     config.Env,
-	}
-
-	updatedData, err := json.MarshalIndent(existingData, "", "  ")
-	if err != nil {
-		if v.logStore != nil {
-			v.logStore.Add("system", "System", fmt.Sprintf("Error encoding JSON: %v", err), true)
-		}
-		return
-	}
-
-	if err := os.WriteFile(filePath, updatedData, 0644); err != nil {
-		if v.logStore != nil {
-			v.logStore.Add("system", "System", fmt.Sprintf("Error writing file %s: %v", filePath, err), true)
-		}
-		return
-	}
-
-	if v.logStore != nil {
-		v.logStore.Add("system", "System", fmt.Sprintf("✅ MCP configuration added to %s", filePath), false)
-	}
+// InitializeWithLoadingState sets up the initial loading state
+func (v *SettingsView) InitializeWithLoadingState() {
+	v.settingsList.SetItems([]list.Item{
+		SettingsSectionItem{TitleText: "⏳ Loading Settings..."},
+	})
 }
 
 // SettingsSectionItem represents a section header in the settings list
@@ -272,7 +242,7 @@ func (i InfoDisplayItem) Description() string { return i.DescriptionText }
 // ProxyInfoItem represents proxy server information
 type ProxyInfoItem struct {
 	PacURL string
-	Mode   proxy.ProxyMode
+	Mode   string
 	Port   int
 }
 

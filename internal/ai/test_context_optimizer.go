@@ -11,17 +11,17 @@ import (
 
 // TestContextOptimizer optimizes test context for AI agents
 type TestContextOptimizer struct {
-	testRunner  *test.TestRunnerService
-	eventBus    EventBus
-	cache       map[string]*CachedTestContext
-	cacheTTL    time.Duration
+	testRunner *test.TestRunnerService
+	eventBus   EventBus
+	cache      map[string]*CachedTestContext
+	cacheTTL   time.Duration
 }
 
 // CachedTestContext represents cached test context data
 type CachedTestContext struct {
-	Context     *TestContextData `json:"context"`
-	Timestamp   time.Time       `json:"timestamp"`
-	RunID       string          `json:"run_id"`
+	Context   *TestContextData `json:"context"`
+	Timestamp time.Time        `json:"timestamp"`
+	RunID     string           `json:"run_id"`
 }
 
 // TestContextData contains optimized test context for AI agents
@@ -30,19 +30,19 @@ type TestContextData struct {
 	PassingTestsSummary *PassingTestsSummary `json:"passing_tests_summary,omitempty"`
 
 	// Detailed context for failing tests
-	FailingTests         []DetailedFailure    `json:"failing_tests,omitempty"`
+	FailingTests []DetailedFailure `json:"failing_tests,omitempty"`
 
 	// Changed files with relevant test results
-	ChangedFilesContext  []FileTestContext    `json:"changed_files_context,omitempty"`
+	ChangedFilesContext []FileTestContext `json:"changed_files_context,omitempty"`
 
 	// Test coverage gaps
-	CoverageGaps         []CoverageGap        `json:"coverage_gaps,omitempty"`
+	CoverageGaps []CoverageGap `json:"coverage_gaps,omitempty"`
 
 	// Performance issues
-	PerformanceIssues    []PerformanceIssue   `json:"performance_issues,omitempty"`
+	PerformanceIssues []PerformanceIssue `json:"performance_issues,omitempty"`
 
 	// Recommendations
-	Recommendations      []TestRecommendation `json:"recommendations,omitempty"`
+	Recommendations []TestRecommendation `json:"recommendations,omitempty"`
 }
 
 // PassingTestsSummary provides a compact summary of passing tests
@@ -55,57 +55,57 @@ type PassingTestsSummary struct {
 
 // DetailedFailure contains detailed information about a test failure
 type DetailedFailure struct {
-	TestName        string   `json:"test_name"`
-	FilePath        string   `json:"file_path"`
-	Line            int      `json:"line,omitempty"`
-	Column          int      `json:"column,omitempty"`
-	ErrorMessage    string   `json:"error_message"`
-	StackTrace      []string `json:"stack_trace"`
-	SourceContext   []string `json:"source_context"`
-	RelatedFiles    []string `json:"related_files"`
-	LastFailed      time.Time `json:"last_failed"`
-	FailureCount    int      `json:"failure_count"`
-	ErrorType       string   `json:"error_type"`
+	TestName      string    `json:"test_name"`
+	FilePath      string    `json:"file_path"`
+	Line          int       `json:"line,omitempty"`
+	Column        int       `json:"column,omitempty"`
+	ErrorMessage  string    `json:"error_message"`
+	StackTrace    []string  `json:"stack_trace"`
+	SourceContext []string  `json:"source_context"`
+	RelatedFiles  []string  `json:"related_files"`
+	LastFailed    time.Time `json:"last_failed"`
+	FailureCount  int       `json:"failure_count"`
+	ErrorType     string    `json:"error_type"`
 }
 
 // FileTestContext provides test context for a specific file
 type FileTestContext struct {
-	FilePath         string            `json:"file_path"`
-	TestStatus       string            `json:"test_status"`
-	RelatedTests     []string          `json:"related_tests"`
-	Coverage         float64           `json:"coverage"`
-	LastTested       time.Time         `json:"last_tested"`
-	RecentChanges    []FileChange      `json:"recent_changes"`
-	ImpactScore      float64           `json:"impact_score"`
+	FilePath      string       `json:"file_path"`
+	TestStatus    string       `json:"test_status"`
+	RelatedTests  []string     `json:"related_tests"`
+	Coverage      float64      `json:"coverage"`
+	LastTested    time.Time    `json:"last_tested"`
+	RecentChanges []FileChange `json:"recent_changes"`
+	ImpactScore   float64      `json:"impact_score"`
 }
 
 // CoverageGap represents a coverage gap
 type CoverageGap struct {
-	FilePath         string            `json:"file_path"`
-	UncoveredLines   []int             `json:"uncovered_lines"`
-	CoveragePct      float64           `json:"coverage_pct"`
-	RiskLevel        string            `json:"risk_level"`
-	SuggestedTests   []string          `json:"suggested_tests"`
+	FilePath       string   `json:"file_path"`
+	UncoveredLines []int    `json:"uncovered_lines"`
+	CoveragePct    float64  `json:"coverage_pct"`
+	RiskLevel      string   `json:"risk_level"`
+	SuggestedTests []string `json:"suggested_tests"`
 }
 
 // PerformanceIssue represents a performance problem
 type PerformanceIssue struct {
-	TestName         string            `json:"test_name"`
-	FilePath         string            `json:"file_path"`
-	Duration         time.Duration     `json:"duration"`
-	SlowThreshold    time.Duration     `json:"slow_threshold"`
-	ImpactScore      float64           `json:"impact_score"`
-	Suggestions      []string          `json:"suggestions"`
+	TestName      string        `json:"test_name"`
+	FilePath      string        `json:"file_path"`
+	Duration      time.Duration `json:"duration"`
+	SlowThreshold time.Duration `json:"slow_threshold"`
+	ImpactScore   float64       `json:"impact_score"`
+	Suggestions   []string      `json:"suggestions"`
 }
 
 // TestRecommendation provides actionable recommendations
 type TestRecommendation struct {
-	Type             string            `json:"type"`
-	Priority         string            `json:"priority"`
-	Description      string            `json:"description"`
-	Action           string            `json:"action"`
-	TargetFiles      []string          `json:"target_files"`
-	EstimatedEffort  string            `json:"estimated_effort"`
+	Type            string   `json:"type"`
+	Priority        string   `json:"priority"`
+	Description     string   `json:"description"`
+	Action          string   `json:"action"`
+	TargetFiles     []string `json:"target_files"`
+	EstimatedEffort string   `json:"estimated_effort"`
 }
 
 // FileChange represents a recent change to a file
@@ -159,7 +159,7 @@ func (tco *TestContextOptimizer) GetOptimizedContext(changedFiles []string, incl
 	context := &TestContextData{
 		ChangedFilesContext: tco.buildFileContext(changedFiles, latestRun.Results),
 		CoverageGaps:        tco.identifyCoverageGaps(latestRun.Results),
-		PerformanceIssues:  tco.identifyPerformanceIssues(latestRun.Results),
+		PerformanceIssues:   tco.identifyPerformanceIssues(latestRun.Results),
 		Recommendations:     tco.generateRecommendations(latestRun.Results, changedFiles),
 	}
 
@@ -191,10 +191,10 @@ func (tco *TestContextOptimizer) buildPassingSummary(results *test.TestResults) 
 	}
 
 	return &PassingTestsSummary{
-		TotalPassed:      results.PassedTests,
-		PassRate:         passRate,
-		TestFrameworks:   []string{"unknown"}, // Would be enhanced with actual framework detection
-		LastRunDuration:  fmt.Sprintf("%.2fs", time.Duration(results.TotalTests)*time.Millisecond/time.Second),
+		TotalPassed:     results.PassedTests,
+		PassRate:        passRate,
+		TestFrameworks:  []string{"unknown"}, // Would be enhanced with actual framework detection
+		LastRunDuration: fmt.Sprintf("%.2fs", time.Duration(results.TotalTests)*time.Millisecond/time.Second),
 	}
 }
 
@@ -521,10 +521,10 @@ func (tco *TestContextOptimizer) PublishTestContextEvent(changedFiles []string, 
 	if tco.eventBus != nil {
 		// Publish event for AI agents to consume
 		event := map[string]interface{}{
-			"type":         "test_context_optimized",
+			"type":          "test_context_optimized",
 			"changed_files": changedFiles,
-			"context":      context,
-			"timestamp":    time.Now(),
+			"context":       context,
+			"timestamp":     time.Now(),
 		}
 
 		tco.eventBus.Publish(event)
@@ -539,8 +539,8 @@ func (tco *TestContextOptimizer) ClearCache() {
 // GetCacheStats returns cache statistics
 func (tco *TestContextOptimizer) GetCacheStats() map[string]interface{} {
 	return map[string]interface{}{
-		"cache_size":   len(tco.cache),
-		"cache_ttl":    tco.cacheTTL.String(),
+		"cache_size":    len(tco.cache),
+		"cache_ttl":     tco.cacheTTL.String(),
 		"cache_entries": tco.getCacheEntries(),
 	}
 }

@@ -2,6 +2,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
 // LogMessageHandler handles log-related messages
@@ -15,7 +16,7 @@ func NewLogMessageHandler() MessageHandler {
 // CanHandle checks if this handler can process the message
 func (h *LogMessageHandler) CanHandle(msg tea.Msg) bool {
 	switch msg.(type) {
-	case logUpdateMsg, logsClearedMsg:
+	case logUpdateMsg, logsClearedMsg, messages.LogAddedMsg:
 		return true
 	default:
 		return false
@@ -27,13 +28,16 @@ func (h *LogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model,
 	var cmds []tea.Cmd
 
 	switch msg.(type) {
-	case logUpdateMsg:
+	case logUpdateMsg, messages.LogAddedMsg:
 		// Always update logs, regardless of current view
+		// LogAddedMsg is sent by ServiceBridge when a new log entry is added
 		model.updateLogsView()
 		// If we're currently viewing logs, we need to refresh the viewport
 		if model.currentView() == ViewLogs || model.currentView() == ViewURLs {
 			// Force a viewport update to show new content
-			model.logsView.GetLogsViewport().GotoBottom()
+			if model.logsView.IsAutoScrollEnabled() {
+				model.logsView.GetLogsViewport().GotoBottom()
+			}
 		}
 		cmds = append(cmds, model.waitForUpdates())
 

@@ -13,81 +13,81 @@ import (
 
 // TestRunRequest represents a request to run tests
 type TestRunRequest struct {
-	Framework   string                 `json:"framework,omitempty"`
-	Pattern     string                 `json:"pattern,omitempty"`
-	Options     test.TestOptions       `json:"options"`
+	Framework string           `json:"framework,omitempty"`
+	Pattern   string           `json:"pattern,omitempty"`
+	Options   test.TestOptions `json:"options"`
 }
 
 // TestRunResponse represents the response from running tests
 type TestRunResponse struct {
-	RunID     string               `json:"run_id"`
-	Status    string               `json:"status"`
-	StartTime time.Time            `json:"start_time"`
-	Results   *test.TestResults    `json:"results,omitempty"`
-	Error     string               `json:"error,omitempty"`
+	RunID     string            `json:"run_id"`
+	Status    string            `json:"status"`
+	StartTime time.Time         `json:"start_time"`
+	Results   *test.TestResults `json:"results,omitempty"`
+	Error     string            `json:"error,omitempty"`
 }
 
 // TestStatusResponse represents the current test status
 type TestStatusResponse struct {
-	ActiveRuns  []*test.TestRun     `json:"active_runs"`
+	ActiveRuns  []*test.TestRun              `json:"active_runs"`
 	LastResults map[string]*test.TestResults `json:"last_results"`
 }
 
 // TestFailuresResponse represents test failure information
 type TestFailuresResponse struct {
-	RunID      string                `json:"run_id"`
-	Failures   []TestFailureDetail   `json:"failures"`
-	Summary    TestFailureSummary    `json:"summary"`
+	RunID    string              `json:"run_id"`
+	Failures []TestFailureDetail `json:"failures"`
+	Summary  TestFailureSummary  `json:"summary"`
 }
 
 // TestFailureDetail contains detailed failure information
 type TestFailureDetail struct {
-	TestName   string                `json:"test_name"`
-	FilePath   string                `json:"file_path"`
-	Line       int                   `json:"line,omitempty"`
-	Column     int                   `json:"column,omitempty"`
-	Message    string                `json:"message"`
-	StackTrace []string              `json:"stack_trace"`
-	Context    []string              `json:"context,omitempty"`
+	TestName   string   `json:"test_name"`
+	FilePath   string   `json:"file_path"`
+	Line       int      `json:"line,omitempty"`
+	Column     int      `json:"column,omitempty"`
+	Message    string   `json:"message"`
+	StackTrace []string `json:"stack_trace"`
+	Context    []string `json:"context,omitempty"`
 }
 
 // TestFailureSummary provides a summary of failures
 type TestFailureSummary struct {
-	TotalFailures int                 `json:"total_failures"`
-	FailedFiles   []string            `json:"failed_files"`
-	ErrorTypes    map[string]int      `json:"error_types"`
+	TotalFailures int            `json:"total_failures"`
+	FailedFiles   []string       `json:"failed_files"`
+	ErrorTypes    map[string]int `json:"error_types"`
 }
 
 // TestCoverageResponse represents test coverage information
 type TestCoverageResponse struct {
-	RunID       string                    `json:"run_id"`
-	Coverage    *test.TestCoverage        `json:"coverage"`
-	Summary     TestCoverageSummary       `json:"summary"`
+	RunID    string              `json:"run_id"`
+	Coverage *test.TestCoverage  `json:"coverage"`
+	Summary  TestCoverageSummary `json:"summary"`
 }
 
 // TestCoverageSummary provides a coverage summary
 type TestCoverageSummary struct {
-	OverallPct     float64                `json:"overall_pct"`
-	CoveredFiles   int                    `json:"covered_files"`
-	TotalFiles     int                    `json:"total_files"`
-	UncoveredFiles []string               `json:"uncovered_files"`
-	LowCoverageFiles []string             `json:"low_coverage_files"`
+	OverallPct       float64  `json:"overall_pct"`
+	CoveredFiles     int      `json:"covered_files"`
+	TotalFiles       int      `json:"total_files"`
+	UncoveredFiles   []string `json:"uncovered_files"`
+	LowCoverageFiles []string `json:"low_coverage_files"`
 }
 
 // TestWatchRequest represents a request to start watch mode
 type TestWatchRequest struct {
-	Framework   string            `json:"framework,omitempty"`
-	Pattern     string            `json:"pattern,omitempty"`
-	Options     test.TestOptions  `json:"options"`
+	Framework string           `json:"framework,omitempty"`
+	Pattern   string           `json:"pattern,omitempty"`
+	Options   test.TestOptions `json:"options"`
 }
 
 // TestWatchResponse represents the response from starting watch mode
 type TestWatchResponse struct {
-	WatchID    string            `json:"watch_id"`
-	Status     string            `json:"status"`
-	StartTime  time.Time         `json:"start_time"`
-	Pattern    string            `json:"pattern"`
-	Error      string            `json:"error,omitempty"`
+	WatchID   string    `json:"watch_id"`
+	Status    string    `json:"status"`
+	StartTime time.Time `json:"start_time"`
+	Pattern   string    `json:"pattern"`
+	Error     string    `json:"error,omitempty"`
 }
 
 // TestTools provides MCP tools for test management
@@ -193,7 +193,7 @@ func (tt *TestTools) test_failures(ctx context.Context, arguments map[string]int
 
 	if run.Results == nil || run.Results.FailedTests == 0 {
 		return TestFailuresResponse{
-			RunID:   runID,
+			RunID:    runID,
 			Failures: []TestFailureDetail{},
 			Summary: TestFailureSummary{
 				TotalFailures: 0,
@@ -251,7 +251,7 @@ func (tt *TestTools) test_failures(ctx context.Context, arguments map[string]int
 	}
 
 	return TestFailuresResponse{
-		RunID:   runID,
+		RunID:    runID,
 		Failures: failures,
 		Summary: TestFailureSummary{
 			TotalFailures: run.Results.FailedTests,
@@ -498,7 +498,9 @@ func RegisterTestTools(mcpServer interface{}, testRunner *test.TestRunnerService
 	})
 
 	// Register tools using the proper server interface
-	if mcpSrv, ok := mcpServer.(interface{ RegisterTool(name string, tool MCPTool) error }); ok {
+	if mcpSrv, ok := mcpServer.(interface {
+		RegisterTool(name string, tool MCPTool) error
+	}); ok {
 		mcpSrv.RegisterTool("test_run", MCPTool{
 			Name:        "test_run",
 			Description: "Execute tests with optional patterns and configuration",

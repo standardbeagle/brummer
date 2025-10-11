@@ -6,8 +6,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
@@ -286,11 +286,11 @@ func (m *MockEventBus) Unsubscribe(pattern string) {
 
 // ComponentTestCase defines a reusable test case structure
 type ComponentTestCase struct {
-	Name        string
-	Setup       func(*TestContext)
-	Action      func(*TestContext)
-	Verify      func(*TestContext)
-	Timeout     int // seconds
+	Name    string
+	Setup   func(*TestContext)
+	Action  func(*TestContext)
+	Verify  func(*TestContext)
+	Timeout int // seconds
 }
 
 // RunComponentTests runs a series of component test cases

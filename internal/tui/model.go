@@ -7,6 +7,7 @@
 package tui
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"os"
@@ -25,11 +26,13 @@ import (
 	"github.com/standardbeagle/brummer/internal/parser"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
+	"github.com/standardbeagle/brummer/internal/tui/bridge"
 	"github.com/standardbeagle/brummer/internal/tui/commands"
 	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/internal/tui/filebrowser"
 	"github.com/standardbeagle/brummer/internal/tui/navigation"
 	"github.com/standardbeagle/brummer/internal/tui/notifications"
+	"github.com/standardbeagle/brummer/internal/tui/services"
 	"github.com/standardbeagle/brummer/internal/tui/system"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
@@ -68,6 +71,8 @@ type Model struct {
 	mcpPort     int
 	proxyServer *proxy.Server
 	debugMode   bool
+	cfg         *config.Config // Configuration for AI coder and other features
+	workingDir  string         // Working directory for the project
 
 	// Navigation controller
 	navController *navigation.Controller
@@ -75,14 +80,15 @@ type Model struct {
 	height        int
 
 	// View components (migrated from controllers)
-	processesView     *components.ProcessesView     // Processes view component
-	logsView          *components.LogsView          // Logs view component
-	errorsView        *components.ErrorsView        // Errors view component
-	urlsView          *components.URLsView          // URLs view component
-	webView           *components.WebViewComponent  // Web view component (T056-T061)
-	commandWindowView *components.CommandWindowView // Command window component
-	settingsView      *components.SettingsView      // Settings view component
-	inputController   *InputController              // Input controller (T080-T087 - to be migrated)
+	processesView     *components.ProcessesView         // Processes view component
+	logsView          *components.LogsView              // Logs view component
+	errorsView        *components.ErrorsView            // Errors view component
+	urlsView          *components.URLsView              // URLs view component
+	webView           *components.WebViewComponent      // Web view component (T056-T061)
+	commandWindowView *components.CommandWindowView     // Command window component
+	settingsView      *components.SettingsView          // Settings view component
+	aicodersView      *components.AICodersViewComponent // AI Coders view component (Feature 005)
+	inputController   *InputController                  // Input controller (T080-T087 - to be migrated)
 
 	// System message controller
 	systemController      *system.Controller
@@ -113,8 +119,8 @@ type Model struct {
 	// MCP debug view component
 	mcpDebugView *components.MCPDebugView // MCP debug view component
 
-	// AI Coder controller
-	aiCoderController *AICoderController // New controller for AI Coder functionality
+	// AI Coder service (Feature 005 - new service-based architecture)
+	aiCoderService interface{} // *services.AICoderService (interface{} to avoid import cycles during transition)
 
 	// Message routing
 	messageRouter *MessageRouter // Routes messages to appropriate handlers
@@ -515,11 +521,11 @@ func (i infoDisplayItem) Description() string {
 }
 func (i infoDisplayItem) isSettingsItem() {}
 
-func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, cfg *config.Config) *Model {
-	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewProcesses, false, cfg)
+func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, cfg *config.Config, workingDir string) *Model {
+	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewProcesses, false, cfg, workingDir)
 }
 
-func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool, cfg *config.Config) *Model {
+func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool, cfg *config.Config, workingDir string) *Model {
 	scripts := processMgr.GetScripts()
 
 	// processesList initialization moved to ProcessViewController
@@ -535,6 +541,8 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		mcpPort:     mcpPort,
 		proxyServer: proxyServer,
 		debugMode:   debugMode,
+		cfg:         cfg,
+		workingDir:  workingDir,
 		// View components initialization
 		processesView:     components.NewProcessesView(processMgr),
 		logsView:          components.NewLogsView(logStore),
@@ -559,14 +567,14 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// 2. Initialize settings controller second
 	//    - Required by: UpdateSettingsList() call below
 	//    - Dependencies: fileBrowserController (passed as parameter)
-	workingDir, _ := os.Getwd()
-	m.settingsView = components.NewSettingsView(cfg, mcpServer, processMgr, workingDir, m.fileBrowserController, logStore, proxyServer)
-	// settingsView now owns its own settingsList
-
-	// 3. Initialize settings list
-	//    - Required by: UI display
-	//    - Dependencies: settingsView must be initialized
-	m.settingsView.UpdateSettingsList()
+	var err error
+	workingDir, err = os.Getwd()
+	if err != nil {
+		workingDir = "." // fallback to current directory
+	}
+	m.settingsView = components.NewSettingsView()
+	// Initialize settings view with loading state
+	m.settingsView.InitializeWithLoadingState()
 
 	// 4. Initialize process list with current processes
 	//    - Required by: Process view display
@@ -638,10 +646,93 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		m.mcpDebugView.UpdateConnectionsList()
 	}
 
-	// 13. Initialize AI Coder controller
-	//     - Required by: AI coder features
-	//     - Dependencies: cfg, eventBus, logStore, updateChan
-	m.aiCoderController = NewAICoderController(cfg, eventBus, logStore, m.updateChan)
+	// 13. Initialize AI Coder service (T028 - new service-based architecture, replaces legacy controller)
+	//     - Required by: AI coder features (new architecture)
+	//     - Dependencies: context (for lifecycle management)
+	ctx := context.Background() // TODO: Use proper context from application lifecycle
+	m.aiCoderService = services.NewAICoderService(ctx)
+
+	// 13.6. Subscribe to AI Coder service events (T028 - event routing)
+	//     - Required by: Service-to-component communication
+	//     - Dependencies: aiCoderService created, updateChan available
+	if m.aiCoderService != nil {
+		svc := m.aiCoderService.(*services.AICoderService)
+		eventBus := svc.EventBus().(*events.EventBus)
+
+		// Subscribe to events and forward to component as proper message types
+		eventBus.Subscribe("aicoder.session.created", func(event events.Event) {
+			// Extract session info from event
+			sessionID := event.ProcessID
+			name := ""
+			if nameVal, ok := event.Data["name"]; ok {
+				name = nameVal.(string)
+			}
+			// Forward as proper message type
+			m.updateChan <- aiCoderSessionMsg{
+				SessionID: sessionID,
+				Event:     "created",
+				Data:      map[string]interface{}{"name": name},
+			}
+		})
+
+		eventBus.Subscribe("aicoder.session.updated", func(event events.Event) {
+			sessionID := event.ProcessID
+			m.updateChan <- aiCoderSessionMsg{
+				SessionID: sessionID,
+				Event:     "updated",
+			}
+		})
+
+		eventBus.Subscribe("aicoder.session.ended", func(event events.Event) {
+			sessionID := event.ProcessID
+			reason := ""
+			if reasonVal, ok := event.Data["reason"]; ok {
+				reason = reasonVal.(string)
+			}
+			m.updateChan <- aiCoderSessionMsg{
+				SessionID: sessionID,
+				Event:     "ended",
+				Data:      map[string]interface{}{"reason": reason},
+			}
+		})
+
+		eventBus.Subscribe("aicoder.pty.output", func(event events.Event) {
+			sessionID := event.ProcessID
+			output := ""
+			if outputVal, ok := event.Data["output"]; ok {
+				output = outputVal.(string)
+			}
+			m.updateChan <- aiCoderOutputMsg{
+				SessionID: sessionID,
+				Output:    output,
+			}
+		})
+
+		eventBus.Subscribe("aicoder.error", func(event events.Event) {
+			sessionID := event.ProcessID
+			var err error
+			if errVal, ok := event.Data["error"]; ok {
+				if e, ok := errVal.(error); ok {
+					err = e
+				}
+			}
+			m.updateChan <- aiCoderErrorMsg{
+				SessionID: sessionID,
+				Error:     err,
+			}
+		})
+	}
+
+	// 13.7. Initialize AI Coders view component with service (Feature 005)
+	//     - Required by: AI Coders view rendering
+	//     - Dependencies: aiCoderService must be created
+	m.aicodersView = components.NewAICodersViewComponent(m.aiCoderService)
+
+	// 13.8. Connect AI coder service to ServiceBridge (Task 3 - ServiceBridge integration)
+	//     - Required by: Service event routing to UI components
+	//     - Dependencies: aiCoderService created, shell exists with ServiceBridge
+	// Note: This happens after shell creation, so we need to get the ServiceBridge from the shell
+	// and subscribe to AI coder service events
 
 	// 14. Initialize script selector component with navigation adapter
 	//     - Required by: Script selection UI
@@ -666,12 +757,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	//     - Dependencies: None
 	m.messageRouter = NewMessageRouter()
 
-	// 18. Set model reference for data provider and debug forwarder
-	//     - Required by: AI coder data access
-	//     - Dependencies: aiCoderController must be initialized, full model must be constructed
-	m.aiCoderController.SetModelReference(&m)
-
-	// 19. Set up event subscriptions immediately in constructor (not in Init)
+	// 18. Set up event subscriptions immediately in constructor (not in Init)
 	//     - Required by: Event handling
 	//     - Dependencies: eventController must be initialized
 	//     - Critical: This ensures subscriptions are active before MCP server starts
@@ -687,12 +773,6 @@ func (m *Model) setupEventSubscriptions() {
 }
 
 func (m *Model) Init() tea.Cmd {
-	fmt.Printf("DEBUG: Model.Init() called - TUI is initializing!\n")
-
-	// Send startup message via EventController
-	fmt.Printf("DEBUG: Sending startup message...\n")
-	// Startup message now sent via event bus
-
 	cmds := []tea.Cmd{
 		textinput.Blink,
 		m.waitForUpdates(),
@@ -700,7 +780,6 @@ func (m *Model) Init() tea.Cmd {
 	}
 
 	// PTY events are now handled by AICoderController
-	fmt.Printf("DEBUG: Returning batch of commands for TUI startup\n")
 	return tea.Batch(cmds...)
 }
 
@@ -775,9 +854,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case PTYOutputMsg:
 		// Handle PTY output - update AI Coder view if it's active
-		if m.currentView() == ViewAICoders && m.aiCoderController != nil {
-			// The AI Coder controller will handle the PTY output internally
-			if cmd := m.aiCoderController.Update(msg); cmd != nil {
+		if m.currentView() == ViewAICoders && m.aicodersView != nil {
+			// The AI Coder component will handle the PTY output via BubbleTea Update
+			_, cmd := m.aicodersView.Update(msg)
+			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 		}
@@ -786,10 +866,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case BatchPTYMsg:
 		// Handle batched PTY messages from lock-free architecture (Phase 3)
-		if m.currentView() == ViewAICoders && m.aiCoderController != nil {
+		if m.currentView() == ViewAICoders && m.aicodersView != nil {
 			// Process each message in the batch
 			for _, batchedMsg := range msg.Messages {
-				if cmd := m.aiCoderController.Update(batchedMsg); cmd != nil {
+				_, cmd := m.aicodersView.Update(batchedMsg)
+				if cmd != nil {
 					cmds = append(cmds, cmd)
 				}
 			}
@@ -799,9 +880,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case PTYEventMsg:
 		// Handle PTY events - update AI Coder view if it's active
-		if m.currentView() == ViewAICoders && m.aiCoderController != nil {
-			// The AI Coder controller will handle the PTY event internally
-			if cmd := m.aiCoderController.Update(msg); cmd != nil {
+		if m.currentView() == ViewAICoders && m.aicodersView != nil {
+			// The AI Coder component will handle the PTY event via BubbleTea Update
+			_, cmd := m.aicodersView.Update(msg)
+			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
 		}
@@ -825,9 +907,6 @@ func (m *Model) View() string {
 		return "Loading..."
 	}
 
-	// Debug: Log terminal dimensions
-	fmt.Printf("DEBUG M: Terminal dimensions - Width: %d, Height: %d\n", m.width, m.height)
-
 	// Special views that take over the entire screen
 	if m.currentView() == ViewScriptSelector && m.scriptSelector != nil {
 		// Ensure the script selector is shown when this view is active
@@ -840,11 +919,8 @@ func (m *Model) View() string {
 		return m.commandWindowView.RenderCommandWindow()
 	}
 
-	// AI Coder PTY view in full screen mode should render raw
-	if m.currentView() == ViewAICoders && m.aiCoderController != nil && m.aiCoderController.IsFullScreen() {
-		// In full screen mode, return raw PTY output without any BubbleTea styling
-		return m.aiCoderController.GetRawOutput()
-	}
+	// TODO(Feature 005): Re-implement full screen mode for AI Coder view if needed
+	// Full screen PTY rendering is now handled by the component's Render() method
 	content := m.renderContent()
 
 	// Render main content with consistent layout
@@ -980,8 +1056,8 @@ func (m *Model) renderContent() string {
 		m.settingsView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 		return m.settingsView.Render()
 	case ViewAICoders:
-		if m.aiCoderController != nil {
-			return m.aiCoderController.Render()
+		if m.aicodersView != nil {
+			return m.aicodersView.View()
 		}
 		return "AI Coder feature is not initialized"
 	case ViewFilters:
@@ -1024,8 +1100,13 @@ func (m *Model) getViewStatus() string {
 		return fmt.Sprintf("%d requests", len(requests))
 
 	case ViewAICoders:
-		running, total := m.aiCoderController.GetStatusInfo()
-		return fmt.Sprintf("%d AI coders, %d running", total, running)
+		// TODO(Feature 005): Get session count from service
+		if m.aiCoderService != nil {
+			svc := m.aiCoderService.(*services.AICoderService)
+			sessions := svc.ListSessions()
+			return fmt.Sprintf("%d AI coder sessions", len(sessions))
+		}
+		return "0 AI coder sessions"
 
 	default:
 		return ""
@@ -1501,11 +1582,91 @@ func (m *Model) toggleProxyMode() {
 }
 
 func (m *Model) handleAICommand(providerName string) {
-	if m.aiCoderController == nil {
+	if m.aiCoderService == nil {
 		m.logStore.Add("system", "System", "Error: AI Coder feature is not initialized", true)
 		return
 	}
-	m.aiCoderController.HandleAICommand(providerName)
+
+	// Get provider configuration
+	adapter := &configAdapter{cfg: m.cfg}
+	providerConfigs := adapter.GetProviderConfigs()
+
+	providerConfig, exists := providerConfigs[providerName]
+	if !exists {
+		// Get available provider names for error message
+		availableProviders := make([]string, 0, len(providerConfigs))
+		for name := range providerConfigs {
+			availableProviders = append(availableProviders, name)
+		}
+		m.logStore.Add("system", "System", fmt.Sprintf("Provider %s not configured. Available: %v", providerName, availableProviders), true)
+		return
+	}
+
+	// Get CLI command from provider config
+	if providerConfig.CLITool == nil {
+		m.logStore.Add("system", "System", fmt.Sprintf("Provider %s does not have CLI tool configured", providerName), true)
+		return
+	}
+
+	// Build command with proper template substitution
+	// Access the raw config to get CLI tool configuration with templates
+	var command string
+	var args []string
+	var err error
+
+	if m.cfg != nil && m.cfg.AICoders != nil && m.cfg.AICoders.Providers != nil {
+		if rawProvider, exists := m.cfg.AICoders.Providers[providerName]; exists && rawProvider.CLITool != nil {
+			// Use CLICommandHelper to process templates
+			cliHelper := NewCLICommandHelper(m.cfg)
+			command, args, err = cliHelper.buildCommandFromConfig(providerName, rawProvider.CLITool, "")
+			if err != nil {
+				m.logStore.Add("system", "System", fmt.Sprintf("Error building CLI command for %s: %v", providerName, err), true)
+				return
+			}
+		} else {
+			m.logStore.Add("system", "System", fmt.Sprintf("Provider %s does not have CLI tool configured in raw config", providerName), true)
+			return
+		}
+	} else {
+		m.logStore.Add("system", "System", "No AI coder configuration available", true)
+		return
+	}
+
+	// Build full command string for session creation
+	fullCommand := command
+	if len(args) > 0 {
+		fullCommand = command + " " + strings.Join(args, " ")
+	}
+
+	// Get working directory
+	workingDir := m.workingDir
+	if providerConfig.CLITool.WorkingDir != "" {
+		workingDir = providerConfig.CLITool.WorkingDir
+	}
+
+	// Create session via service
+	svc := m.aiCoderService.(*services.AICoderService)
+	sessionID, err := svc.CreateSession(
+		context.Background(),
+		fmt.Sprintf("AI: %s", providerName),
+		fullCommand,
+		workingDir,
+	)
+	if err != nil {
+		m.logStore.Add("system", "System", fmt.Sprintf("Error creating AI session: %v", err), true)
+		return
+	}
+
+	// Start the session with default terminal dimensions
+	err = svc.StartSession(context.Background(), sessionID, 80, 24)
+	if err != nil {
+		m.logStore.Add("system", "System", fmt.Sprintf("Error starting AI session: %v", err), true)
+		return
+	}
+
+	// Switch to AI Coders view to show the session
+	m.switchToView(ViewAICoders)
+	m.logStore.Add("system", "System", fmt.Sprintf("Started AI coder session: %s", providerName), false)
 }
 
 func (m *Model) showTerminal() {
@@ -1546,10 +1707,12 @@ func (m *Model) handleToggleProxy() {
 func (m *Model) showCommandWindow() {
 	scripts := m.processMgr.GetScripts()
 
-	// Get available AI providers from AI coder controller (with nil check)
+	// Get AI providers from configuration
 	var aiProviders []string
-	if m.aiCoderController != nil {
-		aiProviders = m.aiCoderController.GetProviders()
+	adapter := &configAdapter{cfg: m.cfg}
+	providerConfigs := adapter.GetProviderConfigs()
+	for name := range providerConfigs {
+		aiProviders = append(aiProviders, name)
 	}
 
 	m.commandWindowView.ShowCommandWindow(scripts, aiProviders)
@@ -1655,6 +1818,20 @@ func (m *Model) currentView() View {
 }
 
 // GetAICoderManager returns the AI coder manager instance
+// TODO(Feature 005): Remove this method or adapt for service-based architecture
 func (m *Model) GetAICoderManager() *aicoder.AICoderManager {
-	return m.aiCoderController.GetAICoderManager()
+	// Legacy method - return nil as manager is now internal to service
+	return nil
+}
+
+// ConnectAICoderServiceToBridge connects the AI coder service to the ServiceBridge
+// This method is called after the model is created and the shell has been set up
+func (m *Model) ConnectAICoderServiceToBridge(serviceBridge interface{}) {
+	if m.aiCoderService != nil && serviceBridge != nil {
+		// Use type assertion to access ServiceBridge methods
+		if bridge, ok := serviceBridge.(*bridge.ServiceBridge); ok {
+			// Subscribe to AI coder service events
+			bridge.SubscribeToAICoderService(m.aiCoderService)
+		}
+	}
 }

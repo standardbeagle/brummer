@@ -12,12 +12,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/standardbeagle/brummer/internal/config"
+	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui"
 	"github.com/standardbeagle/brummer/pkg/events"
-	"github.com/standardbeagle/brummer/internal/process"
-	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/proxy"
-	"github.com/standardbeagle/brummer/internal/config"
 )
 
 // TestContext holds test environment and utilities
@@ -92,6 +92,7 @@ func NewTestContext(t *testing.T) *TestContext {
 		nil,  // proxyServer not needed for most tests
 		7777, // mcpPort default
 		cfg,
+		tempDir, // workingDir
 	)
 
 	return &TestContext{
@@ -132,6 +133,7 @@ func NewTestContextWithProxy(t *testing.T) *TestContext {
 		proxyServer,
 		7777,
 		cfg,
+		ctx.TempDir, // workingDir
 	)
 
 	return ctx

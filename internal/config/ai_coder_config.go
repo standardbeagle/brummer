@@ -315,6 +315,22 @@ func (l *LoggingConfig) GetIncludeAIOutput() bool {
 	return *l.IncludeAIOutput
 }
 
+// CLI tool helpers
+
+func (c *CLIToolConfig) GetCommand() string {
+	if c == nil || c.Command == nil {
+		return ""
+	}
+	return *c.Command
+}
+
+func (c *CLIToolConfig) GetWorkingDir() string {
+	if c == nil || c.WorkingDir == nil {
+		return "."
+	}
+	return *c.WorkingDir
+}
+
 // Rate limit helpers
 
 func (r *RateLimitConfig) GetRequestsPerMinute() int {

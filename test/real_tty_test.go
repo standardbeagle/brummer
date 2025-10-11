@@ -65,9 +65,9 @@ func TestRealTTY_KeyHandling(t *testing.T) {
 
 		// Check if q key was handled (should show quit warning or signal)
 		qHandled := strings.Contains(responseOutput, "again") ||
-					strings.Contains(responseOutput, "Interrupt") ||
-					strings.Contains(responseOutput, "exit") ||
-					strings.Contains(responseOutput, "quit")
+			strings.Contains(responseOutput, "Interrupt") ||
+			strings.Contains(responseOutput, "exit") ||
+			strings.Contains(responseOutput, "quit")
 
 		t.Logf("q key handled: %v", qHandled)
 
@@ -97,9 +97,9 @@ func TestRealTTY_KeyHandling(t *testing.T) {
 
 		// Check if left arrow was handled (should show different view or navigation)
 		arrowHandled := strings.Contains(responseOutput, "Processes") ||
-						strings.Contains(responseOutput, "Logs") ||
-						strings.Contains(responseOutput, "Errors") ||
-						strings.Contains(responseOutput, "URLs")
+			strings.Contains(responseOutput, "Logs") ||
+			strings.Contains(responseOutput, "Errors") ||
+			strings.Contains(responseOutput, "URLs")
 
 		t.Logf("Left arrow handled: %v", arrowHandled)
 
@@ -128,9 +128,9 @@ func TestRealTTY_KeyHandling(t *testing.T) {
 
 		// Check if Ctrl+C was handled (should show quit warning or signal)
 		ctrlCHandled := strings.Contains(responseOutput, "again") ||
-						strings.Contains(responseOutput, "Interrupt") ||
-						strings.Contains(responseOutput, "exit") ||
-						strings.Contains(responseOutput, "quit")
+			strings.Contains(responseOutput, "Interrupt") ||
+			strings.Contains(responseOutput, "exit") ||
+			strings.Contains(responseOutput, "quit")
 
 		t.Logf("Ctrl+C handled: %v", ctrlCHandled)
 

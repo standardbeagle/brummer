@@ -11,6 +11,7 @@ import (
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
+	"github.com/standardbeagle/brummer/internal/tui/services"
 	"github.com/standardbeagle/brummer/pkg/events"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -380,10 +381,11 @@ func TestAICommandPTYSessionLifecycle(t *testing.T) {
 		// Should have created a session
 		assert.Contains(t, ptyEvents, "created", "PTY session should be created")
 
-		// Verify AI coder manager has the session
-		if model.aiCoderController != nil && model.aiCoderController.GetAICoderManager() != nil {
-			sessions := model.aiCoderController.GetAICoderManager().GetPTYManager().ListSessions()
-			assert.NotEmpty(t, sessions, "Should have at least one PTY session")
+		// Verify AI coder service has the session (Feature 005)
+		if model.aiCoderService != nil {
+			svc := model.aiCoderService.(*services.AICoderService)
+			sessions := svc.ListSessions()
+			assert.NotEmpty(t, sessions, "Should have at least one AI coder session")
 		}
 	})
 

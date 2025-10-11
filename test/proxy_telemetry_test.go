@@ -52,10 +52,10 @@ func MockProxyServer() *httptest.Server {
 
 		// Echo back the telemetry data with a timestamp
 		response := map[string]interface{}{
-			"status": "received",
-			"timestamp": time.Now().Format(time.RFC3339),
+			"status":       "received",
+			"timestamp":    time.Now().Format(time.RFC3339),
 			"receivedData": telemetryData,
-			"sessionId": telemetryData["sessionId"],
+			"sessionId":    telemetryData["sessionId"],
 		}
 
 		json.NewEncoder(w).Encode(response)
@@ -79,33 +79,33 @@ func MockProxyServer() *httptest.Server {
 		// Send mock telemetry data
 		telemetryEvents := []map[string]interface{}{
 			{
-				"type": "page_load",
-				"url": "http://localhost:3000/",
+				"type":      "page_load",
+				"url":       "http://localhost:3000/",
 				"timestamp": time.Now().Add(-5 * time.Second).Format(time.RFC3339),
 				"metrics": map[string]interface{}{
-					"loadTime": 1500,
+					"loadTime":         1500,
 					"domContentLoaded": 800,
-					"firstPaint": 1200,
+					"firstPaint":       1200,
 				},
 			},
 			{
-				"type": "console_error",
-				"url": "http://localhost:3000/",
+				"type":      "console_error",
+				"url":       "http://localhost:3000/",
 				"timestamp": time.Now().Add(-3 * time.Second).Format(time.RFC3339),
 				"error": map[string]interface{}{
-					"message": "Cannot read property 'undefined' of undefined",
-					"filename": "/src/main.js",
-					"lineNumber": 42,
+					"message":      "Cannot read property 'undefined' of undefined",
+					"filename":     "/src/main.js",
+					"lineNumber":   42,
 					"columnNumber": 15,
 				},
 			},
 			{
-				"type": "network_request",
-				"url": "http://localhost:3000/api/data",
+				"type":      "network_request",
+				"url":       "http://localhost:3000/api/data",
 				"timestamp": time.Now().Add(-2 * time.Second).Format(time.RFC3339),
 				"request": map[string]interface{}{
-					"method": "GET",
-					"status": 200,
+					"method":   "GET",
+					"status":   200,
 					"duration": 45,
 				},
 			},
@@ -128,8 +128,8 @@ func MockProxyServer() *httptest.Server {
 			// Mock root endpoint for reverse proxy info
 			w.Header().Set("Content-Type", "application/json")
 			response := map[string]interface{}{
-				"message": "Reverse proxy mode active. Each URL gets its own port.",
-				"mode": "reverse_proxy",
+				"message":   "Reverse proxy mode active. Each URL gets its own port.",
+				"mode":      "reverse_proxy",
 				"timestamp": time.Now().Format(time.RFC3339),
 			}
 			json.NewEncoder(w).Encode(response)
@@ -137,10 +137,10 @@ func MockProxyServer() *httptest.Server {
 			// Mock proxied request
 			w.Header().Set("Content-Type", "application/json")
 			response := map[string]interface{}{
-				"proxied": true,
-				"path": r.URL.Path,
-				"method": r.Method,
-				"headers": r.Header,
+				"proxied":   true,
+				"path":      r.URL.Path,
+				"method":    r.Method,
+				"headers":   r.Header,
 				"timestamp": time.Now().Format(time.RFC3339),
 			}
 			json.NewEncoder(w).Encode(response)
@@ -160,12 +160,12 @@ func TestProxyTelemetryEndpoint(t *testing.T) {
 	t.Run("POST telemetry data", func(t *testing.T) {
 		telemetryData := map[string]interface{}{
 			"sessionId": "session-123",
-			"url": "http://localhost:3000/",
-			"type": "page_load",
+			"url":       "http://localhost:3000/",
+			"type":      "page_load",
 			"metrics": map[string]interface{}{
-				"loadTime": 1500,
+				"loadTime":         1500,
 				"domContentLoaded": 800,
-				"firstPaint": 1200,
+				"firstPaint":       1200,
 			},
 			"timestamp": time.Now().Format(time.RFC3339),
 		}
@@ -412,8 +412,8 @@ func TestProxyPerformance(t *testing.T) {
 	t.Run("Telemetry endpoint performance", func(t *testing.T) {
 		telemetryData := map[string]interface{}{
 			"sessionId": "perf-test",
-			"type": "performance_test",
-			"data": make([]byte, 1024), // 1KB of data
+			"type":      "performance_test",
+			"data":      make([]byte, 1024), // 1KB of data
 		}
 
 		jsonBody, err := json.Marshal(telemetryData)
@@ -454,7 +454,7 @@ func TestProxyPerformance(t *testing.T) {
 				for j := 0; j < requestsPerGoroutine; j++ {
 					telemetryData := map[string]interface{}{
 						"sessionId": fmt.Sprintf("concurrent-test-%d", goroutineID),
-						"type": "concurrent_test",
+						"type":      "concurrent_test",
 						"iteration": j,
 					}
 

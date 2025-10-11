@@ -224,8 +224,11 @@ func (s *AICoderService) monitorPTYOutput(sessionID string) {
 
 		case output, ok := <-session.PTYSession.OutputChan:
 			if !ok {
-				// PTY session ended
-				session.Status = messages.SessionStopped
+				// PTY session ended - check if session still exists before updating
+				if value, exists := s.sessions.Load(sessionID); exists {
+					sess := value.(*AICoderSession)
+					sess.Status = messages.SessionStopped
+				}
 				s.eventBus.Publish(events.Event{
 					Type:      "aicoder.session.ended",
 					ProcessID: sessionID,
@@ -238,9 +241,12 @@ func (s *AICoderService) monitorPTYOutput(sessionID string) {
 				return
 			}
 
-			// Update metrics
-			session.BytesRead.Add(uint64(len(output)))
-			session.LastActivity = time.Now()
+			// Update metrics - check if session still exists before updating
+			if value, exists := s.sessions.Load(sessionID); exists {
+				sess := value.(*AICoderSession)
+				sess.BytesRead.Add(uint64(len(output)))
+				sess.LastActivity = time.Now()
+			}
 
 			// Publish PTY output event
 			s.eventBus.Publish(events.Event{
@@ -261,8 +267,12 @@ func (s *AICoderService) monitorPTYOutput(sessionID string) {
 
 			// Handle PTY events (errors, state changes, etc.)
 			if event.Type == "error" {
-				session.ErrorCount.Add(1)
-				session.Status = messages.SessionError
+				// Check if session still exists before updating
+				if value, exists := s.sessions.Load(sessionID); exists {
+					sess := value.(*AICoderSession)
+					sess.ErrorCount.Add(1)
+					sess.Status = messages.SessionError
+				}
 				s.publishError(sessionID, fmt.Errorf("PTY error: %v", event.Data))
 			}
 		}
@@ -293,19 +303,19 @@ func (s *AICoderService) StopSession(ctx context.Context, sessionID string) erro
 	}
 	session := value.(*AICoderSession)
 
-	// Stop PTY session if running
+	// Remove from registry FIRST (before stopping PTY) to prevent monitoring goroutine races
+	s.sessions.Delete(sessionID)
+
+	// Update status (safe now that it's removed from registry)
+	session.Status = messages.SessionStopped
+
+	// Stop PTY session if running (monitoring goroutine will stop when channels close)
 	if session.PTYSession != nil {
 		if err := session.PTYSession.Close(); err != nil {
 			// Log error but continue cleanup
 			s.publishError(sessionID, fmt.Errorf("PTY cleanup error: %w", err))
 		}
 	}
-
-	// Update status
-	session.Status = messages.SessionStopped
-
-	// Remove from registry (monitoring goroutine will stop when channels close)
-	s.sessions.Delete(sessionID)
 
 	// Publish event
 	s.eventBus.Publish(events.Event{

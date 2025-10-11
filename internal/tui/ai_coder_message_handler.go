@@ -2,6 +2,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/standardbeagle/brummer/internal/tui/components"
 )
 
 // AICoderMessageHandler handles AI coder-related messages
@@ -24,32 +25,26 @@ func (h *AICoderMessageHandler) CanHandle(msg tea.Msg) bool {
 
 // HandleMessage processes AI coder-related messages
 func (h *AICoderMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model, tea.Cmd) {
-	switch m := msg.(type) {
-	case aiCoderSessionMsg:
-		// Handle AI coder session events
-		if model.aiCoderController != nil {
-			// Use the Update method which handles all AI coder messages
-			if cmd := model.aiCoderController.Update(m); cmd != nil {
-				return model, cmd
-			}
-		}
+	// Route messages to the AI Coders view component (Feature 005)
+	if model.aicodersView != nil {
+		switch m := msg.(type) {
+		case aiCoderSessionMsg:
+			// Handle AI coder session events via component
+			updatedComponent, cmd := model.aicodersView.Update(m)
+			model.aicodersView = updatedComponent.(*components.AICodersViewComponent)
+			return model, cmd
 
-	case aiCoderOutputMsg:
-		// Handle AI coder output
-		if model.aiCoderController != nil {
-			// Use the Update method which handles all AI coder messages
-			if cmd := model.aiCoderController.Update(m); cmd != nil {
-				return model, cmd
-			}
-		}
+		case aiCoderOutputMsg:
+			// Handle AI coder output via component
+			updatedComponent, cmd := model.aicodersView.Update(m)
+			model.aicodersView = updatedComponent.(*components.AICodersViewComponent)
+			return model, cmd
 
-	case aiCoderErrorMsg:
-		// Handle AI coder error
-		if model.aiCoderController != nil {
-			// Use the Update method which handles all AI coder messages
-			if cmd := model.aiCoderController.Update(m); cmd != nil {
-				return model, cmd
-			}
+		case aiCoderErrorMsg:
+			// Handle AI coder error via component
+			updatedComponent, cmd := model.aicodersView.Update(m)
+			model.aicodersView = updatedComponent.(*components.AICodersViewComponent)
+			return model, cmd
 		}
 	}
 

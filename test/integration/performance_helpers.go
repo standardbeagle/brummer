@@ -11,25 +11,25 @@ import (
 
 // PerformanceMetrics holds performance measurement results
 type PerformanceMetrics struct {
-	Samples      []time.Duration
-	Count        int
-	Min          time.Duration
-	Max          time.Duration
-	Mean         time.Duration
-	Median       time.Duration
-	P95          time.Duration
-	P99          time.Duration
-	TotalTime    time.Duration
+	Samples   []time.Duration
+	Count     int
+	Min       time.Duration
+	Max       time.Duration
+	Mean      time.Duration
+	Median    time.Duration
+	P95       time.Duration
+	P99       time.Duration
+	TotalTime time.Duration
 }
 
 // PerformanceTest defines a performance test configuration
 type PerformanceTest struct {
-	Name           string
-	Setup          func(*TestContext)
-	Operation      func(*TestContext) time.Duration
-	Iterations     int
-	Target         time.Duration  // Target latency (e.g., 50ms)
-	FailThreshold  time.Duration  // Fail if P95 exceeds this
+	Name          string
+	Setup         func(*TestContext)
+	Operation     func(*TestContext) time.Duration
+	Iterations    int
+	Target        time.Duration // Target latency (e.g., 50ms)
+	FailThreshold time.Duration // Fail if P95 exceeds this
 }
 
 // MeasureKeyEventLatency measures the latency of key event processing
@@ -155,9 +155,9 @@ func calculateMetrics(samples []time.Duration, totalTime time.Duration) *Perform
 // KeyEventLatencyBaseline establishes baseline key event latency
 func KeyEventLatencyBaseline(t *testing.T, ctx *TestContext, iterations int) *PerformanceMetrics {
 	test := PerformanceTest{
-		Name:       "Key Event Latency Baseline",
-		Iterations: iterations,
-		Target:     50 * time.Millisecond,  // <50ms requirement
+		Name:          "Key Event Latency Baseline",
+		Iterations:    iterations,
+		Target:        50 * time.Millisecond, // <50ms requirement
 		FailThreshold: 100 * time.Millisecond,
 		Operation: func(ctx *TestContext) time.Duration {
 			return MeasureKeyEventLatency(ctx, "j") // Down arrow in vim mode
@@ -170,10 +170,10 @@ func KeyEventLatencyBaseline(t *testing.T, ctx *TestContext, iterations int) *Pe
 // ViewRenderingBaseline establishes baseline view rendering performance
 func ViewRenderingBaseline(t *testing.T, ctx *TestContext, iterations int) *PerformanceMetrics {
 	test := PerformanceTest{
-		Name:       "View Rendering Baseline",
-		Iterations: iterations,
-		Target:     16 * time.Millisecond,  // <16ms for 60fps
-		FailThreshold: 33 * time.Millisecond,  // 30fps minimum
+		Name:          "View Rendering Baseline",
+		Iterations:    iterations,
+		Target:        16 * time.Millisecond, // <16ms for 60fps
+		FailThreshold: 33 * time.Millisecond, // 30fps minimum
 		Operation: func(ctx *TestContext) time.Duration {
 			return MeasureViewRenderLatency(ctx)
 		},
@@ -188,9 +188,9 @@ func ViewSwitchLatency(t *testing.T, ctx *TestContext, iterations int) *Performa
 	currentView := 0
 
 	test := PerformanceTest{
-		Name:       "View Switch Latency",
-		Iterations: iterations,
-		Target:     50 * time.Millisecond,
+		Name:          "View Switch Latency",
+		Iterations:    iterations,
+		Target:        50 * time.Millisecond,
 		FailThreshold: 100 * time.Millisecond,
 		Operation: func(ctx *TestContext) time.Duration {
 			key := viewKeys[currentView%len(viewKeys)]
@@ -205,9 +205,9 @@ func ViewSwitchLatency(t *testing.T, ctx *TestContext, iterations int) *Performa
 // ProcessStartLatency measures process startup performance
 func ProcessStartLatency(t *testing.T, ctx *TestContext, iterations int) *PerformanceMetrics {
 	test := PerformanceTest{
-		Name:       "Process Start Latency",
-		Iterations: iterations,
-		Target:     100 * time.Millisecond,  // Process start can be slower
+		Name:          "Process Start Latency",
+		Iterations:    iterations,
+		Target:        100 * time.Millisecond, // Process start can be slower
 		FailThreshold: 500 * time.Millisecond,
 		Setup: func(ctx *TestContext) {
 			// Create test scripts
@@ -247,9 +247,9 @@ func CompareMetrics(before, after *PerformanceMetrics) string {
 
 // MemoryUsageTest measures memory usage during operations
 type MemoryUsageTest struct {
-	Name      string
-	Setup     func(*TestContext)
-	Operation func(*TestContext)
+	Name       string
+	Setup      func(*TestContext)
+	Operation  func(*TestContext)
 	Iterations int
 }
 
@@ -287,12 +287,12 @@ func BenchmarkOperation(b *testing.B, operation func(*TestContext)) {
 
 // PerformanceReport generates a comprehensive performance report
 type PerformanceReport struct {
-	TestName         string
-	KeyEventLatency  *PerformanceMetrics
-	ViewRendering    *PerformanceMetrics
-	ViewSwitch       *PerformanceMetrics
-	ProcessStart     *PerformanceMetrics
-	Timestamp        time.Time
+	TestName        string
+	KeyEventLatency *PerformanceMetrics
+	ViewRendering   *PerformanceMetrics
+	ViewSwitch      *PerformanceMetrics
+	ProcessStart    *PerformanceMetrics
+	Timestamp       time.Time
 }
 
 // GeneratePerformanceReport creates a full performance report

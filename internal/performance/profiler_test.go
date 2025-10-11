@@ -289,7 +289,7 @@ func TestDefaultProfiler(t *testing.T) {
 	// The error message could be either "no default profiler running" or "profiler not running"
 	assert.True(t,
 		strings.Contains(err.Error(), "no default profiler running") ||
-		strings.Contains(err.Error(), "profiler not running"))
+			strings.Contains(err.Error(), "profiler not running"))
 }
 
 func TestProfileDefaultFunction(t *testing.T) {

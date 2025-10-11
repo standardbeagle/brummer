@@ -1,6 +1,10 @@
 package tui
 
-import "time"
+import (
+	"time"
+
+	"github.com/standardbeagle/brummer/internal/aicoder"
+)
 
 // Message types for the TUI system
 
@@ -58,6 +62,18 @@ type aiCoderErrorMsg struct {
 	SessionID string
 	Error     error
 }
+
+// PTY-related messages (used by lock-free PTY manager)
+type PTYOutputMsg struct {
+	SessionID string
+	Data      []byte
+}
+
+type PTYEventMsg struct {
+	Event aicoder.PTYEvent
+}
+
+// Note: BatchPTYMsg is defined in lockfree_pty_manager.go
 
 // URL detection messages
 type urlDetectedMsg struct {

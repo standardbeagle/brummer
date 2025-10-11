@@ -60,9 +60,9 @@ func TestTTY_KeyHandling_q(t *testing.T) {
 
 	// Check if q key was handled (should show quit warning or signal)
 	qHandled := strings.Contains(responseOutput, "again") ||
-				strings.Contains(responseOutput, "Interrupt") ||
-				strings.Contains(responseOutput, "exit") ||
-				strings.Contains(responseOutput, "quit")
+		strings.Contains(responseOutput, "Interrupt") ||
+		strings.Contains(responseOutput, "exit") ||
+		strings.Contains(responseOutput, "quit")
 
 	t.Logf("q key handled: %v", qHandled)
 
@@ -132,9 +132,9 @@ func TestTTY_KeyHandling_arrows(t *testing.T) {
 
 	// Check if left arrow was handled (should show different view)
 	arrowHandled := strings.Contains(responseOutput, "Processes") && currentView != "Processes" ||
-					strings.Contains(responseOutput, "Logs") && currentView != "Logs" ||
-					strings.Contains(responseOutput, "Errors") && currentView != "Errors" ||
-					strings.Contains(responseOutput, "URLs") && currentView != "URLs"
+		strings.Contains(responseOutput, "Logs") && currentView != "Logs" ||
+		strings.Contains(responseOutput, "Errors") && currentView != "Errors" ||
+		strings.Contains(responseOutput, "URLs") && currentView != "URLs"
 
 	t.Logf("Left arrow handled: %v", arrowHandled)
 
@@ -196,8 +196,8 @@ func TestTTY_KeyHandling_numbers(t *testing.T) {
 
 	// Check if number key was handled (should show Logs view)
 	numberHandled := strings.Contains(responseOutput, "Logs") ||
-					strings.Contains(responseOutput, "PROCESS") ||
-					strings.Contains(responseOutput, "STATUS")
+		strings.Contains(responseOutput, "PROCESS") ||
+		strings.Contains(responseOutput, "STATUS")
 
 	t.Logf("Number key '2' handled: %v", numberHandled)
 

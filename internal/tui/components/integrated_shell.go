@@ -8,8 +8,14 @@ import (
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
-// TTY TESTING WARNING: See diagnostic_view.go for critical testing guidelines
-// This component handles WindowSizeMsg routing and requires proper TTY testing.
+// TTY TESTING WARNING: This component handles WindowSizeMsg routing and requires proper TTY testing.
+//
+// ⚠️  CRITICAL: Do NOT test this component using Bash tools that have TTY support disabled!
+//
+// For proper testing, use:
+// - Direct terminal execution: ./brum
+// - Integration tests with TTY allocation
+// - Manual terminal resizing to verify WindowSizeMsg events
 
 // IntegratedShell is the top-level component that routes messages to child components.
 // It manages component lifecycle, focus, and message routing.
@@ -24,16 +30,15 @@ type IntegratedShell struct {
 	height int
 
 	// View Components (nil until initialized)
-	logsView       Component
-	processView    Component
-	urlsView       Component
-	errorsView     Component
-	webView        Component
-	testView       Component
-	aicodersView   Component
-	mcpView        Component
-	settingsView   Component
-	diagnosticView Component
+	logsView     Component
+	processView  Component
+	urlsView     Component
+	errorsView   Component
+	webView      Component
+	testView     Component
+	aicodersView Component
+	mcpView      Component
+	settingsView Component
 
 	// Chrome Components (optional)
 	tabsComponent         Component
@@ -154,14 +159,6 @@ func (s *IntegratedShell) SetSettingsView(component Component) {
 	}
 }
 
-// SetDiagnosticView sets the diagnostic component
-func (s *IntegratedShell) SetDiagnosticView(component Component) {
-	s.diagnosticView = component
-	if s.width > 0 && s.height > 0 {
-		component.SetSize(s.width, s.height)
-	}
-}
-
 // SetCommandInput sets the command input overlay component
 func (s *IntegratedShell) SetCommandInput(component Component) {
 	s.commandInput = component
@@ -229,9 +226,6 @@ func (s *IntegratedShell) Init() tea.Cmd {
 	}
 	if s.settingsView != nil {
 		cmds = append(cmds, s.settingsView.Init())
-	}
-	if s.diagnosticView != nil {
-		cmds = append(cmds, s.diagnosticView.Init())
 	}
 
 	// Initialize overlays
@@ -319,12 +313,6 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if s.settingsView != nil {
 			s.settingsView.SetSize(msg.Width, contentHeight)
 		}
-		if s.diagnosticView != nil {
-			s.diagnosticView.SetSize(msg.Width, contentHeight)
-			// Also send the WindowSizeMsg to diagnostic view for processing
-			_, cmd := s.diagnosticView.Update(msg)
-			cmds = append(cmds, cmd)
-		}
 
 		// Propagate size to chrome components
 		if s.headerComponent != nil {
@@ -386,10 +374,6 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "settings":
 			if s.settingsView != nil {
 				s.currentView = "settings"
-			}
-		case "diagnostic":
-			if s.diagnosticView != nil {
-				s.currentView = "diagnostic"
 			}
 		default:
 			// Unknown view, ignore
@@ -573,12 +557,6 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				s.currentView = "settings"
 			}
 			return s, nil
-		case "9":
-			// Switch to MCP view
-			if s.mcpView != nil {
-				s.currentView = "mcp"
-			}
-			return s, nil
 		default:
 			// Forward to active component
 			switch s.currentView {
@@ -625,11 +603,6 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "settings":
 				if s.settingsView != nil {
 					_, cmd := s.settingsView.Update(msg)
-					cmds = append(cmds, cmd)
-				}
-			case "diagnostic":
-				if s.diagnosticView != nil {
-					_, cmd := s.diagnosticView.Update(msg)
 					cmds = append(cmds, cmd)
 				}
 			}
@@ -710,13 +683,6 @@ func (s *IntegratedShell) View() string {
 			baseView = s.settingsView.View()
 		} else {
 			baseView = "Settings view not initialized"
-		}
-
-	case "diagnostic":
-		if s.diagnosticView != nil {
-			baseView = s.diagnosticView.View()
-		} else {
-			baseView = "Diagnostic view not initialized"
 		}
 
 	default:

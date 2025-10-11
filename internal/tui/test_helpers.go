@@ -57,7 +57,8 @@ func createTestModelWithDefaults() *Model {
 	}
 
 	// Use NewModel to create a properly initialized model
-	return NewModel(processMgr, logStore, eventBus, nil, nil, 7777, cfg)
+	workingDir, _ := os.Getwd()
+	return NewModel(processMgr, logStore, eventBus, nil, nil, 7777, cfg, workingDir)
 }
 
 // TestMessage is a test implementation of tea.Msg

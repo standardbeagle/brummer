@@ -797,11 +797,11 @@ git add -A
 git status
 ```
 
-**Expected**: All cleanup changes staged
+**Result**: All 43 changed files staged ✅
 
 ---
 
-### T036: Commit cleanup changes
+### T036: ✅ Commit cleanup changes
 **Purpose**: Complete Feature 004
 
 **Actions**:
@@ -834,7 +834,9 @@ EOF
 )"
 ```
 
-**Expected**: Changes committed ✅
+**Result**: ✅ Commit created successfully (31ba1a5)
+- 43 files changed, 2695 insertions(+), 726 deletions(-)
+- Feature 004 implementation COMPLETE!
 
 **Next**: Ready for Feature 003 (PTY extraction)
 

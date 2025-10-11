@@ -18,27 +18,27 @@ type TestFramework interface {
 
 // TestOptions contains options for test execution
 type TestOptions struct {
-	WatchMode     bool
-	Coverage      bool
-	Parallel      bool
-	Verbose       bool
-	Timeout       time.Duration
-	Filter        string
-	EnvVars       map[string]string
+	WatchMode bool
+	Coverage  bool
+	Parallel  bool
+	Verbose   bool
+	Timeout   time.Duration
+	Filter    string
+	EnvVars   map[string]string
 }
 
 // TestRun represents a single test execution
 type TestRun struct {
-	ID           string           `json:"id"`
-	Framework    string           `json:"framework"`
-	Pattern      string           `json:"pattern"`
-	StartTime    time.Time        `json:"start_time"`
-	EndTime      *time.Time       `json:"end_time,omitempty"`
-	Status       TestRunStatus    `json:"status"`
-	Results      *TestResults     `json:"results,omitempty"`
-	Duration     time.Duration    `json:"duration"`
-	Options      TestOptions      `json:"options"`
-	mutex        sync.RWMutex     `json:"-"`
+	ID        string        `json:"id"`
+	Framework string        `json:"framework"`
+	Pattern   string        `json:"pattern"`
+	StartTime time.Time     `json:"start_time"`
+	EndTime   *time.Time    `json:"end_time,omitempty"`
+	Status    TestRunStatus `json:"status"`
+	Results   *TestResults  `json:"results,omitempty"`
+	Duration  time.Duration `json:"duration"`
+	Options   TestOptions   `json:"options"`
+	mutex     sync.RWMutex  `json:"-"`
 }
 
 // TestRunStatus represents the status of a test run
@@ -54,34 +54,34 @@ const (
 
 // TestResults contains the results of a test run
 type TestResults struct {
-	TotalTests    int                     `json:"total_tests"`
-	PassedTests   int                     `json:"passed_tests"`
-	FailedTests   int                     `json:"failed_tests"`
-	SkippedTests  int                     `json:"skipped_tests"`
-	TestCases     []TestCase              `json:"test_cases"`
-	Coverage      *TestCoverage           `json:"coverage,omitempty"`
-	Performance   *TestPerformance        `json:"performance,omitempty"`
-	mutex         sync.RWMutex            `json:"-"`
+	TotalTests   int              `json:"total_tests"`
+	PassedTests  int              `json:"passed_tests"`
+	FailedTests  int              `json:"failed_tests"`
+	SkippedTests int              `json:"skipped_tests"`
+	TestCases    []TestCase       `json:"test_cases"`
+	Coverage     *TestCoverage    `json:"coverage,omitempty"`
+	Performance  *TestPerformance `json:"performance,omitempty"`
+	mutex        sync.RWMutex     `json:"-"`
 }
 
 // TestCase represents a single test case result
 type TestCase struct {
-	Name         string            `json:"name"`
-	FilePath     string            `json:"file_path"`
-	Status       TestCaseStatus    `json:"status"`
-	Duration     time.Duration     `json:"duration"`
-	StartTime    time.Time         `json:"start_time"`
-	EndTime      time.Time         `json:"end_time"`
-	FailureInfo  *TestFailureInfo  `json:"failure_info,omitempty"`
-	SkipReason   string            `json:"skip_reason,omitempty"`
+	Name        string           `json:"name"`
+	FilePath    string           `json:"file_path"`
+	Status      TestCaseStatus   `json:"status"`
+	Duration    time.Duration    `json:"duration"`
+	StartTime   time.Time        `json:"start_time"`
+	EndTime     time.Time        `json:"end_time"`
+	FailureInfo *TestFailureInfo `json:"failure_info,omitempty"`
+	SkipReason  string           `json:"skip_reason,omitempty"`
 }
 
 // TestCaseStatus represents the status of a test case
 type TestCaseStatus string
 
 const (
-	TestCaseStatusPassed TestCaseStatus = "passed"
-	TestCaseStatusFailed TestCaseStatus = "failed"
+	TestCaseStatusPassed  TestCaseStatus = "passed"
+	TestCaseStatusFailed  TestCaseStatus = "failed"
 	TestCaseStatusSkipped TestCaseStatus = "skipped"
 	TestCaseStatusPending TestCaseStatus = "pending"
 	TestCaseStatusRunning TestCaseStatus = "running"
@@ -97,11 +97,11 @@ type TestFailureInfo struct {
 
 // TestCoverage contains coverage information
 type TestCoverage struct {
-	OverallPct   float64                `json:"overall_pct"`
-	LineCoverage int                    `json:"line_coverage"`
-	TotalLines   int                    `json:"total_lines"`
-	Files        []TestCoverageFile     `json:"files"`
-	mutex        sync.RWMutex           `json:"-"`
+	OverallPct   float64            `json:"overall_pct"`
+	LineCoverage int                `json:"line_coverage"`
+	TotalLines   int                `json:"total_lines"`
+	Files        []TestCoverageFile `json:"files"`
+	mutex        sync.RWMutex       `json:"-"`
 }
 
 // TestCoverageFile contains coverage information for a single file
@@ -114,28 +114,28 @@ type TestCoverageFile struct {
 
 // TestPerformance contains performance information
 type TestPerformance struct {
-	TotalDuration    time.Duration           `json:"total_duration"`
-	AverageDuration  time.Duration           `json:"average_duration"`
-	SlowTests        []TestPerformanceEntry  `json:"slow_tests"`
-	SlowThreshold    time.Duration           `json:"slow_threshold"`
-	mutex            sync.RWMutex            `json:"-"`
+	TotalDuration   time.Duration          `json:"total_duration"`
+	AverageDuration time.Duration          `json:"average_duration"`
+	SlowTests       []TestPerformanceEntry `json:"slow_tests"`
+	SlowThreshold   time.Duration          `json:"slow_threshold"`
+	mutex           sync.RWMutex           `json:"-"`
 }
 
 // TestPerformanceEntry contains performance information for a test case
 type TestPerformanceEntry struct {
-	TestName        string        `json:"test_name"`
-	FilePath        string        `json:"file_path"`
-	Duration        time.Duration `json:"duration"`
-	IsSlow          bool          `json:"is_slow"`
-	SlowThreshold   time.Duration `json:"slow_threshold"`
+	TestName      string        `json:"test_name"`
+	FilePath      string        `json:"file_path"`
+	Duration      time.Duration `json:"duration"`
+	IsSlow        bool          `json:"is_slow"`
+	SlowThreshold time.Duration `json:"slow_threshold"`
 }
 
 // TestManager manages test runs and framework integrations
 type TestManager struct {
-	frameworks  map[string]TestFramework
-	activeRuns  map[string]*TestRun
-	results     map[string]*TestResults
-	mutex       sync.RWMutex
+	frameworks map[string]TestFramework
+	activeRuns map[string]*TestRun
+	results    map[string]*TestResults
+	mutex      sync.RWMutex
 }
 
 // NewTestManager creates a new test manager

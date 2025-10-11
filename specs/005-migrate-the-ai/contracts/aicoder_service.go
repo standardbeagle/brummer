@@ -273,7 +273,7 @@ type AICoderService interface {
 	//           fmt.Printf("Session created: %v\n", msg)
 	//       }
 	//   }()
-	EventBus() interface{}  // Returns *events.EventBus (interface{} to avoid import cycles)
+	EventBus() interface{} // Returns *events.EventBus (interface{} to avoid import cycles)
 }
 
 // Error Definitions
@@ -322,13 +322,13 @@ const (
 )
 
 type TerminalState struct {
-	Lines        []string
-	Cursor       CursorPos
-	Width        int
-	Height       int
-	TotalLines   int
-	ViewportTop  int
-	UpdatedAt    time.Time
+	Lines       []string
+	Cursor      CursorPos
+	Width       int
+	Height      int
+	TotalLines  int
+	ViewportTop int
+	UpdatedAt   time.Time
 }
 
 type CursorPos struct {

@@ -1,10 +1,9 @@
 package tui
 
 import (
-	"time"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/navigation"
+	"github.com/standardbeagle/brummer/internal/tui/services"
 )
 
 // ModelAdapter implements ModelInterface for the concrete Model type
@@ -116,10 +115,15 @@ func (ma *ModelAdapter) IsCommandWindowVisible() bool {
 func (ma *ModelAdapter) ShowCommandWindow() {
 	// Get scripts and AI providers
 	scripts := ma.model.processMgr.GetScripts()
+
+	// Get AI providers from configuration
 	var aiProviders []string
-	if ma.model.aiCoderController != nil {
-		aiProviders = ma.model.aiCoderController.GetProviders()
+	adapter := &configAdapter{cfg: ma.model.cfg}
+	providerConfigs := adapter.GetProviderConfigs()
+	for name := range providerConfigs {
+		aiProviders = append(aiProviders, name)
 	}
+
 	ma.model.commandWindowView.ShowCommandWindow(scripts, aiProviders)
 }
 
@@ -143,65 +147,67 @@ func (ma *ModelAdapter) HideSettings() {
 
 // AI Coder
 func (ma *ModelAdapter) HasActiveAICoders() bool {
-	if ma.model.aiCoderController == nil {
+	if ma.model.aiCoderService == nil {
 		return false
 	}
-	sessions := ma.model.aiCoderController.ListSessions()
+	svc := ma.model.aiCoderService.(*services.AICoderService)
+	sessions := svc.ListSessions()
 	return len(sessions) > 0
 }
 
 func (ma *ModelAdapter) GetAICoderController() AICoderControllerInterface {
-	// Need to wrap AICoderController to implement the interface
-	return &aiCoderControllerWrapper{controller: ma.model.aiCoderController}
+	// Return adapter that wraps the service
+	return &aiCoderServiceAdapter{
+		model: ma.model,
+	}
 }
 
 // Removed ProcessManagerAdapter - process.Manager already implements ProcessManagerInterface
 
 // Removed LogStoreAdapter since logs.Store already implements LogStoreInterface
 
-// aiCoderControllerWrapper wraps AICoderController to implement AICoderControllerInterface
-type aiCoderControllerWrapper struct {
-	controller *AICoderController
+// aiCoderServiceAdapter adapts the service to the controller interface
+type aiCoderServiceAdapter struct {
+	model *Model
 }
 
-func (w *aiCoderControllerWrapper) HandleAICommand(command string) tea.Cmd {
-	w.controller.HandleAICommand(command)
+func (a *aiCoderServiceAdapter) HandleAICommand(command string) tea.Cmd {
+	a.model.handleAICommand(command)
 	return nil
 }
 
-func (w *aiCoderControllerWrapper) CreateAICoderSession(provider string) {
-	w.controller.HandleAICommand(provider)
+func (a *aiCoderServiceAdapter) CreateAICoderSession(provider string) {
+	a.model.handleAICommand(provider)
 }
 
-func (w *aiCoderControllerWrapper) HasActiveSessions() bool {
-	if w.controller == nil {
+func (a *aiCoderServiceAdapter) HasActiveSessions() bool {
+	if a.model.aiCoderService == nil {
 		return false
 	}
-	sessions := w.controller.ListSessions()
+	svc := a.model.aiCoderService.(*services.AICoderService)
+	sessions := svc.ListSessions()
 	return len(sessions) > 0
 }
 
-func (w *aiCoderControllerWrapper) SetHasActiveSessions(active bool) {
-	// This is a no-op for the real controller since it manages its own state
+func (a *aiCoderServiceAdapter) SetHasActiveSessions(active bool) {
+	// No-op - service manages its own state
 }
 
-func (w *aiCoderControllerWrapper) GetActiveSessions() []AICoderSession {
-	if w.controller == nil {
+func (a *aiCoderServiceAdapter) GetActiveSessions() []AICoderSession {
+	if a.model.aiCoderService == nil {
 		return nil
 	}
+	svc := a.model.aiCoderService.(*services.AICoderService)
+	sessions := svc.ListSessions()
 
-	sessions := w.controller.ListSessions()
+	// Convert service sessions to adapter format
 	result := make([]AICoderSession, 0, len(sessions))
 	for _, s := range sessions {
-		status := "inactive"
-		if s.IsActive {
-			status = "active"
-		}
 		result = append(result, AICoderSession{
 			ID:       s.ID,
-			Provider: "terminal", // Default provider for now
-			Status:   status,
-			Created:  time.Now(), // We don't track creation time in PTYSession
+			Provider: "terminal", // We don't track provider in session
+			Status:   string(s.Status),
+			Created:  s.LastActivity, // Use LastActivity as Created time since CreatedAt doesn't exist
 		})
 	}
 	return result

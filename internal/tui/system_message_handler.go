@@ -42,11 +42,8 @@ func (h *SystemMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 		}
 
 		// Forward to debug forwarder if enabled
-		if model.aiCoderController != nil && model.aiCoderController.debugForwarder != nil {
-			if cmd := model.aiCoderController.debugForwarder.HandleBrummerEvent(sysMsg); cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
+		// TODO(Feature 005): Re-implement debug forwarding for service-based architecture
+		// The debug forwarder was part of the old controller-based system
 	}
 
 	cmds = append(cmds, model.waitForUpdates())

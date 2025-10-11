@@ -26,7 +26,6 @@ func TestNavigateToViewMsgMessages(t *testing.T) {
 		{"Switch to AI coders", "aicoders", "aicoders", true},
 		{"Switch to MCP", "mcp", "mcp", true},
 		{"Switch to settings", "settings", "settings", true},
-		{"Switch to diagnostic", "diagnostic", "diagnostic", true},
 		{"Invalid view", "invalid", "logs", false}, // Should stay on current view
 	}
 

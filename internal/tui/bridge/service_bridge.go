@@ -10,6 +10,7 @@ import (
 	"github.com/standardbeagle/brummer/internal/process"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
+	"github.com/standardbeagle/brummer/internal/tui/services"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -23,6 +24,30 @@ type programHolder struct {
 	prog Program
 }
 
+// TestManagementService interface defines the contract for test management services
+type TestManagementService interface {
+	GetServiceName() string
+	GetServiceStatus() services.ServiceStatus
+	SubscribeToEvents()
+	Stop() error
+}
+
+// FileBrowserService interface defines the contract for file browser services
+type FileBrowserService interface {
+	GetServiceName() string
+	GetServiceStatus() services.ServiceStatus
+	SubscribeToEvents()
+	Stop() error
+}
+
+// SettingsService interface defines the contract for settings services
+type SettingsService interface {
+	GetServiceName() string
+	GetServiceStatus() services.ServiceStatus
+	SubscribeToEvents()
+	Stop() error
+}
+
 // ServiceBridge is the adapter layer that converts service events into BubbleTea messages.
 // This is the ONLY place where services communicate with the UI.
 //
@@ -34,10 +59,13 @@ type programHolder struct {
 // 5. BubbleTea program.Send() is thread-safe and non-blocking
 // 6. atomic.Value provides lock-free thread-safe access to program reference
 type ServiceBridge struct {
-	processMgr  *process.Manager
-	logStore    *logs.Store
-	proxyServer *proxy.Server
-	eventBus    *events.EventBus
+	processMgr            *process.Manager
+	logStore              *logs.Store
+	proxyServer           *proxy.Server
+	eventBus              *events.EventBus
+	testManagementService TestManagementService // Interface for test management
+	fileBrowserService    FileBrowserService    // Interface for file browser
+	settingsService       SettingsService       // Interface for settings
 
 	// Thread-safe program reference using atomic.Value
 	// Stores *programHolder (never nil, but holder.prog can be nil)
@@ -54,17 +82,42 @@ func NewServiceBridge(
 	logStore *logs.Store,
 	proxyServer *proxy.Server,
 	eventBus *events.EventBus,
+	testService TestManagementService,
+	fileService FileBrowserService,
+	settingsService SettingsService,
 ) *ServiceBridge {
 	sb := &ServiceBridge{
-		processMgr:    processMgr,
-		logStore:      logStore,
-		proxyServer:   proxyServer,
-		eventBus:      eventBus,
-		subscriptions: []func(){},
+		processMgr:            processMgr,
+		logStore:              logStore,
+		proxyServer:           proxyServer,
+		eventBus:              eventBus,
+		testManagementService: testService,
+		fileBrowserService:    fileService,
+		settingsService:       settingsService,
+		subscriptions:         []func(){},
 	}
 	// Initialize atomic.Value with empty holder
 	sb.program.Store(&programHolder{prog: nil})
 	return sb
+}
+
+// StartWithoutInitialMessages begins converting service events to BubbleTea messages.
+// Does NOT send initial status updates to avoid deadlock during startup.
+// The program parameter is used to send messages to the BubbleTea event loop.
+//
+// This must be called AFTER the tea.Program is created but BEFORE program.Run().
+func (b *ServiceBridge) StartWithoutInitialMessages(program Program) {
+	// Store program reference atomically (lock-free, thread-safe)
+	b.program.Store(&programHolder{prog: program})
+
+	// Subscribe to all service event sources
+	b.subscribeToProcessManager()
+	b.subscribeToLogStore()
+	b.subscribeToEventBus()
+	b.subscribeToProxyServer()
+	b.subscribeToTestService()
+	b.subscribeToFileBrowserService()
+	b.subscribeToSettingsService()
 }
 
 // Start begins converting service events to BubbleTea messages.
@@ -80,6 +133,9 @@ func (b *ServiceBridge) Start(program Program) {
 	b.subscribeToLogStore()
 	b.subscribeToEventBus()
 	b.subscribeToProxyServer()
+	b.subscribeToTestService()
+	b.subscribeToFileBrowserService()
+	b.subscribeToSettingsService()
 
 	// Send initial status updates for services that are already running
 	b.sendInitialStatusUpdates()
@@ -422,11 +478,126 @@ func (b *ServiceBridge) subscribeToProxyServer() {
 	// Future: Add proxy request/response events here if needed
 }
 
+// subscribeToAICoderService adds subscriptions for the new AICoderService events
+// This method should be called after the AICoderService is created
+func (b *ServiceBridge) SubscribeToAICoderService(aiCoderService interface{}) {
+	if aiCoderService == nil || b.eventBus == nil {
+		return
+	}
+
+	// Get the service's event bus
+	// Note: This assumes the AICoderService has an EventBus() method
+	// We'll use type assertion to safely access it
+	if svc, ok := aiCoderService.(interface{ EventBus() *events.EventBus }); ok {
+		eventBus := svc.EventBus()
+
+		// Subscribe to AI coder session events
+		eventBus.Subscribe("aicoder.session.created", func(evt events.Event) {
+			if prog := b.getProgram(); prog != nil {
+				name := ""
+				if n, ok := evt.Data["name"].(string); ok {
+					name = n
+				}
+				prog.Send(messages.AICoderSessionCreatedMsg{
+					SessionID: evt.ProcessID,
+					Name:      name,
+				})
+			}
+		})
+
+		eventBus.Subscribe("aicoder.session.updated", func(evt events.Event) {
+			if prog := b.getProgram(); prog != nil {
+				status := messages.SessionActive // Default status
+				lastActivity := time.Now()
+
+				if s, ok := evt.Data["status"].(string); ok {
+					status = messages.SessionStatus(s)
+				}
+				if la, ok := evt.Data["last_activity"].(time.Time); ok {
+					lastActivity = la
+				}
+
+				prog.Send(messages.AICoderSessionUpdatedMsg{
+					SessionID:    evt.ProcessID,
+					Status:       status,
+					LastActivity: lastActivity,
+				})
+			}
+		})
+
+		eventBus.Subscribe("aicoder.session.ended", func(evt events.Event) {
+			if prog := b.getProgram(); prog != nil {
+				reason := "stopped"
+				if r, ok := evt.Data["reason"].(string); ok {
+					reason = r
+				}
+				prog.Send(messages.AICoderSessionEndedMsg{
+					SessionID: evt.ProcessID,
+					Reason:    reason,
+				})
+			}
+		})
+
+		eventBus.Subscribe("aicoder.pty.output", func(evt events.Event) {
+			if prog := b.getProgram(); prog != nil {
+				data := []byte{}
+				if d, ok := evt.Data["output"].([]byte); ok {
+					data = d
+				}
+				sequence := uint64(0)
+				if s, ok := evt.Data["sequence"].(uint64); ok {
+					sequence = s
+				}
+
+				prog.Send(messages.AICoderPTYOutputMsg{
+					SessionID: evt.ProcessID,
+					Data:      data,
+					Sequence:  sequence,
+				})
+			}
+		})
+
+		eventBus.Subscribe("aicoder.error", func(evt events.Event) {
+			if prog := b.getProgram(); prog != nil {
+				var err error
+				if e, ok := evt.Data["error"].(error); ok {
+					err = e
+				}
+				severity := "error"
+				if s, ok := evt.Data["severity"].(string); ok {
+					severity = s
+				}
+
+				prog.Send(messages.AICoderErrorMsg{
+					SessionID: evt.ProcessID,
+					Error:     err,
+					Severity:  severity,
+				})
+			}
+		})
+	}
+}
+
 // Stop cleanly shuts down the ServiceBridge
 func (b *ServiceBridge) Stop() {
 	// Atomically clear program reference (lock-free, thread-safe)
 	// This prevents observers from sending messages after shutdown
 	b.program.Store(&programHolder{prog: nil})
+
+	// Stop test management service
+	if b.testManagementService != nil {
+		b.testManagementService.Stop()
+	}
+
+	// Stop file browser service
+	if b.fileBrowserService != nil {
+		b.fileBrowserService.Stop()
+	}
+
+	// Stop settings service
+	if b.settingsService != nil {
+		b.settingsService.Stop()
+	}
 
 	// Unsubscribe from LogStore observers
 	for _, unsub := range b.subscriptions {
@@ -438,6 +609,274 @@ func (b *ServiceBridge) Stop() {
 
 	// Note: EventBus subscriptions don't have unsubscribe in this version
 	// If needed, can be implemented by tracking handlers and removing them
+}
+
+// subscribeToTestService converts test management service events to messages
+func (b *ServiceBridge) subscribeToTestService() {
+	if b.testManagementService == nil {
+		return
+	}
+
+	// Start the test service event subscriptions
+	b.testManagementService.SubscribeToEvents()
+
+	// Test run started events
+	b.eventBus.Subscribe("test.started", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			runID := ""
+			framework := ""
+			pattern := ""
+
+			if id, ok := evt.Data["run_id"].(string); ok {
+				runID = id
+			}
+			if f, ok := evt.Data["framework"].(string); ok {
+				framework = f
+			}
+			if p, ok := evt.Data["pattern"].(string); ok {
+				pattern = p
+			}
+
+			prog.Send(messages.TestRunStartedMsg{
+				RunID:       runID,
+				Framework:   framework,
+				TestPattern: pattern,
+				StartTime:   time.Now(),
+			})
+		}
+	})
+
+	// Test run completed events
+	b.eventBus.Subscribe("test.completed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			runID := ""
+			summary := interface{}(nil)
+
+			if id, ok := evt.Data["run_id"].(string); ok {
+				runID = id
+			}
+			if sum, ok := evt.Data["summary"]; ok {
+				summary = sum
+			}
+
+			// Extract test summary from results if available
+			var totalTests, passedTests, failedTests, skippedTests int
+			var duration time.Duration
+			if summaryMap, ok := summary.(map[string]interface{}); ok {
+				if tt, ok := summaryMap["total"].(int); ok {
+					totalTests = tt
+				}
+				if pt, ok := summaryMap["passed"].(int); ok {
+					passedTests = pt
+				}
+				if ft, ok := summaryMap["failed"].(int); ok {
+					failedTests = ft
+				}
+				if st, ok := summaryMap["skipped"].(int); ok {
+					skippedTests = st
+				}
+				if d, ok := summaryMap["duration"].(time.Duration); ok {
+					duration = d
+				}
+			}
+
+			prog.Send(messages.TestRunCompletedMsg{
+				RunID:        runID,
+				TotalTests:   totalTests,
+				PassedTests:  passedTests,
+				FailedTests:  failedTests,
+				SkippedTests: skippedTests,
+				Duration:     duration,
+				EndTime:      time.Now(),
+			})
+		}
+	})
+
+	// Test watch mode events
+	b.eventBus.Subscribe("test.watch_started", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			// TODO: Extract watch pattern from event data
+			prog.Send(messages.TestWatchModeStartedMsg{
+				WatchPattern: "", // Extract from event data
+				StartTime:    time.Now(),
+			})
+		}
+	})
+
+	b.eventBus.Subscribe("test.watch_stopped", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			prog.Send(messages.TestWatchModeStoppedMsg{
+				EndTime: time.Now(),
+			})
+		}
+	})
+
+	// Test results cleared events
+	b.eventBus.Subscribe("test.results_cleared", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			scope := ""
+			if s, ok := evt.Data["scope"].(string); ok {
+				scope = s
+			}
+
+			prog.Send(messages.TestResultsClearedMsg{
+				RunID: scope, // Empty string = all cleared
+			})
+		}
+	})
+
+	// Test failure events (for detailed failure notifications)
+	b.eventBus.Subscribe("test.failure", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			runID := evt.ProcessID
+			testName := ""
+			filePath := ""
+			line := 0
+			message := ""
+
+			if name, ok := evt.Data["test_name"].(string); ok {
+				testName = name
+			}
+			if path, ok := evt.Data["file_path"].(string); ok {
+				filePath = path
+			}
+			if l, ok := evt.Data["line"].(int); ok {
+				line = l
+			}
+			if msg, ok := evt.Data["message"].(string); ok {
+				message = msg
+			}
+
+			// Create failure info for the test case
+			failureInfo := &messages.TestFailureInfo{
+				Message: message,
+				Line:    line,
+				// TODO: Add stack trace from event data if available
+			}
+
+			// Send test case completed with failure status
+			prog.Send(messages.TestCaseCompletedMsg{
+				RunID:       runID,
+				TestName:    testName,
+				FilePath:    filePath,
+				Status:      "failed",
+				Duration:    0, // TODO: Extract from event data if available
+				FailureInfo: failureInfo,
+				EndTime:     time.Now(),
+			})
+		}
+	})
+}
+
+// subscribeToFileBrowserService converts file browser service events to messages
+func (b *ServiceBridge) subscribeToFileBrowserService() {
+	if b.fileBrowserService == nil {
+		return
+	}
+
+	// Start the file browser service event subscriptions
+	b.fileBrowserService.SubscribeToEvents()
+
+	// File path changed events
+	b.eventBus.Subscribe("file.path_changed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			path := ""
+			if p, ok := evt.Data["path"].(string); ok {
+				path = p
+			}
+
+			prog.Send(messages.FileBrowserPathChangedMsg{
+				Path:      path,
+				Timestamp: time.Now(),
+			})
+		}
+	})
+
+	// File system events
+	b.eventBus.Subscribe("file.event", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			path := ""
+			operation := ""
+			timestamp := time.Now()
+			fileInfo := interface{}(nil)
+
+			if p, ok := evt.Data["path"].(string); ok {
+				path = p
+			}
+			if op, ok := evt.Data["operation"].(string); ok {
+				operation = op
+			}
+			if fi, ok := evt.Data["file_info"]; ok {
+				fileInfo = fi
+			}
+			if ts, ok := evt.Data["timestamp"].(time.Time); ok {
+				timestamp = ts
+			}
+
+			prog.Send(messages.FileBrowserFileEventMsg{
+				Path:      path,
+				Operation: operation,
+				Timestamp: timestamp,
+				FileInfo:  fileInfo,
+			})
+		}
+	})
+
+	// Watch started events
+	b.eventBus.Subscribe("file.watch_started", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			path := ""
+			if p, ok := evt.Data["path"].(string); ok {
+				path = p
+			}
+
+			prog.Send(messages.FileBrowserWatchStartedMsg{
+				Path:      path,
+				Timestamp: time.Now(),
+			})
+		}
+	})
+
+	// Watch stopped events
+	b.eventBus.Subscribe("file.watch_stopped", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			path := ""
+			if p, ok := evt.Data["path"].(string); ok {
+				path = p
+			}
+
+			prog.Send(messages.FileBrowserWatchStoppedMsg{
+				Path:      path,
+				Timestamp: time.Now(),
+			})
+		}
+	})
+
+	// File error events
+	b.eventBus.Subscribe("file.error", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			errorMsg := ""
+			operation := ""
+			path := ""
+
+			if err, ok := evt.Data["error"].(string); ok {
+				errorMsg = err
+			}
+			if op, ok := evt.Data["operation"].(string); ok {
+				operation = op
+			}
+			if p, ok := evt.Data["path"].(string); ok {
+				path = p
+			}
+
+			prog.Send(messages.FileBrowserErrorMsg{
+				Operation: operation,
+				Path:      path,
+				Error:     errorMsg,
+				Timestamp: time.Now(),
+			})
+		}
+	})
 }
 
 // sendInitialStatusUpdates sends status updates for services that are already running
@@ -478,4 +917,89 @@ func (b *ServiceBridge) sendInitialStatusUpdates() {
 			Details: "Proxy server stopped",
 		})
 	}
+
+	// Check test management service status
+	if b.testManagementService != nil {
+		status := b.testManagementService.GetServiceStatus()
+		prog.Send(messages.ServiceStatusUpdateMsg{
+			Service: status.Service,
+			Status:  status.Status,
+			Details: status.Details,
+		})
+	}
+
+	// Check file browser service status
+	if b.fileBrowserService != nil {
+		status := b.fileBrowserService.GetServiceStatus()
+		prog.Send(messages.ServiceStatusUpdateMsg{
+			Service: status.Service,
+			Status:  status.Status,
+			Details: status.Details,
+		})
+	}
+
+	// Check settings service status
+	if b.settingsService != nil {
+		status := b.settingsService.GetServiceStatus()
+		prog.Send(messages.ServiceStatusUpdateMsg{
+			Service: status.Service,
+			Status:  status.Status,
+			Details: status.Details,
+		})
+	}
+}
+
+// subscribeToSettingsService converts settings service events to messages
+func (b *ServiceBridge) subscribeToSettingsService() {
+	if b.settingsService == nil {
+		return
+	}
+
+	// Start the settings service event subscriptions
+	b.settingsService.SubscribeToEvents()
+
+	// Settings refreshed events
+	b.eventBus.Subscribe("settings.refreshed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			if settingsInfo, ok := evt.Data["settings_info"]; ok {
+				prog.Send(messages.SettingsRefreshedMsg{
+					SettingsInfo: settingsInfo.(*messages.SettingsInfo),
+					Timestamp:    time.Now(),
+				})
+			}
+		}
+	})
+
+	// MCP installed events
+	b.eventBus.Subscribe("settings.mcp_installed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			configFile := ""
+			if cf, ok := evt.Data["config_file"].(string); ok {
+				configFile = cf
+			}
+			prog.Send(messages.SettingsMCPInstalledMsg{
+				ConfigFile: configFile,
+				Timestamp:  time.Now(),
+			})
+		}
+	})
+
+	// Settings error events
+	b.eventBus.Subscribe("settings.error", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			operation := ""
+			errorMsg := ""
+			if op, ok := evt.Data["operation"].(string); ok {
+				operation = op
+			}
+			if err, ok := evt.Data["error"].(string); ok {
+				errorMsg = err
+			}
+			prog.Send(messages.SettingsErrorMsg{
+				Operation: operation,
+				Error:     errorMsg,
+				Timestamp: time.Now(),
+			})
+		}
+	})
 }

@@ -33,10 +33,10 @@ func BenchmarkPTYTypingPerformance(b *testing.B) {
 				b.Errorf("Failed to write input: %v", err)
 			}
 		}
-		
+
 		// Add a newline to flush
 		session.WriteInput([]byte("\n"))
-		
+
 		// Small delay to allow processing
 		time.Sleep(1 * time.Millisecond)
 	}
@@ -108,12 +108,12 @@ func TestPTYPerformanceWithProfiler(t *testing.T) {
 func runPTYPerformanceTest(t *testing.T) {
 	// Create multiple sessions to simulate real usage
 	sessions := make([]*PTYSession, 3)
-	
+
 	for i := 0; i < 3; i++ {
 		session, err := NewPTYSession(
-			fmt.Sprintf("perf-test-%d", i), 
+			fmt.Sprintf("perf-test-%d", i),
 			fmt.Sprintf("Performance Test %d", i),
-			"bash", 
+			"bash",
 			[]string{"-c", "while true; do echo 'Line output from session " + fmt.Sprintf("%d", i) + "'; sleep 0.1; done"},
 		)
 		if err != nil {
@@ -136,12 +136,12 @@ func runPTYPerformanceTest(t *testing.T) {
 	}
 
 	startTime := time.Now()
-	
+
 	// Send inputs to different sessions
 	for round := 0; round < 50; round++ {
 		for i, session := range sessions {
 			input := testInputs[round%len(testInputs)]
-			
+
 			// Type character by character to simulate real typing
 			for _, char := range input {
 				err := session.WriteInput([]byte(string(char)))
@@ -151,14 +151,14 @@ func runPTYPerformanceTest(t *testing.T) {
 				// Small delay to simulate human typing
 				time.Sleep(1 * time.Millisecond)
 			}
-			
+
 			// Send enter
 			session.WriteInput([]byte("\n"))
-			
+
 			// Small delay between commands
 			time.Sleep(10 * time.Millisecond)
 		}
-		
+
 		// Process any output
 		for _, session := range sessions {
 			select {
@@ -172,7 +172,7 @@ func runPTYPerformanceTest(t *testing.T) {
 
 	duration := time.Since(startTime)
 	t.Logf("Performance test completed in %v", duration)
-	
+
 	// Test terminal rendering performance
 	testTerminalRendering(t, sessions[0])
 }
@@ -185,21 +185,21 @@ func testTerminalRendering(t *testing.T, session *PTYSession) {
 	}
 
 	renderStart := time.Now()
-	
+
 	// Simulate terminal rendering operations
 	for i := 0; i < 1000; i++ {
 		session.mu.RLock()
 		if session.Terminal != nil {
 			// Read terminal dimensions
 			width, height := session.Terminal.Size()
-			
+
 			// Read some cells (simulate rendering)
 			if width > 0 && height > 0 {
 				maxCells := 100
 				if width*height < maxCells {
 					maxCells = width * height
 				}
-				
+
 				for j := 0; j < maxCells; j++ {
 					x := j % width
 					y := j / width
@@ -211,11 +211,11 @@ func testTerminalRendering(t *testing.T, session *PTYSession) {
 			}
 		}
 		session.mu.RUnlock()
-		
+
 		// Small delay to simulate frame rate
 		time.Sleep(16 * time.Microsecond) // ~60 FPS
 	}
-	
+
 	renderDuration := time.Since(renderStart)
 	t.Logf("Terminal rendering test (1000 frames) completed in %v", renderDuration)
 }
@@ -230,8 +230,8 @@ func BenchmarkTerminalWrite(b *testing.B) {
 
 	// Create test data of various sizes
 	testData := [][]byte{
-		[]byte("Hello"),                                    // Small
-		[]byte(strings.Repeat("Medium sized data ", 10)), // Medium
+		[]byte("Hello"), // Small
+		[]byte(strings.Repeat("Medium sized data ", 10)),                                   // Medium
 		[]byte(strings.Repeat("Large chunk of data that might cause partial writes ", 50)), // Large
 	}
 
@@ -262,34 +262,34 @@ func TestTypingLatency(t *testing.T) {
 
 	for i := 0; i < measurements; i++ {
 		char := fmt.Sprintf("a")
-		
+
 		start := time.Now()
-		
+
 		// Send input
 		err := session.WriteInput([]byte(char))
 		if err != nil {
 			t.Errorf("Failed to write input: %v", err)
 			continue
 		}
-		
+
 		// Wait for output to appear
 		timeout := time.After(100 * time.Millisecond)
 		select {
 		case <-session.OutputChan:
 			latency := time.Since(start)
 			totalLatency += latency
-			
+
 		case <-timeout:
 			t.Errorf("Timeout waiting for output on iteration %d", i)
 		}
-		
+
 		// Small delay between measurements
 		time.Sleep(10 * time.Millisecond)
 	}
 
 	avgLatency := totalLatency / time.Duration(measurements)
 	t.Logf("Average typing latency: %v", avgLatency)
-	
+
 	if avgLatency > 50*time.Millisecond {
 		t.Logf("WARNING: High latency detected (%v > 50ms)", avgLatency)
 	} else {

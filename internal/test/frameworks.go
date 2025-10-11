@@ -82,11 +82,11 @@ func (j *JestFramework) RunTests(pattern string, options TestOptions) (*TestRun,
 func (j *JestFramework) ParseOutput(output string) (*TestResults, error) {
 	// Parse Jest JSON output format
 	var jestResults struct {
-		NumTotalTests    int `json:"numTotalTests"`
-		NumPassedTests   int `json:"numPassedTests"`
-		NumFailedTests   int `json:"numFailedTests"`
-		NumPendingTests  int `json:"numPendingTests"`
-		TestResults      []struct {
+		NumTotalTests   int `json:"numTotalTests"`
+		NumPassedTests  int `json:"numPassedTests"`
+		NumFailedTests  int `json:"numFailedTests"`
+		NumPendingTests int `json:"numPendingTests"`
+		TestResults     []struct {
 			Name     string `json:"name"`
 			Status   string `json:"status"`
 			Message  string `json:"message"`
@@ -284,11 +284,11 @@ func (g *GoTestFramework) ParseOutput(output string) (*TestResults, error) {
 		}
 
 		var goTestEvent struct {
-			Action  string `json:"Action"`
-			Test    string `json:"Test"`
-			Package string `json:"Package"`
+			Action  string  `json:"Action"`
+			Test    string  `json:"Test"`
+			Package string  `json:"Package"`
 			Time    float64 `json:"Time"`
-			Output  string `json:"Output"`
+			Output  string  `json:"Output"`
 		}
 
 		if err := json.Unmarshal([]byte(line), &goTestEvent); err != nil {
@@ -419,10 +419,10 @@ func (p *PytestFramework) ParseOutput(output string) (*TestResults, error) {
 			Skipped int `json:"skipped"`
 		} `json:"summary"`
 		Tests []struct {
-			NodeID string `json:"nodeid"`
-			Outcome string `json:"outcome"`
+			NodeID   string  `json:"nodeid"`
+			Outcome  string  `json:"outcome"`
 			Duration float64 `json:"duration"`
-			Call struct {
+			Call     struct {
 				Longrepr string `json:"longrepr"`
 			} `json:"call"`
 		} `json:"tests"`
@@ -501,7 +501,7 @@ func extractFilePath(nodeID string) string {
 
 // TestRunnerService manages test execution and framework detection
 type TestRunnerService struct {
-	manager   *TestManager
+	manager    *TestManager
 	frameworks map[string]TestFramework
 }
 

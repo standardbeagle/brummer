@@ -124,11 +124,137 @@ func Load() (*Config, error) {
 			cfg.NoProxy = fileCfg.NoProxy
 		}
 		if fileCfg.AICoders != nil {
-			cfg.AICoders = fileCfg.AICoders
+			if cfg.AICoders == nil {
+				cfg.AICoders = fileCfg.AICoders
+			} else {
+				// Merge AI configurations
+				mergeAIConfig(cfg.AICoders, fileCfg.AICoders)
+			}
 		}
 	}
 
 	return cfg, nil
+}
+
+// mergeAIConfig merges file AI config into existing AI config
+func mergeAIConfig(existing, incoming *AICoderConfig) {
+	// Merge simple fields
+	if incoming.Enabled != nil {
+		existing.Enabled = incoming.Enabled
+	}
+	if incoming.MaxConcurrent != nil {
+		existing.MaxConcurrent = incoming.MaxConcurrent
+	}
+	if incoming.WorkspaceBaseDir != nil {
+		existing.WorkspaceBaseDir = incoming.WorkspaceBaseDir
+	}
+	if incoming.DefaultProvider != nil {
+		existing.DefaultProvider = incoming.DefaultProvider
+	}
+	if incoming.TimeoutMinutes != nil {
+		existing.TimeoutMinutes = incoming.TimeoutMinutes
+	}
+	if incoming.AutoCleanup != nil {
+		existing.AutoCleanup = incoming.AutoCleanup
+	}
+	if incoming.CleanupAfterHours != nil {
+		existing.CleanupAfterHours = incoming.CleanupAfterHours
+	}
+
+	// Merge resource limits
+	if incoming.ResourceLimits != nil {
+		if existing.ResourceLimits == nil {
+			existing.ResourceLimits = incoming.ResourceLimits
+		} else {
+			mergeResourceLimits(existing.ResourceLimits, incoming.ResourceLimits)
+		}
+	}
+
+	// Merge workspace settings
+	if incoming.WorkspaceSettings != nil {
+		if existing.WorkspaceSettings == nil {
+			existing.WorkspaceSettings = incoming.WorkspaceSettings
+		} else {
+			mergeWorkspaceSettings(existing.WorkspaceSettings, incoming.WorkspaceSettings)
+		}
+	}
+
+	// Merge logging config
+	if incoming.LoggingConfig != nil {
+		if existing.LoggingConfig == nil {
+			existing.LoggingConfig = incoming.LoggingConfig
+		} else {
+			mergeLoggingConfig(existing.LoggingConfig, incoming.LoggingConfig)
+		}
+	}
+
+	// Merge providers (this is additive)
+	if incoming.Providers != nil {
+		if existing.Providers == nil {
+			existing.Providers = make(map[string]*ProviderConfig)
+		}
+		for name, provider := range incoming.Providers {
+			existing.Providers[name] = provider
+		}
+	}
+}
+
+// Helper merge functions
+func mergeResourceLimits(existing, incoming *ResourceLimits) {
+	if incoming.MaxMemoryMB != nil {
+		existing.MaxMemoryMB = incoming.MaxMemoryMB
+	}
+	if incoming.MaxDiskSpaceMB != nil {
+		existing.MaxDiskSpaceMB = incoming.MaxDiskSpaceMB
+	}
+	if incoming.MaxCPUPercent != nil {
+		existing.MaxCPUPercent = incoming.MaxCPUPercent
+	}
+	if incoming.MaxProcesses != nil {
+		existing.MaxProcesses = incoming.MaxProcesses
+	}
+	if incoming.MaxFilesPerCoder != nil {
+		existing.MaxFilesPerCoder = incoming.MaxFilesPerCoder
+	}
+}
+
+func mergeWorkspaceSettings(existing, incoming *WorkspaceSettings) {
+	if incoming.Template != nil {
+		existing.Template = incoming.Template
+	}
+	if incoming.GitIgnoreRules != nil {
+		existing.GitIgnoreRules = incoming.GitIgnoreRules
+	}
+	if incoming.AllowedExtensions != nil {
+		existing.AllowedExtensions = incoming.AllowedExtensions
+	}
+	if incoming.ForbiddenPaths != nil {
+		existing.ForbiddenPaths = incoming.ForbiddenPaths
+	}
+	if incoming.MaxFileSize != nil {
+		existing.MaxFileSize = incoming.MaxFileSize
+	}
+	if incoming.BackupEnabled != nil {
+		existing.BackupEnabled = incoming.BackupEnabled
+	}
+}
+
+func mergeLoggingConfig(existing, incoming *LoggingConfig) {
+	if incoming.Level != nil {
+		existing.Level = incoming.Level
+	}
+	if incoming.OutputFile != nil {
+		existing.OutputFile = incoming.OutputFile
+	}
+	if incoming.RotateSize != nil {
+		existing.RotateSize = incoming.RotateSize
+	}
+	if incoming.KeepRotations != nil {
+		existing.KeepRotations = incoming.KeepRotations
+	}
+	if incoming.IncludeAIOutput != nil {
+		existing.IncludeAIOutput = incoming.IncludeAIOutput
+	}
 }
 
 // LoadWithSources loads the configuration with source tracking
@@ -194,8 +320,17 @@ func LoadWithSources() (*ConfigWithSources, error) {
 			cfg.Sources["no_proxy"] = path
 		}
 		if fileCfg.AICoders != nil {
-			cfg.AICoders = fileCfg.AICoders
-			cfg.Sources["ai_coders"] = path
+			if cfg.AICoders == nil {
+				cfg.AICoders = fileCfg.AICoders
+				cfg.Sources["ai_coders"] = path
+			} else {
+				// Merge AI configurations
+				mergeAIConfig(cfg.AICoders, fileCfg.AICoders)
+				// Track source for AI config (if not already tracked)
+				if _, exists := cfg.Sources["ai_coders"]; !exists {
+					cfg.Sources["ai_coders"] = path
+				}
+			}
 		}
 	}
 
@@ -302,13 +437,44 @@ func (c *Config) GetAICoderConfig() aicoder.AICoderConfig {
 		aiConfig = &AICoderConfig{}
 	}
 
-	// Convert to simplified config for aicoder package
 	return aicoder.AICoderConfig{
 		MaxConcurrent:    aiConfig.GetMaxConcurrent(),
 		WorkspaceBaseDir: aiConfig.GetWorkspaceBaseDir(),
 		DefaultProvider:  aiConfig.GetDefaultProvider(),
 		TimeoutMinutes:   aiConfig.GetTimeoutMinutes(),
 	}
+}
+
+func (c *Config) GetProviderConfigs() map[string]*aicoder.ProviderConfig {
+	aiConfig := c.AICoders
+	if aiConfig == nil || aiConfig.Providers == nil {
+		return make(map[string]*aicoder.ProviderConfig)
+	}
+
+	providers := make(map[string]*aicoder.ProviderConfig)
+	for name, provider := range aiConfig.Providers {
+		providerConfig := &aicoder.ProviderConfig{
+			Model:       provider.GetModel(),
+			APIKeyEnv:   provider.GetAPIKeyEnv(),
+			MaxTokens:   provider.GetMaxTokens(),
+			Temperature: provider.GetTemperature(),
+		}
+
+		// Add CLI tool configuration if present
+		if provider.CLITool != nil {
+			providerConfig.CLITool = &aicoder.CLIToolConfig{
+				Command:     provider.CLITool.GetCommand(),
+				BaseArgs:    provider.CLITool.BaseArgs,
+				FlagMapping: provider.CLITool.FlagMapping,
+				WorkingDir:  provider.CLITool.GetWorkingDir(),
+				Environment: provider.CLITool.Environment,
+			}
+		}
+
+		providers[name] = providerConfig
+	}
+
+	return providers
 }
 
 // DisplaySettingsWithSources returns a TOML-formatted string with source comments
@@ -409,6 +575,43 @@ func (c *ConfigWithSources) DisplaySettingsWithSources() string {
 		lines = append(lines, fmt.Sprintf("no_proxy = %t", *c.NoProxy))
 	} else {
 		lines = append(lines, "# no_proxy = false  # default")
+	}
+	lines = append(lines, "")
+
+	// AI Coder Settings
+	lines = append(lines, "# AI Coder Settings")
+	if c.AICoders != nil {
+		if source, ok := c.Sources["ai_coders"]; ok {
+			lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+		}
+
+		if c.AICoders.Enabled != nil {
+			lines = append(lines, fmt.Sprintf("enabled = %t", *c.AICoders.Enabled))
+		}
+		if c.AICoders.MaxConcurrent != nil {
+			lines = append(lines, fmt.Sprintf("max_concurrent = %d", *c.AICoders.MaxConcurrent))
+		}
+		if c.AICoders.DefaultProvider != nil {
+			lines = append(lines, fmt.Sprintf("default_provider = \"%s\"", *c.AICoders.DefaultProvider))
+		}
+		if c.AICoders.TimeoutMinutes != nil {
+			lines = append(lines, fmt.Sprintf("timeout_minutes = %d", *c.AICoders.TimeoutMinutes))
+		}
+
+		// Show provider count
+		if c.AICoders.Providers != nil {
+			lines = append(lines, fmt.Sprintf("providers_count = %d", len(c.AICoders.Providers)))
+			providerNames := make([]string, 0, len(c.AICoders.Providers))
+			for name := range c.AICoders.Providers {
+				providerNames = append(providerNames, name)
+			}
+			lines = append(lines, fmt.Sprintf("available_providers = [%s]", strings.Join(providerNames, ", ")))
+		}
+	} else {
+		lines = append(lines, "# enabled = true  # default")
+		lines = append(lines, "# max_concurrent = 3  # default")
+		lines = append(lines, "# default_provider = \"claude\"  # default")
+		lines = append(lines, "# timeout_minutes = 30  # default")
 	}
 
 	return strings.Join(lines, "\n")
