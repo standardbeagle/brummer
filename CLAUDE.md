@@ -26,10 +26,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ⚠️ **CRITICAL INSTRUCTION**: Always update this section when working on tasks to maintain continuity between sessions.
 
-- **Current State**: Active refactoring for code cleanup and key handling fixes (001-clean-up-unused branch)
-- **Recent Work**: Code cleanup static analysis tools, key handler consistency fixes, AI coder terminal integration
+- **Current State**: Keyboard handling architecture completely simplified (007-build-a-testing branch)
+- **Recent Work**: Fixed critical keyboard bug - commands were being discarded in InputService.RouteKeyMessage (line 347)
+  - Root cause: Service layer returned bool instead of tea.Cmd, breaking BubbleTea command chain
+  - Solution: Implemented KeyHandlerRegistry pattern - single routing path with priority-based handlers
+  - Removed complex multi-layer keyboard routing through MessageRouter/ViewSpecificHandler/InputComponent
 - **Architecture**: Event-driven with Process Manager, Hub System, Proxy Server, and AI Coder integration
-- **Branch**: 001-clean-up-unused (feature development)
+- **Branch**: 007-build-a-testing (keyboard handling simplification)
 
 ### Major Completed Work:
 - ✅ Message Router pattern implementation for TUI model refactoring
@@ -162,11 +165,11 @@ For detailed AI Coders documentation, see:
 
 ### Essential References
 - **Commands**: Build, run, test commands and CLI usage above
-- **Architecture**: [Overview](/docs/architecture/overview.md), [Concurrency Patterns](/docs/architecture/concurrency-patterns.md)
+- **Architecture**: [Overview](/docs/architecture/overview.md), [Concurrency Patterns](/docs/architecture/concurrency-patterns.md), [Key Handling](/docs/architecture/key-handling.md)
 - **MCP Integration**: [Overview](/docs/mcp/integration-overview.md), [Configuration](/docs/mcp/server-configuration.md), [Tools](/docs/mcp/tools-and-routing.md)
 - **Configuration**: [Examples](/docs/configuration/examples.md), [Hub Mode](/docs/hub-mode.md)
 - **Features**: [AI Coders](/docs/features/ai-coders.md), [Test Management](/docs/features/test-management.md), [Environment Variables](/docs/features/environment-variable-management.md)
-- **Development**: [Roadmap](/docs/ROADMAP.md) - Comprehensive feature plans and timelines
+- **Development**: [Roadmap](/docs/ROADMAP.md), [Keyboard Migration Guide](/docs/development/keyboard-migration-guide.md)
 - **Troubleshooting**: [Common Issues](/docs/troubleshooting.md)
 
 ## Important Notes

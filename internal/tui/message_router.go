@@ -30,9 +30,13 @@ func NewMessageRouter() *MessageRouter {
 	router.RegisterHandler(NewLogMessageHandler())
 	router.RegisterHandler(NewMCPMessageHandler())
 	router.RegisterHandler(NewAICoderMessageHandler())
-	router.RegisterHandler(NewSettingsMessageHandler()) // Settings service messages
-	router.RegisterHandler(NewViewSpecificHandler())    // View-specific keyboard interactions
-	router.RegisterHandler(NewViewMessageHandler())     // General view messages (lowest priority)
+	router.RegisterHandler(NewSettingsMessageHandler())   // Settings service messages
+	router.RegisterHandler(NewNavigationMessageHandler()) // Navigation messages
+
+	// NOTE: Keyboard handling has been moved to KeyHandlerRegistry in Model.Update()
+	// These handlers remain for non-keyboard message processing only
+	router.RegisterHandler(NewViewSpecificHandler()) // Currently inactive (returns false from CanHandle)
+	router.RegisterHandler(NewViewMessageHandler())  // Handles window sizing, mouse, refresh (no keyboard)
 
 	return router
 }

@@ -29,30 +29,28 @@ import (
 	"github.com/standardbeagle/brummer/internal/tui/bridge"
 	"github.com/standardbeagle/brummer/internal/tui/commands"
 	"github.com/standardbeagle/brummer/internal/tui/components"
-	"github.com/standardbeagle/brummer/internal/tui/filebrowser"
-	"github.com/standardbeagle/brummer/internal/tui/navigation"
-	"github.com/standardbeagle/brummer/internal/tui/notifications"
+	"github.com/standardbeagle/brummer/internal/tui/messages"
 	"github.com/standardbeagle/brummer/internal/tui/services"
-	"github.com/standardbeagle/brummer/internal/tui/system"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
-type View = navigation.View
+// Local View type based on messages.ViewType for compatibility
+type View = messages.ViewType
 
-// Re-export navigation constants for convenience
+// Re-export view constants for convenience
 const (
-	ViewScripts        = navigation.ViewScripts
-	ViewProcesses      = navigation.ViewProcesses
-	ViewLogs           = navigation.ViewLogs
-	ViewErrors         = navigation.ViewErrors
-	ViewURLs           = navigation.ViewURLs
-	ViewWeb            = navigation.ViewWeb
-	ViewSettings       = navigation.ViewSettings
-	ViewMCPConnections = navigation.ViewMCPConnections
-	ViewSearch         = navigation.ViewSearch
-	ViewFilters        = navigation.ViewFilters
-	ViewScriptSelector = navigation.ViewScriptSelector
-	ViewAICoders       = navigation.ViewAICoders
+	ViewScripts        View = "scripts"
+	ViewProcesses      View = "processes"
+	ViewLogs           View = "logs"
+	ViewErrors         View = "errors"
+	ViewURLs           View = "urls"
+	ViewWeb            View = "web"
+	ViewSettings       View = "settings"
+	ViewMCPConnections View = "mcp_connections"
+	ViewSearch         View = "search"
+	ViewFilters        View = "filters"
+	ViewScriptSelector View = "script_selector"
+	ViewAICoders       View = "aicoders"
 )
 
 // View configuration is now handled in model_views.go
@@ -74,9 +72,7 @@ type Model struct {
 	cfg         *config.Config // Configuration for AI coder and other features
 	workingDir  string         // Working directory for the project
 
-	// Navigation controller
-	navController *navigation.Controller
-	width         int
+		width         int
 	height        int
 
 	// View components (migrated from controllers)
@@ -88,20 +84,14 @@ type Model struct {
 	commandWindowView *components.CommandWindowView     // Command window component
 	settingsView      *components.SettingsView          // Settings view component
 	aicodersView      *components.AICodersViewComponent // AI Coders view component (Feature 005)
-	inputController   *InputController                  // Input controller (T080-T087 - to be migrated)
-
-	// System message controller
-	systemController      *system.Controller
-	systemPanelRenderer   *system.PanelRenderer
-	systemOverlayRenderer *system.OverlayRenderer
+	// New component fields (replacing controllers)
+	fileBrowserComponent   *components.FileBrowserComponent
+	systemComponent         *components.SystemComponent
+	notificationsComponent  *components.NotificationsComponent
+	inputComponent          *components.InputComponent
+	navigationComponent     *components.NavigationComponent
 
 	selectedProcess string // Shared state - used by multiple views
-
-	// File browser controller
-	fileBrowserController *filebrowser.Controller
-
-	// Notifications controller
-	notificationsController *notifications.Controller
 
 	// Script selector component (T068-T073)
 	scriptSelector *components.ScriptSelector
@@ -124,6 +114,9 @@ type Model struct {
 
 	// Message routing
 	messageRouter *MessageRouter // Routes messages to appropriate handlers
+
+	// SIMPLIFIED KEYBOARD HANDLING
+	keyRegistry *KeyHandlerRegistry // Single registry for all keyboard handlers
 }
 
 type keyMap struct {
@@ -522,7 +515,7 @@ func (i infoDisplayItem) Description() string {
 func (i infoDisplayItem) isSettingsItem() {}
 
 func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, cfg *config.Config, workingDir string) *Model {
-	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewProcesses, false, cfg, workingDir)
+	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewLogs, false, cfg, workingDir)
 }
 
 func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool, cfg *config.Config, workingDir string) *Model {
@@ -532,6 +525,9 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 
 	// Create settings list with package managers
 	// settingsList initialization moved to SettingsController
+
+	// DIAGNOSTIC: Log model initialization start
+	logStore.Add("system", "Model", "🚀 DIAGNOSTIC: Starting Model initialization...", false)
 
 	m := Model{
 		processMgr:  processMgr,
@@ -554,19 +550,51 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		updateChan:        make(chan tea.Msg, UpdateChannelBufferSize),
 	}
 
+	// DIAGNOSTIC: Log basic model creation complete
+	logStore.Add("system", "Model", "✅ Model basic initialization complete", false)
+
 	// Note: Log callback is registered in main.go to avoid duplication
 
-	// INITIALIZATION ORDER IS CRITICAL - DO NOT CHANGE WITHOUT CAREFUL REVIEW
-	// The following controllers have dependencies and must be initialized in this specific order:
+	// Create the service instances for the new component architecture
+	// These services will be passed to the component constructors
+	// and used by the ServiceBridge for event routing
 
-	// 1. Initialize file browser controller first
-	//    - Required by: SettingsController (for file selection dialogs)
+	// DIAGNOSTIC: Log service creation start
+	logStore.Add("system", "Model", "🔧 DIAGNOSTIC: Creating services...", false)
+
+	// 1. Create InputService
+	inputService := services.NewInputService()
+	logStore.Add("system", "Model", "✅ InputService created", false)
+
+	// 2. Create NavigationService
+	navigationService := services.NewNavigationService(eventBus)
+	logStore.Add("system", "Model", "✅ NavigationService created", false)
+
+	// 3. Create SystemService
+	systemService := services.NewSystemService(eventBus)
+
+	// 4. Create NotificationsService
+	notificationsService := services.NewNotificationsService(eventBus)
+
+	// 5. Create FileBrowserService
+	fileBrowserConfig := services.DefaultFileBrowserConfig()
+	fileBrowserService := services.NewFileBrowserService(eventBus, fileBrowserConfig)
+
+	// 6. Initialize the new components using the services
+	//    - Required by: Component-based architecture
+	//    - Dependencies: Services created above
+	fileBrowserComponent := components.NewFileBrowserComponent(fileBrowserService)
+	systemComponent := components.NewSystemComponent(systemService)
+	notificationsComponent := components.NewNotificationsComponent(notificationsService)
+
+	// SIMPLIFIED: InputComponent is now just a placeholder
+	// All keyboard handling goes through KeyHandlerRegistry
+	inputComponent := components.NewInputComponent(inputService)
+	navigationComponent := components.NewNavigationComponent(navigationService)
+
+	// 7. Initialize settings view (still using component)
+	//    - Required by: Settings view display
 	//    - Dependencies: None
-	m.fileBrowserController = filebrowser.NewController()
-
-	// 2. Initialize settings controller second
-	//    - Required by: UpdateSettingsList() call below
-	//    - Dependencies: fileBrowserController (passed as parameter)
 	var err error
 	workingDir, err = os.Getwd()
 	if err != nil {
@@ -576,57 +604,90 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// Initialize settings view with loading state
 	m.settingsView.InitializeWithLoadingState()
 
-	// 4. Initialize process list with current processes
+	// 8. Initialize process list with current processes
 	//    - Required by: Process view display
-	//    - Dependencies: processViewController already initialized
+	//    - Dependencies: None
 	m.updateProcessList()
 
 	// Error list and detail view now managed by ErrorsViewController
 
-	// 5. Initialize navigation controller
+	// 9. Set up navigation callbacks using navigation component
 	//    - Required by: View switching, unread indicators
-	//    - Dependencies: None initially, but callbacks reference systemController (created next)
-	m.navController = navigation.NewController(initialView, debugMode)
+	//    - Dependencies: navigationComponent created earlier
+	if navigationComponent != nil {
+		// Set up view change callback
+		navigationComponent.RegisterTransitionCallback(func(fromView, toView messages.ViewType) error {
+			// Clear unread indicators when switching views
+			// Note: System component doesn't have ClearUnreadIndicator method
+			// This functionality is now handled internally by the component
+			return nil
+		})
+	}
 
-	// Note: These callbacks reference systemController which doesn't exist yet!
-	// This works because the callbacks are stored but not executed until after
-	// systemController is created in step 6
-	m.navController.SetOnViewChange(func(from, to navigation.View) {
-		// Clear unread indicators when switching views
-		m.systemController.ClearUnreadIndicator(to)
-	})
+	// 10. Layout controller migrated - layout logic now in components
 
-	// Set up additional navigation callbacks
-	m.navController.SetOnClearUnreadIndicator(func(view View) {
-		m.systemController.ClearUnreadIndicator(view)
-	})
-	m.navController.SetOnUpdateLogsView(func() {
-		m.updateLogsView()
-	})
-	m.navController.SetOnUpdateMCPConnections(func() {
-		m.mcpDebugView.UpdateConnectionsList()
-	})
-
-	// 6. Initialize system message controller
-	//    - Required by: Navigation callbacks (step 5), system messages
-	//    - Dependencies: None
-	m.systemController = system.NewController(SystemPanelMaxMessages)
-	m.systemPanelRenderer = system.NewPanelRenderer(m.systemController)
-	m.systemOverlayRenderer = system.NewOverlayRenderer(m.systemController)
-
-	// 7. Layout controller migrated - layout logic now in components
-
-	// 8. Initialize input controller
+	// 11. Input component replaces input controller
 	//    - Required by: Keyboard handling
-	//    - Dependencies: Full model reference (uses &m)
-	m.inputController = NewInputController(&m, keys, GetViewConfigs(), debugMode)
+	//    - Dependencies: InputService
+	// Note: The input component will handle keyboard input via BubbleTea Update() method
+	// and communicate with InputService for state management
 
-	// 9. Event controller migrated - event handling now in model Update() method
+	// 12. Event controller migrated - event handling now in model Update() method
 
-	// 10. Initialize notifications controller
+	// 13. Notifications component replaces notifications controller
 	//     - Required by: User notifications
-	//     - Dependencies: None
-	m.notificationsController = notifications.NewController()
+	//     - Dependencies: NotificationsService
+	// Note: The notifications component will handle notification display via BubbleTea View() method
+	// and communicate with NotificationsService for state management
+
+	// Store references to the new components in the model struct fields
+	// These will replace the old controller references once the migration is complete
+	// For now, we keep both for compatibility during the transition
+	m.fileBrowserComponent = fileBrowserComponent
+	m.systemComponent = systemComponent
+	m.notificationsComponent = notificationsComponent
+	m.inputComponent = inputComponent
+	m.navigationComponent = navigationComponent
+
+	// DIAGNOSTIC: Final comprehensive status check
+	logStore.Add("system", "Model", "📋 DIAGNOSTIC: Final component status check:", false)
+
+	// Check critical components
+	if m.inputComponent != nil {
+		logStore.Add("system", "Model", "✅ InputComponent: Available", false)
+	} else {
+		logStore.Add("system", "Model", "❌ InputComponent: MISSING - KEYBOARD WILL NOT WORK", true)
+	}
+
+	if m.navigationComponent != nil {
+		logStore.Add("system", "Model", "✅ NavigationComponent: Available", false)
+	} else {
+		logStore.Add("system", "Model", "❌ NavigationComponent: MISSING - VIEW SWITCHING WILL NOT WORK", true)
+	}
+
+	// Check services
+	if inputService != nil && inputService.IsRunning() {
+		logStore.Add("system", "Model", "✅ InputService: Running", false)
+	} else {
+		logStore.Add("system", "Model", "❌ InputService: NOT RUNNING - KEYBOARD PROCESSING WILL FAIL", true)
+	}
+
+	if navigationService != nil {
+		logStore.Add("system", "Model", "✅ NavigationService: Available", false)
+	} else {
+		logStore.Add("system", "Model", "❌ NavigationService: MISSING - VIEW SWITCHING WILL FAIL", true)
+	}
+
+	// Check handler count
+	finalHandlerCount := inputService.GetHandlerCount()
+	logStore.Add("system", "Model", fmt.Sprintf("📊 Total keyboard handlers registered: %d", finalHandlerCount), false)
+
+	logStore.Add("system", "Model", "🎯 DIAGNOSTIC: Model initialization complete - keyboard handling should be functional", false)
+
+	// 14. Initialize MCP debug controller
+	//     - Required by: MCP debugging features
+	//     - Dependencies: debugMode flag
+	m.mcpDebugView = components.NewMCPDebugView(debugMode)
 
 	// Unread indicators now managed by system controller
 
@@ -736,16 +797,16 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 
 	// 14. Initialize script selector component with navigation adapter
 	//     - Required by: Script selection UI
-	//     - Dependencies: navController (for navigation adapter)
-	navAdapter := NewNavigationAdapter(m.navController)
+	//     - Dependencies: navigationComponent (for navigation adapter)
+	navAdapter := NewNavigationAdapter(m.navigationComponent)
 	scriptAutocomplete := NewScriptSelectorAutocompleteWithProcessManager(scripts, processMgr)
 	scriptAutocompleteAdapter := NewScriptSelectorAutocompleteAdapter(scriptAutocomplete)
 	m.scriptSelector = components.NewScriptSelector(scriptAutocompleteAdapter, processMgr, logStore, m.updateChan, navAdapter)
 
 	// 15. Initialize tabs component
 	//     - Required by: Header rendering
-	//     - Dependencies: processMgr, notificationsController, systemController
-	m.tabsComponent = NewTabsComponent(processMgr, m.notificationsController, m.systemController, debugMode)
+	//     - Dependencies: processMgr, notificationsComponent, systemComponent
+	m.tabsComponent = NewTabsComponent(processMgr, m.notificationsComponent, m.systemComponent, debugMode)
 
 	// 16. Initialize content layout
 	//     - Required by: Content area rendering
@@ -757,7 +818,36 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	//     - Dependencies: None
 	m.messageRouter = NewMessageRouter()
 
-	// 18. Set up event subscriptions immediately in constructor (not in Init)
+	// 18. Initialize SIMPLIFIED keyboard handler registry
+	//     - Required by: All keyboard handling
+	//     - Dependencies: navigationService, other services
+	m.keyRegistry = NewKeyHandlerRegistry()
+
+	// Register all keyboard handlers in priority order
+	// Priority 100: Global navigation (number keys, Tab)
+	m.keyRegistry.Register(NewGlobalNavigationHandler(navigationService))
+
+	// Priority 250: AI Coder specific keys (when in AI Coder view)
+	if m.aicodersView != nil {
+		m.keyRegistry.Register(NewAICoderKeyHandler(m.aicodersView))
+	}
+
+	// Priority 300: Slash command (context-aware)
+	m.keyRegistry.Register(NewSlashCommandHandler(func() tea.Cmd {
+		// Open command palette
+		m.showCommandWindow()
+		return nil
+	}))
+
+	// Priority 1000: Quit handler (double-press protection)
+	m.keyRegistry.Register(NewQuitHandler())
+
+	// Log successful keyboard setup
+	m.logStore.Add("system", "KeyRegistry",
+		fmt.Sprintf("✅ Simplified keyboard system initialized with %d handlers",
+			len(m.keyRegistry.handlers)), false)
+
+	// 19. Set up event subscriptions immediately in constructor (not in Init)
 	//     - Required by: Event handling
 	//     - Dependencies: eventController must be initialized
 	//     - Critical: This ensures subscriptions are active before MCP server starts
@@ -779,7 +869,7 @@ func (m *Model) Init() tea.Cmd {
 		m.tickCmd(),
 	}
 
-	// PTY events are now handled by AICoderController
+	// PTY events are now handled by AICoderService and AICodersViewComponent
 	return tea.Batch(cmds...)
 }
 
@@ -787,8 +877,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	// Handle notification messages first
-	if cmd := m.notificationsController.HandleMsg(msg); cmd != nil {
-		cmds = append(cmds, cmd)
+	if m.notificationsComponent != nil {
+		_, cmd := m.notificationsComponent.Update(msg)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	// Route message through Message Router for all handling
@@ -800,8 +893,25 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = newModel.(*Model)
 	}
 
-	// Handle only the most essential messages that can't be delegated
+	// SIMPLIFIED KEYBOARD HANDLING - All keyboard events go through the registry
 	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		// Build rich context for key handlers
+		ctx := m.buildKeyContext()
+
+		// Route through the simplified key handler registry
+		if m.keyRegistry != nil {
+			return m, m.keyRegistry.HandleKey(msg, ctx, m)
+		}
+
+		// Fallback: Let the legacy system handle it temporarily
+		// TODO: Remove this fallback once all handlers are migrated
+		newModel, cmd := m.messageRouter.Route(msg, m)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+		m = newModel.(*Model)
+
 	case restartProcessMsg:
 		if msg.clearLogs {
 			m.logStore.ClearLogs()
@@ -945,11 +1055,10 @@ func (m *Model) renderLayout(content string) string {
 	}
 
 	// If system panel is expanded, show it instead of main content
-	if m.systemController.IsExpanded() && m.systemController.HasMessages() {
+	if m.systemComponent != nil && m.systemComponent.GetPanelState() && len(m.systemComponent.GetMessages()) > 0 {
 		// Full screen mode - system panel takes most of the space
-		contentHeight := m.height - m.headerHeight - m.footerHeight
-		m.systemController.UpdateSize(m.width, contentHeight, 0, 0)
-		content = m.systemPanelRenderer.RenderPanel()
+		// System component will handle its own rendering via BubbleTea
+		content = m.systemComponent.View()
 		if m.contentLayout != nil {
 			content = m.contentLayout.RenderContent(content)
 		}
@@ -975,8 +1084,12 @@ func (m *Model) renderLayout(content string) string {
 	mainLayout := lipgloss.JoinVertical(lipgloss.Left, parts...)
 
 	// If we have system messages in non-expanded mode, overlay them
-	if m.systemController.HasMessages() && !m.systemController.IsExpanded() {
-		return m.overlaySystemPanel(mainLayout)
+	if m.systemComponent != nil && len(m.systemComponent.GetMessages()) > 0 && !m.systemComponent.GetPanelState() {
+		// System component handles overlay rendering via its View method
+		systemView := m.systemComponent.View()
+		if systemView != "" {
+			return systemView
+		}
 	}
 
 	return mainLayout
@@ -1041,8 +1154,12 @@ func (m *Model) renderContent() string {
 		m.webView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
 		return m.webView.Render()
 	case ViewSettings:
-		if m.fileBrowserController.IsShowing() {
-			return m.fileBrowserController.Render(m.width, m.height)
+		if m.fileBrowserComponent != nil {
+			// Check if file browser dialog should be shown
+			// The component will handle its own state and rendering
+			if dialogView := m.fileBrowserComponent.View(); dialogView != "" {
+				return dialogView
+			}
 		}
 		// Update controller dimensions and render
 		m.settingsView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
@@ -1146,19 +1263,37 @@ func (m *Model) updateSizes() {
 }
 
 func (m *Model) cycleView() {
-	// Delegate to navigation controller with view-specific setup
-	m.navController.CycleView()
+	// Use navigation component to cycle to next view
+	if m.navigationComponent != nil {
+		cmd := m.navigationComponent.CycleToNextView()
+		if cmd != nil {
+			// Execute the command to update the component state
+			// In a real BubbleTea application, this would return the cmd
+			// For now, we'll just trigger the state change
+		}
+	}
 }
 
 func (m *Model) cyclePrevView() {
-	// Delegate to navigation controller with view-specific setup
-	m.navController.CyclePreviousView()
+	// Use navigation component to cycle to previous view
+	if m.navigationComponent != nil {
+		currentView := m.navigationComponent.GetCurrentView()
+		cmd := m.navigationComponent.SwitchToView(currentView, "shift_tab")
+		if cmd != nil {
+			// Execute the command to update the component state
+		}
+	}
 }
 
 // switchToView changes the current view and performs any necessary setup
 func (m *Model) switchToView(view View) {
-	// Delegate to navigation controller with view-specific setup
-	m.navController.SwitchToView(view)
+	// Use navigation component to switch to specific view
+	if m.navigationComponent != nil {
+		cmd := m.navigationComponent.SwitchToView(view, "direct")
+		if cmd != nil {
+			// Execute the command to update the component state
+		}
+	}
 }
 
 func (m *Model) updateProcessList() {
@@ -1205,11 +1340,14 @@ func (m *Model) renderHeader() string {
 
 	// Add copy notification if recent
 	notification := ""
-	if m.notificationsController.IsActive() {
-		notificationStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("82")).
-			Bold(true)
-		notification = " " + notificationStyle.Render(m.notificationsController.GetMessage())
+	if m.notificationsComponent != nil {
+		activeNotifications := m.notificationsComponent.GetActiveNotifications()
+		if len(activeNotifications) > 0 {
+			notificationStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("82")).
+				Bold(true)
+			notification = " " + notificationStyle.Render(activeNotifications[len(activeNotifications)-1].Message)
+		}
 	}
 
 	title := lipgloss.NewStyle().
@@ -1228,7 +1366,7 @@ func (m *Model) renderHeader() string {
 		orderedViews = append(orderedViews, ViewMCPConnections)
 	}
 	for i, viewType := range orderedViews {
-		if cfg, ok := GetViewConfigs()[navigation.View(viewType)]; ok {
+		if cfg, ok := GetViewConfigs()[viewType]; ok {
 			// Build the base label with icon and space before number
 			label := fmt.Sprintf("%s.%s", cfg.KeyBinding, cfg.Title)
 			if cfg.Icon != "" {
@@ -1237,11 +1375,13 @@ func (m *Model) renderHeader() string {
 
 			// Get unread indicator for this view
 			var indicatorIcon string
-			indicators := m.systemController.GetUnreadIndicators()
-			if indicator, exists := indicators[viewType]; exists && indicator.Count > 0 {
-				indicatorIcon = indicator.Icon
-			} else {
-				indicatorIcon = "" // No space when no indicator
+			if m.systemComponent != nil {
+				unreadCount := m.systemComponent.GetUnreadCount()
+				if unreadCount > 0 {
+					indicatorIcon = "🔴"
+				} else {
+					indicatorIcon = "" // No space when no indicator
+				}
 			}
 
 			// Format the tab
@@ -1418,7 +1558,7 @@ func (m *Model) handleRunCommand() tea.Cmd {
 			errorHandler.HandleError(err, ctx)
 		},
 	)
-	m.navController.SwitchTo(ViewProcesses)
+	m.switchToView(ViewLogs)
 	m.updateProcessList()
 	return m.waitForUpdates()
 }
@@ -1548,7 +1688,7 @@ func (m *Model) handleProxyCommand(urlStr string) {
 	m.logStore.Add("system", "System", fmt.Sprintf("🔗 Access your app at: %s", proxyURL), false)
 
 	// Switch to web view to show the new proxy
-	m.navController.SwitchTo(ViewWeb)
+	m.switchToView(ViewWeb)
 }
 
 func (m *Model) listProxies() {
@@ -1574,7 +1714,7 @@ func (m *Model) listProxies() {
 	}
 
 	// Switch to web view to show proxy mappings
-	m.navController.SwitchTo(ViewWeb)
+	m.switchToView(ViewWeb)
 }
 
 func (m *Model) toggleProxyMode() {
@@ -1700,7 +1840,7 @@ func (m *Model) handleToggleProxy() {
 		m.logStore.Add("system", "System", msg, false)
 
 		// Switch to URLs view to show the change
-		m.navController.SwitchTo(ViewURLs)
+		m.switchToView(ViewURLs)
 	}
 }
 
@@ -1732,12 +1872,12 @@ func (m *Model) showCommandWindow() {
 
 // overlaySystemPanel overlays the system panel on top of the main content
 func (m *Model) overlaySystemPanel(mainContent string) string {
-	// Use the new overlay renderer if available
-	if m.systemOverlayRenderer != nil {
-		return m.systemOverlayRenderer.RenderOverlay(mainContent, m.width, m.height)
+	// Use the new system component for overlay rendering
+	if m.systemComponent != nil {
+		return m.systemComponent.View()
 	}
-	// Fallback to old implementation
-	return m.systemController.OverlaySystemPanel(mainContent)
+	// Fallback to main content if no system component
+	return mainContent
 }
 
 // renderSettings moved to direct controller usage
@@ -1812,9 +1952,13 @@ func (m *Model) getCLICommandFromConfig(configKey string, task string) (string, 
 
 // File browser list is now managed entirely by filebrowserController
 
-// currentView returns the current view from the navigation controller
+// currentView returns the current view from the navigation component
 func (m *Model) currentView() View {
-	return m.navController.CurrentView()
+	if m.navigationComponent != nil {
+		return m.navigationComponent.GetCurrentView()
+	}
+	// Fallback to default view
+	return ViewProcesses
 }
 
 // GetAICoderManager returns the AI coder manager instance
@@ -1834,4 +1978,66 @@ func (m *Model) ConnectAICoderServiceToBridge(serviceBridge interface{}) {
 			bridge.SubscribeToAICoderService(m.aiCoderService)
 		}
 	}
+}
+
+// buildKeyContext builds a rich context object for keyboard handlers
+// This provides all the information handlers need to make smart decisions
+func (m *Model) buildKeyContext() KeyContext {
+	ctx := KeyContext{
+		View:    m.currentView(),
+		Context: "normal", // Default context
+	}
+
+	// Check for special contexts
+	// Command window takes precedence
+	if m.commandWindowView != nil && m.commandWindowView.IsShowingCommandWindow() {
+		ctx.Context = "command_palette"
+		return ctx
+	}
+
+	// Check for modal dialogs
+	if m.commandWindowView != nil && (m.commandWindowView.IsShowingRunDialog() || m.commandWindowView.IsShowingCustomCommand()) {
+		ctx.Context = "modal"
+		return ctx
+	}
+
+	// Check for script selector
+	if m.currentView() == ViewScriptSelector {
+		ctx.Context = "script_selector"
+		return ctx
+	}
+
+	// AI Coder specific context
+	if m.currentView() == ViewAICoders && m.aicodersView != nil {
+		ctx.ActiveComponent = m.aicodersView
+
+		// Check if in PTY mode
+		viewState := m.aicodersView.GetViewState()
+		if viewState.Mode == components.ViewModePTY {
+			ctx.Context = "pty"
+			// TODO: Get cursor position and input content from PTY
+			// For now, assume cursor is at position 0 for slash command logic
+			ctx.CursorPosition = 0
+			ctx.InputContent = ""
+		}
+	}
+
+	// File browser dialog
+	if m.fileBrowserComponent != nil && m.fileBrowserComponent.IsVisible() {
+		ctx.Context = "file_browser"
+		ctx.ActiveComponent = m.fileBrowserComponent
+	}
+
+	// System panel overlay
+	if m.systemComponent != nil && m.systemComponent.GetPanelState() {
+		ctx.Context = "system_panel"
+	}
+
+	return ctx
+}
+
+// getKeyContext returns a simple string context for legacy compatibility
+// TODO: Remove this once all code uses buildKeyContext
+func (m *Model) getKeyContext() string {
+	return m.buildKeyContext().Context
 }

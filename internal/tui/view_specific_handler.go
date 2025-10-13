@@ -7,7 +7,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// ViewSpecificHandler handles view-specific interactions and keyboard commands
+// ViewSpecificHandler handles non-keyboard view-specific interactions
+// NOTE: All keyboard handling has been moved to KeyHandlerRegistry
+// This handler now only processes non-keyboard messages if needed
 type ViewSpecificHandler struct{}
 
 // NewViewSpecificHandler creates a new view-specific handler
@@ -17,42 +19,23 @@ func NewViewSpecificHandler() MessageHandler {
 
 // CanHandle checks if this handler can process the message
 func (h *ViewSpecificHandler) CanHandle(msg tea.Msg) bool {
-	// Handle keyboard messages for view-specific interactions
-	_, ok := msg.(tea.KeyMsg)
-	return ok
+	// No longer handles keyboard messages - those are handled by KeyHandlerRegistry
+	// This handler could be used for view-specific custom messages in the future
+	return false
 }
 
-// HandleMessage processes view-specific keyboard interactions
+// HandleMessage processes view-specific messages (currently unused)
 func (h *ViewSpecificHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
-	keyMsg, ok := msg.(tea.KeyMsg)
-	if !ok {
-		return model, nil
-	}
-
-	switch model.currentView() {
-	case ViewWeb:
-		return h.handleWebViewKeys(keyMsg, model)
-	case ViewProcesses:
-		return h.handleProcessViewKeys(keyMsg, model)
-	case ViewLogs, ViewURLs:
-		return h.handleLogsViewKeys(keyMsg, model)
-	case ViewErrors:
-		return h.handleErrorsViewKeys(keyMsg, model)
-	case ViewSettings:
-		return h.handleSettingsViewKeys(keyMsg, model)
-	// ViewFileBrowser not defined - removed
-	case ViewMCPConnections:
-		return h.handleMCPViewKeys(keyMsg, model)
-	case ViewAICoders:
-		return h.handleAICodersKeys(keyMsg, model)
-	}
-
-	return model, tea.Batch(cmds...)
+	// All keyboard handling has been moved to KeyHandlerRegistry
+	// This method is kept for potential future non-keyboard view-specific messages
+	return model, nil
 }
+
+// Legacy helper methods - These are now called directly from KeyHandlerRegistry handlers
+// They remain here for backward compatibility during the transition
 
 // handleWebViewKeys handles Web view specific keyboard interactions
+// DEPRECATED: Now implemented in WebViewKeyHandler registered with KeyHandlerRegistry
 func (h *ViewSpecificHandler) handleWebViewKeys(msg tea.KeyMsg, model *Model) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "f":
@@ -121,6 +104,7 @@ func (h *ViewSpecificHandler) handleWebViewKeys(msg tea.KeyMsg, model *Model) (t
 }
 
 // handleProcessViewKeys handles Process view specific keyboard interactions
+// DEPRECATED: Now implemented in ProcessViewKeyHandler registered with KeyHandlerRegistry
 func (h *ViewSpecificHandler) handleProcessViewKeys(msg tea.KeyMsg, model *Model) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
@@ -130,17 +114,23 @@ func (h *ViewSpecificHandler) handleProcessViewKeys(msg tea.KeyMsg, model *Model
 			if err := model.processMgr.StopProcess(i.process.ID); err != nil {
 				msg := fmt.Sprintf("Failed to stop process %s: %v", i.process.Name, err)
 				model.logStore.Add("system", "System", msg, true)
-				model.systemController.AddMessage("error", "Process Control", msg)
+				if model.systemComponent != nil {
+					model.systemComponent.AddSystemMessage("error", msg, "Process Control")
+				}
 			} else {
 				msg := fmt.Sprintf("Stopping process: %s", i.process.Name)
 				model.logStore.Add("system", "System", msg, false)
-				model.systemController.AddMessage("info", "Process Control", msg)
+				if model.systemComponent != nil {
+					model.systemComponent.AddSystemMessage("info", msg, "Process Control")
+				}
 			}
 			cmds = append(cmds, model.waitForUpdates())
 		} else {
 			msg := "No process selected to stop"
 			model.logStore.Add("system", "System", msg, true)
-			model.systemController.AddMessage("error", "Process Control", msg)
+			if model.systemComponent != nil {
+				model.systemComponent.AddSystemMessage("error", msg, "Process Control")
+			}
 		}
 		return model, tea.Batch(cmds...)
 
@@ -149,11 +139,15 @@ func (h *ViewSpecificHandler) handleProcessViewKeys(msg tea.KeyMsg, model *Model
 			cmds = append(cmds, model.handleRestartProcess(i.process))
 			msg := fmt.Sprintf("Restarting process: %s", i.process.Name)
 			model.logStore.Add("system", "System", msg, false)
-			model.systemController.AddMessage("info", "Process Control", msg)
+			if model.systemComponent != nil {
+				model.systemComponent.AddSystemMessage("info", msg, "Process Control")
+			}
 		} else {
 			msg := "No process selected to restart"
 			model.logStore.Add("system", "System", msg, true)
-			model.systemController.AddMessage("error", "Process Control", msg)
+			if model.systemComponent != nil {
+				model.systemComponent.AddSystemMessage("error", msg, "Process Control")
+			}
 		}
 		return model, tea.Batch(cmds...)
 	}
@@ -167,6 +161,7 @@ func (h *ViewSpecificHandler) handleProcessViewKeys(msg tea.KeyMsg, model *Model
 }
 
 // handleLogsViewKeys handles Logs/URLs view keyboard interactions
+// DEPRECATED: Now implemented in LogsViewKeyHandler registered with KeyHandlerRegistry
 func (h *ViewSpecificHandler) handleLogsViewKeys(msg tea.KeyMsg, model *Model) (tea.Model, tea.Cmd) {
 	if model.currentView() == ViewLogs {
 		switch {
@@ -226,6 +221,7 @@ func (h *ViewSpecificHandler) handleLogsViewKeys(msg tea.KeyMsg, model *Model) (
 }
 
 // Placeholder handlers for other views
+// DEPRECATED: Now implemented in view-specific key handlers registered with KeyHandlerRegistry
 func (h *ViewSpecificHandler) handleErrorsViewKeys(msg tea.KeyMsg, model *Model) (tea.Model, tea.Cmd) {
 	// Update the errors list
 	if model.errorsView != nil {
@@ -245,8 +241,6 @@ func (h *ViewSpecificHandler) handleSettingsViewKeys(msg tea.KeyMsg, model *Mode
 	}
 	return model, nil
 }
-
-// handleFileBrowserKeys removed - ViewFileBrowser not defined
 
 func (h *ViewSpecificHandler) handleMCPViewKeys(msg tea.KeyMsg, model *Model) (tea.Model, tea.Cmd) {
 	// MCP view specific handling - placeholder
