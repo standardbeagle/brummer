@@ -33,7 +33,7 @@ issues:
   exclude-rules:
     - linters: [unused]
       text: "is unused"
-    - linters: [errcheck] 
+    - linters: [errcheck]
       text: "WriteJSON.*is not checked"
     - linters: [errcheck]
       text: "Encode.*is not checked"
@@ -53,6 +53,16 @@ issues:
       text: "ineffectual assignment"
     - linters: [staticcheck]
       text: "SA4006.*this value.*is never used"
+    # TUI testing specific exclusions
+    - path: test/tui/.*
+      linters: [errcheck]
+      text: "Close.*is not checked"  # PTY cleanup in tests
+    - path: test/tui/.*
+      linters: [staticcheck]
+      text: "SA1019"  # Allow deprecated PTY functions in tests
+    - path: test/tui/.*_test.go
+      linters: [unused]
+      text: ".*is unused"  # Test helpers and fixtures
 
   # Maximum count of issues with the same text. Set to 0 to disable.
   max-same-issues: 10

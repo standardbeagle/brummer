@@ -2,7 +2,6 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/tui/navigation"
 	"github.com/standardbeagle/brummer/internal/tui/services"
 )
 
@@ -28,11 +27,11 @@ func (ma *ModelAdapter) GetHeight() int {
 
 // Navigation
 func (ma *ModelAdapter) GetCurrentView() View {
-	return View(ma.model.navController.CurrentView())
+	return ma.model.currentView()
 }
 
 func (ma *ModelAdapter) SwitchToView(view View) {
-	ma.model.navController.SwitchTo(navigation.View(view))
+	ma.model.switchToView(view)
 }
 
 // Process management
@@ -133,16 +132,16 @@ func (ma *ModelAdapter) HideCommandWindow() {
 
 // Settings
 func (ma *ModelAdapter) IsSettingsVisible() bool {
-	return View(ma.model.navController.CurrentView()) == ViewSettings
+	return ma.model.currentView() == ViewSettings
 }
 
 func (ma *ModelAdapter) ShowSettings() {
-	ma.model.navController.SwitchTo(navigation.ViewSettings)
+	ma.model.switchToView(ViewSettings)
 }
 
 func (ma *ModelAdapter) HideSettings() {
 	// Switch away from settings view
-	ma.model.navController.SwitchTo(navigation.ViewProcesses)
+	ma.model.switchToView(ViewProcesses)
 }
 
 // AI Coder
@@ -155,60 +154,6 @@ func (ma *ModelAdapter) HasActiveAICoders() bool {
 	return len(sessions) > 0
 }
 
-func (ma *ModelAdapter) GetAICoderController() AICoderControllerInterface {
-	// Return adapter that wraps the service
-	return &aiCoderServiceAdapter{
-		model: ma.model,
-	}
-}
-
 // Removed ProcessManagerAdapter - process.Manager already implements ProcessManagerInterface
 
 // Removed LogStoreAdapter since logs.Store already implements LogStoreInterface
-
-// aiCoderServiceAdapter adapts the service to the controller interface
-type aiCoderServiceAdapter struct {
-	model *Model
-}
-
-func (a *aiCoderServiceAdapter) HandleAICommand(command string) tea.Cmd {
-	a.model.handleAICommand(command)
-	return nil
-}
-
-func (a *aiCoderServiceAdapter) CreateAICoderSession(provider string) {
-	a.model.handleAICommand(provider)
-}
-
-func (a *aiCoderServiceAdapter) HasActiveSessions() bool {
-	if a.model.aiCoderService == nil {
-		return false
-	}
-	svc := a.model.aiCoderService.(*services.AICoderService)
-	sessions := svc.ListSessions()
-	return len(sessions) > 0
-}
-
-func (a *aiCoderServiceAdapter) SetHasActiveSessions(active bool) {
-	// No-op - service manages its own state
-}
-
-func (a *aiCoderServiceAdapter) GetActiveSessions() []AICoderSession {
-	if a.model.aiCoderService == nil {
-		return nil
-	}
-	svc := a.model.aiCoderService.(*services.AICoderService)
-	sessions := svc.ListSessions()
-
-	// Convert service sessions to adapter format
-	result := make([]AICoderSession, 0, len(sessions))
-	for _, s := range sessions {
-		result = append(result, AICoderSession{
-			ID:       s.ID,
-			Provider: "terminal", // We don't track provider in session
-			Status:   string(s.Status),
-			Created:  s.LastActivity, // Use LastActivity as Created time since CreatedAt doesn't exist
-		})
-	}
-	return result
-}

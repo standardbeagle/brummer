@@ -1,0 +1,979 @@
+package harness
+
+import (
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+// TestStateValidator_InterfaceContract tests the complete StateValidator interface contract
+// This test verifies that all StateValidator methods behave according to the specification
+// and ensures comprehensive state validation functionality for TUI testing.
+func TestStateValidator_InterfaceContract(t *testing.T) {
+	t.Run("State Capture and Validation Methods", func(t *testing.T) {
+		validator := &mockStateValidator{}
+		require.NotNil(t, validator, "StateValidator should not be nil")
+
+		t.Run("CaptureState", func(t *testing.T) {
+			// Test capturing state from a valid model
+			testModel := struct {
+				ViewType  string
+				ProcessID string
+				Active    bool
+			}{
+				ViewType:  "processes",
+				ProcessID: "test-123",
+				Active:    true,
+			}
+
+			snapshot, err := validator.CaptureState(testModel)
+			require.NoError(t, err, "CaptureState should not fail for valid model")
+			require.NotNil(t, snapshot, "Snapshot should not be nil")
+
+			// Verify snapshot structure
+			require.NotZero(t, snapshot.Timestamp, "Snapshot should have valid timestamp")
+			require.NotNil(t, snapshot.Properties, "Properties should not be nil")
+			require.NotNil(t, snapshot.ModelState, "ModelState should not be nil")
+
+			// Test capturing state from nil model
+			snapshot, err = validator.CaptureState(nil)
+			// Mock implementation might handle this gracefully
+			// Real implementation should handle it appropriately
+			t.Logf("CaptureState with nil model result: %v, %v", snapshot, err)
+
+			// Test capturing state from complex model
+			complexModel := map[string]interface{}{
+				"view": "ai-coder",
+				"data": map[string]interface{}{
+					"sessions": []string{"session-1", "session-2"},
+					"active":   true,
+				},
+				"metadata": struct {
+					Created time.Time
+					Version string
+				}{
+					Created: time.Now(),
+					Version: "1.0.0",
+				},
+			}
+
+			snapshot, err = validator.CaptureState(complexModel)
+			require.NoError(t, err, "CaptureState should handle complex models")
+			require.NotNil(t, snapshot, "Complex model snapshot should not be nil")
+		})
+
+		t.Run("ValidateTransition", func(t *testing.T) {
+			// Create test snapshots
+			fromSnapshot := StateSnapshot{
+				ViewType: "processes",
+				Properties: map[string]interface{}{
+					"selected_process": "proc-1",
+					"active":          true,
+				},
+				Timestamp: time.Now().Add(-time.Second),
+			}
+
+			toSnapshot := StateSnapshot{
+				ViewType: "ai-coder",
+				Properties: map[string]interface{}{
+					"selected_session": "session-1",
+					"active":          true,
+				},
+				Timestamp: time.Now(),
+			}
+
+			// Test valid transition
+			result := validator.ValidateTransition(fromSnapshot, toSnapshot)
+			require.NotNil(t, result, "ValidationResult should not be nil")
+			require.NotNil(t, result.Message, "ValidationResult should have message")
+
+			// Test same state transition (should be valid)
+			sameStateResult := validator.ValidateTransition(fromSnapshot, fromSnapshot)
+			require.NotNil(t, sameStateResult, "Same state transition should return result")
+
+			// Test transition with different timestamps
+			oldSnapshot := StateSnapshot{
+				ViewType:   "processes",
+				Properties: map[string]interface{}{},
+				Timestamp:  time.Now().Add(-time.Hour),
+			}
+			newSnapshot := StateSnapshot{
+				ViewType:   "processes",
+				Properties: map[string]interface{}{},
+				Timestamp:  time.Now(),
+			}
+
+			oldToNewResult := validator.ValidateTransition(oldSnapshot, newSnapshot)
+			require.NotNil(t, oldToNewResult, "Old to new transition should return result")
+
+			// Test transition with invalid snapshots
+			emptySnapshot := StateSnapshot{}
+			emptyResult := validator.ValidateTransition(emptySnapshot, toSnapshot)
+			require.NotNil(t, emptyResult, "Empty snapshot transition should return result")
+		})
+
+		t.Run("CompareStates", func(t *testing.T) {
+			// Create identical snapshots
+			snapshot1 := StateSnapshot{
+				ViewType: "processes",
+				Properties: map[string]interface{}{
+					"selected_process": "proc-1",
+					"active":          true,
+				},
+				Timestamp: time.Now(),
+			}
+
+			snapshot2 := StateSnapshot{
+				ViewType: "processes",
+				Properties: map[string]interface{}{
+					"selected_process": "proc-1",
+					"active":          true,
+				},
+				Timestamp: time.Now(),
+			}
+
+			// Test comparing identical states
+			result := validator.CompareStates(snapshot1, snapshot2)
+			require.NotNil(t, result, "ComparisonResult should not be nil")
+			require.NotNil(t, result.Differences, "Differences map should not be nil")
+			require.GreaterOrEqual(t, result.Similarity, 0.0, "Similarity should be non-negative")
+			require.LessOrEqual(t, result.Similarity, 1.0, "Similarity should be <= 1.0")
+
+			// Test comparing different states
+			differentSnapshot := StateSnapshot{
+				ViewType: "ai-coder",
+				Properties: map[string]interface{}{
+					"selected_session": "session-2",
+					"active":          false,
+				},
+				Timestamp: time.Now(),
+			}
+
+			differentResult := validator.CompareStates(snapshot1, differentSnapshot)
+			require.NotNil(t, differentResult, "Different states comparison should return result")
+			require.NotNil(t, differentResult.Differences, "Differences should be populated for different states")
+
+			// Test comparing with nil snapshots
+			nilResult := validator.CompareStates(snapshot1, StateSnapshot{})
+			require.NotNil(t, nilResult, "Nil snapshot comparison should return result")
+
+			// Test comparing complex nested properties
+			complexSnapshot1 := StateSnapshot{
+				ViewType: "processes",
+				Properties: map[string]interface{}{
+					"nested": map[string]interface{}{
+						"level1": map[string]interface{}{
+							"level2": "value1",
+						},
+					},
+				},
+				Timestamp: time.Now(),
+			}
+
+			complexSnapshot2 := StateSnapshot{
+				ViewType: "processes",
+				Properties: map[string]interface{}{
+					"nested": map[string]interface{}{
+						"level1": map[string]interface{}{
+							"level2": "value2", // Different value
+						},
+					},
+				},
+				Timestamp: time.Now(),
+			}
+
+			complexResult := validator.CompareStates(complexSnapshot1, complexSnapshot2)
+			require.NotNil(t, complexResult, "Complex properties comparison should return result")
+		})
+	})
+
+	t.Run("Expected State Management Methods", func(t *testing.T) {
+		validator := &mockStateValidator{}
+
+		t.Run("AddExpectedState", func(t *testing.T) {
+			// Test adding valid expected state
+			expectedState := ExpectedState{
+				TriggerAction: "key_press:1",
+				ViewType:      "processes",
+				Timeout:       time.Second * 5,
+				Properties: map[string]interface{}{
+					"selected_process": "proc-1",
+					"active":          true,
+				},
+			}
+
+			err := validator.AddExpectedState(expectedState)
+			require.NoError(t, err, "AddExpectedState should not fail for valid state")
+
+			// Test adding state with minimal properties
+			minimalState := ExpectedState{
+				TriggerAction: "wait",
+				ViewType:      "any",
+				Timeout:       time.Millisecond * 100,
+			}
+
+			err = validator.AddExpectedState(minimalState)
+			require.NoError(t, err, "AddExpectedState should handle minimal states")
+
+			// Test adding state with complex properties
+			complexState := ExpectedState{
+				TriggerAction: "navigate:ai-coder",
+				ViewType:      "ai-coder",
+				Timeout:       time.Second * 10,
+				Properties: map[string]interface{}{
+					"active_sessions": []string{"session-1", "session-2"},
+					"current_session": "session-1",
+					"terminal_active": true,
+					"metadata": map[string]interface{}{
+						"last_action": "start_session",
+						"timestamp":   time.Now(),
+					},
+				},
+			}
+
+			err = validator.AddExpectedState(complexState)
+			require.NoError(t, err, "AddExpectedState should handle complex properties")
+
+			// Test adding duplicate state
+			err = validator.AddExpectedState(expectedState)
+			// Implementation choice: allow duplicates or reject them
+			t.Logf("AddExpectedState with duplicate result: %v", err)
+
+			// Test adding invalid state (empty trigger action)
+			invalidState := ExpectedState{
+				TriggerAction: "", // Invalid
+				ViewType:      "processes",
+				Timeout:       time.Second,
+			}
+
+			err = validator.AddExpectedState(invalidState)
+			// Implementation should either handle gracefully or reject
+			t.Logf("AddExpectedState with invalid trigger action result: %v", err)
+		})
+
+		t.Run("ClearExpectedStates", func(t *testing.T) {
+			// Add some states first
+			states := []ExpectedState{
+				{
+					TriggerAction: "action1",
+					ViewType:      "view1",
+					Timeout:       time.Second,
+				},
+				{
+					TriggerAction: "action2",
+					ViewType:      "view2",
+					Timeout:       time.Second * 2,
+				},
+				{
+					TriggerAction: "action3",
+					ViewType:      "view3",
+					Timeout:       time.Second * 3,
+				},
+			}
+
+			for _, state := range states {
+				err := validator.AddExpectedState(state)
+				require.NoError(t, err, "Setup should not fail")
+			}
+
+			// Clear states
+			err := validator.ClearExpectedStates()
+			require.NoError(t, err, "ClearExpectedStates should not fail")
+
+			// Test clearing empty states
+			err = validator.ClearExpectedStates()
+			require.NoError(t, err, "ClearExpectedStates should handle empty state list")
+		})
+	})
+
+	t.Run("Validation Rules Methods", func(t *testing.T) {
+		validator := &mockStateValidator{}
+
+		t.Run("AddValidationRule", func(t *testing.T) {
+			// Test adding simple validation rule
+			simpleRule := ValidationRule{
+				ID:          "rule-1",
+				Name:        "View Type Validation",
+				Description: "Validates that view type is not empty",
+				Validator: func(state StateSnapshot) ValidationResult {
+					if state.ViewType == "" {
+						return ValidationResult{
+							Valid:   false,
+							Message: "View type cannot be empty",
+							Field:   "ViewType",
+						}
+					}
+					return ValidationResult{
+						Valid:   true,
+						Message: "View type is valid",
+					}
+				},
+				Parameters: map[string]interface{}{
+					"required": true,
+				},
+			}
+
+			err := validator.AddValidationRule(simpleRule)
+			require.NoError(t, err, "AddValidationRule should not fail for valid rule")
+
+			// Test adding rule with complex validation logic
+			complexRule := ValidationRule{
+				ID:          "rule-2",
+				Name:        "Process Selection Validation",
+				Description: "Validates process selection and metadata",
+				Validator: func(state StateSnapshot) ValidationResult {
+					if state.ViewType != "processes" {
+						return ValidationResult{Valid: true, Message: "Rule not applicable to this view"}
+					}
+
+					selectedProcess, exists := state.Properties["selected_process"]
+					if !exists {
+						return ValidationResult{
+							Valid:   false,
+							Message: "No process selected in processes view",
+							Field:   "selected_process",
+						}
+					}
+
+					if processID, ok := selectedProcess.(string); !ok || processID == "" {
+						return ValidationResult{
+							Valid:   false,
+							Message: "Selected process must be a non-empty string",
+							Field:   "selected_process",
+							Expected: "string",
+							Actual:   selectedProcess,
+						}
+					}
+
+					return ValidationResult{
+						Valid:   true,
+						Message: "Process selection is valid",
+					}
+				},
+				Parameters: map[string]interface{}{
+					"view_type":    "processes",
+					"field_name":   "selected_process",
+					"required":     true,
+					"string_type":  true,
+					"non_empty":    true,
+				},
+			}
+
+			err = validator.AddValidationRule(complexRule)
+			require.NoError(t, err, "AddValidationRule should handle complex validation logic")
+
+			// Test adding rule with no validator function
+			noValidatorRule := ValidationRule{
+				ID:          "rule-3",
+				Name:        "No Validator Rule",
+				Description: "Rule without validator function",
+				// Validator is nil
+				Parameters: map[string]interface{}{},
+			}
+
+			err = validator.AddValidationRule(noValidatorRule)
+			// Implementation should handle this gracefully
+			t.Logf("AddValidationRule with no validator result: %v", err)
+
+			// Test adding duplicate rule
+			err = validator.AddValidationRule(simpleRule)
+			// Implementation choice: allow duplicates or reject
+			t.Logf("AddValidationRule with duplicate rule result: %v", err)
+
+			// Test adding rule with empty ID
+			emptyIDRule := ValidationRule{
+				ID:          "", // Invalid
+				Name:        "Empty ID Rule",
+				Description: "Rule with empty ID",
+				Validator: func(state StateSnapshot) ValidationResult {
+					return ValidationResult{Valid: true}
+				},
+			}
+
+			err = validator.AddValidationRule(emptyIDRule)
+			// Implementation should handle this appropriately
+			t.Logf("AddValidationRule with empty ID result: %v", err)
+		})
+
+		t.Run("ValidateState", func(t *testing.T) {
+			// First, add some validation rules
+			viewTypeRule := ValidationRule{
+				ID:   "view-type-rule",
+				Name: "View Type Validation",
+				Validator: func(state StateSnapshot) ValidationResult {
+					if state.ViewType == "" {
+						return ValidationResult{
+							Valid:   false,
+							Message: "View type is required",
+							Field:   "ViewType",
+						}
+					}
+					return ValidationResult{Valid: true, Message: "View type is valid"}
+				},
+			}
+
+			processRule := ValidationRule{
+				ID:   "process-rule",
+				Name: "Process Validation",
+				Validator: func(state StateSnapshot) ValidationResult {
+					if state.ViewType == "processes" {
+						if _, exists := state.Properties["selected_process"]; !exists {
+							return ValidationResult{
+								Valid:   false,
+								Message: "Process view must have selected_process",
+								Field:   "selected_process",
+							}
+						}
+					}
+					return ValidationResult{Valid: true, Message: "Process validation passed"}
+				},
+			}
+
+			timestampRule := ValidationRule{
+				ID:   "timestamp-rule",
+				Name: "Timestamp Validation",
+				Validator: func(state StateSnapshot) ValidationResult {
+					if state.Timestamp.IsZero() {
+						return ValidationResult{
+							Valid:   false,
+							Message: "Timestamp cannot be zero",
+							Field:   "Timestamp",
+						}
+					}
+					return ValidationResult{Valid: true, Message: "Timestamp is valid"}
+				},
+			}
+
+			// Add rules
+			rules := []ValidationRule{viewTypeRule, processRule, timestampRule}
+			for _, rule := range rules {
+				err := validator.AddValidationRule(rule)
+				require.NoError(t, err, "Adding validation rule should not fail")
+			}
+
+			// Test validating valid state
+			validState := StateSnapshot{
+				ViewType: "processes",
+				Properties: map[string]interface{}{
+					"selected_process": "proc-123",
+					"active":          true,
+				},
+				Timestamp: time.Now(),
+			}
+
+			results := validator.ValidateState(validState)
+			require.NotNil(t, results, "ValidateState should return results")
+			require.NotEmpty(t, results, "Should return validation results")
+
+			// Check that all results have required fields
+			for i, result := range results {
+				require.NotNil(t, result, "Validation result %d should not be nil", i)
+				require.NotEmpty(t, result.Message, "Validation result %d should have message", i)
+			}
+
+			// Test validating invalid state
+			invalidState := StateSnapshot{
+				ViewType:   "", // Invalid
+				Properties: map[string]interface{}{}, // Missing selected_process
+				Timestamp:  time.Time{}, // Invalid
+			}
+
+			invalidResults := validator.ValidateState(invalidState)
+			require.NotNil(t, invalidResults, "ValidateState should return results for invalid state")
+
+			// Invalid state should have some validation failures
+			// (depending on implementation, might have mixed pass/fail results)
+
+			// Test validating state with no applicable rules
+			noRulesValidator := &mockStateValidator{}
+			// Don't add any rules
+
+			emptyResults := noRulesValidator.ValidateState(validState)
+			require.NotNil(t, emptyResults, "ValidateState should handle no rules case")
+
+			// Test validating state with complex properties
+			complexState := StateSnapshot{
+				ViewType: "ai-coder",
+				Properties: map[string]interface{}{
+					"active_sessions": []string{"session-1", "session-2"},
+					"current_session": "session-1",
+					"nested_data": map[string]interface{}{
+						"terminal": map[string]interface{}{
+							"active":   true,
+							"process":  "tmux",
+							"session":  "brummer-session",
+						},
+					},
+				},
+				Timestamp: time.Now(),
+			}
+
+			complexResults := validator.ValidateState(complexState)
+			require.NotNil(t, complexResults, "ValidateState should handle complex states")
+		})
+	})
+
+	t.Run("Integration and Edge Cases", func(t *testing.T) {
+		validator := &mockStateValidator{}
+
+		t.Run("State Comparison with Timestamps", func(t *testing.T) {
+			// Test how timestamp differences affect state comparison
+			baseTime := time.Now()
+
+			oldState := StateSnapshot{
+				ViewType:   "processes",
+				Properties: map[string]interface{}{"process": "proc-1"},
+				Timestamp:  baseTime,
+			}
+
+			newState := StateSnapshot{
+				ViewType:   "processes",
+				Properties: map[string]interface{}{"process": "proc-1"},
+				Timestamp:  baseTime.Add(time.Second),
+			}
+
+			result := validator.CompareStates(oldState, newState)
+			require.NotNil(t, result, "Timestamp comparison should return result")
+			// Implementation choice: whether timestamp differences count as differences
+
+			// Test very old vs very new states
+			veryOldState := StateSnapshot{
+				ViewType:   "processes",
+				Properties: map[string]interface{}{"process": "proc-1"},
+				Timestamp:  baseTime.Add(-time.Hour),
+			}
+
+			veryNewState := StateSnapshot{
+				ViewType:   "processes",
+				Properties: map[string]interface{}{"process": "proc-1"},
+				Timestamp:  baseTime.Add(time.Hour),
+			}
+
+			timeRangeResult := validator.CompareStates(veryOldState, veryNewState)
+			require.NotNil(t, timeRangeResult, "Time range comparison should return result")
+		})
+
+		t.Run("Validation Rule Performance", func(t *testing.T) {
+			// Test that validation rules don't cause performance issues
+			performanceRule := ValidationRule{
+				ID:   "performance-rule",
+				Name: "Performance Test Rule",
+				Validator: func(state StateSnapshot) ValidationResult {
+					// Simulate some validation work
+					time.Sleep(time.Microsecond * 10) // Very small delay
+					return ValidationResult{
+						Valid:   true,
+						Message: "Performance rule passed",
+					}
+				},
+			}
+
+			err := validator.AddValidationRule(performanceRule)
+			require.NoError(t, err, "Adding performance rule should not fail")
+
+			// Test with multiple performance rules
+			for i := 0; i < 10; i++ {
+				rule := ValidationRule{
+					ID:   fmt.Sprintf("perf-rule-%d", i),
+					Name: fmt.Sprintf("Performance Rule %d", i),
+					Validator: func(state StateSnapshot) ValidationResult {
+						time.Sleep(time.Microsecond * 5)
+						return ValidationResult{Valid: true, Message: "OK"}
+					},
+				}
+				err := validator.AddValidationRule(rule)
+				require.NoError(t, err, "Adding multiple performance rules should not fail")
+			}
+
+			// Measure validation time
+			testState := StateSnapshot{
+				ViewType:   "test",
+				Properties: map[string]interface{}{},
+				Timestamp:  time.Now(),
+			}
+
+			start := time.Now()
+			results := validator.ValidateState(testState)
+			duration := time.Since(start)
+
+			require.NotNil(t, results, "Performance validation should return results")
+			require.Less(t, duration, time.Millisecond*100, "Validation should complete in reasonable time")
+		})
+
+		t.Run("Concurrent Validation", func(t *testing.T) {
+			// Test concurrent access to validator
+			done := make(chan bool, 3)
+
+			// Goroutine 1: Capture states
+			go func() {
+				defer func() { done <- true }()
+				for i := 0; i < 10; i++ {
+					model := struct{ ID string }{ID: fmt.Sprintf("model-%d", i)}
+					_, err := validator.CaptureState(model)
+					if err != nil {
+						t.Errorf("Concurrent CaptureState failed: %v", err)
+					}
+				}
+			}()
+
+			// Goroutine 2: Add expected states
+			go func() {
+				defer func() { done <- true }()
+				for i := 0; i < 5; i++ {
+					state := ExpectedState{
+						TriggerAction: fmt.Sprintf("action-%d", i),
+						ViewType:      "test",
+						Timeout:       time.Second,
+					}
+					err := validator.AddExpectedState(state)
+					if err != nil {
+						t.Errorf("Concurrent AddExpectedState failed: %v", err)
+					}
+				}
+			}()
+
+			// Goroutine 3: Validate states
+			go func() {
+				defer func() { done <- true }()
+				for i := 0; i < 8; i++ {
+					state := StateSnapshot{
+						ViewType:   "concurrent-test",
+						Properties: map[string]interface{}{"iteration": i},
+						Timestamp:  time.Now(),
+					}
+					results := validator.ValidateState(state)
+					if results == nil {
+						t.Error("Concurrent ValidateState returned nil")
+					}
+				}
+			}()
+
+			// Wait for all goroutines
+			for i := 0; i < 3; i++ {
+				select {
+				case <-done:
+					// OK
+				case <-time.After(time.Second * 5):
+					t.Error("Timeout in concurrent validation test")
+				}
+			}
+		})
+	})
+}
+
+// TestStateValidator_StateComparisonAccuracy tests the accuracy of state comparison
+// This test ensures that state comparison works correctly for various scenarios
+func TestStateValidator_StateComparisonAccuracy(t *testing.T) {
+	validator := &mockStateValidator{}
+
+	t.Run("Exact Match Comparison", func(t *testing.T) {
+		baseSnapshot := StateSnapshot{
+			ViewType: "processes",
+			Properties: map[string]interface{}{
+				"selected_process": "proc-123",
+				"active":          true,
+				"count":           5,
+			},
+			Timestamp: time.Now(),
+		}
+
+		exactSnapshot := StateSnapshot{
+			ViewType: "processes",
+			Properties: map[string]interface{}{
+				"selected_process": "proc-123",
+				"active":          true,
+				"count":           5,
+			},
+			Timestamp: baseSnapshot.Timestamp,
+		}
+
+		result := validator.CompareStates(baseSnapshot, exactSnapshot)
+		require.NotNil(t, result, "Exact match comparison should return result")
+		// Implementation choice: whether exact matches have similarity of 1.0
+		require.GreaterOrEqual(t, result.Similarity, 0.9, "Exact match should have high similarity")
+	})
+
+	t.Run("Type Difference Comparison", func(t *testing.T) {
+		snapshot1 := StateSnapshot{
+			ViewType: "processes",
+			Properties: map[string]interface{}{
+				"count": 5, // int
+			},
+			Timestamp: time.Now(),
+		}
+
+		snapshot2 := StateSnapshot{
+			ViewType: "processes",
+			Properties: map[string]interface{}{
+				"count": "5", // string
+			},
+			Timestamp: time.Now(),
+		}
+
+		result := validator.CompareStates(snapshot1, snapshot2)
+		require.NotNil(t, result, "Type difference comparison should return result")
+		require.False(t, result.Match, "Type differences should not match")
+		require.NotEmpty(t, result.Differences, "Type differences should be recorded")
+	})
+
+	t.Run("Nested Property Comparison", func(t *testing.T) {
+		nestedSnapshot1 := StateSnapshot{
+			ViewType: "ai-coder",
+			Properties: map[string]interface{}{
+				"sessions": map[string]interface{}{
+					"active": []string{"session-1", "session-2"},
+					"current": "session-1",
+				},
+			},
+			Timestamp: time.Now(),
+		}
+
+		nestedSnapshot2 := StateSnapshot{
+			ViewType: "ai-coder",
+			Properties: map[string]interface{}{
+				"sessions": map[string]interface{}{
+					"active": []string{"session-1", "session-3"}, // Different
+					"current": "session-1",
+				},
+			},
+			Timestamp: time.Now(),
+		}
+
+		result := validator.CompareStates(nestedSnapshot1, nestedSnapshot2)
+		require.NotNil(t, result, "Nested property comparison should return result")
+		require.False(t, result.Match, "Different nested properties should not match")
+		require.Contains(t, result.Differences, "sessions", "Differences should include nested path")
+	})
+
+	t.Run("Missing Property Comparison", func(t *testing.T) {
+		fullSnapshot := StateSnapshot{
+			ViewType: "processes",
+			Properties: map[string]interface{}{
+				"selected_process": "proc-1",
+				"active":          true,
+				"count":           10,
+				"metadata": map[string]interface{}{
+					"created": time.Now(),
+					"version": "1.0",
+				},
+			},
+			Timestamp: time.Now(),
+		}
+
+		partialSnapshot := StateSnapshot{
+			ViewType: "processes",
+			Properties: map[string]interface{}{
+				"selected_process": "proc-1",
+				"active":          true,
+				// Missing "count" and "metadata"
+			},
+			Timestamp: time.Now(),
+		}
+
+		result := validator.CompareStates(fullSnapshot, partialSnapshot)
+		require.NotNil(t, result, "Missing property comparison should return result")
+		require.False(t, result.Match, "Missing properties should not match")
+		require.NotEmpty(t, result.Differences, "Missing properties should be recorded")
+	})
+}
+
+// TestStateValidator_ValidationRuleChaining tests validation rule behavior
+// This test ensures that validation rules work correctly together
+func TestStateValidator_ValidationRuleChaining(t *testing.T) {
+	validator := &mockStateValidator{}
+
+	t.Run("Multiple Rule Validation", func(t *testing.T) {
+		// Add multiple validation rules
+		rules := []ValidationRule{
+			{
+				ID:   "rule-1",
+				Name: "View Type Check",
+				Validator: func(state StateSnapshot) ValidationResult {
+					return ValidationResult{Valid: true, Message: "View type OK"}
+				},
+			},
+			{
+				ID:   "rule-2",
+				Name: "Property Check",
+				Validator: func(state StateSnapshot) ValidationResult {
+					return ValidationResult{Valid: true, Message: "Properties OK"}
+				},
+			},
+			{
+				ID:   "rule-3",
+				Name: "Timestamp Check",
+				Validator: func(state StateSnapshot) ValidationResult {
+					return ValidationResult{Valid: true, Message: "Timestamp OK"}
+				},
+			},
+		}
+
+		for _, rule := range rules {
+			err := validator.AddValidationRule(rule)
+			require.NoError(t, err, "Adding rule should not fail")
+		}
+
+		// Validate state - should run all rules
+		testState := StateSnapshot{
+			ViewType:   "test",
+			Properties: map[string]interface{}{},
+			Timestamp:  time.Now(),
+		}
+
+		results := validator.ValidateState(testState)
+		require.Len(t, results, len(rules), "Should run all validation rules")
+
+		// Check each rule was executed
+		for i, result := range results {
+			require.True(t, result.Valid, "Rule %d should pass", i)
+			require.NotEmpty(t, result.Message, "Rule %d should have message", i)
+		}
+	})
+
+	t.Run("Mixed Rule Results", func(t *testing.T) {
+		// Add rules with mixed pass/fail results
+		passRule := ValidationRule{
+			ID:   "pass-rule",
+			Name: "Always Pass",
+			Validator: func(state StateSnapshot) ValidationResult {
+				return ValidationResult{Valid: true, Message: "Pass"}
+			},
+		}
+
+		failRule := ValidationRule{
+			ID:   "fail-rule",
+			Name: "Always Fail",
+			Validator: func(state StateSnapshot) ValidationResult {
+				return ValidationResult{
+					Valid:   false,
+					Message: "Fail",
+					Field:   "test_field",
+				}
+			},
+		}
+
+		conditionalRule := ValidationRule{
+			ID:   "conditional-rule",
+			Name: "Conditional",
+			Validator: func(state StateSnapshot) ValidationResult {
+				// Fail only for specific view types
+				if state.ViewType == "fail-view" {
+					return ValidationResult{
+						Valid:   false,
+						Message: "Conditional fail",
+						Field:   "ViewType",
+					}
+				}
+				return ValidationResult{Valid: true, Message: "Conditional pass"}
+			},
+		}
+
+		rules := []ValidationRule{passRule, failRule, conditionalRule}
+		for _, rule := range rules {
+			err := validator.AddValidationRule(rule)
+			require.NoError(t, err, "Adding mixed rule should not fail")
+		}
+
+		// Test with passing view
+		passingState := StateSnapshot{
+			ViewType:   "pass-view",
+			Properties: map[string]interface{}{},
+			Timestamp:  time.Now(),
+		}
+
+		passingResults := validator.ValidateState(passingState)
+		require.Len(t, passingResults, len(rules), "Should run all rules for passing state")
+
+		// Should have 2 passes, 1 fail
+		passCount := 0
+		failCount := 0
+		for _, result := range passingResults {
+			if result.Valid {
+				passCount++
+			} else {
+				failCount++
+			}
+		}
+		require.Equal(t, 2, passCount, "Should have 2 passing results")
+		require.Equal(t, 1, failCount, "Should have 1 failing result")
+
+		// Test with failing view
+		failingState := StateSnapshot{
+			ViewType:   "fail-view",
+			Properties: map[string]interface{}{},
+			Timestamp:  time.Now(),
+		}
+
+		failingResults := validator.ValidateState(failingState)
+		require.Len(t, failingResults, len(rules), "Should run all rules for failing state")
+
+		// Should have 1 pass, 2 fails
+		passCount = 0
+		failCount = 0
+		for _, result := range failingResults {
+			if result.Valid {
+				passCount++
+			} else {
+				failCount++
+			}
+		}
+		require.Equal(t, 1, passCount, "Should have 1 passing result")
+		require.Equal(t, 2, failCount, "Should have 2 failing results")
+	})
+}
+
+// TestStateValidator_ImplementationRequired verifies that no real implementation exists yet
+// This test is designed to fail until a real StateValidator implementation is provided
+func TestStateValidator_ImplementationRequired(t *testing.T) {
+	t.Log("=== StateValidator Implementation Status Check ===")
+	t.Log("This test verifies that StateValidator interface is not yet fully implemented")
+	t.Log("Expected: This test should be updated when real implementation exists")
+
+	// Check if we're using the mock implementation
+	validator := &mockStateValidator{}
+
+	// Test mock-specific behavior that should differ from real implementation
+	testModel := struct{ Name string }{Name: "test"}
+	snapshot, err := validator.CaptureState(testModel)
+	require.NoError(t, err, "Mock should capture state")
+
+	// Mock returns empty snapshot - real implementation would extract actual model state
+	if snapshot.ViewType == "" && len(snapshot.Properties) == 0 {
+		t.Log("✅ Using mock implementation (empty snapshot)")
+		t.Log("⚠️  Real implementation needed for production use")
+		t.Log("   - Real implementation should extract model properties")
+		t.Log("   - Real implementation should capture view type")
+		t.Log("   - Real implementation should handle complex model structures")
+	}
+
+	// Test validation rules
+	rule := ValidationRule{
+		ID:   "test-rule",
+		Name: "Test Rule",
+		Validator: func(state StateSnapshot) ValidationResult {
+			return ValidationResult{Valid: true, Message: "Mock rule"}
+		},
+	}
+
+	err = validator.AddValidationRule(rule)
+	require.NoError(t, err, "Mock should add rule")
+
+	// Mock validation returns simple result - real implementation should execute rules
+	testState := StateSnapshot{
+		ViewType:   "test",
+		Properties: map[string]interface{}{},
+		Timestamp:  time.Now(),
+	}
+
+	results := validator.ValidateState(testState)
+	if len(results) == 1 && results[0].Message == "Valid" {
+		t.Log("✅ Using mock implementation (simple validation result)")
+		t.Log("⚠️  Real implementation needed for comprehensive validation")
+	}
+
+	// This test serves as a placeholder to remind developers
+	// that a real StateValidator implementation is needed
+	t.Skip("Mock implementation detected - real StateValidator implementation required")
+}

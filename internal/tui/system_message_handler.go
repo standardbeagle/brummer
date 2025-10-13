@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/tui/system"
+	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
 // SystemMessageHandler handles system message events
@@ -18,7 +18,7 @@ func NewSystemMessageHandler() MessageHandler {
 
 // CanHandle checks if this handler can process the message
 func (h *SystemMessageHandler) CanHandle(msg tea.Msg) bool {
-	_, ok := msg.(system.SystemMessageMsg)
+	_, ok := msg.(messages.SystemMessageAddedMsg)
 	return ok
 }
 
@@ -26,26 +26,30 @@ func (h *SystemMessageHandler) CanHandle(msg tea.Msg) bool {
 func (h *SystemMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
-	sysMsg, ok := msg.(system.SystemMessageMsg)
+	sysMsg, ok := msg.(messages.SystemMessageAddedMsg)
 	if !ok {
 		return model, nil
 	}
 
-	// Add system message to the system controller
-	if model.systemController != nil {
-		model.systemController.AddMessage(sysMsg.Level, sysMsg.Context, sysMsg.Message)
-		model.systemController.UpdateSize(model.width, model.height, model.headerHeight, model.footerHeight)
-
-		// Debug log to verify system messages are being received
-		if strings.Contains(sysMsg.Message, "MCP") {
-			model.logStore.Add("system-debug", "TUI", fmt.Sprintf("Received MCP system message: %s", sysMsg.Message), false)
+	// Add system message to the system component
+	if model.systemComponent != nil {
+		// Convert system message to service format and add via component
+		cmd := model.systemComponent.AddSystemMessage(
+			sysMsg.Level,
+			sysMsg.Content,
+			sysMsg.Source,
+		)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
 		}
 
-		// Forward to debug forwarder if enabled
-		// TODO(Feature 005): Re-implement debug forwarding for service-based architecture
-		// The debug forwarder was part of the old controller-based system
+		// Debug log to verify system messages are being received
+		if strings.Contains(sysMsg.Content, "MCP") {
+			model.logStore.Add("system-debug", "TUI", fmt.Sprintf("Received MCP system message: %s", sysMsg.Content), false)
+		}
 	}
 
 	cmds = append(cmds, model.waitForUpdates())
 	return model, tea.Batch(cmds...)
 }
+

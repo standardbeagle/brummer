@@ -6,8 +6,6 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/process"
-	"github.com/standardbeagle/brummer/internal/tui/navigation"
-	"github.com/standardbeagle/brummer/internal/tui/system"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -76,13 +74,6 @@ type UIComponentModelInterface interface {
 	HideSettings()
 }
 
-// AI Coder interface
-type AICoderModelInterface interface {
-	CoreModelInterface
-	HasActiveAICoders() bool
-	GetAICoderController() AICoderControllerInterface
-}
-
 // Composite interface for controllers that need multiple concerns
 type ModelInterface interface {
 	NavigationModelInterface
@@ -92,7 +83,6 @@ type ModelInterface interface {
 	ScriptModelInterface
 	SearchModelInterface
 	UIComponentModelInterface
-	AICoderModelInterface
 }
 
 // ProcessManagerInterface defines process management operations
@@ -164,19 +154,6 @@ type CommandWindowControllerInterface interface {
 	SetProcessManager(pm ProcessManagerInterface)
 }
 
-// AICoderControllerInterface defines AI coder operations
-type AICoderControllerInterface interface {
-	HandleAICommand(command string) tea.Cmd
-	CreateAICoderSession(provider string)
-	HasActiveSessions() bool
-	SetHasActiveSessions(active bool)
-	GetActiveSessions() []AICoderSession
-}
-
-// SystemControllerInterface defines system message operations
-type SystemControllerInterface interface {
-	GetUnreadIndicators() map[navigation.View]system.UnreadIndicator
-}
 
 // NotificationsControllerInterface defines notification operations
 type NotificationsControllerInterface interface {
@@ -203,14 +180,6 @@ type CommandItem struct {
 	Name        string
 	Description string
 	Handler     func() tea.Cmd
-}
-
-// AICoderSession represents an active AI coder session
-type AICoderSession struct {
-	ID       string
-	Provider string
-	Status   string
-	Created  time.Time
 }
 
 // SystemMessage represents a system message

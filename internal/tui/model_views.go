@@ -1,7 +1,5 @@
 package tui
 
-import "github.com/standardbeagle/brummer/internal/tui/navigation"
-
 // ViewConfig holds configuration for each view
 type ViewConfig struct {
 	Title       string
@@ -11,51 +9,51 @@ type ViewConfig struct {
 }
 
 // GetViewConfigs returns the configuration for all views
-func GetViewConfigs() map[navigation.View]ViewConfig {
-	return map[navigation.View]ViewConfig{
-		navigation.ViewProcesses: {
+func GetViewConfigs() map[View]ViewConfig {
+	return map[View]ViewConfig{
+		ViewProcesses: {
 			Title:       "Processes",
 			Description: "Process management",
 			KeyBinding:  "1",
 			Icon:        "🏃",
 		},
-		navigation.ViewLogs: {
+		ViewLogs: {
 			Title:       "Logs",
 			Description: "Process logs",
 			KeyBinding:  "2",
 			Icon:        "📄",
 		},
-		navigation.ViewErrors: {
+		ViewErrors: {
 			Title:       "Errors",
 			Description: "Error tracking",
 			KeyBinding:  "3",
 			Icon:        "❌",
 		},
-		navigation.ViewURLs: {
+		ViewURLs: {
 			Title:       "URLs",
 			Description: "Detected URLs",
 			KeyBinding:  "4",
 			Icon:        "🔗",
 		},
-		navigation.ViewWeb: {
+		ViewWeb: {
 			Title:       "Web",
 			Description: "Proxy requests",
 			KeyBinding:  "5",
 			Icon:        "🌐",
 		},
-		navigation.ViewAICoders: {
+		ViewAICoders: {
 			Title:       "AI Coders",
 			Description: "Manage and monitor agentic AI coding assistants",
 			KeyBinding:  "6",
 			Icon:        "🤖",
 		},
-		navigation.ViewSettings: {
+		ViewSettings: {
 			Title:       "Settings",
 			Description: "Configuration",
 			KeyBinding:  "7",
 			Icon:        "⚙️",
 		},
-		navigation.ViewMCPConnections: {
+		ViewMCPConnections: {
 			Title:       "MCP",
 			Description: "MCP Connections",
 			KeyBinding:  "8",
@@ -65,10 +63,10 @@ func GetViewConfigs() map[navigation.View]ViewConfig {
 }
 
 // GetOrderedViews returns the views in the order they should appear in tabs
-func GetOrderedViews(debugMode bool) []navigation.View {
-	views := []navigation.View{navigation.ViewProcesses, navigation.ViewLogs, navigation.ViewErrors, navigation.ViewURLs, navigation.ViewWeb, navigation.ViewAICoders, navigation.ViewSettings}
+func GetOrderedViews(debugMode bool) []View {
+	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewAICoders, ViewSettings}
 	if debugMode {
-		views = append(views, navigation.ViewMCPConnections)
+		views = append(views, ViewMCPConnections)
 	}
 	return views
 }

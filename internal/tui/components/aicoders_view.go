@@ -1,7 +1,9 @@
 package components
 
 import (
+	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"time"
 
@@ -129,8 +131,23 @@ func (c *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case messages.SessionListMsg:
 		// Update cached sessions
+		previousCount := len(c.cachedSessions)
 		c.cachedSessions = msg.Sessions
-		c.viewState.SelectedIndex = 0 // Reset selection
+
+		// If this is a new session list with more sessions, auto-switch to newest
+		if len(msg.Sessions) > previousCount && previousCount == 0 {
+			// First session created - switch to PTY mode automatically
+			newestSession := msg.Sessions[len(msg.Sessions)-1]
+			c.viewState.SelectedIndex = len(msg.Sessions) - 1
+			c.viewState.Mode = ViewModePTY
+			c.viewState.FocusedSessionID = newestSession.ID
+			return c, c.fetchTerminalState(newestSession.ID)
+		}
+
+		// Reset selection to stay in bounds
+		if c.viewState.SelectedIndex >= len(msg.Sessions) && c.viewState.SelectedIndex > 0 {
+			c.viewState.SelectedIndex = len(msg.Sessions) - 1
+		}
 		c.updateViewport()
 		return c, nil
 
@@ -180,6 +197,20 @@ func (c *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		c.updatePTYView()
 		return c, nil
 
+	case messages.SwitchToPTYMsg:
+		// Switch to PTY mode for newly created session
+		c.viewState.Mode = ViewModePTY
+		c.viewState.FocusedSessionID = msg.SessionID
+		// Update selection to the new session
+		for i, sess := range c.cachedSessions {
+			if sess.ID == msg.SessionID {
+				c.viewState.SelectedIndex = i
+				break
+			}
+		}
+		// Fetch terminal state for the new session
+		return c, c.fetchTerminalState(msg.SessionID)
+
 	case messages.AICoderErrorMsg:
 		// Display error (for now, just update session status)
 		// TODO: Consider adding notification system integration
@@ -228,6 +259,24 @@ func (c *AICodersViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if len(c.cachedSessions) > 0 {
 					c.viewState.SelectedIndex = (c.viewState.SelectedIndex - 1 + len(c.cachedSessions)) % len(c.cachedSessions)
 					c.updateViewport()
+				}
+				return c, nil
+			case "a", "n":
+				// Create new AI coder session
+				// For now, create a default session - can be enhanced to prompt for details
+				return c, c.startAICoderSession("AI Coder", "bash")
+			case "d":
+				// Stop/delete selected session
+				if len(c.cachedSessions) > 0 && c.viewState.SelectedIndex < len(c.cachedSessions) {
+					sessionID := c.cachedSessions[c.viewState.SelectedIndex].ID
+					return c, c.stopAICoderSession(sessionID)
+				}
+				return c, nil
+			case "q":
+				// Stop selected session (alias for 'd')
+				if len(c.cachedSessions) > 0 && c.viewState.SelectedIndex < len(c.cachedSessions) {
+					sessionID := c.cachedSessions[c.viewState.SelectedIndex].ID
+					return c, c.stopAICoderSession(sessionID)
 				}
 				return c, nil
 			case "enter":
@@ -473,8 +522,80 @@ func (c *AICodersViewComponent) GetSelectedSession() *SessionInfo {
 	return c.sessions[c.selectedIndex]
 }
 
+// GetViewState returns the current view state (for keyboard context)
+func (c *AICodersViewComponent) GetViewState() SessionViewState {
+	return c.viewState
+}
+
 // T026: Command Constructor Helpers
 // These methods return tea.Cmd functions that call service methods
+
+// startAICoderSession returns a command that creates and starts a new AI coder session
+func (c *AICodersViewComponent) startAICoderSession(name, command string) tea.Cmd {
+	return func() tea.Msg {
+		if c.service == nil {
+			return messages.AICoderErrorMsg{
+				SessionID: "",
+				Error:     fmt.Errorf("service not available"),
+				Severity:  "error",
+			}
+		}
+
+		svc := c.service.(*services.AICoderService)
+
+		// Create session
+		sessionID, err := svc.CreateSession(context.Background(), name, command, "")
+		if err != nil {
+			return messages.AICoderErrorMsg{
+				SessionID: sessionID,
+				Error:     err,
+				Severity:  "error",
+			}
+		}
+
+		// Start session with default terminal dimensions
+		err = svc.StartSession(context.Background(), sessionID, 80, 24)
+		if err != nil {
+			// Clean up created session on start failure
+			_ = svc.StopSession(context.Background(), sessionID)
+			return messages.AICoderErrorMsg{
+				SessionID: sessionID,
+				Error:     err,
+				Severity:  "error",
+			}
+		}
+
+		// Return session list with new session
+		sessions := svc.ListSessions()
+		return messages.SessionListMsg{Sessions: sessions}
+	}
+}
+
+// stopAICoderSession returns a command that stops an AI coder session
+func (c *AICodersViewComponent) stopAICoderSession(sessionID string) tea.Cmd {
+	return func() tea.Msg {
+		if c.service == nil {
+			return messages.AICoderErrorMsg{
+				SessionID: sessionID,
+				Error:     fmt.Errorf("service not available"),
+				Severity:  "error",
+			}
+		}
+
+		svc := c.service.(*services.AICoderService)
+		err := svc.StopSession(context.Background(), sessionID)
+		if err != nil {
+			return messages.AICoderErrorMsg{
+				SessionID: sessionID,
+				Error:     err,
+				Severity:  "error",
+			}
+		}
+
+		// SessionEndedMsg will be published via event bus
+		return nil
+	}
+}
 
 // fetchSessionList returns a command that fetches the session list from the service
 func (c *AICodersViewComponent) fetchSessionList() tea.Cmd {
@@ -554,18 +675,21 @@ func (c *AICodersViewComponent) updatePTYView() {
 	if len(termState.Lines) > 0 {
 		// Display terminal lines with proper handling for long lines
 		for _, line := range termState.Lines {
+			// Process ANSI escape codes for clean display
+			cleanLine := processANSIFormatting(line)
+
 			// Handle lines longer than viewport width
-			if len(line) > c.viewState.ViewportWidth {
+			if len(cleanLine) > c.viewState.ViewportWidth {
 				// Simple word wrapping - can be enhanced later
-				for len(line) > c.viewState.ViewportWidth {
-					lines = append(lines, line[:c.viewState.ViewportWidth])
-					line = line[c.viewState.ViewportWidth:]
+				for len(cleanLine) > c.viewState.ViewportWidth {
+					lines = append(lines, cleanLine[:c.viewState.ViewportWidth])
+					cleanLine = cleanLine[c.viewState.ViewportWidth:]
 				}
-				if len(line) > 0 {
-					lines = append(lines, line)
+				if len(cleanLine) > 0 {
+					lines = append(lines, cleanLine)
 				}
 			} else {
-				lines = append(lines, line)
+				lines = append(lines, cleanLine)
 			}
 
 			// Stop if we've filled the viewport (minus header/footer space)
@@ -574,9 +698,16 @@ func (c *AICodersViewComponent) updatePTYView() {
 			}
 		}
 	} else {
-		// Show placeholder when no terminal content yet
-		lines = append(lines, c.normalStyle.Render("Terminal session starting..."))
-		lines = append(lines, c.normalStyle.Render("Waiting for output from AI coder"))
+		// Show session info while waiting for terminal output
+		var sessionName string = "Unknown"
+		for _, sess := range c.cachedSessions {
+			if sess.ID == c.viewState.FocusedSessionID {
+				sessionName = sess.Name
+				break
+			}
+		}
+		lines = append(lines, c.normalStyle.Render(fmt.Sprintf("Terminal session starting for: %s", sessionName)))
+		lines = append(lines, c.normalStyle.Render("Waiting for PTY output from AI coder..."))
 	}
 
 	// Fill remaining space with empty lines if needed
@@ -606,4 +737,18 @@ func (c *AICodersViewComponent) updatePTYView() {
 
 	content := strings.Join(lines, "\n")
 	c.viewport.SetContent(content)
+}
+
+// processANSIFormatting processes common ANSI escape codes for terminal display
+func processANSIFormatting(line string) string {
+	// Remove ANSI color codes and formatting for cleaner display
+	// This is a simple implementation - can be enhanced for full ANSI support
+	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[mK]`)
+	cleanLine := ansiRegex.ReplaceAllString(line, "")
+
+	// Handle other common escape sequences
+	cleanLine = strings.ReplaceAll(cleanLine, "\x1b[2K", "") // Clear line
+	cleanLine = strings.ReplaceAll(cleanLine, "\x1b[H", "")  // Home cursor
+
+	return cleanLine
 }

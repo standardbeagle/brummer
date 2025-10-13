@@ -60,3 +60,47 @@ type FileBrowserErrorMsg struct {
 	Error     string
 	Timestamp time.Time
 }
+
+// Component-Service Communication Messages for File Browser
+// These messages facilitate communication between FileBrowserService and FileBrowserComponent
+
+// FileBrowserShownMsg is sent when a file browser dialog is opened
+type FileBrowserShownMsg struct {
+	DialogID    string    `json:"dialog_id"`
+	InitialPath string    `json:"initial_path"`
+	CallbackID  string    `json:"callback_id"`
+	Time        time.Time `json:"time"`
+}
+
+// FileBrowserHiddenMsg is sent when a file browser dialog is closed
+type FileBrowserHiddenMsg struct {
+	DialogID string    `json:"dialog_id"`
+	Trigger  string    `json:"trigger"` // "selection", "cancel", "escape"
+	Time     time.Time `json:"time"`
+}
+
+// FileSelectionChangedMsg is sent when file selection changes
+type FileSelectionChangedMsg struct {
+	DialogID       string      `json:"dialog_id"`
+	SelectedPath   string      `json:"selected_path"`
+	SelectedIndex  int         `json:"selected_index"`
+	FileInfo       interface{} `json:"file_info"` // FileInfo struct from service
+	Time           time.Time   `json:"time"`
+}
+
+// FileBrowserNavigatedMsg is sent when directory navigation occurs
+type FileBrowserNavigatedMsg struct {
+	DialogID    string      `json:"dialog_id"`
+	OldPath     string      `json:"old_path"`
+	NewPath     string      `json:"new_path"`
+	FileList    interface{} `json:"file_list"` // []FileInfo from service
+	Time        time.Time   `json:"time"`
+}
+
+// FileBrowserFilterChangedMsg is sent when file filter is modified
+type FileBrowserFilterChangedMsg struct {
+	DialogID   string    `json:"dialog_id"`
+	FilterType string    `json:"filter_type"`
+	Filter     string    `json:"filter"`
+	Time       time.Time `json:"time"`
+}

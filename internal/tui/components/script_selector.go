@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
 // ScriptSelectorAutocompleteInterface defines interface for script selector autocomplete
@@ -56,14 +57,14 @@ type ScriptSelector struct {
 
 // NavigationControllerInterface defines minimal navigation interface
 type NavigationControllerInterface interface {
-	SwitchTo(view int)
+	SwitchTo(view messages.ViewType)
 }
 
-// View constants
+// View constants for local use
 const (
-	ViewProcesses = 0
-	ViewLogs      = 1
-	ViewAICoders  = 5
+	ViewProcesses = messages.ViewType("processes")
+	ViewLogs      = messages.ViewType("logs")
+	ViewAICoders  = messages.ViewType("aicoders")
 )
 
 // Constants for terminal sizing

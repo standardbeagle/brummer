@@ -1,6 +1,8 @@
 package messages
 
-import "time"
+import (
+	"time"
+)
 
 // CommandResultMsg is a message that indicates the result of a command.
 type CommandResultMsg struct {
@@ -39,4 +41,31 @@ type AICoderSessionInfo struct {
 // AddAICoderSessionMsg is a message that adds a new AI coder session to the view
 type AddAICoderSessionMsg struct {
 	Session *AICoderSessionInfo
+}
+
+// ComponentReadyMsg is sent when a component completes initialization
+type ComponentReadyMsg struct {
+	ComponentID string    `json:"component_id"`
+	Time        time.Time `json:"time"`
+}
+
+// QuitRequestedMsg is sent when a component requests application quit
+type QuitRequestedMsg struct {
+	Source string    `json:"source"`
+	Time   time.Time `json:"time"`
+}
+
+// SystemNotificationMsg represents a system notification message
+type SystemNotificationMsg struct {
+	Title   string    `json:"title"`
+	Message string    `json:"message"`
+	Level   NotificationLevel `json:"level"`
+	Time    time.Time `json:"time"`
+}
+
+// ErrorMessage represents an error message
+type ErrorMessage struct {
+	Source  string    `json:"source"`
+	Message string    `json:"message"`
+	Time    time.Time `json:"time"`
 }

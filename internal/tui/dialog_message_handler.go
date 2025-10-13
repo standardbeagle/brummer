@@ -81,7 +81,7 @@ func (h *DialogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 							errorHandler.HandleError(err, ctx)
 						},
 					)
-					model.navController.SwitchTo(ViewProcesses)
+					model.switchToView(ViewProcesses)
 					model.updateProcessList()
 					return model, model.waitForUpdates()
 				}

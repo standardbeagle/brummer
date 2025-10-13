@@ -48,6 +48,38 @@ type SettingsService interface {
 	Stop() error
 }
 
+// InputService interface defines the contract for input services
+type InputService interface {
+	GetServiceName() string
+	GetServiceStatus() services.ServiceStatus
+	SubscribeToEvents()
+	Stop() error
+}
+
+// NavigationService interface defines the contract for navigation services
+type NavigationService interface {
+	GetServiceName() string
+	GetServiceStatus() services.ServiceStatus
+	SubscribeToEvents()
+	Stop() error
+}
+
+// SystemService interface defines the contract for system services
+type SystemService interface {
+	GetServiceName() string
+	GetServiceStatus() services.ServiceStatus
+	SubscribeToEvents()
+	Stop() error
+}
+
+// NotificationsService interface defines the contract for notifications services
+type NotificationsService interface {
+	GetServiceName() string
+	GetServiceStatus() services.ServiceStatus
+	SubscribeToEvents()
+	Stop() error
+}
+
 // ServiceBridge is the adapter layer that converts service events into BubbleTea messages.
 // This is the ONLY place where services communicate with the UI.
 //
@@ -59,13 +91,17 @@ type SettingsService interface {
 // 5. BubbleTea program.Send() is thread-safe and non-blocking
 // 6. atomic.Value provides lock-free thread-safe access to program reference
 type ServiceBridge struct {
-	processMgr            *process.Manager
-	logStore              *logs.Store
-	proxyServer           *proxy.Server
-	eventBus              *events.EventBus
-	testManagementService TestManagementService // Interface for test management
-	fileBrowserService    FileBrowserService    // Interface for file browser
-	settingsService       SettingsService       // Interface for settings
+	processMgr             *process.Manager
+	logStore               *logs.Store
+	proxyServer            *proxy.Server
+	eventBus               *events.EventBus
+	testManagementService   TestManagementService   // Interface for test management
+	fileBrowserService     FileBrowserService     // Interface for file browser
+	settingsService        SettingsService        // Interface for settings
+	inputService           InputService           // Interface for input
+	navigationService      NavigationService      // Interface for navigation
+	systemService          SystemService          // Interface for system
+	notificationsService   NotificationsService   // Interface for notifications
 
 	// Thread-safe program reference using atomic.Value
 	// Stores *programHolder (never nil, but holder.prog can be nil)
@@ -85,16 +121,24 @@ func NewServiceBridge(
 	testService TestManagementService,
 	fileService FileBrowserService,
 	settingsService SettingsService,
+	inputService InputService,
+	navigationService NavigationService,
+	systemService SystemService,
+	notificationsService NotificationsService,
 ) *ServiceBridge {
 	sb := &ServiceBridge{
-		processMgr:            processMgr,
-		logStore:              logStore,
-		proxyServer:           proxyServer,
-		eventBus:              eventBus,
-		testManagementService: testService,
-		fileBrowserService:    fileService,
-		settingsService:       settingsService,
-		subscriptions:         []func(){},
+		processMgr:             processMgr,
+		logStore:               logStore,
+		proxyServer:            proxyServer,
+		eventBus:               eventBus,
+		testManagementService:   testService,
+		fileBrowserService:     fileService,
+		settingsService:        settingsService,
+		inputService:           inputService,
+		navigationService:      navigationService,
+		systemService:          systemService,
+		notificationsService:   notificationsService,
+		subscriptions:          []func(){},
 	}
 	// Initialize atomic.Value with empty holder
 	sb.program.Store(&programHolder{prog: nil})
@@ -118,6 +162,10 @@ func (b *ServiceBridge) StartWithoutInitialMessages(program Program) {
 	b.subscribeToTestService()
 	b.subscribeToFileBrowserService()
 	b.subscribeToSettingsService()
+	b.subscribeToInputService()
+	b.subscribeToNavigationService()
+	b.subscribeToSystemService()
+	b.subscribeToNotificationsService()
 }
 
 // Start begins converting service events to BubbleTea messages.
@@ -136,6 +184,10 @@ func (b *ServiceBridge) Start(program Program) {
 	b.subscribeToTestService()
 	b.subscribeToFileBrowserService()
 	b.subscribeToSettingsService()
+	b.subscribeToInputService()
+	b.subscribeToNavigationService()
+	b.subscribeToSystemService()
+	b.subscribeToNotificationsService()
 
 	// Send initial status updates for services that are already running
 	b.sendInitialStatusUpdates()
@@ -599,6 +651,26 @@ func (b *ServiceBridge) Stop() {
 		b.settingsService.Stop()
 	}
 
+	// Stop input service
+	if b.inputService != nil {
+		b.inputService.Stop()
+	}
+
+	// Stop navigation service
+	if b.navigationService != nil {
+		b.navigationService.Stop()
+	}
+
+	// Stop system service
+	if b.systemService != nil {
+		b.systemService.Stop()
+	}
+
+	// Stop notifications service
+	if b.notificationsService != nil {
+		b.notificationsService.Stop()
+	}
+
 	// Unsubscribe from LogStore observers
 	for _, unsub := range b.subscriptions {
 		if unsub != nil {
@@ -947,6 +1019,46 @@ func (b *ServiceBridge) sendInitialStatusUpdates() {
 			Details: status.Details,
 		})
 	}
+
+	// Check input service status
+	if b.inputService != nil {
+		status := b.inputService.GetServiceStatus()
+		prog.Send(messages.ServiceStatusUpdateMsg{
+			Service: status.Service,
+			Status:  status.Status,
+			Details: status.Details,
+		})
+	}
+
+	// Check navigation service status
+	if b.navigationService != nil {
+		status := b.navigationService.GetServiceStatus()
+		prog.Send(messages.ServiceStatusUpdateMsg{
+			Service: status.Service,
+			Status:  status.Status,
+			Details: status.Details,
+		})
+	}
+
+	// Check system service status
+	if b.systemService != nil {
+		status := b.systemService.GetServiceStatus()
+		prog.Send(messages.ServiceStatusUpdateMsg{
+			Service: status.Service,
+			Status:  status.Status,
+			Details: status.Details,
+		})
+	}
+
+	// Check notifications service status
+	if b.notificationsService != nil {
+		status := b.notificationsService.GetServiceStatus()
+		prog.Send(messages.ServiceStatusUpdateMsg{
+			Service: status.Service,
+			Status:  status.Status,
+			Details: status.Details,
+		})
+	}
 }
 
 // subscribeToSettingsService converts settings service events to messages
@@ -999,6 +1111,381 @@ func (b *ServiceBridge) subscribeToSettingsService() {
 				Operation: operation,
 				Error:     errorMsg,
 				Timestamp: time.Now(),
+			})
+		}
+	})
+}
+
+// subscribeToInputService converts input service events to messages
+func (b *ServiceBridge) subscribeToInputService() {
+	if b.inputService == nil {
+		return
+	}
+
+	// Start the input service event subscriptions
+	b.inputService.SubscribeToEvents()
+
+	// Input configuration changed events
+	b.eventBus.Subscribe("input.configuration_changed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			keyBindings := map[string]string{}
+
+			if kb, ok := evt.Data["key_bindings"].(map[string]string); ok {
+				keyBindings = kb
+			}
+
+			prog.Send(messages.KeyBindingChangedMsg{
+				Action:   "configuration_changed",
+				Key:      nil,
+				Binding:  keyBindings,
+				Time:     time.Now(),
+			})
+		}
+	})
+
+	// Input focus changed events
+	b.eventBus.Subscribe("input.focus.changed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			fromComponent := ""
+			toComponent := ""
+
+			if fc, ok := evt.Data["from_component"].(string); ok {
+				fromComponent = fc
+			}
+			if tc, ok := evt.Data["to_component"].(string); ok {
+				toComponent = tc
+			}
+
+			prog.Send(messages.InputFocusChangedMsg{
+				FromComponent: fromComponent,
+				ToComponent:   toComponent,
+				Time:          time.Now(),
+			})
+		}
+	})
+
+	// Input processed events
+	b.eventBus.Subscribe("input.processed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			key := interface{}(nil)
+			context := ""
+			handled := false
+
+			if k, ok := evt.Data["key"].(interface{}); ok {
+				key = k
+			}
+			if c, ok := evt.Data["context"].(string); ok {
+				context = c
+			}
+			if h, ok := evt.Data["handled"].(bool); ok {
+				handled = h
+			}
+
+			prog.Send(messages.InputKeyPressedMsg{
+				Key:     key,
+				Context: context,
+				Handled: handled,
+				Time:    time.Now(),
+			})
+		}
+	})
+}
+
+// subscribeToNavigationService converts navigation service events to messages
+func (b *ServiceBridge) subscribeToNavigationService() {
+	if b.navigationService == nil {
+		return
+	}
+
+	// Start the navigation service event subscriptions
+	b.navigationService.SubscribeToEvents()
+
+	// Navigation view changed events
+	b.eventBus.Subscribe("navigation.view.changed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			fromView := ""
+			toView := ""
+			trigger := ""
+
+			if fv, ok := evt.Data["from_view"].(string); ok {
+				fromView = fv
+			}
+			if tv, ok := evt.Data["to_view"].(string); ok {
+				toView = tv
+			}
+			if tr, ok := evt.Data["trigger"].(string); ok {
+				trigger = tr
+			}
+
+			prog.Send(messages.ViewChangedMsg{
+				FromView: messages.ViewType(fromView),
+				ToView:   messages.ViewType(toView),
+				Trigger:  trigger,
+				Time:     time.Now(),
+			})
+		}
+	})
+
+	// Navigation view order changed events
+	b.eventBus.Subscribe("navigation.view_order.changed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			newOrder := []messages.ViewType{}
+
+			if no, ok := evt.Data["new_order"].([]interface{}); ok {
+				for _, view := range no {
+					if viewStr, ok := view.(string); ok {
+						newOrder = append(newOrder, messages.ViewType(viewStr))
+					}
+				}
+			}
+
+			prog.Send(messages.ViewOrderChangedMsg{
+				NewOrder: newOrder,
+				Time:     time.Now(),
+			})
+		}
+	})
+
+	// Navigation number key mapping changed events
+	b.eventBus.Subscribe("navigation.number_key_mapping.changed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			number := 0
+			view := ""
+			action := ""
+
+			if n, ok := evt.Data["number"].(float64); ok {
+				number = int(n)
+			}
+			if v, ok := evt.Data["view"].(string); ok {
+				view = v
+			}
+			if a, ok := evt.Data["action"].(string); ok {
+				action = a
+			}
+
+			prog.Send(messages.NumberKeyMappingChangedMsg{
+				Number: number,
+				View:   messages.ViewType(view),
+				Action: action,
+				Time:   time.Now(),
+			})
+		}
+	})
+}
+
+// subscribeToSystemService converts system service events to messages
+func (b *ServiceBridge) subscribeToSystemService() {
+	if b.systemService == nil {
+		return
+	}
+
+	// Start the system service event subscriptions
+	b.systemService.SubscribeToEvents()
+
+	// System message events
+	b.eventBus.Subscribe("system.message", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			level := messages.InfoLevel
+			content := ""
+			source := ""
+
+			if l, ok := evt.Data["level"].(string); ok {
+				level = messages.LogLevel(l)
+			}
+			if c, ok := evt.Data["content"].(string); ok {
+				content = c
+			}
+			if s, ok := evt.Data["source"].(string); ok {
+				source = s
+			}
+
+			prog.Send(messages.SystemMessageAddedMsg{
+				Level:       level,
+				Content:     content,
+				Source:      source,
+				UnreadCount: 1, // Service will provide actual count
+				Time:        time.Now(),
+			})
+		}
+	})
+
+	// System panel toggled events
+	b.eventBus.Subscribe("system.panel_toggled", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			expanded := false
+			trigger := ""
+
+			if exp, ok := evt.Data["expanded"].(bool); ok {
+				expanded = exp
+			}
+			if tr, ok := evt.Data["trigger"].(string); ok {
+				trigger = tr
+			}
+
+			prog.Send(messages.SystemPanelToggledMsg{
+				Expanded: expanded,
+				Trigger:  trigger,
+				Time:     time.Now(),
+			})
+		}
+	})
+
+	// System messages read events
+	b.eventBus.Subscribe("system.messages_read", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			readCount := 0
+			unreadCount := 0
+			upToTime := time.Now()
+
+			if rc, ok := evt.Data["read_count"].(int); ok {
+				readCount = rc
+			}
+			if uc, ok := evt.Data["unread_count"].(int); ok {
+				unreadCount = uc
+			}
+			if ut, ok := evt.Data["up_to_time"].(time.Time); ok {
+				upToTime = ut
+			}
+
+			prog.Send(messages.SystemMessagesReadMsg{
+				ReadCount:   readCount,
+				UnreadCount: unreadCount,
+				UpToTime:    upToTime,
+				Time:        time.Now(),
+			})
+		}
+	})
+
+	// System buffer cleared events
+	b.eventBus.Subscribe("system.buffer_cleared", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			clearedCount := 0
+			trigger := ""
+
+			if cc, ok := evt.Data["cleared_count"].(int); ok {
+				clearedCount = cc
+			}
+			if tr, ok := evt.Data["trigger"].(string); ok {
+				trigger = tr
+			}
+
+			prog.Send(messages.SystemMessageBufferClearedMsg{
+				ClearedCount: clearedCount,
+				Trigger:      trigger,
+				Time:         time.Now(),
+			})
+		}
+	})
+}
+
+// subscribeToNotificationsService converts notifications service events to messages
+func (b *ServiceBridge) subscribeToNotificationsService() {
+	if b.notificationsService == nil {
+		return
+	}
+
+	// Start the notifications service event subscriptions
+	b.notificationsService.SubscribeToEvents()
+
+	// Notification shown events
+	b.eventBus.Subscribe("notification.shown", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			notificationID := ""
+			title := ""
+			message := ""
+			level := messages.InfoNotification
+			duration := 5 * time.Second
+			position := "top-right"
+
+			if nid, ok := evt.Data["notification_id"].(string); ok {
+				notificationID = nid
+			}
+			if t, ok := evt.Data["title"].(string); ok {
+				title = t
+			}
+			if m, ok := evt.Data["message"].(string); ok {
+				message = m
+			}
+			if l, ok := evt.Data["level"].(string); ok {
+				level = messages.NotificationLevel(l)
+			}
+			if d, ok := evt.Data["duration"].(time.Duration); ok {
+				duration = d
+			}
+			if p, ok := evt.Data["position"].(string); ok {
+				position = p
+			}
+
+			prog.Send(messages.NotificationShownMsg{
+				NotificationID: notificationID,
+				Message:        title + ": " + message,
+				Level:          level,
+				Duration:       duration,
+				Position:       position,
+				Time:           time.Now(),
+			})
+		}
+	})
+
+	// Notification cleared events
+	b.eventBus.Subscribe("notification.cleared", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			notificationID := ""
+			trigger := ""
+
+			if nid, ok := evt.Data["notification_id"].(string); ok {
+				notificationID = nid
+			}
+			if tr, ok := evt.Data["trigger"].(string); ok {
+				trigger = tr
+			}
+
+			prog.Send(messages.NotificationClearedMsg{
+				NotificationID: notificationID,
+				Trigger:        trigger,
+				Time:           time.Now(),
+			})
+		}
+	})
+
+	// All notifications cleared events
+	b.eventBus.Subscribe("notifications.all_cleared", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			clearedCount := 0
+			trigger := ""
+
+			if cc, ok := evt.Data["cleared_count"].(int); ok {
+				clearedCount = cc
+			}
+			if tr, ok := evt.Data["trigger"].(string); ok {
+				trigger = tr
+			}
+
+			prog.Send(messages.AllNotificationsClearedMsg{
+				ClearedCount: clearedCount,
+				Trigger:      trigger,
+				Time:         time.Now(),
+			})
+		}
+	})
+
+	// Notification position changed events
+	b.eventBus.Subscribe("notification.position_changed", func(evt events.Event) {
+		if prog := b.getProgram(); prog != nil {
+			oldPosition := ""
+			newPosition := ""
+
+			if op, ok := evt.Data["old_position"].(string); ok {
+				oldPosition = op
+			}
+			if np, ok := evt.Data["new_position"].(string); ok {
+				newPosition = np
+			}
+
+			prog.Send(messages.NotificationPositionChangedMsg{
+				OldPosition: oldPosition,
+				NewPosition: newPosition,
+				Time:        time.Now(),
 			})
 		}
 	})

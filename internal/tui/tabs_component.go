@@ -5,14 +5,15 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/tui/components"
 )
 
 // TabsComponent manages the tab bar rendering using Lipgloss
 type TabsComponent struct {
 	// Dependencies
-	processMgr              *process.Manager
-	notificationsController NotificationsControllerInterface
-	systemController        SystemControllerInterface
+	processMgr             *process.Manager
+	notificationsComponent  *components.NotificationsComponent
+	systemComponent        *components.SystemComponent
 
 	// View configuration
 	views     []View
@@ -31,11 +32,11 @@ type TabsComponent struct {
 }
 
 // NewTabsComponent creates a new tabs component
-func NewTabsComponent(processMgr *process.Manager, notificationsController NotificationsControllerInterface, systemController SystemControllerInterface, debugMode bool) *TabsComponent {
+func NewTabsComponent(processMgr *process.Manager, notificationsComponent *components.NotificationsComponent, systemComponent *components.SystemComponent, debugMode bool) *TabsComponent {
 	tc := &TabsComponent{
-		processMgr:              processMgr,
-		notificationsController: notificationsController,
-		systemController:        systemController,
+		processMgr:             processMgr,
+		notificationsComponent:  notificationsComponent,
+		systemComponent:        systemComponent,
 		debugMode:               debugMode,
 	}
 
@@ -172,18 +173,22 @@ func (tc *TabsComponent) renderTitle() string {
 
 	// Add notification if active (skip for ultra narrow)
 	notification := ""
-	if tc.width >= 40 && tc.notificationsController != nil && tc.notificationsController.IsActive() {
-		notificationStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("82")).
-			Bold(true).
-			MarginLeft(1)
+	if tc.width >= 40 && tc.notificationsComponent != nil {
+		activeNotifications := tc.notificationsComponent.GetActiveNotifications()
+		if len(activeNotifications) > 0 {
+			notificationStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("82")).
+				Bold(true).
+				MarginLeft(1)
 
-		notificationText := tc.notificationsController.GetMessage()
-		// Truncate notification for narrow screens
-		if tc.width < 80 && len(notificationText) > 20 {
-			notificationText = notificationText[:17] + "..."
+			// Get the most recent notification
+			notificationText := activeNotifications[len(activeNotifications)-1].Message
+			// Truncate notification for narrow screens
+			if tc.width < 80 && len(notificationText) > 20 {
+				notificationText = notificationText[:17] + "..."
+			}
+			notification = notificationStyle.Render(notificationText)
 		}
-		notification = notificationStyle.Render(notificationText)
 	}
 
 	// Combine title parts
@@ -291,14 +296,14 @@ func (tc *TabsComponent) renderTabResponsive(viewType View, cfg ViewConfig, mode
 
 	// Get unread indicator (only show in non-minimal modes)
 	indicatorIcon := ""
-	if mode != "minimal" && tc.systemController != nil {
-		indicators := tc.systemController.GetUnreadIndicators()
-		if indicator, exists := indicators[viewType]; exists && indicator.Count > 0 {
+	if mode != "minimal" && tc.systemComponent != nil {
+		unreadCount := tc.systemComponent.GetUnreadCount()
+		if unreadCount > 0 {
 			// Use simpler indicator for narrow screens
 			if mode == "abbreviated" {
 				indicatorIcon = "*"
 			} else {
-				indicatorIcon = " " + indicator.Icon
+				indicatorIcon = " 🔴"
 			}
 		}
 	}

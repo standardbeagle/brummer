@@ -15,7 +15,9 @@ func NewViewMessageHandler() MessageHandler {
 // CanHandle checks if this handler can process the message
 func (h *ViewMessageHandler) CanHandle(msg tea.Msg) bool {
 	switch msg.(type) {
-	case tea.KeyMsg, tea.WindowSizeMsg, tea.MouseMsg, urlDetectedMsg, refreshMsg:
+	// Removed tea.KeyMsg to prevent duplicate keyboard processing
+	// Keyboard is now handled by ViewSpecificHandler for view-specific keys
+	case tea.WindowSizeMsg, tea.MouseMsg, urlDetectedMsg, refreshMsg:
 		return true
 	default:
 		return false
@@ -27,17 +29,7 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 	var cmds []tea.Cmd
 
 	switch m := msg.(type) {
-	case tea.KeyMsg:
-		// Delegate keyboard handling to input controller
-		if model.inputController != nil {
-			newModel, cmd, handled := model.inputController.HandleKeyMsg(m)
-			if handled {
-				if cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-				model = newModel.(*Model)
-			}
-		}
+	// Keyboard handling removed - now handled by ViewSpecificHandler
 
 	case tea.WindowSizeMsg:
 		// Update model dimensions

@@ -1,58 +1,73 @@
 package tui
 
 import (
-	"github.com/standardbeagle/brummer/internal/tui/navigation"
+	"github.com/standardbeagle/brummer/internal/tui/components"
+	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
-// NavigationAdapter adapts the navigation.Controller to NavigationControllerInterface
+// NavigationAdapter adapts the navigation.Component to NavigationControllerInterface
 type NavigationAdapter struct {
-	controller *navigation.Controller
+	component *components.NavigationComponent
 }
 
 // NewNavigationAdapter creates a new navigation adapter
-func NewNavigationAdapter(controller *navigation.Controller) *NavigationAdapter {
-	return &NavigationAdapter{controller: controller}
+func NewNavigationAdapter(component *components.NavigationComponent) *NavigationAdapter {
+	return &NavigationAdapter{component: component}
 }
 
 // GetCurrentView returns the current view
-func (na *NavigationAdapter) GetCurrentView() View {
-	return View(na.controller.CurrentView())
+func (na *NavigationAdapter) GetCurrentView() messages.ViewType {
+	if na.component != nil {
+		return na.component.GetCurrentView()
+	}
+	return messages.ViewType("processes") // fallback
 }
 
 // SwitchTo switches to a specific view
-func (na *NavigationAdapter) SwitchTo(view int) {
-	na.controller.SwitchTo(navigation.View(view))
+func (na *NavigationAdapter) SwitchTo(view messages.ViewType) {
+	if na.component != nil {
+		_ = na.component.SwitchToView(view, "adapter")
+		// In a real BubbleTea application, this would return the cmd
+		// For now, we'll just trigger the state change
+	}
 }
 
 // NextView switches to the next view
 func (na *NavigationAdapter) NextView() {
-	na.controller.CycleNext()
+	if na.component != nil {
+		_ = na.component.CycleToNextView()
+		// In a real BubbleTea application, this would return the cmd
+	}
 }
 
 // PreviousView switches to the previous view
 func (na *NavigationAdapter) PreviousView() {
-	na.controller.CyclePrevious()
+	if na.component != nil {
+		currentView := na.component.GetCurrentView()
+		_ = na.component.SwitchToView(currentView, "shift_tab")
+		// In a real BubbleTea application, this would return the cmd
+	}
 }
 
 // GetViewName returns the name of a view
-func (na *NavigationAdapter) GetViewName(view View) string {
+func (na *NavigationAdapter) GetViewName(view messages.ViewType) string {
 	// This would need to be implemented based on your view naming logic
 	switch view {
-	case ViewProcesses:
+	case messages.ViewType("processes"):
 		return "Processes"
-	case ViewLogs:
+	case messages.ViewType("logs"):
 		return "Logs"
-	case ViewErrors:
+	case messages.ViewType("errors"):
 		return "Errors"
-	case ViewURLs:
+	case messages.ViewType("urls"):
 		return "URLs"
-	case ViewWeb:
+	case messages.ViewType("web"):
 		return "Web"
-	case ViewSettings:
+	case messages.ViewType("settings"):
 		return "Settings"
-	case ViewMCPConnections:
+	case messages.ViewType("mcp_connections"):
 		return "MCP Connections"
-	case ViewAICoders:
+	case messages.ViewType("aicoders"):
 		return "AI Coders"
 	default:
 		return string(view)
@@ -60,24 +75,24 @@ func (na *NavigationAdapter) GetViewName(view View) string {
 }
 
 // GetViewIcon returns the icon for a view
-func (na *NavigationAdapter) GetViewIcon(view View) string {
+func (na *NavigationAdapter) GetViewIcon(view messages.ViewType) string {
 	// This would need to be implemented based on your view icon logic
 	switch view {
-	case ViewProcesses:
+	case messages.ViewType("processes"):
 		return "📋"
-	case ViewLogs:
+	case messages.ViewType("logs"):
 		return "📜"
-	case ViewErrors:
+	case messages.ViewType("errors"):
 		return "❌"
-	case ViewURLs:
+	case messages.ViewType("urls"):
 		return "🔗"
-	case ViewWeb:
+	case messages.ViewType("web"):
 		return "🌐"
-	case ViewSettings:
+	case messages.ViewType("settings"):
 		return "⚙️"
-	case ViewMCPConnections:
+	case messages.ViewType("mcp_connections"):
 		return "🔌"
-	case ViewAICoders:
+	case messages.ViewType("aicoders"):
 		return "🤖"
 	default:
 		return ""

@@ -106,6 +106,11 @@ type TerminalStateMsg struct {
 	State     *TerminalState
 }
 
+// SwitchToPTYMsg indicates the UI should switch to PTY mode for a session.
+type SwitchToPTYMsg struct {
+	SessionID string
+}
+
 // TerminalState represents a read-only snapshot of terminal state.
 type TerminalState struct {
 	Lines       []string

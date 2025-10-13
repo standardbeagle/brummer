@@ -49,6 +49,8 @@ var (
 	debugMode     bool
 	mcpDebug      bool
 	mcpHub        bool
+	usePTY        bool
+	noPTY         bool
 )
 
 var rootCmd = &cobra.Command{
@@ -118,6 +120,8 @@ func init() {
 	rootCmd.Flags().BoolVar(&debugMode, "debug", false, "Enable debug mode with MCP connections tab")
 	rootCmd.Flags().BoolVar(&mcpDebug, "mcp-debug", false, "Enable MCP debug logging")
 	rootCmd.Flags().BoolVar(&mcpHub, "mcp", false, "Run as MCP hub (stdio transport, no TUI)")
+	rootCmd.Flags().BoolVar(&usePTY, "use-pty", false, "Force use PTY terminal emulation for TUI")
+	rootCmd.Flags().BoolVar(&noPTY, "no-pty", false, "Disable PTY terminal emulation for TUI")
 
 	// Set version for cobra
 	rootCmd.Version = Version
@@ -640,7 +644,7 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		model := tui.NewModel(processMgr, logStore, eventBus, nil, proxyServer, mcpPort, &configWithSources.Config, absWorkDir)
 
-		// Create TestManagementService with default config
+			// Create TestManagementService with default config
 		testConfig := services.DefaultTestConfig()
 		testManagementService := services.NewTestManagementService(logStore, eventBus, testConfig)
 
@@ -661,8 +665,32 @@ func runApp(cmd *cobra.Command, args []string) {
 			settingsConfig,
 		)
 
+		// Create InputService
+		inputService := services.NewInputService()
+
+		// Create NavigationService
+		navigationService := services.NewNavigationService(eventBus)
+
+		// Create SystemService
+		systemService := services.NewSystemService(eventBus)
+
+		// Create NotificationsService
+	notificationsService := services.NewNotificationsService(eventBus)
+
 		// Create ServiceBridge to connect services to UI
-		serviceBridge := bridge.NewServiceBridge(processMgr, logStore, proxyServer, eventBus, testManagementService, fileBrowserService, settingsService)
+		serviceBridge := bridge.NewServiceBridge(
+			processMgr,
+			logStore,
+			proxyServer,
+			eventBus,
+			testManagementService,
+			fileBrowserService,
+			settingsService,
+			inputService,
+			navigationService,
+			systemService,
+			notificationsService,
+		)
 
 		// Connect AI coder service to ServiceBridge for event routing
 		model.ConnectAICoderServiceToBridge(serviceBridge)
@@ -675,33 +703,69 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Previous hardcoded TTY error checks were forcing fallback to non-AltScreen mode in WSL2,
 		// which broke WindowSizeMsg functionality. Standard BubbleTea initialization works correctly.
 
-		// Create BubbleTea program with standard AltScreen initialization
-		var p *tea.Program
+		// Check if PTY should be used
+		shouldUsePTY := usePTY || (!noPTY && !isTerminal())
 
-		// Standard BubbleTea initialization with Model
-		p = tea.NewProgram(model, tea.WithAltScreen())
-
-		// Start ServiceBridge to begin event routing (but defer initial messages)
-		serviceBridge.StartWithoutInitialMessages(p)
-
-		// Run TUI in goroutine so we can handle signals
-		done := make(chan error)
-		go func() {
-			_, err := p.Run()
-			done <- err
-		}()
-
-		// Wait for either TUI to exit or signal
-		select {
-		case err := <-done:
-			if err != nil {
-				// Use improved error reporting for TUI startup failures
-				errorReporter.ReportError(errorReporter.CriticalTUI(err), true)
+		if shouldUsePTY {
+			// Use PTY integration for TUI
+			if debugMode {
+				fmt.Printf("🖥  Starting TUI with PTY terminal emulation\n")
 			}
-		case <-sigChan:
-			fmt.Println("\nShutting down gracefully...")
-			p.Quit()
-			<-done // Wait for TUI to actually exit
+
+			// Configure PTY wrapper
+			ptyConfig := tui.DefaultPTYMainWrapperConfig()
+			ptyConfig.EnableDebug = debugMode || mcpDebug
+			ptyConfig.LogStartupSteps = debugMode
+			ptyConfig.LogPerformance = debugMode
+			ptyConfig.ForcePTY = usePTY
+			ptyConfig.EnableTerminalEmulation = true
+			ptyConfig.EnableAdvancedHandling = true
+
+			// Create and run PTY wrapper
+			result := tui.RunWithPTYAndOptions(model, ptyConfig, tea.WithAltScreen())
+
+			if result.Error != nil {
+				errorReporter.ReportError(errorReporter.CriticalTUI(result.Error), true)
+			}
+
+			if debugMode {
+				stats := result.PerformanceStats
+				fmt.Printf("PTY Performance: %+v\n", stats)
+			}
+		} else {
+			// Standard BubbleTea initialization
+			if debugMode {
+				fmt.Printf("🖥  Starting TUI with standard BubbleTea\n")
+			}
+
+			// Create BubbleTea program with standard AltScreen initialization
+			var p *tea.Program
+
+			// Standard BubbleTea initialization with Model
+			p = tea.NewProgram(model, tea.WithAltScreen())
+
+			// Start ServiceBridge to begin event routing (but defer initial messages)
+			serviceBridge.StartWithoutInitialMessages(p)
+
+			// Run TUI in goroutine so we can handle signals
+			done := make(chan error)
+			go func() {
+				_, err := p.Run()
+				done <- err
+			}()
+
+			// Wait for either TUI to exit or signal
+			select {
+			case err := <-done:
+				if err != nil {
+					// Use improved error reporting for TUI startup failures
+					errorReporter.ReportError(errorReporter.CriticalTUI(err), true)
+				}
+			case <-sigChan:
+				fmt.Println("\nShutting down gracefully...")
+				p.Quit()
+				<-done // Wait for TUI to actually exit
+			}
 		}
 
 		// Cleanup all processes and resources

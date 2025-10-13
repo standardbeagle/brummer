@@ -40,7 +40,7 @@ func initialModel() model {
 	shell := components.NewIntegratedShell()
 
 	// Create and set a logs view that uses the real log store
-	logsView := components.NewLogsViewComponent(logStore)
+	logsView := components.NewLogsView(logStore)
 	shell.SetLogsView(logsView)
 
 	// Register commands with real service references
@@ -51,8 +51,8 @@ func initialModel() model {
 	registry.RegisterMultiple(components.GetAICommands([]string{"claude", "gpt4", "mock"}))
 	registry.RegisterMultiple(components.GetDockerCommands())
 
-	// Create command executor with real services
-	executor := components.NewCommandExecutor(processMgr, logStore, proxyServer, registry)
+	// Create command executor with real services (aiCoderManager can be nil for testing)
+	executor := components.NewCommandExecutor(processMgr, logStore, proxyServer, registry, nil)
 	shell.SetCommandExecutor(executor)
 
 	// Create and set command input

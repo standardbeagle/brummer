@@ -47,11 +47,15 @@ func (h *HeaderRenderer) RenderTitle() string {
 
 	// Add copy notification if recent
 	notification := ""
-	if h.model.notificationsController.IsActive() {
-		notificationStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("82")).
-			Bold(true)
-		notification = " " + notificationStyle.Render(h.model.notificationsController.GetMessage())
+	if h.model.notificationsComponent != nil {
+		// Check if notifications component has active notifications
+		if activeNotifications := h.model.notificationsComponent.GetActiveNotifications(); len(activeNotifications) > 0 {
+			notificationStyle := lipgloss.NewStyle().
+				Foreground(lipgloss.Color("82")).
+				Bold(true)
+			// Get the most recent notification message
+			notification = " " + notificationStyle.Render(activeNotifications[len(activeNotifications)-1].Message)
+		}
 	}
 
 	title := lipgloss.NewStyle().
@@ -82,9 +86,11 @@ func (h *HeaderRenderer) RenderTabs() string {
 
 			// Get unread indicator for this view
 			var indicatorIcon string
-			indicators := h.model.systemController.GetUnreadIndicators()
-			if indicator, exists := indicators[viewType]; exists && indicator.Count > 0 {
-				indicatorIcon = indicator.Icon
+			if h.model.systemComponent != nil {
+				unreadCount := h.model.systemComponent.GetUnreadCount()
+				if unreadCount > 0 {
+					indicatorIcon = "🔴" // Simple indicator for any unread messages
+				}
 			}
 
 			// Format the tab

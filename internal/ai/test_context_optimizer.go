@@ -194,7 +194,7 @@ func (tco *TestContextOptimizer) buildPassingSummary(results *test.TestResults) 
 		TotalPassed:     results.PassedTests,
 		PassRate:        passRate,
 		TestFrameworks:  []string{"unknown"}, // Would be enhanced with actual framework detection
-		LastRunDuration: fmt.Sprintf("%.2fs", time.Duration(results.TotalTests)*time.Millisecond/time.Second),
+			LastRunDuration: fmt.Sprintf("%.2fs", float64(time.Duration(results.TotalTests)*time.Millisecond)/float64(time.Second)),
 	}
 }
 
