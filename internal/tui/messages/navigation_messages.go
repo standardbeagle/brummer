@@ -55,6 +55,8 @@ const (
 	ProcessesView ViewType = "processes"
 	LogsView      ViewType = "logs"
 	ErrorsView    ViewType = "errors"
+	URLsView      ViewType = "urls"
+	WebView       ViewType = "web"
 	AICodersView  ViewType = "aicoders"
 	SettingsView  ViewType = "settings"
 )

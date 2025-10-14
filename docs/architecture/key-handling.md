@@ -2,7 +2,14 @@
 
 ## Overview
 
-The keyboard handling system in Brummer uses a **priority-based handler registry** that provides clear, predictable key routing with minimal complexity.
+The keyboard handling system in Brummer uses a **priority-based handler registry** that provides clear, predictable key routing with minimal complexity. This is part of the larger **Redux/Elm architecture pattern** where keyboard events become Messages that flow through the Update function.
+
+**Architecture Context**: Keyboard handling follows the Redux/Elm pattern:
+- **KeyMsg** → **Update()** → **KeyRegistry** → **Handler** → **Command** → **Message**
+- Handlers are stateless and return Commands (never modify Model directly)
+- All state changes happen in Update() when handling returned Messages
+
+See [Redux/Elm Architecture Documentation](./redux-elm-architecture.md) for the complete pattern.
 
 ## Core Concepts
 

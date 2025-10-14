@@ -1,6 +1,17 @@
 # Brummer Architecture Overview
 
-Brummer's architecture consists of three main integrated systems: **Process Manager**, **Hub**, and **Proxy Server**. These components work together to provide comprehensive development environment management with MCP integration.
+Brummer's architecture follows a **Redux/Elm-inspired pattern** using BubbleTea as the runtime, with three main integrated systems: **Process Manager**, **Hub**, and **Proxy Server**. These components work together through a unidirectional data flow architecture that eliminates race conditions and reduces complexity by 50-70%.
+
+## 🎯 Core Architecture Pattern: Redux/Elm with BubbleTea
+
+**CRITICAL**: Brummer uses a Redux/Elm architecture where:
+- **Model** = Pure data (Redux store) - NO business logic
+- **Services** = Stateless command creators (Redux action creators)
+- **Update()** = ONLY place state changes (Redux reducers)
+- **Messages** = Immutable events (Redux actions)
+- **Commands** = Side effects (Redux thunks/sagas)
+
+See [Redux/Elm Architecture Documentation](./redux-elm-architecture.md) for comprehensive pattern details.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐

@@ -335,6 +335,32 @@ type TerminalStateMsg struct {
 	State     *TerminalState
 }
 
+// AICoderStyles defines styling configuration for AI Coder UI components
+type AICoderStyles struct {
+	// List view styles
+	ListTitle       string
+	ListBorder      string
+	ListItem        string
+	ListItemActive  string
+	ListItemSelected string
+
+	// PTY view styles
+	PTYTitle        string
+	PTYBorder       string
+	PTYContent      string
+	PTYCursor       string
+	PTYStatusBar    string
+
+	// Status indicators
+	StatusActive    string
+	StatusIdle      string
+	StatusError     string
+
+	// Help text styles
+	HelpKey         string
+	HelpDescription string
+}
+
 // Rendering Helpers
 
 // RenderSessionList renders the session list view.

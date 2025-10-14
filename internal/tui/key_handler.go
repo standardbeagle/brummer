@@ -1,10 +1,10 @@
 package tui
 
 import (
+	"fmt"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/tui/services"
 )
 
 // KeyContext provides rich context about the current state for handlers
@@ -94,12 +94,17 @@ func keyToString(key tea.KeyMsg) string {
 // --- Example Handler Implementations ---
 
 // GlobalNavigationHandler handles view switching keys
+// SIMPLIFIED: Now uses SimpleViewManager directly
 type GlobalNavigationHandler struct {
-	navService *services.NavigationService
+	viewManager *SimpleViewManager
+	debugMode   bool
 }
 
-func NewGlobalNavigationHandler(navService *services.NavigationService) KeyHandler {
-	return &GlobalNavigationHandler{navService: navService}
+func NewGlobalNavigationHandler(viewManager *SimpleViewManager, debugMode bool) KeyHandler {
+	return &GlobalNavigationHandler{
+		viewManager: viewManager,
+		debugMode:   debugMode,
+	}
 }
 
 func (h *GlobalNavigationHandler) Name() string {
@@ -111,55 +116,49 @@ func (h *GlobalNavigationHandler) Priority() int {
 }
 
 func (h *GlobalNavigationHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
-	// Handle number keys 1-5 and Tab globally
+	// Handle number keys 1-7 and Tab globally
 	switch key.Type {
 	case tea.KeyTab:
 		return true
 	case tea.KeyRunes:
 		if len(key.Runes) == 1 {
 			r := key.Runes[0]
-			return r >= '1' && r <= '5'
+			return r >= '1' && r <= '7'
 		}
 	}
 	return false
 }
 
 func (h *GlobalNavigationHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
+	// Add debug logging to track key 3 lockup
+	if key.Type == tea.KeyRunes && len(key.Runes) == 1 {
+		keyNum := key.Runes[0]
+		if model.logStore != nil {
+			model.logStore.Add("GlobalNavigation", "Debug",
+				fmt.Sprintf("Handle called for key: %c", keyNum), false)
+		}
+	}
+
 	switch key.Type {
 	case tea.KeyTab:
-		return h.cycleView()
+		// Cycle to next view
+		nextView := CycleToNextView(h.viewManager.GetCurrentView(), h.debugMode)
+		return h.viewManager.SwitchToView(nextView)
 	case tea.KeyRunes:
 		if len(key.Runes) == 1 {
-			return h.switchToViewByNumber(key.Runes[0])
-		}
-	}
-	return nil
-}
-
-func (h *GlobalNavigationHandler) cycleView() tea.Cmd {
-	return func() tea.Msg {
-		if err := h.navService.CycleToNextView(); err != nil {
-			return ErrorMsg{Error: err}
-		}
-		return nil
-	}
-}
-
-func (h *GlobalNavigationHandler) switchToViewByNumber(r rune) tea.Cmd {
-	viewMap := map[rune]View{
-		'1': ViewProcesses,
-		'2': ViewLogs,
-		'3': ViewErrors,
-		'4': ViewWeb,
-		'5': ViewSettings,
-	}
-
-	if targetView, ok := viewMap[r]; ok {
-		return func() tea.Msg {
-			if err := h.navService.SwitchToView(targetView, "number_key"); err != nil {
-				return ErrorMsg{Error: err}
+			// Try to switch by number key
+			if view, ok := GetViewForNumberKey(key.Runes[0]); ok {
+				if model.logStore != nil {
+					model.logStore.Add("GlobalNavigation", "Debug",
+						fmt.Sprintf("Switching to view: %s", view), false)
+				}
+				cmd := h.viewManager.SwitchToView(view)
+				if model.logStore != nil {
+					model.logStore.Add("GlobalNavigation", "Debug",
+						"SwitchToView returned command", false)
+				}
+				return cmd
 			}
-			return nil
 		}
 	}
 	return nil

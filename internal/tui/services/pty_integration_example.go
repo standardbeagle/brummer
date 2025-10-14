@@ -13,7 +13,7 @@ import (
 // PTYIntegrationExample demonstrates how to use the PTY input integration
 // for realistic keyboard input testing in TUI applications
 type PTYIntegrationExample struct {
-	ptyLayer     *pty.PTYLayer
+	ptyLayer     pty.PTYLayer
 	inputService *InputService
 	adapter      *PTYInputAdapter
 	validator    *KeyboardRoutingValidator

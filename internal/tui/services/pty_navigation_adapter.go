@@ -19,7 +19,7 @@ import (
 // the NavigationService for comprehensive TUI testing.
 type PTYNavigationAdapter struct {
 	// Core components
-	ptyLayer         *pty.PTYLayer
+	ptyLayer pty.PTYLayer
 	navigationService *NavigationService
 	eventBus         *events.EventBus
 
@@ -131,7 +131,7 @@ func DefaultPTYNavigationAdapterConfig() PTYNavigationAdapterConfig {
 
 // NewPTYNavigationAdapter creates a new PTY navigation adapter
 func NewPTYNavigationAdapter(
-	ptyLayer *pty.PTYLayer,
+	ptyLayer pty.PTYLayer,
 	navigationService *NavigationService,
 	eventBus *events.EventBus,
 	config PTYNavigationAdapterConfig,
@@ -626,7 +626,7 @@ func (a *PTYNavigationAdapter) activityMonitor() {
 }
 
 // GetPTYLayer returns the underlying PTY layer
-func (a *PTYNavigationAdapter) GetPTYLayer() *pty.PTYLayer {
+func (a *PTYNavigationAdapter) GetPTYLayer() pty.PTYLayer {
 	return a.ptyLayer
 }
 

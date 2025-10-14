@@ -1,8 +1,8 @@
 # Tasks: TUI Integration Testing Harness
 
 **Input**: Design documents from `/specs/007-build-a-testing/`
-**Prerequisites**: plan.md (required), research.md, data-model.md, contracts/, quickstart.md
-**Total Tasks**: 29
+**Prerequisites**: plan.md (required), research.md, data-model.md, contracts/
+**Total Tasks**: 35
 
 ## Execution Flow (main)
 ```
@@ -10,7 +10,7 @@
 2. Load design documents:
    → data-model.md: Extract TestHarness, InputSimulator, StateValidator, TestReporter entities
    → contracts/testing-harness-api.md: Extract API interfaces and endpoints
-   → research.md: Extract custom solution using BubbleTea testing patterns
+   → research.md: Extract PTY-based solution decision
    → quickstart.md: Extract test scenarios and integration examples
 3. Generate tasks by category:
    → Setup: PTY layer, project structure, dependencies
@@ -69,14 +69,31 @@
 - [x] T027 Create test validation script in test/scripts/validate_tui.sh
 - [x] T028 Create test environment setup in test/scripts/setup_test_env.sh
 
-## Phase 3.5: Polish
-- [x] T029 [P] Create comprehensive documentation in docs/tui-testing-guide.md
+## Phase 3.5: Deterministic Testing and Documentation
+
+### Deterministic Testing Validation Tasks (NFR-002)
+- [ ] T030 [P] **Implement deterministic testing framework** - Create test framework that ensures reliable and repeatable results regardless of timing variations on Ubuntu systems
+- [ ] T031 [P] **Add timing tolerance mechanisms** - Implement configurable timing tolerances for state validation to handle minor execution variations without breaking test determinism
+- [ ] T032 [P] **Create Ubuntu-specific test validation** - Add validation logic to ensure tests work reliably on Ubuntu terminal environments with consistent results
+- [ ] T033 [P] **Implement test isolation mechanisms** - Ensure tests don't interfere with each other and can run in any order with deterministic results
+- [ ] T034 [P] **Add flaky test detection** - Create mechanisms to detect and flag non-deterministic test behavior for debugging
+
+### Documentation Guardrails Tasks (FR-006, FR-007)
+- [ ] T035 [P] **Create integrated testing documentation** - Write comprehensive documentation that integrates testing requirements into the development workflow
+- [ ] T036 [P] **Implement pre-commit hook documentation integration** - Add documentation validation to pre-commit hooks to ensure testing docs are kept current
+- [ ] T037 [P] **Create mandatory testing checklists** - Develop checklists that prevent developers from accidentally bypassing TUI testing requirements
+- [ ] T038 [P] **Add testing requirement enforcement** - Implement mechanisms that make testing requirements difficult to bypass accidentally
+
+## Phase 3.6: Polish
+- [x] T039 [P] Create comprehensive documentation in docs/tui-testing-guide.md
 
 ## Dependencies
 - Tests (T004-T011) before implementation (T012-T021)
 - T012 blocks T013-T017
 - T022 blocks T023-T024
-- T025-T028 before T029
+- T025-T028 before T030-T038
+- T030-T034 (deterministic testing) can run in parallel with T035-T038 (documentation guardrails)
+- T030-T038 before T039
 
 ## Parallel Example
 ```
@@ -104,7 +121,7 @@ Task: "TestResult model in test/tui/harness/test_result.go"
 ```
 
 ## Critical Path
-**T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 → T009 → T010 → T011 → T012 → T013 → T014 → T015 → T016 → T017 → T018 → T019 → T020 → T021 → T022 → T023 → T024 → T025 → T026 → T027 → T028 → T029**
+**T001 → T002 → T003 → T004 → T005 → T006 → T007 → T008 → T009 → T010 → T011 → T012 → T013 → T014 → T015 → T016 → T017 → T018 → T019 → T020 → T021 → T022 → T023 → T024 → T025 → T026 → T027 → T028 → T030 → T031 → T032 → T033 → T034 → T035 → T036 → T037 → T038 → T039**
 
 ## Task Details
 
@@ -283,9 +300,65 @@ Task: "TestResult model in test/tui/harness/test_result.go"
 - Create test isolation procedures
 - Add environment validation
 
-### Phase 3.5: Polish
+### Phase 3.5: Deterministic Testing and Documentation
 
-**T029**: Create comprehensive documentation in docs/tui-testing-guide.md
+**T030**: Implement deterministic testing framework - Create test framework that ensures reliable and repeatable results regardless of timing variations on Ubuntu systems
+- Build deterministic test execution framework in test/tui/framework/deterministic.go
+- Implement timing-independent validation logic
+- Add Ubuntu-specific environment detection and configuration
+- Create test repeatability guarantees across multiple executions
+
+**T031**: Add timing tolerance mechanisms - Implement configurable timing tolerances for state validation to handle minor execution variations without breaking test determinism
+- Create tolerance configuration in test/tui/framework/timing_tolerance.go
+- Implement configurable wait mechanisms for state validation
+- Add adaptive timeout based on system performance
+- Build tolerance validation for different Ubuntu configurations
+
+**T032**: Create Ubuntu-specific test validation - Add validation logic to ensure tests work reliably on Ubuntu terminal environments with consistent results
+- Implement Ubuntu environment detection in test/tui/framework/ubuntu_validation.go
+- Add terminal capability validation for Ubuntu systems
+- Create Ubuntu-specific keyboard input handling
+- Build consistency checks across Ubuntu versions
+
+**T033**: Implement test isolation mechanisms - Ensure tests don't interfere with each other and can run in any order with deterministic results
+- Create test isolation framework in test/tui/framework/isolation.go
+- Implement PTY cleanup and resource isolation between tests
+- Add state reset mechanisms between test executions
+- Build test execution order independence validation
+
+**T034**: Add flaky test detection - Create mechanisms to detect and flag non-deterministic test behavior for debugging
+- Implement flaky test detection in test/tui/framework/flaky_detection.go
+- Add test result consistency tracking across multiple runs
+- Create statistical analysis for test reliability
+- Build debugging tools for non-deterministic test behavior
+
+**T035**: Create integrated testing documentation - Write comprehensive documentation that integrates testing requirements into the development workflow
+- Create docs/testing/workflow-integration.md with workflow integration
+- Document testing requirements in development process
+- Add testing best practices and guidelines
+- Create troubleshooting and FAQ documentation
+
+**T036**: Implement pre-commit hook documentation integration - Add documentation validation to pre-commit hooks to ensure testing docs are kept current
+- Extend githooks/pre-commit-tui-tests.sh with documentation validation
+- Add documentation completeness checks
+- Create documentation freshness validation
+- Implement automatic documentation update reminders
+
+**T037**: Create mandatory testing checklists - Develop checklists that prevent developers from accidentally bypassing TUI testing requirements
+- Create docs/testing/checklists.md with mandatory checklists
+- Implement checklist validation in pre-commit hooks
+- Add testing requirement verification steps
+- Create bypass prevention mechanisms
+
+**T038**: Add testing requirement enforcement - Implement mechanisms that make testing requirements difficult to bypass accidentally
+- Build enforcement mechanisms in test/scripts/enforce-testing.sh
+- Add automated testing requirement validation
+- Create testing gatekeeper functions
+- Implement bypass detection and reporting
+
+### Phase 3.6: Polish
+
+**T039**: Create comprehensive documentation in docs/tui-testing-guide.md
 - Document PTY-based testing approach
 - Create troubleshooting guides
 - Add best practices documentation
@@ -300,6 +373,10 @@ Task: "TestResult model in test/tui/harness/test_result.go"
 - [x] No task modifies same file as another [P] task
 - [x] PTY layer requirements fully addressed
 - [x] Integration with existing Brummer architecture included
+- [x] Deterministic testing requirements addressed (T030-T034)
+- [x] Documentation guardrails requirements addressed (T035-T038)
+- [x] NFR-002 (deterministic testing) fully covered
+- [x] FR-006 and FR-007 (documentation guardrails) fully covered
 
 ## Notes
 - [P] tasks = different files, no dependencies
@@ -308,6 +385,9 @@ Task: "TestResult model in test/tui/harness/test_result.go"
 - PTY layer is critical for agent-based testing environments
 - Focus on preventing TTY allocation false positives
 - Ensure real TUI code path testing through PTY simulation
+- Deterministic testing framework ensures reliable results on Ubuntu systems
+- Documentation guardrails prevent accidental bypass of testing requirements
+- All critical and high-priority issues from artifact analysis have been addressed
 
 ---
 *Tasks generated according to Brummer Constitution v1.0.0 - Test-First Development required*

@@ -52,7 +52,7 @@ type InputService struct {
 	handlerCounter atomic.Uint64
 
 	// PTY support for testing
-	ptyLayer      *pty.PTYLayer
+	ptyLayer      pty.PTYLayer
 	ptyEnabled    atomic.Bool
 	ptyMode       atomic.Value // stores string: "test", "production", "disabled"
 
@@ -88,7 +88,7 @@ func NewInputService() *InputService {
 }
 
 // NewInputServiceWithPTY creates a new input service instance with PTY support
-func NewInputServiceWithPTY(ptyLayer *pty.PTYLayer) *InputService {
+func NewInputServiceWithPTY(ptyLayer pty.PTYLayer) *InputService {
 	service := &InputService{
 		eventBus:    events.NewEventBus(),
 		shutdownCh:  make(chan struct{}),
@@ -548,7 +548,7 @@ func (s *InputService) getBindingCount() int {
 // PTY-specific methods
 
 // EnablePTY enables PTY mode for testing with the specified PTY layer
-func (s *InputService) EnablePTY(ptyLayer *pty.PTYLayer) error {
+func (s *InputService) EnablePTY(ptyLayer pty.PTYLayer) error {
 	if s.shutdown.Load() {
 		return errors.New(ErrInputServiceNotActive)
 	}
@@ -704,7 +704,7 @@ func (s *InputService) SimulatePTYKeyPress(key tea.KeyMsg) error {
 }
 
 // GetPTYLayer returns the underlying PTY layer if available
-func (s *InputService) GetPTYLayer() *pty.PTYLayer {
+func (s *InputService) GetPTYLayer() pty.PTYLayer {
 	return s.ptyLayer
 }
 

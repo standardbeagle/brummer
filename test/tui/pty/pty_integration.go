@@ -13,7 +13,7 @@ import (
 type PTYProgram struct {
 	mu      sync.RWMutex
 	program *tea.Program
-	pty     *PTYLayer
+	pty     *PTYLayerImpl
 	model   tea.Model
 	options []tea.ProgramOption
 	ctx     context.Context
@@ -22,7 +22,7 @@ type PTYProgram struct {
 }
 
 // NewPTYProgram creates a new PTY program wrapper
-func NewPTYProgram(model tea.Model, pty *PTYLayer, options ...tea.ProgramOption) *PTYProgram {
+func NewPTYProgram(model tea.Model, pty *PTYLayerImpl, options ...tea.ProgramOption) *PTYProgram {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	// Add PTY-specific options for integration with BubbleTea
@@ -59,7 +59,8 @@ func (pp *PTYProgram) Start() error {
 	}
 
 	// Set PTY size before starting program
-	_ = pp.pty.GetSize() // PTY size is available but not needed for program start
+	size := pp.pty.GetSize() // Get PTY size for debug
+	_ = size // Use size to avoid unused variable warning
 	initialOptions := append(pp.options, tea.WithAltScreen())
 
 	pp.program = tea.NewProgram(pp.model, initialOptions...)
@@ -128,7 +129,7 @@ func (pp *PTYProgram) GetContext() context.Context {
 // PTYInputController manages keyboard input simulation through PTY
 type PTYInputController struct {
 	mu       sync.RWMutex
-	pty      *PTYLayer
+	pty      *PTYLayerImpl
 	queue    []tea.KeyMsg
 	running  bool
 	done     chan struct{}
@@ -137,7 +138,7 @@ type PTYInputController struct {
 }
 
 // NewPTYInputController creates a new PTY input controller
-func NewPTYInputController(pty *PTYLayer) *PTYInputController {
+func NewPTYInputController(pty *PTYLayerImpl) *PTYInputController {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &PTYInputController{
@@ -236,7 +237,7 @@ func (pic *PTYInputController) processQueue() {
 // PTYRenderer captures TUI output without display
 type PTYRenderer struct {
 	mu      sync.RWMutex
-	pty     *PTYLayer
+	pty     *PTYLayerImpl
 	buffer  []byte
 	running bool
 	ctx     context.Context
@@ -244,7 +245,7 @@ type PTYRenderer struct {
 }
 
 // NewPTYRenderer creates a new PTY renderer
-func NewPTYRenderer(pty *PTYLayer) *PTYRenderer {
+func NewPTYRenderer(pty *PTYLayerImpl) *PTYRenderer {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &PTYRenderer{
@@ -328,7 +329,7 @@ func (pr *PTYRenderer) captureOutput() {
 // PTYBridge converts PTY events to tea.Msg format
 type PTYBridge struct {
 	mu       sync.RWMutex
-	pty      *PTYLayer
+	pty      *PTYLayerImpl
 	msgChan  chan tea.Msg
 	running  bool
 	ctx      context.Context
@@ -336,7 +337,7 @@ type PTYBridge struct {
 }
 
 // NewPTYBridge creates a new PTY bridge
-func NewPTYBridge(pty *PTYLayer) *PTYBridge {
+func NewPTYBridge(pty *PTYLayerImpl) *PTYBridge {
 	ctx, cancel := context.WithCancel(context.Background())
 
 	return &PTYBridge{
@@ -431,7 +432,7 @@ func (pb *PTYBridge) convertOutputToMsg(data []byte) tea.Msg {
 
 // ptyRenderer implements tea.Renderer interface for PTY integration
 type ptyRenderer struct {
-	pty *PTYLayer
+	pty *PTYLayerImpl
 }
 
 // Render renders the model to the PTY
@@ -457,17 +458,17 @@ func (pr ptyRenderer) Release() {
 }
 
 // NewPTYRendererWithInput creates a PTY renderer with input handling
-func NewPTYRendererWithInput(pty *PTYLayer) ptyRenderer {
+func NewPTYRendererWithInput(pty *PTYLayerImpl) ptyRenderer {
 	return ptyRenderer{pty: pty}
 }
 
 // PTYInputHandler converts BubbleTea input to PTY-compatible format
 type PTYInputHandler struct {
-	pty *PTYLayer
+	pty *PTYLayerImpl
 }
 
 // NewPTYInputHandler creates a new PTY input handler
-func NewPTYInputHandler(pty *PTYLayer) *PTYInputHandler {
+func NewPTYInputHandler(pty *PTYLayerImpl) *PTYInputHandler {
 	return &PTYInputHandler{pty: pty}
 }
 
@@ -489,7 +490,7 @@ func (pih *PTYInputHandler) HandleInput(msg tea.Msg) error {
 }
 
 // CreatePTYBubbleTeaIntegration creates a complete PTY-BubbleTea integration
-func CreatePTYBubbleTeaIntegration(model tea.Model, pty *PTYLayer) (*PTYProgram, error) {
+func CreatePTYBubbleTeaIntegration(model tea.Model, pty *PTYLayerImpl) (*PTYProgram, error) {
 	if !pty.IsAllocated() {
 		return nil, fmt.Errorf("PTY must be allocated before integration")
 	}

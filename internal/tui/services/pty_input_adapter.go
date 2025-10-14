@@ -17,7 +17,7 @@ import (
 // the InputService for testing environments.
 type PTYInputAdapter struct {
 	// Core components
-	ptyLayer     *pty.PTYLayer
+	ptyLayer     pty.PTYLayer
 	inputService *InputService
 
 	// State management
@@ -87,7 +87,7 @@ func DefaultPTYInputAdapterConfig() PTYInputAdapterConfig {
 
 // PTYReader monitors PTY output for keyboard input simulation
 type PTYReader struct {
-	ptyLayer     *pty.PTYLayer
+	ptyLayer     pty.PTYLayer
 	adapter      *PTYInputAdapter
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -95,7 +95,7 @@ type PTYReader struct {
 }
 
 // NewPTYInputAdapter creates a new PTY input adapter
-func NewPTYInputAdapter(ptyLayer *pty.PTYLayer, inputService *InputService, config PTYInputAdapterConfig) (*PTYInputAdapter, error) {
+func NewPTYInputAdapter(ptyLayer pty.PTYLayer, inputService *InputService, config PTYInputAdapterConfig) (*PTYInputAdapter, error) {
 	if ptyLayer == nil {
 		return nil, fmt.Errorf("PTY layer is required")
 	}
@@ -259,7 +259,7 @@ func (a *PTYInputAdapter) SimulateKeySequence(keys []tea.KeyMsg) error {
 }
 
 // GetPTYLayer returns the underlying PTY layer
-func (a *PTYInputAdapter) GetPTYLayer() *pty.PTYLayer {
+func (a *PTYInputAdapter) GetPTYLayer() pty.PTYLayer {
 	return a.ptyLayer
 }
 

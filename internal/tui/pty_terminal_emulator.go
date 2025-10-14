@@ -18,7 +18,7 @@ type PTYTerminalEmulator struct {
 	mu sync.RWMutex
 
 	// PTY integration
-	ptyLayer        *pty.PTYLayer
+	ptyLayer        *pty.PTYLayerImpl
 	ptyIntegration  *PTYIntegration
 
 	// Terminal state
@@ -179,7 +179,7 @@ func DefaultTerminalEmulatorConfig() TerminalEmulatorConfig {
 }
 
 // NewPTYTerminalEmulator creates a new PTY terminal emulator
-func NewPTYTerminalEmulator(ptyLayer *pty.PTYLayer, config TerminalEmulatorConfig) *PTYTerminalEmulator {
+func NewPTYTerminalEmulator(ptyLayer *pty.PTYLayerImpl, config TerminalEmulatorConfig) *PTYTerminalEmulator {
 	te := &PTYTerminalEmulator{
 		ptyLayer:       ptyLayer,
 		config:         config,

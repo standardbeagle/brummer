@@ -79,7 +79,7 @@ type TestHarness struct {
 	id           string
 	config       TestHarnessConfiguration
 	status       TestHarnessStatus
-	ptyLayer     *pty.PTYLayer
+	ptyLayer     pty.PTYLayer
 	simulator    InputSimulator
 	validator    IStateValidator
 	reporter     ITestReporter

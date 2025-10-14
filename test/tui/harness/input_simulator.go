@@ -15,7 +15,7 @@ import (
 // This type implements the InputSimulator interface defined in test contracts.
 type InputSimulatorImpl struct {
 	mu            sync.RWMutex
-	ptyLayer      *pty.PTYLayer
+	ptyLayer      pty.PTYLayer
 	sequence      []tea.KeyMsg
 	keyMappings   map[string][]tea.KeyMsg
 	timingDelay   time.Duration
@@ -491,7 +491,7 @@ func (is *InputSimulatorImpl) ResetToDefaults() error {
 }
 
 // GetPTYLayer returns the associated PTY layer (for debugging)
-func (is *InputSimulatorImpl) GetPTYLayer() *pty.PTYLayer {
+func (is *InputSimulatorImpl) GetPTYLayer() pty.PTYLayer {
 	is.mu.RLock()
 	defer is.mu.RUnlock()
 	return is.ptyLayer

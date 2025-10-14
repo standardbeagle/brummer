@@ -14,7 +14,7 @@ import (
 // through the PTY->InputService path and ensures realistic testing behavior
 type KeyboardRoutingValidator struct {
 	// Core components
-	ptyLayer     *pty.PTYLayer
+	ptyLayer     pty.PTYLayer
 	inputService *InputService
 	adapter      *PTYInputAdapter
 
@@ -119,7 +119,7 @@ type TimingResult struct {
 }
 
 // NewKeyboardRoutingValidator creates a new keyboard routing validator
-func NewKeyboardRoutingValidator(ptyLayer *pty.PTYLayer, inputService *InputService, config KeyboardRoutingValidatorConfig) (*KeyboardRoutingValidator, error) {
+func NewKeyboardRoutingValidator(ptyLayer pty.PTYLayer, inputService *InputService, config KeyboardRoutingValidatorConfig) (*KeyboardRoutingValidator, error) {
 	if ptyLayer == nil {
 		return nil, fmt.Errorf("PTY layer is required")
 	}

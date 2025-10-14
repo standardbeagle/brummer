@@ -220,14 +220,14 @@ type KeyMapping struct {
 // InputSimulatorConfig contains configuration for input simulation
 type InputSimulatorConfig struct {
 	KeyInputDelay time.Duration `json:"key_input_delay"`
-	PTYLayer      *pty.PTYLayer `json:"-"`
+	PTYLayer      pty.PTYLayer  `json:"-"`
 	KeyMappings   []KeyMapping  `json:"key_mappings"`
 }
 
 // StateValidatorConfig contains configuration for state validation
 type StateValidatorConfig struct {
 	EnableDetailedValidation bool `json:"enable_detailed_validation"`
-	PTYLayer               *pty.PTYLayer `json:"-"`
+	PTYLayer               pty.PTYLayer `json:"-"`
 	ValidationRules        []ValidationRule `json:"validation_rules"`
 }
 

@@ -1,6 +1,7 @@
 package components
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -178,18 +179,34 @@ func (v *ProcessesView) Render() string {
 	return v.processesList.View()
 }
 
-// HandleRestartProcess creates a command to restart a specific process
 func (v *ProcessesView) HandleRestartProcess(proc *process.Process) tea.Cmd {
 	return func() tea.Msg {
+		var message string
+		var isError bool
+
 		// Check if process is still running before trying to stop it
 		if proc.GetStatus() == process.StatusRunning {
-			timeout := 5 * time.Second
-			if err := v.processMgr.StopProcessAndWait(proc.ID, timeout); err != nil {
-				return RestartProcessMsg{
-					ProcessName: proc.Name,
-					Message:     fmt.Sprintf("Error stopping process %s: %v", proc.Name, err),
-					IsError:     true,
-					ClearLogs:   false,
+			// Use shorter timeout to prevent UI freezing
+			ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
+			defer cancel()
+
+			// Try to stop process with timeout
+			errChan := make(chan error, 1)
+			go func() {
+				errChan <- v.processMgr.StopProcess(proc.ID)
+			}()
+
+			select {
+			case err := <-errChan:
+				if err != nil {
+					message = fmt.Sprintf("Error stopping process %s: %v", proc.Name, err)
+					isError = true
+				}
+			case <-ctx.Done():
+				// Process didn't stop quickly, try stop with wait timeout
+				if err := v.processMgr.StopProcessAndWait(proc.ID, 100*time.Millisecond); err != nil {
+					message = fmt.Sprintf("Error stopping process %s after timeout: %v", proc.Name, err)
+					isError = true
 				}
 			}
 		}
@@ -200,25 +217,24 @@ func (v *ProcessesView) HandleRestartProcess(proc *process.Process) tea.Cmd {
 		// Also clean up any processes that might be using development ports
 		if proc.Name == "server" || proc.Name == "dev" || proc.Name == "start" {
 			v.processMgr.KillProcessesByPort()
-			time.Sleep(500 * time.Millisecond)
+			// No sleep here - continue immediately
 		}
 
 		// Now start it again
 		_, err := v.processMgr.StartScript(proc.Name)
 		if err != nil {
-			return RestartProcessMsg{
-				ProcessName: proc.Name,
-				Message:     fmt.Sprintf("Error restarting script %s: %v", proc.Name, err),
-				IsError:     true,
-				ClearLogs:   true,
-			}
+			message = fmt.Sprintf("Error restarting script %s: %v", proc.Name, err)
+			isError = true
+		} else {
+			message = fmt.Sprintf("🔄 Restarted process: %s (logs cleared)", proc.Name)
 		}
 
 		return RestartProcessMsg{
 			ProcessName: proc.Name,
-			Message:     fmt.Sprintf("🔄 Restarted process: %s (logs cleared)", proc.Name),
-			IsError:     false,
+			Message:     message,
+			IsError:     isError,
 			ClearLogs:   true,
+			TimeoutUsed: false,
 		}
 	}
 }
@@ -271,6 +287,7 @@ type RestartProcessMsg struct {
 	Message     string
 	IsError     bool
 	ClearLogs   bool
+	TimeoutUsed bool
 }
 
 type RestartAllMsg struct {

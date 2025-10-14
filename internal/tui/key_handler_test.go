@@ -1,10 +1,11 @@
 package tui
 
 import (
+	"os"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/tui/services"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -128,23 +129,26 @@ func TestContextAwareSlashCommand(t *testing.T) {
 
 // TestGlobalNavigationHandler tests view switching with number keys
 func TestGlobalNavigationHandler(t *testing.T) {
-	navService := services.NewNavigationService(nil)
-	handler := NewGlobalNavigationHandler(navService)
+	viewManager := NewSimpleViewManager(ViewProcesses)
+	handler := NewGlobalNavigationHandler(viewManager, false)
 
 	// Test Tab key handling
 	tabKey := tea.KeyMsg{Type: tea.KeyTab}
 	ctx := KeyContext{View: ViewProcesses}
 	assert.True(t, handler.CanHandle(tabKey, ctx))
 
-	// Test number keys 1-5
-	for i := '1'; i <= '5'; i++ {
+	// Test number keys 1-7 (fixed to include all views)
+	for i := '1'; i <= '7'; i++ {
 		numberKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{i}}
-		assert.True(t, handler.CanHandle(numberKey, ctx))
+		assert.True(t, handler.CanHandle(numberKey, ctx), "Key %c should be handled", i)
 	}
 
-	// Test invalid number (should not be handled)
-	invalidKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'6'}}
-	assert.False(t, handler.CanHandle(invalidKey, ctx))
+	// Test invalid numbers (should not be handled)
+	invalidKey8 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'8'}}
+	assert.False(t, handler.CanHandle(invalidKey8, ctx), "Key 8 should not be handled")
+
+	invalidKey9 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'9'}}
+	assert.False(t, handler.CanHandle(invalidKey9, ctx), "Key 9 should not be handled")
 
 	// Test other keys (should not be handled)
 	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
@@ -201,4 +205,163 @@ func (h *testKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 }
 func (h *testKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 	return h.handle(key, model)
+}
+
+// TestGlobalNavigationWithDirectUpdate tests keyboard navigation using direct Update calls
+// This ensures the full UI interaction flow works correctly
+func TestGlobalNavigationWithDirectUpdate(t *testing.T) {
+	model := createTestModelWithWorkingDir()
+	defer os.RemoveAll(model.workingDir)
+
+	t.Run("Number keys switch views correctly", func(t *testing.T) {
+		// Test switching to each view with number keys
+		testCases := []struct {
+			key          rune
+			expectedView View
+		}{
+			{'1', ViewProcesses},
+			{'2', ViewLogs},
+			{'3', ViewErrors}, // This was the one that was locking up!
+			{'4', ViewURLs},
+			{'5', ViewWeb},
+			{'6', ViewAICoders},
+			{'7', ViewSettings},
+		}
+
+		for _, tc := range testCases {
+			// Reset to a known state
+			model.switchToView(ViewProcesses)
+
+			// Send the key directly through Update
+			keyMsg := tea.KeyMsg{
+				Type:  tea.KeyRunes,
+				Runes: []rune{tc.key},
+			}
+
+			// Run the update with timeout detection
+			done := make(chan bool)
+			go func() {
+				updatedModel, cmd := model.Update(keyMsg)
+				model = updatedModel.(*Model)
+
+				// Execute any returned command
+				if cmd != nil {
+					// Try to execute with timeout
+					cmdDone := make(chan bool)
+					go func() {
+						msg := cmd()
+						if msg != nil {
+							model.Update(msg)
+						}
+						cmdDone <- true
+					}()
+
+					select {
+					case <-cmdDone:
+						// Command completed
+					case <-time.After(100 * time.Millisecond):
+						// Command timed out (but that's OK with our fix)
+					}
+				}
+				done <- true
+			}()
+
+			// Wait with timeout to detect lockups
+			select {
+			case <-done:
+				assert.Equal(t, tc.expectedView, model.currentView(),
+					"Key %c should switch to %v", tc.key, tc.expectedView)
+			case <-time.After(500 * time.Millisecond):
+				t.Fatalf("Key %c caused lockup when switching to %v", tc.key, tc.expectedView)
+			}
+		}
+	})
+
+	t.Run("Tab key cycles through views", func(t *testing.T) {
+		// Start from a known state
+		model.switchToView(ViewProcesses)
+		startView := model.currentView()
+
+		// Press Tab multiple times and verify cycling
+		// There are 7 views total: Processes, Logs, Errors, URLs, Web, AICoders, Settings
+		for i := 0; i < 7; i++ { // Go through all views and wrap around
+			previousView := model.currentView()
+
+			// Send Tab key directly
+			tabMsg := tea.KeyMsg{Type: tea.KeyTab}
+			updatedModel, cmd := model.Update(tabMsg)
+			model = updatedModel.(*Model)
+
+			// Execute command if returned
+			if cmd != nil {
+				msg := cmd()
+				if msg != nil {
+					updatedModel, _ := model.Update(msg)
+					model = updatedModel.(*Model)
+				}
+			}
+
+			currentView := model.currentView()
+
+			// Verify we moved to a different view
+			if i < 6 { // Before wrapping (0-5 = 6 transitions)
+				assert.NotEqual(t, previousView, currentView,
+					"Tab should move to next view")
+			} else { // Should wrap back to start (i=6, 7th tab press)
+				assert.Equal(t, startView, currentView,
+					"Tab should wrap back to start view")
+			}
+		}
+	})
+
+	t.Run("Invalid keys don't crash", func(t *testing.T) {
+		// Test that invalid number keys don't cause issues
+		invalidKeys := []rune{'8', '9', '0', 'a', 'b', 'z'}
+
+		for _, key := range invalidKeys {
+			previousView := model.currentView()
+
+			// Send key directly through Update
+			keyMsg := tea.KeyMsg{
+				Type:  tea.KeyRunes,
+				Runes: []rune{key},
+			}
+
+			// This should not panic or lock up
+			done := make(chan bool)
+			go func() {
+				updatedModel, cmd := model.Update(keyMsg)
+				model = updatedModel.(*Model)
+
+				// Execute command if returned (with timeout)
+				if cmd != nil {
+					cmdDone := make(chan bool)
+					go func() {
+						msg := cmd()
+						if msg != nil {
+							model.Update(msg)
+						}
+						cmdDone <- true
+					}()
+
+					select {
+					case <-cmdDone:
+						// Command completed
+					case <-time.After(50 * time.Millisecond):
+						// Command timed out (that's OK)
+					}
+				}
+				done <- true
+			}()
+
+			select {
+			case <-done:
+				// Good, it completed without locking up
+				// View might change if the key has another binding
+				t.Logf("Key %c handled without lockup (view: %v -> %v)", key, previousView, model.currentView())
+			case <-time.After(100 * time.Millisecond):
+				t.Errorf("Key %c caused lockup", key)
+			}
+		}
+	})
 }

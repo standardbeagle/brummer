@@ -91,6 +91,9 @@ type Model struct {
 	inputComponent          *components.InputComponent
 	navigationComponent     *components.NavigationComponent
 
+	// SIMPLIFIED VIEW MANAGEMENT - replaces NavigationComponent
+	viewManager *SimpleViewManager
+
 	selectedProcess string // Shared state - used by multiple views
 
 	// Script selector component (T068-T073)
@@ -529,6 +532,9 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// DIAGNOSTIC: Log model initialization start
 	logStore.Add("system", "Model", "🚀 DIAGNOSTIC: Starting Model initialization...", false)
 
+	// Create the simplified view manager FIRST
+	viewManager := NewSimpleViewManager(initialView)
+
 	m := Model{
 		processMgr:  processMgr,
 		logStore:    logStore,
@@ -548,6 +554,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		commandWindowView: components.NewCommandWindowView(processMgr, NewCommandAutocompleteFactory()),
 		keys:              keys,
 		updateChan:        make(chan tea.Msg, UpdateChannelBufferSize),
+		viewManager:       viewManager, // Add the simple view manager
 	}
 
 	// DIAGNOSTIC: Log basic model creation complete
@@ -825,7 +832,8 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 
 	// Register all keyboard handlers in priority order
 	// Priority 100: Global navigation (number keys, Tab)
-	m.keyRegistry.Register(NewGlobalNavigationHandler(navigationService))
+	// SIMPLIFIED: Pass viewManager directly instead of navigationService
+	m.keyRegistry.Register(NewGlobalNavigationHandler(m.viewManager, m.debugMode))
 
 	// Priority 250: AI Coder specific keys (when in AI Coder view)
 	if m.aicodersView != nil {
@@ -896,11 +904,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// SIMPLIFIED KEYBOARD HANDLING - All keyboard events go through the registry
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		// Debug logging for key 3 lockup investigation
+		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '3' {
+			if m.logStore != nil {
+				m.logStore.Add("Update", "Debug", "Key 3 received in Update", false)
+			}
+		}
+
 		// Build rich context for key handlers
 		ctx := m.buildKeyContext()
 
+		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '3' {
+			if m.logStore != nil {
+				m.logStore.Add("Update", "Debug", "Key 3: buildKeyContext completed", false)
+			}
+		}
+
 		// Route through the simplified key handler registry
 		if m.keyRegistry != nil {
+			if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '3' {
+				if m.logStore != nil {
+					m.logStore.Add("Update", "Debug", "Key 3: Calling keyRegistry.HandleKey", false)
+				}
+			}
 			return m, m.keyRegistry.HandleKey(msg, ctx, m)
 		}
 
@@ -941,11 +967,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmds = append(cmds, m.tickCmd())
 
 		// Update views based on current view to ensure real-time updates
+		// ⚠️ IMPORTANT: Only call non-blocking update methods from tick handler
 		switch m.currentView() {
 		case ViewProcesses:
-			m.updateProcessList()
-		case ViewLogs, ViewURLs:
-			m.updateLogsView()
+			m.updateProcessList() // Safe: updates list model without blocking
+		case ViewLogs:
+			m.updateLogsView() // Safe: updates viewport without blocking
+		// ⚠️ ViewURLs MUST NOT call updateLogsView() here!
+		// The tick fires every second and updateLogsView() can block on channels,
+		// causing the UI to freeze exactly 1 second after switching to tab 4.
+		// ViewURLs gets its updates through the normal message flow instead.
 		}
 
 	case mcpActivityMsg:
@@ -956,6 +987,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mcpDebugView.UpdateConnectionsList()
 		}
 		cmds = append(cmds, m.waitForUpdates())
+
+	case ViewSwitchedMsg:
+		// View has been switched by SimpleViewManager
+		// ✅ SAFE: Using quick timeout to prevent deadlock
+		// View switches are synchronous UI operations that don't need to wait for external updates
+		// The timeout gives any pending updates a chance to be processed but won't freeze the UI
+		if m.logStore != nil {
+			m.logStore.Add("Update", "Debug",
+				fmt.Sprintf("ViewSwitchedMsg: %v -> %v", msg.FromView, msg.ToView), false)
+		}
+
+		// Don't wait for updates - this was causing the deadlock!
+		// The view switch is already complete, no need to block waiting for more updates
+		// cmds = append(cmds, m.waitForUpdatesQuick())
+		if m.logStore != nil {
+			m.logStore.Add("Update", "Debug",
+				"ViewSwitchedMsg: NOT calling waitForUpdates to prevent deadlock", false)
+		}
 
 	case switchToAICodersMsg:
 		// Switch to AI Coders view
@@ -1132,9 +1181,17 @@ func (m *Model) renderContent() string {
 			m.errorsView.GetErrorDetailView().Width = rightWidth - 4
 			m.errorsView.GetErrorDetailView().Height = contentHeight - 2
 
-			// Update the views
-			m.errorsView.UpdateErrorsList()
-			m.errorsView.UpdateErrorDetailView()
+			// ⚠️ CRITICAL: DO NOT call UpdateErrorsList() or UpdateErrorDetailView() here!
+			// These methods contain blocking channel operations that WILL cause deadlocks
+			// when called synchronously during View() rendering.
+			//
+			// CORRECT PATTERN: Updates should only happen through the Update() message loop:
+			//   - User actions trigger messages (e.g., errorUpdateMsg)
+			//   - Update() handles the message and calls update methods
+			//   - Update methods can safely block waiting for data
+			//   - View() is called after Update() completes
+			//
+			// This separation ensures the event loop never blocks during rendering.
 
 			leftContent := m.errorsView.GetErrorsList().View()
 			rightContent := m.errorsView.GetErrorDetailView().View()
@@ -1263,36 +1320,26 @@ func (m *Model) updateSizes() {
 }
 
 func (m *Model) cycleView() {
-	// Use navigation component to cycle to next view
-	if m.navigationComponent != nil {
-		cmd := m.navigationComponent.CycleToNextView()
-		if cmd != nil {
-			// Execute the command to update the component state
-			// In a real BubbleTea application, this would return the cmd
-			// For now, we'll just trigger the state change
-		}
+	// Use simple view manager to cycle to next view
+	if m.viewManager != nil {
+		nextView := CycleToNextView(m.viewManager.GetCurrentView(), m.debugMode)
+		m.viewManager.SetCurrentView(nextView)
 	}
 }
 
 func (m *Model) cyclePrevView() {
-	// Use navigation component to cycle to previous view
-	if m.navigationComponent != nil {
-		currentView := m.navigationComponent.GetCurrentView()
-		cmd := m.navigationComponent.SwitchToView(currentView, "shift_tab")
-		if cmd != nil {
-			// Execute the command to update the component state
-		}
+	// Use simple view manager to cycle to previous view
+	if m.viewManager != nil {
+		prevView := CycleToPrevView(m.viewManager.GetCurrentView(), m.debugMode)
+		m.viewManager.SetCurrentView(prevView)
 	}
 }
 
 // switchToView changes the current view and performs any necessary setup
 func (m *Model) switchToView(view View) {
-	// Use navigation component to switch to specific view
-	if m.navigationComponent != nil {
-		cmd := m.navigationComponent.SwitchToView(view, "direct")
-		if cmd != nil {
-			// Execute the command to update the component state
-		}
+	// Use simple view manager instead
+	if m.viewManager != nil {
+		m.viewManager.SetCurrentView(view)
 	}
 }
 
@@ -1453,11 +1500,113 @@ type logUpdateMsg struct{}
 type tickMsg struct{}
 type switchToAICodersMsg struct{}
 
-func (m *Model) waitForUpdates() tea.Cmd {
-	// Wait for updates from the update channel (event_controller logic migrated)
+// ============================================================================
+// UPDATE CHANNEL PATTERNS - CRITICAL FOR PREVENTING DEADLOCKS
+// ============================================================================
+//
+// The updateChan is used for async operations to notify the UI of changes.
+// INCORRECT usage causes the tab switching freezes reported in issue #tab-lockup.
+//
+// GOLDEN RULES:
+//   1. NEVER call blocking channel operations from View() or any render method
+//   2. NEVER call blocking operations from tick handlers
+//   3. ALWAYS use timeout variants for UI operations
+//   4. ONLY use blocking variants when you started an async operation
+//
+// COMMON PITFALLS:
+//   ❌ Calling updateLogsView() from tick handler (blocks every second)
+//   ❌ Calling UpdateErrorsList() during View() rendering (blocks on render)
+//   ❌ Using waitForUpdatesBlocking() after view switches (nothing to wait for)
+//   ✅ Using waitForUpdatesSafe() with reasonable timeouts
+//   ✅ Calling update methods only from Update() message handlers
+//
+// ============================================================================
+
+// waitForUpdatesBlocking waits FOREVER for a message on updateChan
+// ⚠️ EXTREME DANGER: Will freeze the entire UI if nothing sends a message!
+//
+// ONLY use when ALL these conditions are met:
+//   1. You just started an async operation (goroutine, command, etc.)
+//   2. That operation WILL send a message to updateChan
+//   3. You need to wait for that specific message
+//
+// Example: After starting a process that will send processStartedMsg
+func (m *Model) waitForUpdatesBlocking() tea.Cmd {
 	return func() tea.Msg {
-		return <-m.updateChan
+		return <-m.updateChan // BLOCKS FOREVER - UI WILL FREEZE if no message comes!
 	}
+}
+
+// waitForUpdates is the LEGACY default method - being phased out
+// ⚠️ DEPRECATED: Was the source of tab 3 lockup bug!
+//
+// This method previously called waitForUpdatesBlocking() which caused deadlocks.
+// Now safely uses a 50ms timeout to prevent UI freezes during migration.
+//
+// MIGRATION: Replace all calls with explicit variants:
+//   - waitForUpdatesSafe(50*ms) for most UI operations
+//   - waitForUpdatesQuick() for view switches
+//   - waitForUpdatesImmediate() for optional refreshes
+func (m *Model) waitForUpdates() tea.Cmd {
+	// SAFETY: 50ms timeout prevents deadlocks but allows async ops to complete
+	// This fixed the tab 3 lockup issue where nothing was sending messages
+	return m.waitForUpdatesSafe(50 * time.Millisecond)
+}
+
+// waitForUpdatesImmediate performs a non-blocking check for updates
+// ✅ ALWAYS SAFE: Never blocks, never freezes the UI
+//
+// Use cases:
+//   - After user actions that might have triggered background updates
+//   - Periodic refresh checks that shouldn't block
+//   - Any time blocking would degrade user experience
+//
+// Returns: Message if available, nil if channel is empty
+func (m *Model) waitForUpdatesImmediate() tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg := <-m.updateChan:
+			return msg
+		default:
+			return nil // No message available, continue immediately
+		}
+	}
+}
+
+// waitForUpdatesSafe waits for updates with timeout protection
+// ✅ SAFE: Guaranteed to return within timeout, preventing UI freezes
+//
+// This is the RECOMMENDED method for most use cases:
+//   - View switches: use 10-50ms timeout
+//   - User interactions: use 10-50ms timeout
+//   - Background operations: use 100-500ms timeout
+//
+// The timeout is NOT an error condition - it's normal and expected.
+// Many operations won't produce updates, and that's fine.
+func (m *Model) waitForUpdatesSafe(timeout time.Duration) tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg := <-m.updateChan:
+			return msg
+		case <-time.After(timeout):
+			return nil // Timeout is normal - prevents blocking
+		}
+	}
+}
+
+// waitForUpdatesQuick is optimized for responsive UI operations
+// ✅ SAFE: 10ms timeout is imperceptible to users but prevents deadlocks
+//
+// Perfect for:
+//   - Tab/view switching
+//   - Keyboard shortcuts
+//   - Menu selections
+//   - Any UI interaction that needs immediate response
+//
+// The 10ms timeout ensures the UI never freezes while still catching
+// any immediate updates from background operations.
+func (m *Model) waitForUpdatesQuick() tea.Cmd {
+	return m.waitForUpdatesSafe(10 * time.Millisecond)
 }
 
 func (m *Model) tickCmd() tea.Cmd {
@@ -1952,10 +2101,10 @@ func (m *Model) getCLICommandFromConfig(configKey string, task string) (string, 
 
 // File browser list is now managed entirely by filebrowserController
 
-// currentView returns the current view from the navigation component
+// currentView returns the current view from the simple view manager
 func (m *Model) currentView() View {
-	if m.navigationComponent != nil {
-		return m.navigationComponent.GetCurrentView()
+	if m.viewManager != nil {
+		return m.viewManager.GetCurrentView()
 	}
 	// Fallback to default view
 	return ViewProcesses

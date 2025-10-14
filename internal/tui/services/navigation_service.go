@@ -58,18 +58,22 @@ func NewNavigationService(eventBus *events.EventBus) *NavigationService {
 			messages.ProcessesView,
 			messages.LogsView,
 			messages.ErrorsView,
+			messages.URLsView,
+			messages.WebView,
 			messages.AICodersView,
 			messages.SettingsView,
 		},
 		numberKeyMappings: make(map[int]messages.ViewType),
 	}
 
-	// Set default number key mappings (1-5)
+	// Set default number key mappings (1-7)
 	service.numberKeyMappings[1] = messages.ProcessesView
 	service.numberKeyMappings[2] = messages.LogsView
 	service.numberKeyMappings[3] = messages.ErrorsView
-	service.numberKeyMappings[4] = messages.AICodersView
-	service.numberKeyMappings[5] = messages.SettingsView
+	service.numberKeyMappings[4] = messages.URLsView
+	service.numberKeyMappings[5] = messages.WebView
+	service.numberKeyMappings[6] = messages.AICodersView
+	service.numberKeyMappings[7] = messages.SettingsView
 
 	// Initialize with first view
 	service.currentView.Store(messages.ProcessesView)
@@ -323,7 +327,8 @@ func (ns *NavigationService) Stop() error {
 // isValidView checks if a view type is valid
 func (ns *NavigationService) isValidView(view messages.ViewType) bool {
 	switch view {
-	case messages.ProcessesView, messages.LogsView, messages.ErrorsView, messages.AICodersView, messages.SettingsView:
+	case messages.ProcessesView, messages.LogsView, messages.ErrorsView,
+		messages.URLsView, messages.WebView, messages.AICodersView, messages.SettingsView:
 		return true
 	default:
 		return false
@@ -556,6 +561,8 @@ func (ns *NavigationService) ResetToInitialState() {
 		messages.ProcessesView,
 		messages.LogsView,
 		messages.ErrorsView,
+		messages.URLsView,
+		messages.WebView,
 		messages.AICodersView,
 		messages.SettingsView,
 	}
@@ -563,8 +570,10 @@ func (ns *NavigationService) ResetToInitialState() {
 		1: messages.ProcessesView,
 		2: messages.LogsView,
 		3: messages.ErrorsView,
-		4: messages.AICodersView,
-		5: messages.SettingsView,
+		4: messages.URLsView,
+		5: messages.WebView,
+		6: messages.AICodersView,
+		7: messages.SettingsView,
 	}
 	ns.mu.Unlock()
 }

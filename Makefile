@@ -244,10 +244,36 @@ test-tty: build
 	@./test/tty/system_bash_test.sh
 	@echo "✅ System bash tests completed"
 
-# Run all TUI tests (expect + alternatives)
+# Run TUI integration tests with new harness
+.PHONY: test-tui
+test-tui: build
+	@echo "🖥️  Running TUI integration tests..."
+	@./test/scripts/run_tui_tests.sh
+
+# Run TUI integration tests (comprehensive)
+.PHONY: test-tui-integration
+test-tui-integration: build
+	@echo "🖥️  Running comprehensive TUI tests..."
+	@BRUMMER_BINARY=./$(BINARY_NAME) go test -tags=integration ./test/tui -v
+
+# Validate TUI functionality
+.PHONY: validate-tui
+validate-tui: build
+	@echo "✅ Validating TUI functionality..."
+	@./test/scripts/validate_tui.sh
+
+# Setup TUI test environment
+.PHONY: setup-tui-test-env
+setup-tui-test-env:
+	@echo "🔧 Setting up TUI test environment..."
+	@./test/scripts/setup_test_env.sh
+
+# Run all TUI tests (expect + alternatives + new harness)
 .PHONY: test-tui-all
 test-tui-all: build
 	@echo "🖥️  Running all TUI tests..."
+	@make setup-tui-test-env
+	@make test-tui || echo "⚠️  TUI harness tests failed, trying alternatives..."
 	@make test-expect || echo "⚠️  Expect tests failed, trying alternatives..."
 	@make test-tmux || echo "⚠️  Tmux tests failed, trying system bash..."
 	@make test-tty || echo "⚠️  All TUI tests failed - check environment"
@@ -395,7 +421,11 @@ help:
 	@echo "  make test-logging   - Run Logging regression tests"
 	@echo "  make test-processes - Run Process regression tests"
 	@echo "  make test-integration - Run Integration regression tests"
-	@echo "  make test-all       - Run all tests (unit + regression)"
+	@echo "  make test-tui       - Run TUI integration tests with new harness"
+	@echo "  make test-tui-integration - Run comprehensive TUI integration tests"
+	@echo "  make validate-tui   - Validate TUI functionality"
+	@echo "  make setup-tui-test-env - Setup TUI test environment"
+	@echo "  make test-all       - Run all tests (unit + regression + TUI)"
 	@echo "  make fmt            - Format code"
 	@echo "  make lint           - Lint code"
 	@echo "  make build-all      - Build for multiple platforms"

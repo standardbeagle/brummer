@@ -85,13 +85,13 @@ As a developer working on the Brummer TUI application, I need a reliable testing
 - **FR-001**: System MUST provide a testing harness that can simulate keyboard input without requiring actual TTY allocation
 - **FR-002**: System MUST enable automated testing of TUI view switching functionality (number keys 1-5, Tab, etc.)
 - **FR-003**: System MUST validate that command palette operations work correctly during automated tests
-- **FR-004**: System MUST provide test utilities to verify TUI state changes and screen content
+- **FR-004**: System MUST provide test utilities to verify TUI state changes and screen content (current view, active component, cursor position, visible text, model state, screen buffer, component focus, keyboard routing path, handler execution, and UI element states)
 - **FR-005**: System MUST generate detailed test reports showing keyboard input routing and handler execution
 - **FR-006**: System MUST include comprehensive documentation that integrates testing requirements into the development workflow
 - **FR-007**: System MUST prevent developers from accidentally bypassing TUI testing requirements through pre-commit hooks and integrated documentation with mandatory checklists
 - **FR-008**: System MUST validate that all keyboard shortcuts work in Linux terminal environments (macOS and Windows support is optional)
-- **FR-009**: System MUST prevent testing workarounds that compromise actual application functionality
-- **FR-010**: System MUST provide testing capabilities for agent-based local testing with limited bash shell environments outside integrated shell
+- **FR-009**: System MUST prevent testing workarounds that compromise actual application functionality (specifically: using alternative input methods that bypass normal keyboard routing, mocking TUI components/disabling keyboard handlers, and creating alternative non-TTY UIs)
+- **FR-010**: System MUST provide testing capabilities for agent-based local testing in standard bash environments without TTY allocation (agent-provided non-TTY shells require PTY intermediate layer)
 
 ### Key Entities *(include if feature involves data)*
 - **Test Harness**: The automated testing framework that simulates user interactions with the TUI
@@ -104,8 +104,8 @@ As a developer working on the Brummer TUI application, I need a reliable testing
 
 ### Non-Functional Requirements
 - **NFR-001**: System correctness is prioritized over performance timing constraints
-- **NFR-002**: Tests should be reliable and repeatable across Linux terminal environments
-- **NFR-003**: Testing harness must integrate with existing development workflows without blocking productivity
+- **NFR-002**: Tests should be reliable and repeatable with deterministic results regardless of timing variations (focused on Ubuntu system)
+- **NFR-003**: Testing harness must integrate with existing development workflows without blocking productivity (tests are essential and should be optimized and always run)
 - **NFR-004**: Testing solutions must not require application workarounds that affect production functionality
 
 ---
@@ -149,4 +149,9 @@ As a developer working on the Brummer TUI application, I need a reliable testing
 - Q: What are the timing constraints for TUI test execution and response time validation? → A: No timing constraints, focus on correctness over performance
 - Q: What specific behaviors should occur when TUI tests fail due to environmental constraints? → A: Prevent workarounds that break actual application functionality
 - Q: Which continuous integration platforms should the testing harness support? → A: Agent-based local testing with limited bash shell outside integrated shell
+- Q: What constitutes "limited bash shell environments outside integrated shell" in FR-010? → A: Standard bash environment but without TTY allocation (agent-provided non-TTY shells require PTY intermediate layer)
+- Q: What specific "TUI state changes and screen content" should FR-004's test utilities verify? → A: All of the above (comprehensive state validation including view, component, cursor, text, model state, buffer, focus, routing, handlers, UI elements)
+- Q: What measurable criteria define "reliable and repeatable" in NFR-002? → A: Deterministic results regardless of timing variations (focused on Ubuntu system)
+- Q: What specific "application workarounds that affect production functionality" must FR-009 prevent? → A: Using alternative input methods that bypass normal keyboard routing, mocking TUI components/disabling keyboard handlers, and creating alternative non-TTY UIs
+- Q: What defines "integrate with existing development workflows without blocking productivity" in NFR-003? → A: Tests are essential and should be optimized and always run
 

@@ -18,8 +18,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// PTYLayer manages pseudo-terminal allocation and terminal emulation
-type PTYLayer struct {
+// PTYLayerImpl manages pseudo-terminal allocation and terminal emulation
+type PTYLayerImpl struct {
 	mu              sync.RWMutex
 	pty             *os.File
 	tty             *os.File
@@ -59,10 +59,10 @@ func DefaultPTYConfig() PTYConfig {
 }
 
 // NewPTYLayer creates a new PTY layer instance
-func NewPTYLayer(config PTYConfig) (*PTYLayer, error) {
+func NewPTYLayer(config PTYConfig) (*PTYLayerImpl, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), config.Timeout)
 
-	return &PTYLayer{
+	return &PTYLayerImpl{
 		size:           config.Size,
 		ctx:            ctx,
 		cancel:         cancel,
@@ -73,7 +73,7 @@ func NewPTYLayer(config PTYConfig) (*PTYLayer, error) {
 }
 
 // Allocate creates a new PTY pair and initializes terminal emulation
-func (p *PTYLayer) Allocate() error {
+func (p *PTYLayerImpl) Allocate() error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -104,21 +104,21 @@ func (p *PTYLayer) Allocate() error {
 }
 
 // IsAllocated returns true if PTY is allocated
-func (p *PTYLayer) IsAllocated() bool {
+func (p *PTYLayerImpl) IsAllocated() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.allocated
 }
 
 // GetSize returns the current PTY size
-func (p *PTYLayer) GetSize() PTYSize {
+func (p *PTYLayerImpl) GetSize() PTYSize {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.size
 }
 
 // SetSize changes the PTY size and notifies the terminal
-func (p *PTYLayer) SetSize(size PTYSize) error {
+func (p *PTYLayerImpl) SetSize(size PTYSize) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -133,7 +133,7 @@ func (p *PTYLayer) SetSize(size PTYSize) error {
 }
 
 // resizePTY resizes the PTY
-func (p *PTYLayer) resizePTY() error {
+func (p *PTYLayerImpl) resizePTY() error {
 	if err := pty.Setsize(p.pty, &pty.Winsize{
 		Rows: p.size.Rows,
 		Cols: p.size.Cols,
@@ -153,7 +153,7 @@ func (p *PTYLayer) resizePTY() error {
 }
 
 // WriteInput writes keyboard input to the PTY
-func (p *PTYLayer) WriteInput(data []byte) error {
+func (p *PTYLayerImpl) WriteInput(data []byte) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -185,7 +185,7 @@ func (p *PTYLayer) WriteInput(data []byte) error {
 }
 
 // ReadOutput reads output from the PTY
-func (p *PTYLayer) ReadOutput() ([]byte, error) {
+func (p *PTYLayerImpl) ReadOutput() ([]byte, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -229,7 +229,7 @@ func (p *PTYLayer) ReadOutput() ([]byte, error) {
 }
 
 // GetTerminalState returns the current terminal state (simplified)
-func (p *PTYLayer) GetTerminalState() interface{} {
+func (p *PTYLayerImpl) GetTerminalState() interface{} {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -242,7 +242,7 @@ func (p *PTYLayer) GetTerminalState() interface{} {
 }
 
 // GetContent returns the visible terminal content (simplified)
-func (p *PTYLayer) GetContent() string {
+func (p *PTYLayerImpl) GetContent() string {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -254,7 +254,7 @@ func (p *PTYLayer) GetContent() string {
 }
 
 // GetCursorPosition returns the current cursor position (simplified)
-func (p *PTYLayer) GetCursorPosition() (row, col int) {
+func (p *PTYLayerImpl) GetCursorPosition() (row, col int) {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -263,7 +263,7 @@ func (p *PTYLayer) GetCursorPosition() (row, col int) {
 }
 
 // SimulateKeyPress simulates a key press by writing to the PTY
-func (p *PTYLayer) SimulateKeyPress(key tea.KeyMsg) error {
+func (p *PTYLayerImpl) SimulateKeyPress(key tea.KeyMsg) error {
 	data, err := p.keyMsgToBytes(key)
 	if err != nil {
 		return fmt.Errorf("failed to convert key message: %w", err)
@@ -273,7 +273,7 @@ func (p *PTYLayer) SimulateKeyPress(key tea.KeyMsg) error {
 }
 
 // keyMsgToBytes converts a tea.KeyMsg to bytes for PTY input
-func (p *PTYLayer) keyMsgToBytes(key tea.KeyMsg) ([]byte, error) {
+func (p *PTYLayerImpl) keyMsgToBytes(key tea.KeyMsg) ([]byte, error) {
 	switch key.Type {
 	case tea.KeyRunes:
 		return []byte(string(key.Runes)), nil
@@ -320,7 +320,7 @@ func (p *PTYLayer) keyMsgToBytes(key tea.KeyMsg) ([]byte, error) {
 }
 
 // GetInputBuffer returns the recent input buffer for debugging
-func (p *PTYLayer) GetInputBuffer() []byte {
+func (p *PTYLayerImpl) GetInputBuffer() []byte {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -330,7 +330,7 @@ func (p *PTYLayer) GetInputBuffer() []byte {
 }
 
 // GetOutputBuffer returns the recent output buffer for debugging
-func (p *PTYLayer) GetOutputBuffer() []byte {
+func (p *PTYLayerImpl) GetOutputBuffer() []byte {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 
@@ -340,7 +340,7 @@ func (p *PTYLayer) GetOutputBuffer() []byte {
 }
 
 // ClearBuffers clears the input and output buffers
-func (p *PTYLayer) ClearBuffers() {
+func (p *PTYLayerImpl) ClearBuffers() {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -349,7 +349,7 @@ func (p *PTYLayer) ClearBuffers() {
 }
 
 // Cleanup closes the PTY and releases resources
-func (p *PTYLayer) Cleanup() error {
+func (p *PTYLayerImpl) Cleanup() error {
 	var cleanupErr error
 
 	p.cleanupOnce.Do(func() {
@@ -363,7 +363,7 @@ func (p *PTYLayer) Cleanup() error {
 }
 
 // cleanup performs the actual cleanup without the Once wrapper
-func (p *PTYLayer) cleanup() error {
+func (p *PTYLayerImpl) cleanup() error {
 	p.allocated = false
 
 	if p.cancel != nil {
@@ -392,17 +392,17 @@ func (p *PTYLayer) cleanup() error {
 }
 
 // Context returns the PTY context
-func (p *PTYLayer) Context() context.Context {
+func (p *PTYLayerImpl) Context() context.Context {
 	return p.ctx
 }
 
 // Err returns any error from the context
-func (p *PTYLayer) Err() error {
+func (p *PTYLayerImpl) Err() error {
 	return p.ctx.Err()
 }
 
 // StartCommand starts a command with the PTY as its controlling terminal
-func (p *PTYLayer) StartCommand(cmd *exec.Cmd) error {
+func (p *PTYLayerImpl) StartCommand(cmd *exec.Cmd) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -431,19 +431,19 @@ func (p *PTYLayer) StartCommand(cmd *exec.Cmd) error {
 }
 
 // WaitForCommand waits for a command to complete
-func (p *PTYLayer) WaitForCommand(cmd *exec.Cmd) error {
+func (p *PTYLayerImpl) WaitForCommand(cmd *exec.Cmd) error {
 	return cmd.Wait()
 }
 
 // GetLastResizeTime returns when the PTY was last resized
-func (p *PTYLayer) GetLastResizeTime() time.Time {
+func (p *PTYLayerImpl) GetLastResizeTime() time.Time {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.lastResizeTime
 }
 
 // Read implements io.Reader interface
-func (p *PTYLayer) Read(data []byte) (int, error) {
+func (p *PTYLayerImpl) Read(data []byte) (int, error) {
 	output, err := p.ReadOutput()
 	if err != nil {
 		return 0, err
@@ -454,7 +454,7 @@ func (p *PTYLayer) Read(data []byte) (int, error) {
 }
 
 // Write implements io.Writer interface
-func (p *PTYLayer) Write(data []byte) (int, error) {
+func (p *PTYLayerImpl) Write(data []byte) (int, error) {
 	err := p.WriteInput(data)
 	if err != nil {
 		return 0, err

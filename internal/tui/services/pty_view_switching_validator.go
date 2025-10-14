@@ -14,7 +14,7 @@ import (
 // It validates that PTY input simulation correctly triggers view switching through the NavigationService
 type PTYViewSwitchingValidator struct {
 	// Core components
-	ptyLayer          *pty.PTYLayer
+	ptyLayer pty.PTYLayer
 	navigationAdapter *PTYNavigationAdapter
 	stateTracker      *PTYNavigationStateTracker
 
@@ -145,7 +145,7 @@ func DefaultPTYViewSwitchingValidatorConfig() PTYViewSwitchingValidatorConfig {
 
 // NewPTYViewSwitchingValidator creates a new view switching validator
 func NewPTYViewSwitchingValidator(
-	ptyLayer *pty.PTYLayer,
+	ptyLayer pty.PTYLayer,
 	navigationAdapter *PTYNavigationAdapter,
 	config PTYViewSwitchingValidatorConfig,
 ) (*PTYViewSwitchingValidator, error) {

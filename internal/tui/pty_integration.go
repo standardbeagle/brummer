@@ -19,7 +19,7 @@ import (
 // PTYIntegration provides PTY-based program management for BubbleTea applications
 type PTYIntegration struct {
 	mu              sync.RWMutex
-	ptyLayer        *pty.PTYLayer
+	ptyLayer        *pty.PTYLayerImpl
 	ptyProgram      *pty.PTYProgram
 	inputController *pty.PTYInputController
 	renderer        *pty.PTYRenderer
@@ -608,7 +608,7 @@ func (pi *PTYIntegration) GetContext() context.Context {
 }
 
 // GetPTYLayer returns the underlying PTY layer for advanced operations
-func (pi *PTYIntegration) GetPTYLayer() *pty.PTYLayer {
+func (pi *PTYIntegration) GetPTYLayer() *pty.PTYLayerImpl {
 	pi.mu.RLock()
 	defer pi.mu.RUnlock()
 	return pi.ptyLayer
