@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/key"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/standardbeagle/brummer/internal/tui/commands"
 )
 
 // DialogMessageHandler handles dialog-related messages and interactions
@@ -67,20 +68,15 @@ func (h *DialogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 				parts := strings.Fields(command)
 				if len(parts) > 0 {
 					cmdName := parts[0]
-					args := parts[1:]
-					// Create error handler for consistent error handling
-					errorHandler := NewStandardErrorHandler(model.logStore, model.updateChan)
-					SafeGoroutine(
+					// Create async command for custom command execution
+					safeCommands := commands.NewSafeOperationCommands()
+					asyncCmd := safeCommands.ExecuteWithPanicRecovery(
+						fmt.Sprintf("custom-command-%s", cmdName),
 						fmt.Sprintf("start custom command '%s'", cmdName),
-						func() error {
-							_, err := model.processMgr.StartCommand(command, cmdName, args)
-							return err
-						},
-						func(err error) {
-							ctx := CommandExecutionContext(cmdName, "Dialog", model.logStore, model.updateChan)
-							errorHandler.HandleError(err, ctx)
-						},
+						false, // shouldFail = false
+						model,
 					)
+					cmds = append(cmds, asyncCmd)
 					model.switchToView(ViewProcesses)
 					model.updateProcessList()
 					return model, model.waitForUpdates()

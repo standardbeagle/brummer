@@ -1,0 +1,223 @@
+openapi: 3.0.0
+info:
+  title: Bubble Tea Command Execution Contract
+  version: 1.0.0
+  description: Contract for command execution pattern in Bubble Tea MVU architecture
+
+paths:
+  /commands/execute:
+    post:
+      summary: Execute an asynchronous command
+      operationId: executeCommand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommandRequest'
+      responses:
+        '202':
+          description: Command accepted for execution
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandAccepted'
+        '400':
+          description: Invalid command request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: Command queue full
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /commands/{commandId}/result:
+    get:
+      summary: Get command execution result
+      operationId: getCommandResult
+      parameters:
+        - name: commandId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Command result available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandResult'
+        '202':
+          description: Command still executing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandProgress'
+        '404':
+          description: Command not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+components:
+  schemas:
+    CommandRequest:
+      type: object
+      required:
+        - type
+        - operation
+        - context
+      properties:
+        type:
+          type: string
+          enum: [IO, Process, Network, System]
+        operation:
+          type: string
+          description: Specific operation to perform
+        context:
+          $ref: '#/components/schemas/OperationContext'
+        priority:
+          type: integer
+          minimum: 0
+          maximum: 10
+          default: 5
+        timeout:
+          type: integer
+          description: Timeout in milliseconds
+          default: 5000
+          maximum: 30000
+
+    OperationContext:
+      type: object
+      required:
+        - version
+        - operationType
+      properties:
+        version:
+          type: integer
+          format: int64
+          description: State version for consistency checking
+        operationType:
+          type: string
+          enum: [UI, Data, System]
+        dependencies:
+          type: array
+          items:
+            type: string
+          description: Command IDs that must complete first
+        strategy:
+          type: string
+          enum: [LastWriteWins, VersionTracking, QueueSequential, ParallelMerge]
+          default: LastWriteWins
+        retryPolicy:
+          $ref: '#/components/schemas/RetryPolicy'
+
+    RetryPolicy:
+      type: object
+      properties:
+        maxAttempts:
+          type: integer
+          minimum: 0
+          maximum: 5
+          default: 3
+        initialDelay:
+          type: integer
+          description: Initial retry delay in milliseconds
+          default: 1000
+        maxDelay:
+          type: integer
+          description: Maximum retry delay in milliseconds
+          default: 10000
+        backoffFactor:
+          type: number
+          format: float
+          default: 2.0
+
+    CommandAccepted:
+      type: object
+      required:
+        - commandId
+        - status
+        - acceptedAt
+      properties:
+        commandId:
+          type: string
+        status:
+          type: string
+          enum: [Queued, Running]
+        acceptedAt:
+          type: string
+          format: date-time
+        estimatedCompletion:
+          type: string
+          format: date-time
+
+    CommandResult:
+      type: object
+      required:
+        - commandId
+        - status
+        - completedAt
+      properties:
+        commandId:
+          type: string
+        status:
+          type: string
+          enum: [Completed, Failed, Cancelled]
+        completedAt:
+          type: string
+          format: date-time
+        result:
+          type: object
+          description: Operation-specific result data
+        error:
+          $ref: '#/components/schemas/Error'
+        retryCount:
+          type: integer
+        executionTime:
+          type: integer
+          description: Execution time in milliseconds
+
+    CommandProgress:
+      type: object
+      required:
+        - commandId
+        - status
+        - progress
+      properties:
+        commandId:
+          type: string
+        status:
+          type: string
+          enum: [Queued, Running]
+        progress:
+          type: integer
+          minimum: 0
+          maximum: 100
+        message:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        retryable:
+          type: boolean
+          default: false

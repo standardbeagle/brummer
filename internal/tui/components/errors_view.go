@@ -3,17 +3,19 @@ package components
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/tui/commands"
 )
 
 // ErrorsView is a BubbleTea component for displaying errors
 // Migrated from errors_view_controller.go (T050-T054)
-// Architecture: Component → Service (direct logs.Store access)
+// Architecture: Component → Commands → Service (async error operations)
 type ErrorsView struct {
 	errorsViewport  viewport.Model
 	errorDetailView viewport.Model
@@ -21,10 +23,16 @@ type ErrorsView struct {
 	selectedError   *logs.ErrorContext
 	lastErrorCount  int
 
-	// Direct service access
+	// Service access (now through commands)
 	logStore *logs.Store
 	width    int
 	height   int
+
+	// Command pattern support
+	commandID     string
+	loading       bool
+	lastError     error
+	errorContexts []logs.ErrorContext // Cache for error contexts
 }
 
 // ErrorItem implements list.Item for error contexts
@@ -149,8 +157,8 @@ func (v *ErrorsView) UpdateErrorsView() {
 
 // UpdateErrorsList updates the list of errors
 func (v *ErrorsView) UpdateErrorsList() {
-	// Direct service call - no controller indirection (T052)
-	errorContexts := v.logStore.GetErrorContexts()
+	// Use cached error contexts
+	errorContexts := v.GetErrorContexts()
 
 	var items []list.Item
 	for _, ec := range errorContexts {
@@ -262,4 +270,115 @@ func (v *ErrorsView) HandleCopyError() tea.Cmd {
 // HandleClearErrors clears all errors
 func (v *ErrorsView) HandleClearErrors() {
 	v.ClearAllErrors()
+}
+
+// UpdateErrorsCommand returns a command to refresh the errors view asynchronously
+func (v *ErrorsView) UpdateErrorsCommand() tea.Cmd {
+	if v.logStore == nil {
+		return nil
+	}
+
+	// Generate unique command ID
+	v.commandID = fmt.Sprintf("errors-update-%d", time.Now().UnixNano())
+
+	context := commands.UIOperationContext(0) // Version will be set by the model
+
+	return func() tea.Msg {
+		cmd := commands.NewGetErrorsCommand(v.commandID, v.logStore, context)
+		return cmd.Run()
+	}
+}
+
+// UpdateErrorsViewWithCache refreshes the errors view using cached data
+func (v *ErrorsView) UpdateErrorsViewWithCache() {
+	var content strings.Builder
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Recent Errors") + "\n\n")
+
+	if len(v.errorContexts) == 0 {
+		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true).
+			Render("No errors detected. System running smoothly! ✓"))
+	} else {
+		for i, ec := range v.errorContexts {
+			if i > 0 {
+				content.WriteString("\n" + strings.Repeat("─", v.width) + "\n")
+			}
+			content.WriteString(v.formatErrorContext(&ec))
+		}
+	}
+
+	v.errorsViewport.SetContent(content.String())
+}
+
+// UpdateErrorsListWithCache updates the list of errors using cached data
+func (v *ErrorsView) UpdateErrorsListWithCache() {
+	var items []list.Item
+	for _, ec := range v.errorContexts {
+		ecCopy := ec
+		items = append(items, ErrorItem{
+			ErrorContext: &ecCopy,
+			Timestamp:    ec.Timestamp.Format("15:04:05"),
+			ProcessName:  ec.ProcessName,
+		})
+	}
+
+	v.errorsList.SetItems(items)
+}
+
+// HandleErrorResult handles the result of an error command
+func (v *ErrorsView) HandleErrorResult(msg commands.LogResultMsg) {
+	if msg.ID != v.commandID {
+		return // Not our command
+	}
+
+	v.loading = false
+	v.lastError = msg.Error
+
+	if msg.IsSuccess() {
+		// Process the result
+		if errorData, ok := msg.Result.(commands.ErrorData); ok {
+			// Convert log entries to error contexts
+			v.errorContexts = v.convertLogEntriesToErrorContexts(errorData.Entries)
+		}
+	}
+}
+
+// GetErrorContexts returns the cached error contexts (falls back to sync method if cache is empty)
+func (v *ErrorsView) GetErrorContexts() []logs.ErrorContext {
+	if v.errorContexts == nil && v.logStore != nil {
+		// Fallback to sync method
+		v.errorContexts = v.logStore.GetErrorContexts()
+	}
+	return v.errorContexts
+}
+
+// convertLogEntriesToErrorContexts converts log entries to error contexts for compatibility
+func (v *ErrorsView) convertLogEntriesToErrorContexts(entries []logs.LogEntry) []logs.ErrorContext {
+	// This is a simplified conversion - in a full implementation,
+	// we would use the log store's error grouping functionality
+	return v.logStore.GetErrorContexts()
+}
+
+// IsLoading returns whether the component is currently loading data
+func (v *ErrorsView) IsLoading() bool {
+	return v.loading
+}
+
+// SetLoading sets the loading state of the component
+func (v *ErrorsView) SetLoading(loading bool) {
+	v.loading = loading
+}
+
+// GetLastError returns the last error encountered
+func (v *ErrorsView) GetLastError() error {
+	return v.lastError
+}
+
+// ClearCommandError clears the last command error
+func (v *ErrorsView) ClearCommandError() {
+	v.lastError = nil
+}
+
+// ClearCache clears the cached error contexts
+func (v *ErrorsView) ClearCache() {
+	v.errorContexts = nil
 }

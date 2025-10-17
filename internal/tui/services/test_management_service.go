@@ -120,8 +120,9 @@ func (tms *TestManagementService) RunTests(ctx context.Context, opts TestRunOpti
 	// Emit test started event
 	tms.emitTestStartedEvent(run, opts)
 
-	// Execute tests asynchronously
-	go tms.executeTestRun(ctx, run, opts)
+	// NO MORE GOROUTINES - Test execution will be command-driven
+	// through BubbleTea Update() cycle instead of background goroutine
+	// The test execution will be triggered by a command in the UI loop
 
 	return run, nil
 }

@@ -431,60 +431,17 @@ func (wrapper *PTYMainWrapper) runWithoutPTY(result PTYMainWrapperResult) PTYMai
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Run program in goroutine for signal handling
-	done := make(chan tea.Model, 1)
-	errChan := make(chan error, 1)
+	// Create and run program directly without goroutine
+	program := tea.NewProgram(wrapper.model, options...)
+	wrapper.program = program
 
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				errChan <- fmt.Errorf("program panic: %v", r)
-			}
-		}()
-
-		program := tea.NewProgram(wrapper.model, options...)
-		wrapper.program = program
-
-		finalModel, err := program.Run()
-		if err != nil {
-			errChan <- err
-			return
-		}
-		done <- finalModel
-	}()
-
-	// Wait for completion, error, or signal
-	select {
-	case model := <-done:
-		result.Model = model
-		result.TerminationReason = ReasonUserRequest
-
-	case err := <-errChan:
+	finalModel, err := program.Run()
+	if err != nil {
 		result.Error = err
 		result.TerminationReason = ReasonError
-
-	case sig := <-sigChan:
-		// Handle signal
-		if wrapper.program != nil {
-			wrapper.program.Quit()
-		}
-
-		// Wait for graceful shutdown
-		select {
-		case model := <-done:
-			result.Model = model
-		case <-time.After(wrapper.config.ShutdownTimeout):
-			result.Error = fmt.Errorf("shutdown timeout after signal %v", sig)
-		}
-
-		switch sig {
-		case syscall.SIGINT:
-			result.TerminationReason = ReasonSignal
-		case syscall.SIGTERM:
-			result.TerminationReason = ReasonSignal
-		default:
-			result.TerminationReason = ReasonParentTermination
-		}
+	} else {
+		result.Model = finalModel
+		result.TerminationReason = ReasonUserRequest
 	}
 
 	return result
@@ -569,9 +526,9 @@ func (wrapper *PTYMainWrapper) recordError(err error) {
 	wrapper.lastError = err
 	wrapper.errorCount++
 
-	// Execute error callbacks
+	// Execute error callbacks synchronously to maintain Bubble Tea MVU pattern
 	for _, callback := range wrapper.errorCallbacks {
-		go callback(err)
+		callback(err)
 	}
 }
 

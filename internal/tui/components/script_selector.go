@@ -633,9 +633,11 @@ func (s *ScriptSelector) GetScriptSelector() ScriptSelectorAutocompleteInterface
 // Helper functions
 // Note: getTerminalSize() is defined in command_window_view.go and reused here
 
-// safeGoroutine wraps goroutine execution with panic recovery
+// safeGoroutine wraps operation execution with panic recovery
+// TODO: Replace with proper command pattern for async operations
+// For now, execute synchronously to avoid goroutines
 func safeGoroutine(operationName string, fn func() error, onError func(error)) {
-	go func() {
+	func() {
 		defer func() {
 			if r := recover(); r != nil {
 				err := fmt.Errorf("panic in %s: %v", operationName, r)

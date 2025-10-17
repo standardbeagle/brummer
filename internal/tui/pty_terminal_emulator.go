@@ -684,7 +684,11 @@ func (te *PTYTerminalEmulator) updateTerminalState() {
 func (te *PTYTerminalEmulator) generateEvent(eventType EventType, event TerminalEvent) {
 	if callbacks, exists := te.eventCallbacks[eventType]; exists {
 		for _, callback := range callbacks {
-			go callback(event)
+			// NO MORE GOROUTINES - Event callbacks should be command-driven
+			// through BubbleTea Update() cycle instead of background goroutine
+			// Store events for later processing in UI update loop
+			// For now, execute synchronously to prevent race conditions
+			callback(event)
 		}
 	}
 }

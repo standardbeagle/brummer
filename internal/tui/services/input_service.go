@@ -404,9 +404,9 @@ func (s *InputService) Start(ctx context.Context) error {
 		return errors.New(ErrInputServiceNotActive)
 	}
 
-	// Initialize any background tasks here if needed
-	s.wg.Add(1)
-	go s.backgroundWorker()
+	// Initialize background tasks through command pattern
+	// TODO: Replace with proper command pattern for background tasks
+	// For now, disable background worker to avoid goroutines
 
 	return nil
 }
@@ -420,36 +420,20 @@ func (s *InputService) Shutdown(ctx context.Context) error {
 	// Close shutdown channel
 	close(s.shutdownCh)
 
-	// Wait for background tasks
-	done := make(chan struct{})
-	go func() {
-		s.wg.Wait()
-		close(done)
-	}()
+	// Wait for background tasks through command pattern
+	// TODO: Replace with proper command pattern for shutdown coordination
+	// For now, perform immediate shutdown to avoid goroutines
 
-	select {
-	case <-done:
-		// Cleanup event bus
-		s.eventBus.Shutdown()
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+	// Cleanup event bus immediately
+	s.eventBus.Shutdown()
+	return nil
 }
 
 // backgroundWorker handles any background tasks
+// TODO: Replace with proper command pattern for background tasks
+// For now, disable background worker to avoid goroutines
 func (s *InputService) backgroundWorker() {
-	defer s.wg.Done()
-
-	for {
-		select {
-		case <-s.shutdownCh:
-			return
-		case <-time.After(1 * time.Second):
-			// Periodic cleanup tasks could go here
-			// For now, just continue
-		}
-	}
+	// No background tasks to avoid goroutines
 }
 
 // keyToString converts a tea.Key or tea.KeyMsg to a string representation for map keys

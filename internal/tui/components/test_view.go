@@ -222,52 +222,8 @@ func (tv *TestViewComponent) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			tv.activeRuns = append(tv.activeRuns, run)
 			tv.lastUpdate = time.Now()
 
-			// Execute tests in background
-			return tv, tea.Cmd(func() tea.Msg {
-				go func() {
-					// Detect available frameworks
-					detected := tv.testExecutor.DetectAvailableFrameworks()
-					var frameworkName string
-
-					if len(detected) == 0 {
-						// Fallback to Node.js test runner
-						frameworkName = "node"
-					} else {
-						frameworkName = detected[0].Name()
-					}
-
-					// Update run with detected framework
-					run.Framework = frameworkName
-
-					// Execute tests
-					results, err := tv.testExecutor.ExecuteTests(
-						context.Background(),
-						frameworkName,
-						"",
-						test.TestOptions{Verbose: true},
-					)
-
-					// Update run status and store results
-					endTime := time.Now()
-					run.EndTime = &endTime
-					run.Duration = endTime.Sub(run.StartTime)
-
-					if err != nil {
-						run.Status = test.TestRunStatusFailed
-						fmt.Printf("Test execution error: %v\n", err)
-					} else {
-						run.Status = test.TestRunStatusCompleted
-						run.Results = results
-					}
-
-					// Store results and update state
-					tv.results[run.ID] = results
-					tv.isRunning = false
-					tv.lastUpdate = time.Now()
-					tv.currentRun = nil
-				}()
-				return nil
-			})
+			// Execute tests using command-driven approach
+			return tv, tv.executeTestsCommand(run)
 		}
 
 	case 'R':
@@ -687,6 +643,61 @@ func (tv *TestViewComponent) formatDuration(d time.Duration) string {
 		return fmt.Sprintf("%.1fs", d.Seconds())
 	} else {
 		return fmt.Sprintf("%.0fm", d.Minutes())
+	}
+}
+
+// executeTestsCommand creates a command to execute tests without goroutines
+func (tv *TestViewComponent) executeTestsCommand(run *test.TestRun) tea.Cmd {
+	return func() tea.Msg {
+		// NO MORE GOROUTINES - Test execution will be command-driven
+		// through BubbleTea Update() cycle instead of background goroutine
+
+		// Detect available frameworks
+		detected := tv.testExecutor.DetectAvailableFrameworks()
+		var frameworkName string
+
+		if len(detected) == 0 {
+			// Fallback to Node.js test runner
+			frameworkName = "node"
+		} else {
+			frameworkName = detected[0].Name()
+		}
+
+		// Update run with detected framework
+		run.Framework = frameworkName
+
+		// Execute tests synchronously in the command
+		results, err := tv.testExecutor.ExecuteTests(
+			context.Background(),
+			frameworkName,
+			"",
+			test.TestOptions{Verbose: true},
+		)
+
+		// Update run status and store results
+		endTime := time.Now()
+		run.EndTime = &endTime
+		run.Duration = endTime.Sub(run.StartTime)
+
+		if err != nil {
+			run.Status = test.TestRunStatusFailed
+			fmt.Printf("Test execution error: %v\n", err)
+		} else {
+			run.Status = test.TestRunStatusCompleted
+			run.Results = results
+		}
+
+		// Return a message to update the UI
+		msg := messages.TestRunCompletedMsg{
+			RunID:   run.ID,
+		}
+		if results != nil {
+			msg.TotalTests = results.TotalTests
+			msg.PassedTests = results.PassedTests
+			msg.FailedTests = results.FailedTests
+			msg.SkippedTests = results.SkippedTests
+		}
+		return msg
 	}
 }
 

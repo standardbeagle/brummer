@@ -45,8 +45,14 @@ See [Redux/Elm Architecture Documentation](/docs/architecture/redux-elm-architec
 
 ⚠️ **CRITICAL INSTRUCTION**: Always update this section when working on tasks to maintain continuity between sessions.
 
-- **Current State**: ✅ **REDUX/ELM REFACTORING COMPLETE** - All 38 tasks finished, build successful
+- **Current State**: ✅ **009-Make-The-Application Specification Complete** - All 80 tasks finished, build successful
 - **Recent Work**:
+  - ✅ **009-make-the-application specification implementation** - Complete transformation to Bubble Tea MVU pattern
+  - ✅ **Goroutine to Command Pattern conversion** - Replaced all goroutines in TUI Update() with tea.Cmd pattern
+  - ✅ **State Management Integration** - Integrated StateManager with existing Model struct
+  - ✅ **Component Command Pattern Updates** - Updated all TUI components to use command pattern
+  - ✅ **Integration Testing Phase** - Comprehensive testing of new architecture
+  - ✅ **Performance Validation** - Response time <50ms, memory profiling, race detection
   - ✅ **Fixed critical tab 3/4 deadlock** - Removed blocking operations from View() and tick handlers
   - ✅ Created TUI Deadlock Prevention Guide documenting patterns and fixes
   - ✅ Enhanced waitForUpdates() family documentation with clear safety guidelines
@@ -85,24 +91,41 @@ See [Redux/Elm Architecture Documentation](/docs/architecture/redux-elm-architec
 - **Pure Update Function**: Never mutate state outside Update()
 - **Stateless Services**: Services only create commands, no stored state
 - **Immutable Messages**: All messages are immutable events
+- **Command Pattern**: All async operations use tea.Cmd, no direct goroutines in Update()
 
 ### **Development Guidelines**
 - **Model Changes**: Add new atomic fields for new state
 - **Message Creation**: Use creator functions for consistent messages
 - **Service Logic**: Return commands, don't modify external state
 - **View Updates**: Read-only access to Model, no side effects
+- **Async Operations**: Use tea.Cmd pattern, avoid goroutines in Update()
 
 ### **Performance Guidelines**
 - **Atomic Operations**: Use atomic.Value, atomic.Int, atomic.Bool
 - **Avoid Mutexes**: No mutexes in Redux/Elm pattern
 - **Batch Commands**: Use tea.Sequence for multiple operations
 - **Lazy Loading**: Initialize expensive state on demand
+- **Response Times**: Target <50ms for UI operations
+
+### **Command Pattern Implementation**
+- **Commands**: Implement tea.Cmd interface for async operations
+- **Messages**: Return tea.Msg from commands to trigger Update()
+- **No Goroutines**: Replace all goroutines in TUI Update() with commands
+- **Error Handling**: Use command result messages for error propagation
+- **Timeout Support**: Commands handle their own timeout logic
 
 ### **Testing Strategy**
 - **Unit Tests**: Test Update function purity and service statelessness
 - **Integration Tests**: Test complete user workflows
 - **Performance Tests**: Verify <5ms response times
 - **Race Testing**: Run with `make test-race` to verify thread safety
+
+### **Stateless Service Patterns**
+- **Master Data Object**: All state lives in `internal/tui/state/master_data.go` as single source of truth
+- **Service Interfaces**: All services implement stateless interfaces in `internal/tui/services/interfaces.go`
+- **Command Factory**: Services create commands through `internal/tui/commands/service_commands.go`
+- **No Internal State**: Services contain only pure functions, no stored state or goroutines
+- **Model as Source**: All service operations read from and write to the central Model
 
 ### **Migration Notes**
 - **Feature Flags**: Use `REDUX_ARCHITECTURE=true` to enable new architecture

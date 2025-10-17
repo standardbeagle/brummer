@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/aicoder"
@@ -15,9 +16,9 @@ import (
 // DirectPTYPassthrough provides zero-copy, lock-free PTY to terminal passthrough
 // This bypasses vt10x parsing and BubbleTea updates for maximum performance
 type DirectPTYPassthrough struct {
-	// Core components
-	session    *aicoder.PTYSession
-	terminalFD int // Direct terminal file descriptor
+	// Core components (atomic access only)
+	session    atomic.Value // *aicoder.PTYSession - atomic for safe concurrent access
+	terminalFD atomic.Int64 // Direct terminal file descriptor - atomic for safe concurrent access
 
 	// Atomic state
 	active          atomic.Bool
@@ -42,19 +43,37 @@ type DirectPTYMessage struct {
 	Direct    bool // If true, send directly to terminal without parsing
 }
 
+// getSession safely retrieves the current session with type checking
+// Returns nil if session is not available or invalid
+func (d *DirectPTYPassthrough) getSession() *aicoder.PTYSession {
+	sessionInterface := d.session.Load()
+	if sessionInterface == nil {
+		return nil
+	}
+
+	session, ok := sessionInterface.(*aicoder.PTYSession)
+	if !ok || session == nil {
+		return nil
+	}
+
+	return session
+}
+
 // NewDirectPTYPassthrough creates a new direct passthrough system
 func NewDirectPTYPassthrough(ctx context.Context, session *aicoder.PTYSession, logStore *logs.Store) *DirectPTYPassthrough {
 	passthroughCtx, cancel := context.WithCancel(ctx)
 
 	passthrough := &DirectPTYPassthrough{
-		session:  session,
 		ctx:      passthroughCtx,
 		cancel:   cancel,
 		logStore: logStore,
 	}
 
-	// Initialize terminal file descriptor (stdout for now)
-	passthrough.terminalFD = int(os.Stdout.Fd())
+	// Store session atomically for safe concurrent access
+	passthrough.session.Store(session)
+
+	// Initialize terminal file descriptor atomically (stdout for now)
+	passthrough.terminalFD.Store(int64(os.Stdout.Fd()))
 
 	return passthrough
 }
@@ -65,10 +84,10 @@ func (d *DirectPTYPassthrough) Start() error {
 		return fmt.Errorf("passthrough already active")
 	}
 
-	d.logStore.Add("system", "System", "Starting direct PTY passthrough", false)
+	d.logStore.Add("system", "System", "Starting direct PTY passthrough (command-driven)", false)
 
-	// Start the passthrough loop
-	go d.passthroughLoop()
+	// NO MORE GOROUTINES - Passthrough will be command-driven
+	// through BubbleTea Update() cycle instead of background goroutine
 
 	return nil
 }
@@ -93,24 +112,49 @@ func (d *DirectPTYPassthrough) SetPassthroughMode(enabled bool) {
 	d.logStore.Add("system", "System", fmt.Sprintf("Switched to %s mode", mode), false)
 }
 
-// passthroughLoop is the main loop for direct PTY passthrough
-func (d *DirectPTYPassthrough) passthroughLoop() {
-	defer d.active.Store(false)
+// ProcessPTYOutput creates a command to process PTY passthrough output
+// This replaces the goroutine-based passthroughLoop with command-driven processing
+func (d *DirectPTYPassthrough) ProcessPTYOutput() tea.Cmd {
+	return func() tea.Msg {
+		if !d.active.Load() || !d.passthroughMode.Load() {
+			return nil // Not active or not in direct mode
+		}
 
-	for {
-		select {
-		case <-d.ctx.Done():
-			return
+		// Get session safely to prevent race conditions
+		session := d.getSession()
+		if session == nil {
+			d.active.Store(false)
+			return nil
+		}
 
-		case output, ok := <-d.session.OutputChan:
-			if !ok {
-				// Channel closed
-				return
-			}
+		// Process output with timeout to prevent blocking
+		timeout := time.After(10 * time.Millisecond)
 
-			if d.passthroughMode.Load() {
-				// Direct mode: write raw bytes to terminal
+		for {
+			select {
+			case output, ok := <-session.OutputChan:
+				if !ok {
+					// Channel closed - signal passthrough ended
+					d.active.Store(false)
+					return DirectPTYMessage{
+						SessionID: session.ID,
+						Data:      nil,
+						Direct:    false,
+					}
+				}
+
+				// Direct mode: write raw bytes to terminal and create message
 				d.writeDirectToTerminal(output)
+				return CreateDirectPTYCmd(session.ID, output, true)()
+
+			case <-timeout:
+				// Timeout reached - stop processing to maintain responsiveness
+				return nil
+
+			case <-d.ctx.Done():
+				// Context cancelled
+				d.active.Store(false)
+				return nil
 			}
 		}
 	}
@@ -119,8 +163,15 @@ func (d *DirectPTYPassthrough) passthroughLoop() {
 // writeDirectToTerminal writes raw bytes directly to terminal FD
 // This is the fastest possible path - zero parsing, zero copying
 func (d *DirectPTYPassthrough) writeDirectToTerminal(data []byte) {
+	// Get terminal file descriptor atomically to prevent race conditions
+	fd := int(d.terminalFD.Load())
+	if fd <= 0 {
+		d.logStore.Add("system", "System", "Invalid terminal file descriptor", true)
+		return
+	}
+
 	// Use syscall.Write for maximum performance
-	n, err := syscall.Write(d.terminalFD, data)
+	n, err := syscall.Write(fd, data)
 	if err != nil {
 		d.logStore.Add("system", "System",
 			fmt.Sprintf("Direct terminal write error: %v", err), true)
@@ -151,11 +202,16 @@ type PassthroughMetrics struct {
 }
 
 // CreateDirectPTYCmd creates a BubbleTea command for direct PTY output
+// Uses deep copy to prevent data races on shared byte slices
 func CreateDirectPTYCmd(sessionID string, data []byte, direct bool) tea.Cmd {
 	return func() tea.Msg {
+		// Create a deep copy to prevent data races on shared data
+		dataCopy := make([]byte, len(data))
+		copy(dataCopy, data)
+
 		return DirectPTYMessage{
 			SessionID: sessionID,
-			Data:      make([]byte, len(data)), // Copy data
+			Data:      dataCopy, // Use deep copied data
 			Direct:    direct,
 		}
 	}

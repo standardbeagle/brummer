@@ -26,7 +26,7 @@ func (d *LockFreeDashboard) UpdateSize(width, height int) {
 }
 
 // RenderMetrics renders the lock-free performance metrics
-func (d *LockFreeDashboard) RenderMetrics(managerMetrics PTYManagerMetrics, bufferMetrics BufferMetrics) string {
+func (d *LockFreeDashboard) RenderMetrics(managerMetrics PTYManagerMetricsSnapshot, bufferMetrics BufferMetrics) string {
 	if d.width < 60 || d.height < 20 {
 		return "Terminal too small for lock-free dashboard"
 	}
@@ -103,7 +103,7 @@ func (d *LockFreeDashboard) renderBufferMetrics(metrics BufferMetrics) string {
 }
 
 // renderManagerMetrics renders manager-specific metrics
-func (d *LockFreeDashboard) renderManagerMetrics(metrics PTYManagerMetrics) string {
+func (d *LockFreeDashboard) renderManagerMetrics(metrics PTYManagerMetricsSnapshot) string {
 	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("35")). // Magenta
@@ -114,23 +114,23 @@ func (d *LockFreeDashboard) renderManagerMetrics(metrics PTYManagerMetrics) stri
 	lines = append(lines, lipgloss.NewStyle().Bold(true).Render("⚡ Manager"))
 	lines = append(lines, "")
 
-	lines = append(lines, fmt.Sprintf("Active Sessions:  %d", metrics.activeSessions.Load()))
-	lines = append(lines, fmt.Sprintf("Total Messages:   %s", formatNumber(metrics.totalMessages.Load())))
-	lines = append(lines, fmt.Sprintf("Dropped Messages: %s", formatNumber(metrics.droppedMessages.Load())))
+	lines = append(lines, fmt.Sprintf("Active Sessions:  %d", metrics.ActiveSessions))
+	lines = append(lines, fmt.Sprintf("Total Messages:   %s", formatNumber(metrics.TotalMessages)))
+	lines = append(lines, fmt.Sprintf("Dropped Messages: %s", formatNumber(metrics.DroppedMessages)))
 	lines = append(lines, "")
 
-	lines = append(lines, fmt.Sprintf("Batches Processed: %s", formatNumber(metrics.batchesProcessed.Load())))
-	lines = append(lines, fmt.Sprintf("Avg Batch Size:    %d", metrics.averageBatchSize.Load()))
+	lines = append(lines, fmt.Sprintf("Batches Processed: %s", formatNumber(metrics.BatchesProcessed)))
+	lines = append(lines, fmt.Sprintf("Avg Batch Size:    %d", metrics.AverageBatchSize))
 
 	// Poll duration
-	lastPollNs := metrics.lastPollDuration.Load()
+	lastPollNs := metrics.LastPollDuration
 	if lastPollNs > 0 {
 		pollDuration := time.Duration(lastPollNs)
 		lines = append(lines, fmt.Sprintf("Last Poll:        %v", pollDuration))
 	}
 
 	// Buffer utilization from manager perspective
-	bufferUtil := metrics.bufferUtilization.Load()
+	bufferUtil := metrics.BufferUtilization
 	if bufferUtil > 0 {
 		utilPercent := float64(bufferUtil) / 100.0
 		utilBar := renderProgressBar(int(utilPercent), 20)
@@ -141,7 +141,7 @@ func (d *LockFreeDashboard) renderManagerMetrics(metrics PTYManagerMetrics) stri
 }
 
 // renderPerformanceSummary renders overall performance summary
-func (d *LockFreeDashboard) renderPerformanceSummary(managerMetrics PTYManagerMetrics, bufferMetrics BufferMetrics) string {
+func (d *LockFreeDashboard) renderPerformanceSummary(managerMetrics PTYManagerMetricsSnapshot, bufferMetrics BufferMetrics) string {
 	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color("33")). // Yellow
@@ -151,8 +151,8 @@ func (d *LockFreeDashboard) renderPerformanceSummary(managerMetrics PTYManagerMe
 	var summary []string
 
 	// Calculate throughput if we have batch data
-	batchesProcessed := managerMetrics.batchesProcessed.Load()
-	totalMessages := managerMetrics.totalMessages.Load()
+	batchesProcessed := managerMetrics.BatchesProcessed
+	totalMessages := managerMetrics.TotalMessages
 
 	if batchesProcessed > 0 && totalMessages > 0 {
 		avgBatchSize := float64(totalMessages) / float64(batchesProcessed)
@@ -219,14 +219,14 @@ func formatNumber(n uint64) string {
 }
 
 // RenderQuickStats renders a compact one-line performance summary
-func (d *LockFreeDashboard) RenderQuickStats(managerMetrics PTYManagerMetrics, bufferMetrics BufferMetrics) string {
+func (d *LockFreeDashboard) RenderQuickStats(managerMetrics PTYManagerMetricsSnapshot, bufferMetrics BufferMetrics) string {
 	if bufferMetrics.BufferSize == 0 {
 		return "Lock-free PTY: Initializing..."
 	}
 
 	utilization := float64(bufferMetrics.CurrentUsed) / float64(bufferMetrics.BufferSize) * 100
 	dropRate := bufferMetrics.SaturationRatio * 100
-	sessions := managerMetrics.activeSessions.Load()
+	sessions := managerMetrics.ActiveSessions
 
 	var indicator string
 	if dropRate < 1 {

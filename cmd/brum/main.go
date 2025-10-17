@@ -26,8 +26,8 @@ import (
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/startup"
 	"github.com/standardbeagle/brummer/internal/tui"
-	"github.com/standardbeagle/brummer/internal/tui/bridge"
-	"github.com/standardbeagle/brummer/internal/tui/services"
+	// "github.com/standardbeagle/brummer/internal/tui/bridge"
+	// "github.com/standardbeagle/brummer/internal/tui/services"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -482,7 +482,8 @@ func runApp(cmd *cobra.Command, args []string) {
 		Start() error
 		Stop() error
 	} // For TUI compatibility
-	if !noMCP || noTUI {
+	// TEMPORARILY DISABLE MCP SERVER FOR TUI STARTUP DEBUGGING
+	if false && (!noMCP || noTUI) {
 		// Create MCP server
 		mcpServer = mcp.NewMCPServer(mcpPort, processMgr, logStore, proxyServer, eventBus)
 		mcpServerInterface = mcpServer
@@ -644,6 +645,11 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		model := tui.NewModel(processMgr, logStore, eventBus, nil, proxyServer, mcpPort, &configWithSources.Config, absWorkDir)
 
+		// DISABLED FOR TUI STARTUP DEBUGGING
+		// Service creation and ServiceBridge are causing the TUI to hang
+		// The model creates its own minimal services for testing
+
+		/*
 			// Create TestManagementService with default config
 		testConfig := services.DefaultTestConfig()
 		testManagementService := services.NewTestManagementService(logStore, eventBus, testConfig)
@@ -694,6 +700,9 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		// Connect AI coder service to ServiceBridge for event routing
 		model.ConnectAICoderServiceToBridge(serviceBridge)
+		*/
+
+		// var serviceBridge *bridge.ServiceBridge = nil
 
 		// TTY TESTING WARNING: See internal/tui/components/integrated_shell.go for critical guidelines
 		// This BubbleTea initialization requires proper TTY allocation for WindowSizeMsg support.
@@ -744,8 +753,8 @@ func runApp(cmd *cobra.Command, args []string) {
 			// Standard BubbleTea initialization with Model
 			p = tea.NewProgram(model, tea.WithAltScreen())
 
-			// Start ServiceBridge to begin event routing (but defer initial messages)
-			serviceBridge.StartWithoutInitialMessages(p)
+			// ServiceBridge disabled for TUI startup debugging
+			// serviceBridge.StartWithoutInitialMessages(p)
 
 			// Run TUI in goroutine so we can handle signals
 			done := make(chan error)
@@ -770,10 +779,10 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		// Cleanup all processes and resources
 
-		// Stop ServiceBridge if it was created
-		if serviceBridge != nil {
-			serviceBridge.Stop()
-		}
+		// ServiceBridge disabled for TUI startup debugging
+		// if serviceBridge != nil {
+		// 	serviceBridge.Stop()
+		// }
 
 		fmt.Println("Stopping all running processes...")
 		if err := processMgr.Cleanup(); err != nil {

@@ -31,6 +31,7 @@ import (
 	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 	"github.com/standardbeagle/brummer/internal/tui/services"
+	"github.com/standardbeagle/brummer/internal/tui/state"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -120,6 +121,9 @@ type Model struct {
 
 	// SIMPLIFIED KEYBOARD HANDLING
 	keyRegistry *KeyHandlerRegistry // Single registry for all keyboard handlers
+
+	// STATE MANAGEMENT - New StateManager for advanced state tracking
+	stateManager *state.StateManager // Manages versioned state, metrics, and snapshots
 }
 
 type keyMap struct {
@@ -557,8 +561,11 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		viewManager:       viewManager, // Add the simple view manager
 	}
 
-	// DIAGNOSTIC: Log basic model creation complete
+// DIAGNOSTIC: Log basic model creation complete
 	logStore.Add("system", "Model", "✅ Model basic initialization complete", false)
+
+	// Initialize STATE MANAGEMENT - New StateManager for advanced state tracking
+	m.stateManager = state.NewStateManager()
 
 	// Note: Log callback is registered in main.go to avoid duplication
 
@@ -566,38 +573,31 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// These services will be passed to the component constructors
 	// and used by the ServiceBridge for event routing
 
-	// DIAGNOSTIC: Log service creation start
-	logStore.Add("system", "Model", "🔧 DIAGNOSTIC: Creating services...", false)
+	// MINIMAL SERVICES FOR TUI STARTUP DEBUGGING
+	// Create only essential services to prevent nil pointer crashes
 
-	// 1. Create InputService
+	// DIAGNOSTIC: Log service creation start
+	logStore.Add("system", "Model", "🔧 DIAGNOSTIC: Creating minimal services...", false)
+
+	// 1. Create ONLY InputService (essential for keyboard handling)
 	inputService := services.NewInputService()
 	logStore.Add("system", "Model", "✅ InputService created", false)
 
-	// 2. Create NavigationService
-	navigationService := services.NewNavigationService(eventBus)
-	logStore.Add("system", "Model", "✅ NavigationService created", false)
+	// Skip other services that might have blocking goroutines
+	// var navigationService *services.NavigationService
+	// var systemService *services.SystemService
+	// var notificationsService *services.NotificationsService
+	// var fileBrowserService *services.FileBrowserService
 
-	// 3. Create SystemService
-	systemService := services.NewSystemService(eventBus)
+	// Create placeholder components that won't crash
+	var fileBrowserComponent *components.FileBrowserComponent
+	var systemComponent *components.SystemComponent
+	var notificationsComponent *components.NotificationsComponent
+	var inputComponent *components.InputComponent
+	var navigationComponent *components.NavigationComponent
 
-	// 4. Create NotificationsService
-	notificationsService := services.NewNotificationsService(eventBus)
-
-	// 5. Create FileBrowserService
-	fileBrowserConfig := services.DefaultFileBrowserConfig()
-	fileBrowserService := services.NewFileBrowserService(eventBus, fileBrowserConfig)
-
-	// 6. Initialize the new components using the services
-	//    - Required by: Component-based architecture
-	//    - Dependencies: Services created above
-	fileBrowserComponent := components.NewFileBrowserComponent(fileBrowserService)
-	systemComponent := components.NewSystemComponent(systemService)
-	notificationsComponent := components.NewNotificationsComponent(notificationsService)
-
-	// SIMPLIFIED: InputComponent is now just a placeholder
-	// All keyboard handling goes through KeyHandlerRegistry
-	inputComponent := components.NewInputComponent(inputService)
-	navigationComponent := components.NewNavigationComponent(navigationService)
+	// Create only input component since we have InputService
+	inputComponent = components.NewInputComponent(inputService)
 
 	// 7. Initialize settings view (still using component)
 	//    - Required by: Settings view display
@@ -679,11 +679,8 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		logStore.Add("system", "Model", "❌ InputService: NOT RUNNING - KEYBOARD PROCESSING WILL FAIL", true)
 	}
 
-	if navigationService != nil {
-		logStore.Add("system", "Model", "✅ NavigationService: Available", false)
-	} else {
-		logStore.Add("system", "Model", "❌ NavigationService: MISSING - VIEW SWITCHING WILL FAIL", true)
-	}
+	// Skip navigation service check since it's disabled for debugging
+	logStore.Add("system", "Model", "⚠️ NavigationService: DISABLED FOR DEBUGGING", false)
 
 	// Check handler count
 	finalHandlerCount := inputService.GetHandlerCount()
@@ -717,84 +714,87 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// 13. Initialize AI Coder service (T028 - new service-based architecture, replaces legacy controller)
 	//     - Required by: AI coder features (new architecture)
 	//     - Dependencies: context (for lifecycle management)
-	ctx := context.Background() // TODO: Use proper context from application lifecycle
-	m.aiCoderService = services.NewAICoderService(ctx)
+	// DISABLED FOR DEBUGGING - Commenting out to identify TUI startup issue
+	// ctx := context.Background() // TODO: Use proper context from application lifecycle
+	// m.aiCoderService = services.NewAICoderService(ctx)
 
 	// 13.6. Subscribe to AI Coder service events (T028 - event routing)
 	//     - Required by: Service-to-component communication
 	//     - Dependencies: aiCoderService created, updateChan available
-	if m.aiCoderService != nil {
-		svc := m.aiCoderService.(*services.AICoderService)
-		eventBus := svc.EventBus().(*events.EventBus)
+	// DISABLED FOR DEBUGGING - Commenting out to identify TUI startup issue
+	// if m.aiCoderService != nil {
+	// 	svc := m.aiCoderService.(*services.AICoderService)
+	// 	eventBus := svc.EventBus().(*events.EventBus)
 
-		// Subscribe to events and forward to component as proper message types
-		eventBus.Subscribe("aicoder.session.created", func(event events.Event) {
-			// Extract session info from event
-			sessionID := event.ProcessID
-			name := ""
-			if nameVal, ok := event.Data["name"]; ok {
-				name = nameVal.(string)
-			}
-			// Forward as proper message type
-			m.updateChan <- aiCoderSessionMsg{
-				SessionID: sessionID,
-				Event:     "created",
-				Data:      map[string]interface{}{"name": name},
-			}
-		})
+	// 	// Subscribe to events and forward to component as proper message types
+	// 	eventBus.Subscribe("aicoder.session.created", func(event events.Event) {
+	// 		// Extract session info from event
+	// 		sessionID := event.ProcessID
+	// 		name := ""
+	// 		if nameVal, ok := event.Data["name"]; ok {
+	// 			name = nameVal.(string)
+	// 		}
+	// 		// Forward as proper message type
+	// 		m.updateChan <- aiCoderSessionMsg{
+	// 			SessionID: sessionID,
+	// 			Event:     "created",
+	// 			Data:      map[string]interface{}{"name": name},
+	// 		}
+	// 	})
 
-		eventBus.Subscribe("aicoder.session.updated", func(event events.Event) {
-			sessionID := event.ProcessID
-			m.updateChan <- aiCoderSessionMsg{
-				SessionID: sessionID,
-				Event:     "updated",
-			}
-		})
+	// 	eventBus.Subscribe("aicoder.session.updated", func(event events.Event) {
+	// 		sessionID := event.ProcessID
+	// 		m.updateChan <- aiCoderSessionMsg{
+	// 			SessionID: sessionID,
+	// 			Event:     "updated",
+	// 		}
+	// 	})
 
-		eventBus.Subscribe("aicoder.session.ended", func(event events.Event) {
-			sessionID := event.ProcessID
-			reason := ""
-			if reasonVal, ok := event.Data["reason"]; ok {
-				reason = reasonVal.(string)
-			}
-			m.updateChan <- aiCoderSessionMsg{
-				SessionID: sessionID,
-				Event:     "ended",
-				Data:      map[string]interface{}{"reason": reason},
-			}
-		})
+	// 	eventBus.Subscribe("aicoder.session.ended", func(event events.Event) {
+	// 		sessionID := event.ProcessID
+	// 		reason := ""
+	// 		if reasonVal, ok := event.Data["reason"]; ok {
+	// 			reason = reasonVal.(string)
+	// 		}
+	// 		m.updateChan <- aiCoderSessionMsg{
+	// 			SessionID: sessionID,
+	// 			Event:     "ended",
+	// 			Data:      map[string]interface{}{"reason": reason},
+	// 		}
+	// 	})
 
-		eventBus.Subscribe("aicoder.pty.output", func(event events.Event) {
-			sessionID := event.ProcessID
-			output := ""
-			if outputVal, ok := event.Data["output"]; ok {
-				output = outputVal.(string)
-			}
-			m.updateChan <- aiCoderOutputMsg{
-				SessionID: sessionID,
-				Output:    output,
-			}
-		})
+	// 	eventBus.Subscribe("aicoder.pty.output", func(event events.Event) {
+	// 		sessionID := event.ProcessID
+	// 		output := ""
+	// 		if outputVal, ok := event.Data["output"]; ok {
+	// 			output = outputVal.(string)
+	// 		}
+	// 		m.updateChan <- aiCoderOutputMsg{
+	// 			SessionID: sessionID,
+	// 			Output:    output,
+	// 		}
+	// 	})
 
-		eventBus.Subscribe("aicoder.error", func(event events.Event) {
-			sessionID := event.ProcessID
-			var err error
-			if errVal, ok := event.Data["error"]; ok {
-				if e, ok := errVal.(error); ok {
-					err = e
-				}
-			}
-			m.updateChan <- aiCoderErrorMsg{
-				SessionID: sessionID,
-				Error:     err,
-			}
-		})
-	}
+	// 	eventBus.Subscribe("aicoder.error", func(event events.Event) {
+	// 		sessionID := event.ProcessID
+	// 		var err error
+	// 		if errVal, ok := event.Data["error"]; ok {
+	// 			if e, ok := errVal.(error); ok {
+	// 				err = e
+	// 			}
+	// 		}
+	// 		m.updateChan <- aiCoderErrorMsg{
+	// 			SessionID: sessionID,
+	// 			Error:     err,
+	// 		}
+	// 	})
+	// }
 
 	// 13.7. Initialize AI Coders view component with service (Feature 005)
 	//     - Required by: AI Coders view rendering
 	//     - Dependencies: aiCoderService must be created
-	m.aicodersView = components.NewAICodersViewComponent(m.aiCoderService)
+	// DISABLED FOR DEBUGGING - Commenting out to identify TUI startup issue
+	// m.aicodersView = components.NewAICodersViewComponent(m.aiCoderService)
 
 	// 13.8. Connect AI coder service to ServiceBridge (Task 3 - ServiceBridge integration)
 	//     - Required by: Service event routing to UI components
@@ -802,18 +802,17 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// Note: This happens after shell creation, so we need to get the ServiceBridge from the shell
 	// and subscribe to AI coder service events
 
-	// 14. Initialize script selector component with navigation adapter
+	// 14. Initialize script selector component (simplified for debugging)
 	//     - Required by: Script selection UI
-	//     - Dependencies: navigationComponent (for navigation adapter)
-	navAdapter := NewNavigationAdapter(m.navigationComponent)
+	//     - Dependencies: None (navigation adapter disabled)
 	scriptAutocomplete := NewScriptSelectorAutocompleteWithProcessManager(scripts, processMgr)
 	scriptAutocompleteAdapter := NewScriptSelectorAutocompleteAdapter(scriptAutocomplete)
-	m.scriptSelector = components.NewScriptSelector(scriptAutocompleteAdapter, processMgr, logStore, m.updateChan, navAdapter)
+	m.scriptSelector = components.NewScriptSelector(scriptAutocompleteAdapter, processMgr, logStore, m.updateChan, nil) // Pass nil for navAdapter
 
-	// 15. Initialize tabs component
+	// 15. Initialize tabs component (simplified for debugging)
 	//     - Required by: Header rendering
-	//     - Dependencies: processMgr, notificationsComponent, systemComponent
-	m.tabsComponent = NewTabsComponent(processMgr, m.notificationsComponent, m.systemComponent, debugMode)
+	//     - Dependencies: processMgr only (others disabled)
+	m.tabsComponent = NewTabsComponent(processMgr, nil, nil, debugMode)
 
 	// 16. Initialize content layout
 	//     - Required by: Content area rendering
@@ -873,11 +872,11 @@ func (m *Model) setupEventSubscriptions() {
 func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		textinput.Blink,
-		m.waitForUpdates(),
 		m.tickCmd(),
 	}
 
 	// PTY events are now handled by AICoderService and AICodersViewComponent
+	// Remove waitForUpdates() from Init() - no updates to wait for during startup
 	return tea.Batch(cmds...)
 }
 
@@ -1009,6 +1008,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case switchToAICodersMsg:
 		// Switch to AI Coders view
 		m.switchToView(ViewAICoders)
+		cmds = append(cmds, m.waitForUpdates())
+
+	case commandStartedMsg:
+		// Handle command completion - switch to logs view and update
+		if msg.success {
+			m.logStore.Add("system", "System", fmt.Sprintf("✅ Started command: %s", msg.commandName), false)
+		}
+		m.switchToView(ViewLogs)
+		m.updateProcessList()
+		m.updateLogsView()
 		cmds = append(cmds, m.waitForUpdates())
 
 	case PTYOutputMsg:
@@ -1499,6 +1508,10 @@ func (m *Model) renderFiltersView() string {
 type logUpdateMsg struct{}
 type tickMsg struct{}
 type switchToAICodersMsg struct{}
+type commandStartedMsg struct {
+	commandName string
+	success     bool
+}
 
 // ============================================================================
 // UPDATE CHANNEL PATTERNS - CRITICAL FOR PREVENTING DEADLOCKS
@@ -1695,21 +1708,30 @@ func (m *Model) handleRunCommand() tea.Cmd {
 	}
 
 	// Handle regular command execution
-	errorHandler := NewStandardErrorHandler(m.logStore, m.updateChan)
-	SafeGoroutine(
-		fmt.Sprintf("start command '%s'", selectedCommand.Name),
-		func() error {
-			_, err := m.processMgr.StartCommand(selectedCommand.Name, selectedCommand.Command, selectedCommand.Args)
-			return err
-		},
-		func(err error) {
+	return m.startCommandAsync(*selectedCommand)
+}
+
+// startCommandAsync starts a command using the command pattern instead of goroutines
+func (m *Model) startCommandAsync(selectedCommand parser.ExecutableCommand) tea.Cmd {
+	return func() tea.Msg {
+		// Create error handler for this operation
+		errorHandler := NewStandardErrorHandler(m.logStore, m.updateChan)
+
+		// Execute the command synchronously in the command
+		_, err := m.processMgr.StartCommand(selectedCommand.Name, selectedCommand.Command, selectedCommand.Args)
+
+		// Handle any errors
+		if err != nil {
 			ctx := ProcessStartContext(selectedCommand.Name, "Command Window", m.logStore, m.updateChan)
 			errorHandler.HandleError(err, ctx)
-		},
-	)
-	m.switchToView(ViewLogs)
-	m.updateProcessList()
-	return m.waitForUpdates()
+		}
+
+		// Return a message to trigger UI updates
+		return commandStartedMsg{
+			commandName: selectedCommand.Name,
+			success:     err == nil,
+		}
+	}
 }
 
 func (m *Model) updateErrorsList() {

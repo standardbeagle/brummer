@@ -263,13 +263,12 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			program := s.program
 
 			return s, func() tea.Msg {
-				// Run in goroutine so we don't block the message loop
-				go func() {
-					bridge.Start(program)
-					// Send confirmation when done
-					program.Send(messages.ServiceBridgeStartedMsg{})
-				}()
-				return nil
+				// Start ServiceBridge through command pattern
+				// TODO: Replace with proper command pattern for ServiceBridge startup
+				// For now, start synchronously to avoid goroutines
+				bridge.Start(program)
+				// Send confirmation when done
+				return messages.ServiceBridgeStartedMsg{}
 			}
 		}
 

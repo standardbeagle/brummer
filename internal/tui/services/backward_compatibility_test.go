@@ -34,7 +34,7 @@ func TestInputServiceBackwardCompatibility(t *testing.T) {
 
 	// Test traditional key routing (without PTY)
 	testKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
-	handled := inputService.RouteKeyMessage(testKey, "test_context")
+	handled, _ := inputService.RouteKeyMessage(testKey, "test_context")
 	assert.False(t, handled, "Key should not be handled by default (no handlers)")
 
 	// Test global handler registration (traditional)
@@ -77,17 +77,17 @@ func TestInputServiceBackwardCompatibility(t *testing.T) {
 
 	// Test key routing with registered handlers
 	globalKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'g'}}
-	handled = inputService.RouteKeyMessage(globalKey, "any_context")
+	handled, _ = inputService.RouteKeyMessage(globalKey, "any_context")
 	assert.True(t, handled, "Global handler should handle the key")
 	assert.True(t, globalHandlerCalled, "Global handler should have been called")
 
 	contextKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}}
-	handled = inputService.RouteKeyMessage(contextKey, "test_context")
+	handled, _ = inputService.RouteKeyMessage(contextKey, "test_context")
 	assert.True(t, handled, "Context handler should handle the key")
 	assert.True(t, contextHandlerCalled, "Context handler should have been called")
 
 	bindingKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}}
-	handled = inputService.RouteKeyMessage(bindingKey, "test_context")
+	handled, _ = inputService.RouteKeyMessage(bindingKey, "test_context")
 	assert.True(t, handled, "Key binding should handle the key")
 
 	// Test service status
@@ -156,7 +156,7 @@ func TestInputServiceWithPTYBackwardCompatibility(t *testing.T) {
 
 	// Test traditional key routing (without PTY context)
 	testKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}
-	handled := inputService.RouteKeyMessage(testKey, "traditional_context")
+	handled, _ := inputService.RouteKeyMessage(testKey, "traditional_context")
 	assert.True(t, handled, "Traditional key routing should still work")
 	assert.True(t, globalHandlerCalled, "Global handler should have been called")
 
@@ -187,7 +187,7 @@ func TestInputServiceWithPTYBackwardCompatibility(t *testing.T) {
 
 	// Test that traditional functionality still works after disabling PTY
 	anotherKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}}
-	handled = inputService.RouteKeyMessage(anotherKey, "another_context")
+	handled, _ = inputService.RouteKeyMessage(anotherKey, "another_context")
 	assert.False(t, handled, "Key should not be handled (no matching handler)")
 }
 
@@ -214,7 +214,7 @@ func TestInputServicePTYModeTransitions(t *testing.T) {
 
 	// Test functionality without PTY
 	testKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'z'}}
-	handled := inputService.RouteKeyMessage(testKey, "test")
+	handled, _ := inputService.RouteKeyMessage(testKey, "test")
 	assert.True(t, handled, "Handler should work without PTY")
 	assert.True(t, handlerCalled, "Handler should be called without PTY")
 
@@ -229,7 +229,7 @@ func TestInputServicePTYModeTransitions(t *testing.T) {
 	// assert.Equal(t, "test", inputService.GetPTYMode(), "PTY mode should be 'test'")
 
 	// Test that the same handler still works with PTY enabled
-	handled = inputService.RouteKeyMessage(testKey, "test")
+	handled, _ = inputService.RouteKeyMessage(testKey, "test")
 	assert.True(t, handled, "Handler should still work with PTY enabled")
 	assert.True(t, handlerCalled, "Handler should still be called with PTY enabled")
 
@@ -237,7 +237,7 @@ func TestInputServicePTYModeTransitions(t *testing.T) {
 	handlerCalled = false
 
 	// Test PTY-specific routing
-	ptyHandled := inputService.RouteKeyMessagePTY(testKey, "pty_test")
+	ptyHandled, _ := inputService.RouteKeyMessagePTY(testKey, "pty_test")
 	assert.True(t, ptyHandled, "PTY routing should also work")
 	assert.True(t, handlerCalled, "Handler should be called through PTY routing")
 
@@ -250,7 +250,7 @@ func TestInputServicePTYModeTransitions(t *testing.T) {
 	handlerCalled = false
 
 	// Test that handler still works in production mode
-	handled = inputService.RouteKeyMessage(testKey, "test")
+	handled, _ = inputService.RouteKeyMessage(testKey, "test")
 	assert.True(t, handled, "Handler should work in production mode")
 	assert.True(t, handlerCalled, "Handler should be called in production mode")
 
@@ -264,7 +264,7 @@ func TestInputServicePTYModeTransitions(t *testing.T) {
 	assert.Equal(t, "disabled", inputService.GetPTYMode(), "PTY mode should be 'disabled'")
 
 	// Test that handler still works after PTY is disabled
-	handled = inputService.RouteKeyMessage(testKey, "test")
+	handled, _ = inputService.RouteKeyMessage(testKey, "test")
 	assert.True(t, handled, "Handler should work after PTY disabled")
 	assert.True(t, handlerCalled, "Handler should be called after PTY disabled")
 }

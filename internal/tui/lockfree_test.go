@@ -15,7 +15,7 @@ import (
 
 // TestLockFreePTYBufferPerformance validates the lock-free buffer performance
 func TestLockFreePTYBufferPerformance(t *testing.T) {
-	buffer := NewLockFreePTYBuffer(8192) // 8K buffer
+	buffer := NewSafePTYBuffer(8192) // 8K buffer
 
 	// Test parameters
 	const numMessages = 100000
@@ -35,11 +35,11 @@ func TestLockFreePTYBufferPerformance(t *testing.T) {
 			defer wg.Done()
 
 			for j := 0; j < numMessages/numWriters; j++ {
-				msg := &PTYMessage{
+				msg := &SafePTYMessage{
 					SessionID: "test-session",
 					Data:      []byte("test data from writer"),
 					Timestamp: time.Now(),
-					Type:      PTYMessageOutput,
+					Type:      SafePTYMessageOutput,
 					Sequence:  uint64(j),
 				}
 
@@ -209,10 +209,10 @@ func TestLockFreePTYManagerIntegration(t *testing.T) {
 	bufferMetrics := manager.GetBufferMetrics()
 
 	t.Logf("Manager metrics:")
-	t.Logf("  Active sessions: %d", managerMetrics.activeSessions.Load())
-	t.Logf("  Total messages: %d", managerMetrics.totalMessages.Load())
-	t.Logf("  Dropped messages: %d", managerMetrics.droppedMessages.Load())
-	t.Logf("  Batches processed: %d", managerMetrics.batchesProcessed.Load())
+	t.Logf("  Active sessions: %d", managerMetrics.ActiveSessions)
+	t.Logf("  Total messages: %d", managerMetrics.TotalMessages)
+	t.Logf("  Dropped messages: %d", managerMetrics.DroppedMessages)
+	t.Logf("  Batches processed: %d", managerMetrics.BatchesProcessed)
 
 	t.Logf("Buffer metrics:")
 	t.Logf("  Buffer utilization: %.1f%%", bufferMetrics.SaturationRatio*100)
@@ -222,15 +222,15 @@ func TestLockFreePTYManagerIntegration(t *testing.T) {
 // BenchmarkLockFreeVsChannel compares lock-free vs channel-based approaches
 func BenchmarkLockFreeVsChannel(b *testing.B) {
 	b.Run("LockFree", func(b *testing.B) {
-		buffer := NewLockFreePTYBuffer(8192)
+		buffer := NewSafePTYBuffer(8192)
 
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
-			msg := &PTYMessage{
+			msg := &SafePTYMessage{
 				SessionID: "bench-session",
 				Data:      []byte("benchmark data"),
 				Timestamp: time.Now(),
-				Type:      PTYMessageOutput,
+				Type:      SafePTYMessageOutput,
 				Sequence:  uint64(i),
 			}
 
@@ -285,11 +285,11 @@ func BenchmarkRealisticPTYScenario(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			// Create burst of messages (simulates AI response)
 			for j := 0; j < 50; j++ {
-				msg := &PTYMessage{
+				msg := &SafePTYMessage{
 					SessionID: "ai-session",
 					Data:      []byte("AI response line with typical content length for realistic testing"),
 					Timestamp: time.Now(),
-					Type:      PTYMessageOutput,
+					Type:      SafePTYMessageOutput,
 					Sequence:  uint64(i*50 + j),
 				}
 				manager.buffer.TryWrite(msg)
@@ -350,15 +350,15 @@ func TestLockFreeMemoryUsage(t *testing.T) {
 	runtime.ReadMemStats(&m1)
 
 	// Create and use lock-free buffer
-	buffer := NewLockFreePTYBuffer(8192)
+	buffer := NewSafePTYBuffer(8192)
 
 	// Write and read many messages
 	for i := 0; i < 10000; i++ {
-		msg := &PTYMessage{
+		msg := &SafePTYMessage{
 			SessionID: "memory-test",
 			Data:      make([]byte, 100), // 100 byte payload
 			Timestamp: time.Now(),
-			Type:      PTYMessageOutput,
+			Type:      SafePTYMessageOutput,
 			Sequence:  uint64(i),
 		}
 

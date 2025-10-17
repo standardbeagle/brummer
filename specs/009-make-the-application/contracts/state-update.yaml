@@ -1,0 +1,250 @@
+openapi: 3.0.0
+info:
+  title: Bubble Tea State Update Contract
+  version: 1.0.0
+  description: Contract for state updates in Bubble Tea MVU pattern
+
+paths:
+  /state/update:
+    post:
+      summary: Update application state through Update function
+      operationId: updateState
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StateUpdateRequest'
+      responses:
+        '200':
+          description: State updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StateUpdateResponse'
+        '400':
+          description: Invalid state update request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: Version conflict - state has changed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VersionConflict'
+
+  /state/current:
+    get:
+      summary: Get current application state
+      operationId: getCurrentState
+      responses:
+        '200':
+          description: Current state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApplicationState'
+
+components:
+  schemas:
+    StateUpdateRequest:
+      type: object
+      required:
+        - message
+        - expectedVersion
+      properties:
+        message:
+          $ref: '#/components/schemas/Message'
+        expectedVersion:
+          type: integer
+          format: int64
+          description: Expected state version for optimistic locking
+        updateTime:
+          type: string
+          format: date-time
+
+    Message:
+      type: object
+      required:
+        - id
+        - type
+        - timestamp
+      properties:
+        id:
+          type: string
+          description: Correlation ID with originating command
+        type:
+          type: string
+          enum: [Result, Error, Progress, StateChange]
+        payload:
+          type: object
+          description: Message-specific data
+        error:
+          $ref: '#/components/schemas/Error'
+        timestamp:
+          type: string
+          format: date-time
+        retryCount:
+          type: integer
+          minimum: 0
+
+    StateUpdateResponse:
+      type: object
+      required:
+        - success
+        - newVersion
+        - updateTime
+      properties:
+        success:
+          type: boolean
+        newVersion:
+          type: integer
+          format: int64
+        updateTime:
+          type: string
+          format: date-time
+        responseTime:
+          type: integer
+          description: Update processing time in milliseconds
+          maximum: 50
+        changedComponents:
+          type: array
+          items:
+            type: string
+          description: IDs of UI components that changed
+
+    ApplicationState:
+      type: object
+      required:
+        - version
+        - uiState
+        - lastUpdate
+      properties:
+        version:
+          type: integer
+          format: int64
+        uiState:
+          $ref: '#/components/schemas/UIState'
+        operations:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Operation'
+        cache:
+          type: object
+          description: Cached data with TTL
+        lastUpdate:
+          type: string
+          format: date-time
+        responseTime:
+          type: number
+          format: float
+          description: Rolling average response time in milliseconds
+
+    UIState:
+      type: object
+      properties:
+        activeTab:
+          type: string
+        activeView:
+          type: string
+        commandInput:
+          type: string
+        selections:
+          type: object
+          additionalProperties:
+            type: integer
+        scrollPositions:
+          type: object
+          additionalProperties:
+            type: integer
+        components:
+          type: array
+          items:
+            $ref: '#/components/schemas/UIComponent'
+
+    UIComponent:
+      type: object
+      required:
+        - id
+        - type
+        - active
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [Tab, View, Input, Overlay]
+        active:
+          type: boolean
+        loading:
+          type: boolean
+        error:
+          $ref: '#/components/schemas/Error'
+        data:
+          type: object
+        lastUpdate:
+          type: string
+          format: date-time
+
+    Operation:
+      type: object
+      required:
+        - id
+        - status
+        - startTime
+      properties:
+        id:
+          type: string
+        commandId:
+          type: string
+        status:
+          type: string
+          enum: [Pending, Running, Completed, Failed, Cancelled]
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        result:
+          type: object
+        error:
+          $ref: '#/components/schemas/Error'
+        retries:
+          type: integer
+
+    VersionConflict:
+      type: object
+      required:
+        - currentVersion
+        - expectedVersion
+        - message
+      properties:
+        currentVersion:
+          type: integer
+          format: int64
+        expectedVersion:
+          type: integer
+          format: int64
+        message:
+          type: string
+        suggestion:
+          type: string
+          enum: [Retry, Refresh, Merge]
+
+    Error:
+      type: object
+      required:
+        - code
+        - message
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+        retryable:
+          type: boolean

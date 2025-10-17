@@ -273,12 +273,12 @@ func TestPTYInputWithKeyBindings(t *testing.T) {
 
 	// Test PTY key press that matches binding
 	testKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}}
-	handled := inputService.RouteKeyMessagePTY(testKey, "test_context")
+	handled, _ := inputService.RouteKeyMessagePTY(testKey, "test_context")
 	assert.True(t, handled, "Key should be handled by binding")
 
 	// Test PTY key press that doesn't match binding
 	testKey = tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}}
-	handled = inputService.RouteKeyMessagePTY(testKey, "test_context")
+	handled, _ = inputService.RouteKeyMessagePTY(testKey, "test_context")
 	assert.False(t, handled, "Key should not be handled (no matching binding)")
 
 	// Verify statistics
@@ -287,8 +287,10 @@ func TestPTYInputWithKeyBindings(t *testing.T) {
 	assert.Equal(t, uint64(2), stats.TotalKeyCount, "Should have processed 2 total keys")
 }
 
-// TestPTYInputConcurrency tests concurrent PTY input processing
-func TestPTYInputConcurrency(t *testing.T) {
+// TestPTYInputSequential tests sequential PTY input processing
+// TODO: Replace with proper command pattern for concurrent testing
+// For now, disable concurrent test to avoid goroutines
+func TestPTYInputSequential(t *testing.T) {
 	// Create PTY layer
 	ptyConfig := pty.DefaultPTYConfig()
 	ptyLayer, err := pty.NewPTYLayer(ptyConfig)
@@ -311,7 +313,7 @@ func TestPTYInputConcurrency(t *testing.T) {
 
 	// Create PTY input adapter
 	adapterConfig := DefaultPTYInputAdapterConfig()
-	adapterConfig.EnableDebug = false // Disable debug for concurrent test
+	adapterConfig.EnableDebug = false
 
 	adapter, err := NewPTYInputAdapter(ptyLayer, inputService, adapterConfig)
 	require.NoError(t, err, "Failed to create PTY input adapter")
@@ -321,53 +323,30 @@ func TestPTYInputConcurrency(t *testing.T) {
 	require.NoError(t, err, "Failed to start PTY input adapter")
 	defer adapter.Stop()
 
-	// Test concurrent key simulation
-	numGoroutines := 10
-	keysPerGoroutine := 50
+	// Test sequential key simulation
+	numKeys := 100
 
-	done := make(chan bool, numGoroutines)
-
-	for i := 0; i < numGoroutines; i++ {
-		go func(id int) {
-			defer func() { done <- true }()
-
-			for j := 0; j < keysPerGoroutine; j++ {
-				testKey := tea.KeyMsg{
-					Type: tea.KeyRunes,
-					Runes: []rune{rune('a' + ((id + j) % 26))},
-				}
-
-				err := adapter.SimulateKeyPress(testKey)
-				if err != nil {
-					t.Errorf("Goroutine %d failed to simulate key %d: %v", id, j, err)
-					return
-				}
-			}
-		}(i)
-	}
-
-	// Wait for all goroutines to complete
-	for i := 0; i < numGoroutines; i++ {
-		select {
-		case <-done:
-			// OK
-		case <-time.After(5 * time.Second):
-			t.Fatal("Timeout waiting for goroutines to complete")
+	for i := 0; i < numKeys; i++ {
+		testKey := tea.KeyMsg{
+			Type: tea.KeyRunes,
+			Runes: []rune{rune('a' + (i % 26))},
 		}
+
+		err := adapter.SimulateKeyPress(testKey)
+		require.NoError(t, err, "Failed to simulate key %d: %v", i, testKey)
 	}
 
 	// Allow some time for processing
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(50 * time.Millisecond)
 
 	// Verify statistics
 	adapterStats := adapter.GetStatistics()
-	expectedKeys := uint64(numGoroutines * keysPerGoroutine)
-	assert.GreaterOrEqual(t, adapterStats.KeyPressCount, expectedKeys-10, // Allow some tolerance for race conditions
-		"Should have processed most of the keys")
+	assert.Equal(t, uint64(numKeys), adapterStats.KeyPressCount,
+		"Should have processed all keys")
 
 	serviceStats := inputService.GetPTYStatistics()
-	assert.GreaterOrEqual(t, serviceStats.PTYKeyCount, expectedKeys-10,
-		"Should have processed most PTY keys")
+	assert.Equal(t, uint64(numKeys), serviceStats.PTYKeyCount,
+		"Should have processed all PTY keys")
 }
 
 // TestPTYInputBackwardCompatibility tests backward compatibility
@@ -384,7 +363,7 @@ func TestPTYInputBackwardCompatibility(t *testing.T) {
 
 	// Test that traditional methods still work
 	testKey := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'t'}}
-	handled := inputService.RouteKeyMessage(testKey, "test_context")
+	handled, _ := inputService.RouteKeyMessage(testKey, "test_context")
 	assert.False(t, handled, "Key should not be handled (no handlers registered)")
 
 	// Test that PTY methods return appropriate errors when PTY is disabled

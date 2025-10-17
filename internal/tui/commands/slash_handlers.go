@@ -3,7 +3,6 @@ package commands
 import (
 	"fmt"
 	"strings"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/logs"
@@ -153,328 +152,220 @@ func handleRunCommand(ctx *SlashCommandContext, parts []string) {
 		ctx.LogStore.Add("system", "System", "Error: /run command requires a script name", true)
 		return
 	}
-	scriptName := parts[1]
 
-	// Execute the script
-	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
-	SafeGoroutine(
-		fmt.Sprintf("start script '%s'", scriptName),
-		func() error {
-			_, err := ctx.ProcessManager.StartScript(scriptName)
-			if err == nil {
-				ctx.UpdateChan <- processUpdateMsg{}
-			}
-			return err
-		},
-		func(err error) {
-			errorCtx := ScriptStartContext(scriptName, "Slash Command", ctx.LogStore, ctx.UpdateChan)
-			errorHandler.HandleError(err, errorCtx)
-		},
+	// Create async context for command handling
+	asyncCtx := NewAsyncSlashCommandContext(
+		ctx.ProcessManager,
+		ctx.LogStore,
+		ctx.UpdateChan,
+		ctx.UpdateLogsView,
+		ctx.ClearLogs,
+		ctx.SetProxyURL,
+		ctx.ListProxies,
+		ctx.ToggleProxy,
+		ctx.StartAICoder,
+		ctx.ShowTerminal,
 	)
+
+	// Execute the script as command
+	// TODO: Replace with proper command pattern for async execution
+	// For now, execute synchronously to avoid goroutines
+	cmd := handleRunCommandAsync(asyncCtx, parts)
+	if cmd != nil {
+		msg := cmd()
+		ctx.UpdateChan <- msg
+	}
 
 	// Switch to logs view immediately
 	*ctx.CurrentView = "logs"
 }
 
 func handleRestartCommand(ctx *SlashCommandContext, parts []string) {
-	processName := "all"
-	if len(parts) >= 2 {
-		processName = parts[1]
+	// Create async context for command handling
+	asyncCtx := NewAsyncSlashCommandContext(
+		ctx.ProcessManager,
+		ctx.LogStore,
+		ctx.UpdateChan,
+		ctx.UpdateLogsView,
+		ctx.ClearLogs,
+		ctx.SetProxyURL,
+		ctx.ListProxies,
+		ctx.ToggleProxy,
+		ctx.StartAICoder,
+		ctx.ShowTerminal,
+	)
+
+	// Execute the restart as command
+	// TODO: Replace with proper command pattern for async execution
+	// For now, execute synchronously to avoid goroutines
+	cmd := handleRestartCommandAsync(asyncCtx, parts)
+	if cmd != nil {
+		msg := cmd()
+		ctx.UpdateChan <- msg
 	}
 
-	if processName == "all" {
-		// Restart all running processes
-		SafeGoroutineNoError(
-			"restart all processes",
-			func() {
-				processes := ctx.ProcessManager.GetAllProcesses()
-				restarted := 0
-				for _, proc := range processes {
-					if proc.GetStatus() == process.StatusRunning {
-						// Stop the process and wait for termination
-						timeout := 5 * time.Second
-						if err := ctx.ProcessManager.StopProcessAndWait(proc.ID, timeout); err != nil {
-							ctx.LogStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", proc.Name, err), true)
-							continue
-						}
-						// Start it again
-						_, err := ctx.ProcessManager.StartScript(proc.Name)
-						if err != nil {
-							ctx.LogStore.Add("system", "System", fmt.Sprintf("Error restarting script %s: %v", proc.Name, err), true)
-						} else {
-							restarted++
-						}
-					}
-				}
-				ctx.LogStore.Add("system", "System", fmt.Sprintf("🔄 Restarted %d processes", restarted), false)
-				ctx.UpdateChan <- processUpdateMsg{}
-			},
-			func(err error) {
-				ctx.LogStore.Add("system", "System", fmt.Sprintf("Critical error during restart all: %v", err), true)
-				ctx.UpdateChan <- logUpdateMsg{}
-			},
-		)
-	} else {
-		// Restart specific process
-		SafeGoroutineNoError(
-			fmt.Sprintf("restart process '%s'", processName),
-			func() {
-				// Find the process
-				var targetProc *process.Process
-				for _, proc := range ctx.ProcessManager.GetAllProcesses() {
-					if proc.Name == processName && proc.GetStatus() == process.StatusRunning {
-						targetProc = proc
-						break
-					}
-				}
-
-				if targetProc == nil {
-					ctx.LogStore.Add("system", "System", fmt.Sprintf("Process '%s' is not running", processName), true)
-					ctx.UpdateChan <- logUpdateMsg{}
-					return
-				}
-
-				// Stop and restart the process
-				timeout := 5 * time.Second
-				if err := ctx.ProcessManager.StopProcessAndWait(targetProc.ID, timeout); err != nil {
-					errorMsg := fmt.Sprintf("Error stopping process '%s' (ID: %s) during restart: %v", processName, targetProc.ID, err)
-					ctx.LogStore.Add("system", "System", errorMsg, true)
-					ctx.UpdateChan <- logUpdateMsg{}
-					return
-				}
-
-				_, err := ctx.ProcessManager.StartScript(processName)
-				if err != nil {
-					errorMsg := fmt.Sprintf("Error restarting script '%s' after successful stop: %v", processName, err)
-					ctx.LogStore.Add("system", "System", errorMsg, true)
-				} else {
-					ctx.LogStore.Add("system", "System", fmt.Sprintf("🔄 Restarted process: %s", processName), false)
-				}
-				ctx.UpdateChan <- processUpdateMsg{}
-			},
-			func(err error) {
-				ctx.LogStore.Add("system", "System", fmt.Sprintf("Critical error during restart of '%s': %v", processName, err), true)
-				ctx.UpdateChan <- logUpdateMsg{}
-			},
-		)
-	}
 	*ctx.CurrentView = "processes"
 }
 
 func handleStopCommand(ctx *SlashCommandContext, parts []string) {
-	processName := "all"
-	if len(parts) >= 2 {
-		processName = parts[1]
+	// Create async context for command handling
+	asyncCtx := NewAsyncSlashCommandContext(
+		ctx.ProcessManager,
+		ctx.LogStore,
+		ctx.UpdateChan,
+		ctx.UpdateLogsView,
+		ctx.ClearLogs,
+		ctx.SetProxyURL,
+		ctx.ListProxies,
+		ctx.ToggleProxy,
+		ctx.StartAICoder,
+		ctx.ShowTerminal,
+	)
+
+	// Execute the stop as command
+	// TODO: Replace with proper command pattern for async execution
+	// For now, execute synchronously to avoid goroutines
+	cmd := handleStopCommandAsync(asyncCtx, parts)
+	if cmd != nil {
+		msg := cmd()
+		ctx.UpdateChan <- msg
 	}
 
-	if processName == "all" {
-		// Stop all running processes
-		SafeGoroutineNoError(
-			"stop all processes",
-			func() {
-				processes := ctx.ProcessManager.GetAllProcesses()
-				stopped := 0
-				for _, proc := range processes {
-					if proc.GetStatus() == process.StatusRunning {
-						if err := ctx.ProcessManager.StopProcess(proc.ID); err != nil {
-							ctx.LogStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", proc.Name, err), true)
-						} else {
-							stopped++
-						}
-					}
-				}
-				ctx.LogStore.Add("system", "System", fmt.Sprintf("⏹️ Stopped %d processes", stopped), false)
-				ctx.UpdateChan <- processUpdateMsg{}
-			},
-			func(err error) {
-				ctx.LogStore.Add("system", "System", fmt.Sprintf("Critical error during stop all: %v", err), true)
-				ctx.UpdateChan <- logUpdateMsg{}
-			},
-		)
-	} else {
-		// Stop specific process
-		SafeGoroutineNoError(
-			fmt.Sprintf("stop process '%s'", processName),
-			func() {
-				// Find the process
-				var targetProc *process.Process
-				for _, proc := range ctx.ProcessManager.GetAllProcesses() {
-					if proc.Name == processName && proc.GetStatus() == process.StatusRunning {
-						targetProc = proc
-						break
-					}
-				}
-
-				if targetProc == nil {
-					ctx.LogStore.Add("system", "System", fmt.Sprintf("Process '%s' is not running", processName), true)
-					ctx.UpdateChan <- logUpdateMsg{}
-					return
-				}
-
-				if err := ctx.ProcessManager.StopProcess(targetProc.ID); err != nil {
-					ctx.LogStore.Add("system", "System", fmt.Sprintf("Error stopping process %s: %v", processName, err), true)
-				} else {
-					ctx.LogStore.Add("system", "System", fmt.Sprintf("⏹️ Stopped process: %s", processName), false)
-				}
-				ctx.UpdateChan <- processUpdateMsg{}
-			},
-			func(err error) {
-				ctx.LogStore.Add("system", "System", fmt.Sprintf("Critical error during stop of '%s': %v", processName, err), true)
-				ctx.UpdateChan <- logUpdateMsg{}
-			},
-		)
-	}
 	*ctx.CurrentView = "processes"
 }
 
 func handleDockerUpCommand(ctx *SlashCommandContext, parts []string) {
-	container := ""
-	if len(parts) >= 2 {
-		container = parts[1]
-	}
-
-	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
-	SafeGoroutine(
-		fmt.Sprintf("docker up '%s'", container),
-		func() error {
-			args := []string{"run", "-d"}
-			if container != "" {
-				args = append(args, container)
-			} else {
-				// Default behavior - try to find and run first available container
-				args = append(args, "--rm", "-it", "ubuntu:latest")
-			}
-			_, err := ctx.ProcessManager.StartCommand("docker", "docker", args)
-			if err == nil {
-				ctx.UpdateChan <- processUpdateMsg{}
-			}
-			return err
-		},
-		func(err error) {
-			errorCtx := ScriptStartContext("docker", "Docker Up", ctx.LogStore, ctx.UpdateChan)
-			errorHandler.HandleError(err, errorCtx)
-		},
+	// Create async context for command handling
+	asyncCtx := NewAsyncSlashCommandContext(
+		ctx.ProcessManager,
+		ctx.LogStore,
+		ctx.UpdateChan,
+		ctx.UpdateLogsView,
+		ctx.ClearLogs,
+		ctx.SetProxyURL,
+		ctx.ListProxies,
+		ctx.ToggleProxy,
+		ctx.StartAICoder,
+		ctx.ShowTerminal,
 	)
+
+	// Execute the docker up as command
+	// TODO: Replace with proper command pattern for async execution
+	// For now, execute synchronously to avoid goroutines
+	cmd := handleDockerUpCommandAsync(asyncCtx, parts)
+	if cmd != nil {
+		msg := cmd()
+		ctx.UpdateChan <- msg
+	}
 
 	*ctx.CurrentView = "logs"
 }
 
 func handleDockerDownCommand(ctx *SlashCommandContext, parts []string) {
-	container := ""
-	if len(parts) >= 2 {
-		container = parts[1]
-	}
-
-	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
-	SafeGoroutine(
-		fmt.Sprintf("docker down '%s'", container),
-		func() error {
-			args := []string{"stop"}
-			if container != "" {
-				args = append(args, container)
-			} else {
-				// Stop all containers
-				args = append(args, "$(docker ps -q)")
-			}
-			_, err := ctx.ProcessManager.StartCommand("docker", "docker", args)
-			if err == nil {
-				ctx.UpdateChan <- processUpdateMsg{}
-			}
-			return err
-		},
-		func(err error) {
-			errorCtx := ScriptStartContext("docker", "Docker Down", ctx.LogStore, ctx.UpdateChan)
-			errorHandler.HandleError(err, errorCtx)
-		},
+	// Create async context for command handling
+	asyncCtx := NewAsyncSlashCommandContext(
+		ctx.ProcessManager,
+		ctx.LogStore,
+		ctx.UpdateChan,
+		ctx.UpdateLogsView,
+		ctx.ClearLogs,
+		ctx.SetProxyURL,
+		ctx.ListProxies,
+		ctx.ToggleProxy,
+		ctx.StartAICoder,
+		ctx.ShowTerminal,
 	)
+
+	// Execute the docker down as command
+	// TODO: Replace with proper command pattern for async execution
+	// For now, execute synchronously to avoid goroutines
+	cmd := handleDockerDownCommandAsync(asyncCtx, parts)
+	if cmd != nil {
+		msg := cmd()
+		ctx.UpdateChan <- msg
+	}
 
 	*ctx.CurrentView = "processes"
 }
 
 func handleDockerBuildCommand(ctx *SlashCommandContext, parts []string) {
-	tag := "latest"
-	if len(parts) >= 2 {
-		tag = parts[1]
-	}
-
-	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
-	SafeGoroutine(
-		fmt.Sprintf("docker build '%s'", tag),
-		func() error {
-			args := []string{"build", "-t", tag, "."}
-			_, err := ctx.ProcessManager.StartCommand("docker-build", "docker", args)
-			if err == nil {
-				ctx.UpdateChan <- processUpdateMsg{}
-			}
-			return err
-		},
-		func(err error) {
-			errorCtx := ScriptStartContext("docker-build", "Docker Build", ctx.LogStore, ctx.UpdateChan)
-			errorHandler.HandleError(err, errorCtx)
-		},
+	// Create async context for command handling
+	asyncCtx := NewAsyncSlashCommandContext(
+		ctx.ProcessManager,
+		ctx.LogStore,
+		ctx.UpdateChan,
+		ctx.UpdateLogsView,
+		ctx.ClearLogs,
+		ctx.SetProxyURL,
+		ctx.ListProxies,
+		ctx.ToggleProxy,
+		ctx.StartAICoder,
+		ctx.ShowTerminal,
 	)
+
+	// Execute the docker build as command
+	// TODO: Replace with proper command pattern for async execution
+	// For now, execute synchronously to avoid goroutines
+	cmd := handleDockerBuildCommandAsync(asyncCtx, parts)
+	if cmd != nil {
+		msg := cmd()
+		ctx.UpdateChan <- msg
+	}
 
 	*ctx.CurrentView = "logs"
 }
 
 func handleComposeUpCommand(ctx *SlashCommandContext, parts []string) {
-	service := ""
-	if len(parts) >= 2 {
-		service = parts[1]
-	}
-
-	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
-	SafeGoroutine(
-		fmt.Sprintf("compose up '%s'", service),
-		func() error {
-			args := []string{"up", "-d"}
-			if service != "" {
-				args = append(args, service)
-			}
-			_, err := ctx.ProcessManager.StartCommand("docker-compose", "docker-compose", args)
-			if err == nil {
-				ctx.UpdateChan <- processUpdateMsg{}
-			}
-			return err
-		},
-		func(err error) {
-			errorCtx := ScriptStartContext("docker-compose", "Compose Up", ctx.LogStore, ctx.UpdateChan)
-			errorHandler.HandleError(err, errorCtx)
-		},
+	// Create async context for command handling
+	asyncCtx := NewAsyncSlashCommandContext(
+		ctx.ProcessManager,
+		ctx.LogStore,
+		ctx.UpdateChan,
+		ctx.UpdateLogsView,
+		ctx.ClearLogs,
+		ctx.SetProxyURL,
+		ctx.ListProxies,
+		ctx.ToggleProxy,
+		ctx.StartAICoder,
+		ctx.ShowTerminal,
 	)
+
+	// Execute the compose up as command
+	// TODO: Replace with proper command pattern for async execution
+	// For now, execute synchronously to avoid goroutines
+	cmd := handleComposeUpCommandAsync(asyncCtx, parts)
+	if cmd != nil {
+		msg := cmd()
+		ctx.UpdateChan <- msg
+	}
 
 	*ctx.CurrentView = "logs"
 }
 
 func handleComposeDownCommand(ctx *SlashCommandContext, parts []string) {
-	service := ""
-	if len(parts) >= 2 {
-		service = parts[1]
-	}
-
-	errorHandler := NewStandardErrorHandler(ctx.LogStore, ctx.UpdateChan)
-	SafeGoroutine(
-		fmt.Sprintf("compose down '%s'", service),
-		func() error {
-			args := []string{"down"}
-			if service != "" {
-				args = append(args, service)
-			}
-			_, err := ctx.ProcessManager.StartCommand("docker-compose", "docker-compose", args)
-			if err == nil {
-				ctx.UpdateChan <- processUpdateMsg{}
-			}
-			return err
-		},
-		func(err error) {
-			errorCtx := ScriptStartContext("docker-compose", "Compose Down", ctx.LogStore, ctx.UpdateChan)
-			errorHandler.HandleError(err, errorCtx)
-		},
+	// Create async context for command handling
+	asyncCtx := NewAsyncSlashCommandContext(
+		ctx.ProcessManager,
+		ctx.LogStore,
+		ctx.UpdateChan,
+		ctx.UpdateLogsView,
+		ctx.ClearLogs,
+		ctx.SetProxyURL,
+		ctx.ListProxies,
+		ctx.ToggleProxy,
+		ctx.StartAICoder,
+		ctx.ShowTerminal,
 	)
+
+	// Execute the compose down as command
+	// TODO: Replace with proper command pattern for async execution
+	// For now, execute synchronously to avoid goroutines
+	cmd := handleComposeDownCommandAsync(asyncCtx, parts)
+	if cmd != nil {
+		msg := cmd()
+		ctx.UpdateChan <- msg
+	}
 
 	*ctx.CurrentView = "processes"
 }
 
-// Message types used for updates
-type logUpdateMsg struct{}
-type processUpdateMsg struct{}

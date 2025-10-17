@@ -4,21 +4,23 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/tui/commands"
 )
 
 // URLsView is a BubbleTea component for displaying discovered URLs
 // Migrated from urls_view_controller.go (T023-T025)
-// Architecture: Component → Service (direct logStore access)
+// Architecture: Component → Commands → Service (async URL operations)
 type URLsView struct {
 	viewport       viewport.Model
 	showingMCPHelp bool
 
-	// Direct service access (no controller indirection)
+	// Service access (now through commands)
 	logStore *logs.Store
 
 	// Layout dimensions
@@ -26,6 +28,12 @@ type URLsView struct {
 	height       int
 	headerHeight int
 	footerHeight int
+
+	// Command pattern support
+	commandID string
+	loading   bool
+	lastError error
+	urls      []logs.URLEntry // Cache for URLs
 }
 
 // NewURLsView creates a new URLs view component
@@ -106,10 +114,10 @@ func (v *URLsView) IsShowingMCPHelp() bool {
 	return v.showingMCPHelp
 }
 
-// Render renders the URLs view with direct logStore access
+// Render renders the URLs view using cached data
 func (v *URLsView) Render() string {
-	// Direct service call - no controller indirection (T025)
-	urls := v.logStore.GetURLs()
+	// Use cached URLs or fall back to sync method
+	urls := v.GetURLs()
 
 	// Apply stable sort to ensure consistent ordering in UI
 	// Sort by: ProcessName first, then URL, then Timestamp
@@ -339,4 +347,78 @@ func (v *URLsView) renderMCPConnectionBox(mcpURLs []logs.URLEntry) string {
 	}
 
 	return content.String()
+}
+
+// UpdateURLsCommand returns a command to refresh the URLs view asynchronously
+func (v *URLsView) UpdateURLsCommand() tea.Cmd {
+	if v.logStore == nil {
+		return nil
+	}
+
+	// Generate unique command ID
+	v.commandID = fmt.Sprintf("urls-update-%d", time.Now().UnixNano())
+
+	context := commands.UIOperationContext(0) // Version will be set by the model
+
+	return func() tea.Msg {
+		cmd := commands.NewGetURLsCommand(v.commandID, v.logStore, context)
+		return cmd.Run()
+	}
+}
+
+// UpdateURLsView refreshes the URLs view with current data (legacy sync method)
+func (v *URLsView) UpdateURLsView() {
+	// Direct service call - no controller indirection (T025)
+	v.urls = v.logStore.GetURLs()
+}
+
+// HandleURLResult handles the result of a URL command
+func (v *URLsView) HandleURLResult(msg commands.LogResultMsg) {
+	if msg.ID != v.commandID {
+		return // Not our command
+	}
+
+	v.loading = false
+	v.lastError = msg.Error
+
+	if msg.IsSuccess() {
+		// Process the result
+		if urlData, ok := msg.Result.(commands.URLData); ok {
+			v.urls = urlData.Entries
+		}
+	}
+}
+
+// GetURLs returns the cached URLs (falls back to sync method if cache is empty)
+func (v *URLsView) GetURLs() []logs.URLEntry {
+	if v.urls == nil && v.logStore != nil {
+		// Fallback to sync method
+		v.urls = v.logStore.GetURLs()
+	}
+	return v.urls
+}
+
+// IsLoading returns whether the component is currently loading data
+func (v *URLsView) IsLoading() bool {
+	return v.loading
+}
+
+// SetLoading sets the loading state of the component
+func (v *URLsView) SetLoading(loading bool) {
+	v.loading = loading
+}
+
+// GetLastError returns the last error encountered
+func (v *URLsView) GetLastError() error {
+	return v.lastError
+}
+
+// ClearError clears the last error
+func (v *URLsView) ClearError() {
+	v.lastError = nil
+}
+
+// ClearCache clears the cached URLs
+func (v *URLsView) ClearCache() {
+	v.urls = nil
 }

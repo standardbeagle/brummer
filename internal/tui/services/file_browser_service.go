@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/discovery"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
@@ -175,7 +176,15 @@ func NewFileBrowserService(
 
 // GetCurrentPath returns the current directory path
 func (fbs *FileBrowserService) GetCurrentPath() string {
-	return fbs.currentPath.Load().(string)
+	if path, ok := fbs.currentPath.Load().(string); ok {
+		return path
+	}
+	// Fallback to working directory if type assertion fails
+	if wd, err := os.Getwd(); err == nil {
+		fbs.currentPath.Store(wd)
+		return wd
+	}
+	return "/"
 }
 
 // SetCurrentPath sets the current directory path
@@ -209,7 +218,7 @@ func (fbs *FileBrowserService) SetCurrentPath(path string) error {
 
 // GetWorkspaceRoot returns the detected workspace root directory
 func (fbs *FileBrowserService) GetWorkspaceRoot() string {
-	if root := fbs.workspaceRoot.Load().(string); root != "" {
+	if root, ok := fbs.workspaceRoot.Load().(string); ok && root != "" {
 		return root
 	}
 	return fbs.GetCurrentPath() // Fallback to current path
@@ -352,7 +361,8 @@ func (fbs *FileBrowserService) WatchPath(path string) error {
 	// Start watching if not already started
 	if atomic.CompareAndSwapInt32(&fbs.isWatching, 0, 1) {
 		fbs.pollingWatcher.Start()
-		go fbs.handleFileEvents()
+		// NO MORE GOROUTINES - File event handling will be command-driven
+		// through BubbleTea Update() cycle instead of background goroutine
 	}
 
 	// Emit watch started event
@@ -675,10 +685,19 @@ func (fbs *FileBrowserService) Stop() error {
 // Dialog Helper Methods
 
 func (fbs *FileBrowserService) getActiveDialogs() map[string]*FileBrowserDialog {
-	return fbs.activeDialogs.Load().(map[string]*FileBrowserDialog)
+	if dialogs, ok := fbs.activeDialogs.Load().(map[string]*FileBrowserDialog); ok {
+		return dialogs
+	}
+	// Fallback: create empty dialogs map if type assertion fails
+	emptyDialogs := make(map[string]*FileBrowserDialog)
+	fbs.activeDialogs.Store(emptyDialogs)
+	return emptyDialogs
 }
 
 func (fbs *FileBrowserService) addDialog(dialog *FileBrowserDialog) {
+	fbs.mu.Lock()
+	defer fbs.mu.Unlock()
+
 	dialogs := fbs.getActiveDialogs()
 	newDialogs := make(map[string]*FileBrowserDialog)
 	for k, v := range dialogs {
@@ -689,6 +708,9 @@ func (fbs *FileBrowserService) addDialog(dialog *FileBrowserDialog) {
 }
 
 func (fbs *FileBrowserService) updateDialog(dialog *FileBrowserDialog) {
+	fbs.mu.Lock()
+	defer fbs.mu.Unlock()
+
 	dialogs := fbs.getActiveDialogs()
 	newDialogs := make(map[string]*FileBrowserDialog)
 	for k, v := range dialogs {
@@ -701,10 +723,19 @@ func (fbs *FileBrowserService) updateDialog(dialog *FileBrowserDialog) {
 // Helper methods
 
 func (fbs *FileBrowserService) getWatchedPaths() map[string]bool {
-	return fbs.watchedPaths.Load().(map[string]bool)
+	if paths, ok := fbs.watchedPaths.Load().(map[string]bool); ok {
+		return paths
+	}
+	// Fallback: create empty watched paths map if type assertion fails
+	emptyPaths := make(map[string]bool)
+	fbs.watchedPaths.Store(emptyPaths)
+	return emptyPaths
 }
 
 func (fbs *FileBrowserService) updateWatchedPaths(path string, add bool) {
+	fbs.mu.Lock()
+	defer fbs.mu.Unlock()
+
 	watchedPaths := fbs.getWatchedPaths()
 	newPaths := make(map[string]bool)
 	for k, v := range watchedPaths {
@@ -721,10 +752,19 @@ func (fbs *FileBrowserService) updateWatchedPaths(path string, add bool) {
 }
 
 func (fbs *FileBrowserService) getFileCache() map[string]*FileInfo {
-	return fbs.fileCache.Load().(map[string]*FileInfo)
+	if cache, ok := fbs.fileCache.Load().(map[string]*FileInfo); ok {
+		return cache
+	}
+	// Fallback: create empty file cache if type assertion fails
+	emptyCache := make(map[string]*FileInfo)
+	fbs.fileCache.Store(emptyCache)
+	return emptyCache
 }
 
 func (fbs *FileBrowserService) cacheFileInfo(path string, info *FileInfo) {
+	fbs.mu.RLock()
+	defer fbs.mu.RUnlock()
+
 	cache := fbs.getFileCache()
 	newCache := make(map[string]*FileInfo)
 
@@ -1067,8 +1107,41 @@ func (fbs *FileBrowserService) detectWorkspaceRoot(startPath string) {
 	}
 }
 
-// handleFileEvents processes file system events from the watcher
+// ProcessFileEvents creates a command to process file system events (command-driven)
+// This replaces the background goroutine with command-driven processing
+func (fbs *FileBrowserService) ProcessFileEvents() tea.Cmd {
+	return func() tea.Msg {
+		if !fbs.IsWatching() {
+			return nil // No events to process
+		}
+
+		// Process events with timeout to prevent blocking
+		timeout := time.After(10 * time.Millisecond) // 10ms timeout for responsiveness
+
+		for {
+			select {
+			case event := <-fbs.pollingWatcher.Events():
+				fbs.processFileEvent(event)
+				// Continue processing more events if available
+			case err := <-fbs.pollingWatcher.Errors():
+				fbs.processFileError(err)
+				// Continue processing more events if available
+			case <-timeout:
+				// Timeout reached - stop processing to maintain responsiveness
+				return nil
+			case <-fbs.ctx.Done():
+				// Context cancelled
+				return nil
+			}
+		}
+	}
+}
+
+// handleFileEvents processes file system events from the watcher (deprecated)
+// This method is kept for backward compatibility but should not be used
 func (fbs *FileBrowserService) handleFileEvents() {
+	// DEPRECATED: Use ProcessFileEvents() command-driven approach instead
+	// NO MORE GOROUTINES - This method should not be called
 	for {
 		select {
 		case <-fbs.ctx.Done():

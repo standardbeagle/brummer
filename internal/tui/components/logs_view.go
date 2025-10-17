@@ -4,17 +4,19 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/internal/tui/commands"
 )
 
 // LogsView is a BubbleTea component for displaying process logs
 // Migrated from logs_view_controller.go (T044-T048)
-// Architecture: Component → Service (direct logs.Store access)
+// Architecture: Component → Commands → Service (async log operations)
 type LogsView struct {
 	logsViewport     viewport.Model
 	searchInput      textinput.Model
@@ -25,11 +27,16 @@ type LogsView struct {
 	logsAutoScroll   bool
 	logsAtBottom     bool
 
-	// Direct service access
+	// Service access (now through commands)
 	logStore        *logs.Store
 	selectedProcess string
 	width           int
 	height          int
+
+	// Command pattern support
+	commandID       string
+	loading         bool
+	lastError       error
 }
 
 // NewLogsView creates a new logs view component
@@ -165,7 +172,31 @@ func (v *LogsView) GetLogsViewport() *viewport.Model {
 	return &v.logsViewport
 }
 
-// UpdateLogsView refreshes the logs view with current data
+// UpdateLogsViewCommand returns a command to refresh the logs view asynchronously
+func (v *LogsView) UpdateLogsViewCommand() tea.Cmd {
+	if v.logStore == nil {
+		return nil
+	}
+
+	// Generate unique command ID
+	v.commandID = fmt.Sprintf("logs-update-%d", time.Now().UnixNano())
+
+	context := commands.UIOperationContext(0) // Version will be set by the model
+
+	if v.selectedProcess != "" {
+		return func() tea.Msg {
+			cmd := commands.NewGetProcessLogsCommand(v.commandID, v.logStore, v.selectedProcess, context)
+			return cmd.Run()
+		}
+	} else {
+		return func() tea.Msg {
+			cmd := commands.NewGetAllLogsCommand(v.commandID, v.logStore, context)
+			return cmd.Run()
+		}
+	}
+}
+
+// UpdateLogsView refreshes the logs view with current data (legacy sync method)
 func (v *LogsView) UpdateLogsView() {
 	var collapsedEntries []logs.CollapsedLogEntry
 
@@ -183,6 +214,97 @@ func (v *LogsView) UpdateLogsView() {
 	if v.logsAutoScroll {
 		v.logsViewport.GotoBottom()
 	}
+}
+
+// HandleLogResult handles the result of a log command
+func (v *LogsView) HandleLogResult(msg commands.LogResultMsg) {
+	if msg.ID != v.commandID {
+		return // Not our command
+	}
+
+	v.loading = false
+	v.lastError = msg.Error
+
+	if msg.IsSuccess() {
+		// Process the result
+		if logData, ok := msg.Result.(commands.LogData); ok {
+			collapsedEntries := v.applyFilters(logData.Entries)
+			content := v.formatLogsForDisplay(collapsedEntries)
+			v.logsViewport.SetContent(content)
+
+			if v.logsAutoScroll {
+				v.logsViewport.GotoBottom()
+			}
+		}
+	}
+}
+
+// SearchLogsCommand returns a command to search logs asynchronously
+func (v *LogsView) SearchLogsCommand(query string) tea.Cmd {
+	if v.logStore == nil || query == "" {
+		return nil
+	}
+
+	v.commandID = fmt.Sprintf("logs-search-%d", time.Now().UnixNano())
+
+	context := commands.UIOperationContext(0)
+
+	return func() tea.Msg {
+		cmd := commands.NewSearchLogsCommand(v.commandID, v.logStore, query, context)
+		return cmd.Run()
+	}
+}
+
+// GetHighPriorityLogsCommand returns a command to get high priority logs asynchronously
+func (v *LogsView) GetHighPriorityLogsCommand(threshold int) tea.Cmd {
+	if v.logStore == nil {
+		return nil
+	}
+
+	v.commandID = fmt.Sprintf("logs-highprio-%d", time.Now().UnixNano())
+
+	context := commands.UIOperationContext(0)
+
+	return func() tea.Msg {
+		cmd := commands.NewGetHighPriorityLogsCommand(v.commandID, v.logStore, threshold, context)
+		return cmd.Run()
+	}
+}
+
+// ClearLogsCommand returns a command to clear logs asynchronously
+func (v *LogsView) ClearLogsCommand(processName string) tea.Cmd {
+	if v.logStore == nil {
+		return nil
+	}
+
+	v.commandID = fmt.Sprintf("logs-clear-%d", time.Now().UnixNano())
+
+	context := commands.UIOperationContext(0)
+
+	return func() tea.Msg {
+		cmd := commands.NewClearLogsCommand(v.commandID, v.logStore, processName, context)
+		return cmd.Run()
+	}
+}
+
+// IsLoading returns whether the component is currently loading data
+func (v *LogsView) IsLoading() bool {
+	return v.loading
+}
+
+// SetLoading sets the loading state of the component
+func (v *LogsView) SetLoading(loading bool) {
+	v.loading = loading
+}
+
+// GetLastError returns the last error encountered
+func (v *LogsView) GetLastError() error {
+	return v.lastError
+}
+
+// ClearError clears the last error
+func (v *LogsView) ClearError() {
+	v.lastError = nil
 }
 
 // Render renders the logs view

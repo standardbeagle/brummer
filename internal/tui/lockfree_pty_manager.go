@@ -14,8 +14,8 @@ import (
 
 // LockFreePTYManager manages PTY sessions using lock-free data structures
 type LockFreePTYManager struct {
-	// Lock-free buffer for PTY messages
-	buffer *LockFreePTYBuffer
+	// Safe buffer for PTY messages (production-ready library)
+	buffer *SafePTYBuffer
 
 	// Session state management (lock-free)
 	sessions sync.Map // sessionID -> *PTYSessionState
@@ -59,6 +59,19 @@ type PTYManagerMetrics struct {
 	bufferUtilization atomic.Uint64 // percentage * 100
 }
 
+// PTYManagerMetricsSnapshot provides a lock-free snapshot of metrics
+// This struct contains regular uint64/int64 values that can be safely passed by value
+type PTYManagerMetricsSnapshot struct {
+	ActiveSessions    uint64
+	TotalMessages     uint64
+	DroppedMessages   uint64
+	BatchesProcessed  uint64
+	AverageBatchSize  uint64
+	LastPollDuration  int64  // nanoseconds
+	BufferUtilization uint64 // percentage * 100
+	Timestamp         time.Time
+}
+
 // NewLockFreePTYManager creates a new lock-free PTY manager with default config
 func NewLockFreePTYManager(ctx context.Context, updateChan chan tea.Msg, logStore *logs.Store) *LockFreePTYManager {
 	return NewLockFreePTYManagerWithConfig(ctx, updateChan, logStore, DefaultLockFreeConfig())
@@ -78,7 +91,7 @@ func NewLockFreePTYManagerWithConfig(ctx context.Context, updateChan chan tea.Ms
 		config.BufferSize, config.BatchSize, config.PollInterval, config.GetBufferSizeMB()), false)
 
 	mgr := &LockFreePTYManager{
-		buffer:            NewLockFreePTYBuffer(config.BufferSize),
+		buffer:            NewSafePTYBuffer(config.BufferSize),
 		updateChan:        updateChan,
 		logStore:          logStore,
 		ctx:               managerCtx,
@@ -94,6 +107,7 @@ func NewLockFreePTYManagerWithConfig(ctx context.Context, updateChan chan tea.Ms
 }
 
 // StartSession begins monitoring a PTY session with lock-free management
+// Note: This replaces goroutine-based monitoring with command-driven processing
 func (m *LockFreePTYManager) StartSession(session *aicoder.PTYSession) error {
 	if session == nil {
 		return fmt.Errorf("session cannot be nil")
@@ -114,30 +128,41 @@ func (m *LockFreePTYManager) StartSession(session *aicoder.PTYSession) error {
 	state.active.Store(true)
 	m.metrics.activeSessions.Add(1)
 
-	// Start monitoring this specific session
-	go m.monitorSession(state)
-
-	// Ensure the writer goroutine is running
-	m.ensureWriterActive()
-
+	// NO MORE GOROUTINES - Session monitoring will be command-driven
+	// through BubbleTea Update() cycle instead of background goroutine
 	m.logStore.Add("system", "System",
-		fmt.Sprintf("Started lock-free PTY monitoring for session %s", session.ID), false)
+		fmt.Sprintf("Started lock-free PTY monitoring for session %s (command-driven)", session.ID), false)
 
 	return nil
 }
 
 // StopSession stops monitoring a PTY session
 func (m *LockFreePTYManager) StopSession(sessionID string) error {
-	stateInterface, exists := m.sessions.LoadAndDelete(sessionID)
+	stateInterface, exists := m.sessions.Load(sessionID)
 	if !exists {
 		return fmt.Errorf("session %s not found", sessionID)
 	}
 
-	state := stateInterface.(*PTYSessionState)
+	state, ok := stateInterface.(*PTYSessionState)
+	if !ok {
+		return fmt.Errorf("invalid session state for %s", sessionID)
+	}
 
-	// Signal stop
+	// Signal stop first
 	state.active.Store(false)
-	close(state.stopChan)
+
+	// Close stop channel safely (avoid panic if already closed)
+	select {
+	case <-state.stopChan:
+		// Channel already closed
+	default:
+		close(state.stopChan)
+	}
+
+	// Remove from sessions map only after marking inactive
+	m.sessions.Delete(sessionID)
+
+	// Decrement active session count if we successfully stopped
 	m.metrics.activeSessions.Add(^uint64(0)) // Atomic decrement
 
 	m.logStore.Add("system", "System",
@@ -172,16 +197,16 @@ func (m *LockFreePTYManager) monitorSession(state *PTYSessionState) {
 			}
 
 			// Create PTY message with sequence number
-			msg := &PTYMessage{
+			msg := &SafePTYMessage{
 				SessionID: session.ID,
 				Data:      make([]byte, len(output)),
 				Timestamp: time.Now(),
-				Type:      PTYMessageOutput,
+				Type:      SafePTYMessageOutput,
 				Sequence:  state.sequence.Add(1),
 			}
 			copy(msg.Data, output) // Deep copy to prevent data races
 
-			// Try to write to lock-free buffer
+			// Try to write to safe buffer
 			if !m.buffer.TryWrite(msg) {
 				// Buffer full - message dropped for backpressure
 				m.metrics.droppedMessages.Add(1)
@@ -191,20 +216,20 @@ func (m *LockFreePTYManager) monitorSession(state *PTYSessionState) {
 
 		case event := <-session.EventChan:
 			// Handle PTY events
-			var msgType PTYMessageType
+			var msgType SafePTYMessageType
 			switch event.Type {
 			case aicoder.PTYEventClose:
-				msgType = PTYMessageClose
+				msgType = SafePTYMessageClose
 			case aicoder.PTYEventResize:
-				msgType = PTYMessageResize
+				msgType = SafePTYMessageResize
 			default:
-				msgType = PTYMessageEvent
+				msgType = SafePTYMessageEvent
 			}
 
 			// Serialize event data (simplified for now)
 			eventData := fmt.Sprintf("event:%s", event.Type)
 
-			msg := &PTYMessage{
+			msg := &SafePTYMessage{
 				SessionID: session.ID,
 				Data:      []byte(eventData),
 				Timestamp: time.Now(),
@@ -212,7 +237,7 @@ func (m *LockFreePTYManager) monitorSession(state *PTYSessionState) {
 				Sequence:  state.sequence.Add(1),
 			}
 
-			// Try to write to lock-free buffer
+			// Try to write to safe buffer
 			if !m.buffer.TryWrite(msg) {
 				m.metrics.droppedMessages.Add(1)
 			} else {
@@ -227,14 +252,123 @@ func (m *LockFreePTYManager) monitorSession(state *PTYSessionState) {
 	}
 }
 
-// ensureWriterActive ensures the single writer goroutine is running
+// ensureWriterActive is deprecated - writer loop is now command-driven
+// through BubbleTea Update() cycle instead of background goroutine
 func (m *LockFreePTYManager) ensureWriterActive() {
-	if !m.writerActive.CompareAndSwap(false, true) {
-		// Writer already active
-		return
-	}
+	// NO MORE GOROUTINES - Writer will be command-driven
+	// The writerActive flag is now used for state tracking only
+	m.writerActive.Store(true)
+}
 
-	go m.writerLoop()
+// ProcessSessionMessages creates a command to process PTY messages for all active sessions
+// This replaces the background goroutine with command-driven processing
+func (m *LockFreePTYManager) ProcessSessionMessages() tea.Cmd {
+	return func() tea.Msg {
+		messages := m.collectSessionMessages()
+		if len(messages) > 0 {
+			return BatchPTYMsg{Messages: messages}
+		}
+		return nil // No messages to process
+	}
+}
+
+// collectSessionMessages processes PTY output from all active sessions (non-blocking)
+// This replaces the goroutine-based monitorSession with command-driven collection
+func (m *LockFreePTYManager) collectSessionMessages() []tea.Msg {
+	var messages []tea.Msg
+
+	// Process each active session with timeout to prevent blocking
+	m.sessions.Range(func(key, value interface{}) bool {
+		sessionID, ok := key.(string)
+		if !ok {
+			return true // Skip invalid session ID
+		}
+
+		state, ok := value.(*PTYSessionState)
+		if !ok {
+			// Remove invalid session state
+			m.sessions.Delete(sessionID)
+			return true
+		}
+
+		if !state.active.Load() {
+			return true // Skip inactive sessions
+		}
+
+		// Process session output with timeout
+		sessionMessages := m.processSessionOutput(state, sessionID)
+		messages = append(messages, sessionMessages...)
+
+		return true
+	})
+
+	return messages
+}
+
+// processSessionOutput processes output from a single session with safety timeout
+func (m *LockFreePTYManager) processSessionOutput(state *PTYSessionState, sessionID string) []tea.Msg {
+	var messages []tea.Msg
+	timeout := time.After(50 * time.Millisecond) // 50ms timeout for responsiveness
+
+	for {
+		select {
+		case output, ok := <-state.session.OutputChan:
+			if !ok {
+				// Channel closed, session ended - mark inactive and clean up
+				if state.active.CompareAndSwap(true, false) {
+					// Only decrement if we successfully marked as inactive
+					m.metrics.activeSessions.Add(^uint64(0)) // Atomic decrement
+				}
+				m.sessions.Delete(sessionID)
+				return messages
+			}
+
+			// Create PTY message with sequence number
+			msg := PTYOutputMsg{
+				SessionID: sessionID,
+				Data:      make([]byte, len(output)),
+			}
+			copy(msg.Data, output) // Deep copy to prevent data races
+
+			messages = append(messages, msg)
+			m.metrics.totalMessages.Add(1)
+
+		case event := <-state.session.EventChan:
+			// Handle PTY events
+			var eventMsg tea.Msg
+			sessionEnded := false
+
+			switch event.Type {
+			case aicoder.PTYEventClose:
+				sessionEnded = true
+				eventMsg = PTYEventMsg{Event: event}
+			case aicoder.PTYEventResize:
+				eventMsg = PTYEventMsg{Event: event}
+			default:
+				eventMsg = PTYEventMsg{Event: event}
+			}
+
+			messages = append(messages, eventMsg)
+
+			// If it's a close event, stop processing this session
+			if sessionEnded {
+				if state.active.CompareAndSwap(true, false) {
+					// Only decrement if we successfully marked as inactive
+					m.metrics.activeSessions.Add(^uint64(0)) // Atomic decrement
+				}
+				m.sessions.Delete(sessionID)
+				return messages
+			}
+
+		case <-timeout:
+			// Timeout reached - stop processing to maintain responsiveness
+			return messages
+
+		case <-m.ctx.Done():
+			// Manager context cancelled
+			return messages
+		}
+	}
 }
 
 // writerLoop is the single writer that processes messages from the lock-free buffer
@@ -276,12 +410,12 @@ func (m *LockFreePTYManager) processBatch() {
 	teaBatch := make([]tea.Msg, 0, count)
 	for _, msg := range batch {
 		switch msg.Type {
-		case PTYMessageOutput:
+		case SafePTYMessageOutput:
 			teaBatch = append(teaBatch, PTYOutputMsg{
 				SessionID: msg.SessionID,
 				Data:      msg.Data,
 			})
-		case PTYMessageEvent, PTYMessageClose, PTYMessageResize:
+		case SafePTYMessageEvent, SafePTYMessageClose, SafePTYMessageResize:
 			// Create appropriate event message
 			// For now, we'll use a generic PTY event
 			teaBatch = append(teaBatch, PTYEventMsg{
@@ -316,25 +450,26 @@ func (m *LockFreePTYManager) processBatch() {
 	m.metrics.bufferUtilization.Store(utilization)
 }
 
-// GetMetrics returns current performance metrics
-func (m *LockFreePTYManager) GetMetrics() PTYManagerMetrics {
-	return PTYManagerMetrics{
-		activeSessions:    atomic.Uint64{},
-		totalMessages:     atomic.Uint64{},
-		droppedMessages:   atomic.Uint64{},
-		batchesProcessed:  atomic.Uint64{},
-		averageBatchSize:  atomic.Uint64{},
-		lastPollDuration:  atomic.Int64{},
-		bufferUtilization: atomic.Uint64{},
+// GetMetrics returns a lock-free snapshot of current performance metrics
+func (m *LockFreePTYManager) GetMetrics() PTYManagerMetricsSnapshot {
+	return PTYManagerMetricsSnapshot{
+		ActiveSessions:    m.metrics.activeSessions.Load(),
+		TotalMessages:     m.metrics.totalMessages.Load(),
+		DroppedMessages:   m.metrics.droppedMessages.Load(),
+		BatchesProcessed:  m.metrics.batchesProcessed.Load(),
+		AverageBatchSize:  m.metrics.averageBatchSize.Load(),
+		LastPollDuration:  m.metrics.lastPollDuration.Load(),
+		BufferUtilization: m.metrics.bufferUtilization.Load(),
+		Timestamp:         time.Now(),
 	}
 }
 
 // GetBufferMetrics returns lock-free buffer performance metrics
-func (m *LockFreePTYManager) GetBufferMetrics() BufferMetrics {
+func (m *LockFreePTYManager) GetBufferMetrics() SafeBufferMetrics {
 	return m.buffer.GetMetrics()
 }
 
-// Shutdown gracefully shuts down the PTY manager
+// Shutdown gracefully shuts down the PTY manager (command-driven)
 func (m *LockFreePTYManager) Shutdown() {
 	m.logStore.Add("system", "System", "Shutting down lock-free PTY manager", false)
 
@@ -345,15 +480,23 @@ func (m *LockFreePTYManager) Shutdown() {
 		return true
 	})
 
-	// Stop writer loop
-	if m.writerActive.Load() {
-		close(m.writerStopChan)
+	// Close the safe buffer
+	if m.buffer != nil {
+		if err := m.buffer.Close(); err != nil {
+			m.logStore.Add("system", "System",
+				fmt.Sprintf("Error closing PTY buffer: %v", err), true)
+		}
+		m.buffer = nil
 	}
+
+	// NO MORE GOROUTINES - No need to stop writer loop
+	// The writerActive flag is now used for state tracking only
+	m.writerActive.Store(false)
 
 	// Cancel context
 	m.cancel()
 
-	m.logStore.Add("system", "System", "Lock-free PTY manager shutdown complete", false)
+	m.logStore.Add("system", "System", "Lock-free PTY manager shutdown complete (command-driven)", false)
 }
 
 // BatchPTYMsg represents a batch of PTY messages for BubbleTea

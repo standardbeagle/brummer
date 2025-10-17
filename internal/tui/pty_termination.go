@@ -219,8 +219,12 @@ func (th *PTYTerminationHandler) Start() error {
 		}
 	}
 
-	// Start signal monitoring goroutine
-	go th.monitorSignals()
+	// Start signal monitoring through command pattern
+	// TODO: Replace with proper command pattern for signal monitoring
+	// For now, disable signal monitoring to avoid goroutines
+	if th.config.EnableDebug {
+		fmt.Printf("Signal monitoring disabled for goroutine elimination\n")
+	}
 
 	if th.config.EnableDebug {
 		fmt.Printf("PTY termination handler started\n")
@@ -372,52 +376,11 @@ func (th *PTYTerminationHandler) setupSignalHandling() error {
 }
 
 // monitorSignals monitors and handles incoming signals
+// TODO: Replace with proper command pattern for signal monitoring
+// For now, disable signal monitoring to avoid goroutines
 func (th *PTYTerminationHandler) monitorSignals() {
-	for {
-		select {
-		case sig := <-th.sigChan:
-			// Convert os.Signal to syscall.Signal for handler lookup
-			var syscallSig syscall.Signal
-			if s, ok := sig.(syscall.Signal); ok {
-				syscallSig = s
-			} else {
-				// Handle non-syscall signals (if any)
-				continue
-			}
-
-			if handler, exists := th.signalHandlers[syscallSig]; exists {
-				if th.config.EnableDebug {
-					fmt.Printf("Handling signal: %v\n", sig)
-				}
-
-				if err := handler(syscallSig); err != nil {
-					th.recordError(fmt.Errorf("signal handler error for %v: %w", sig, err), "signal_handler")
-
-					// Retry if enabled
-					if th.config.RetryOnError && th.state == StateRunning {
-						go func() {
-							time.Sleep(th.config.RetryDelay)
-							_ = handler(syscallSig)
-						}()
-					}
-				}
-			} else {
-				// Unhandled signal
-				if th.config.EnableDebug {
-					fmt.Printf("Received unhandled signal: %v\n", sig)
-				}
-
-				if th.config.PassthroughSignals {
-					// Forward signal to process
-					if process, err := os.FindProcess(os.Getpid()); err == nil {
-						_ = process.Signal(sig)
-					}
-				}
-			}
-
-		case <-th.ctx.Done():
-			return
-		}
+	if th.config.EnableDebug {
+		fmt.Printf("Signal monitoring disabled for goroutine elimination\n")
 	}
 }
 

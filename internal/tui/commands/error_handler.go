@@ -2,6 +2,7 @@ package commands
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/logs"
@@ -64,10 +65,8 @@ func (h *StandardErrorHandler) HandleError(err error, ctx ErrorContext) {
 		logStore.Add("system", ctx.Component, message, true)
 	}
 
-	// Trigger UI update
-	if updateChan != nil {
-		updateChan <- logUpdateMsg{}
-	}
+	// Trigger UI update with timeout to prevent blocking
+	safeSendWithTimeout(updateChan, logUpdateMsg{}, 100*time.Millisecond, logStore)
 }
 
 // HandleSuccess handles successful operations with consistent messaging
@@ -87,10 +86,8 @@ func (h *StandardErrorHandler) HandleSuccess(message string, ctx ErrorContext) {
 		logStore.Add("system", ctx.Component, message, false)
 	}
 
-	// Trigger UI update
-	if updateChan != nil {
-		updateChan <- processUpdateMsg{}
-	}
+	// Trigger UI update with timeout to prevent blocking
+	safeSendWithTimeout(updateChan, processUpdateMsg{}, 100*time.Millisecond, logStore)
 }
 
 // Common error contexts for frequent operations
@@ -127,3 +124,24 @@ func ProcessRestartContext(processName, component string, logStore LogStoreInter
 		UpdateChan:  updateChan,
 	}
 }
+
+// safeSendWithTimeout sends a message to channel with timeout to prevent blocking
+func safeSendWithTimeout(updateChan chan<- tea.Msg, msg tea.Msg, timeout time.Duration, logStore LogStoreInterface) {
+	if updateChan == nil {
+		return
+	}
+
+	select {
+	case updateChan <- msg:
+		// Message sent successfully
+	case <-time.After(timeout):
+		// Channel full - log warning but don't block
+		if logStore != nil {
+			logStore.Add("system", "Error Handler", "⚠️ Update channel full, message dropped to prevent blocking", true)
+		}
+	}
+}
+
+// Message types used for updates
+type logUpdateMsg struct{}
+type processUpdateMsg struct{}

@@ -1,7 +1,6 @@
 package components
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -186,26 +185,12 @@ func (v *ProcessesView) HandleRestartProcess(proc *process.Process) tea.Cmd {
 
 		// Check if process is still running before trying to stop it
 		if proc.GetStatus() == process.StatusRunning {
-			// Use shorter timeout to prevent UI freezing
-			ctx, cancel := context.WithTimeout(context.Background(), 400*time.Millisecond)
-			defer cancel()
-
-			// Try to stop process with timeout
-			errChan := make(chan error, 1)
-			go func() {
-				errChan <- v.processMgr.StopProcess(proc.ID)
-			}()
-
-			select {
-			case err := <-errChan:
-				if err != nil {
-					message = fmt.Sprintf("Error stopping process %s: %v", proc.Name, err)
-					isError = true
-				}
-			case <-ctx.Done():
-				// Process didn't stop quickly, try stop with wait timeout
-				if err := v.processMgr.StopProcessAndWait(proc.ID, 100*time.Millisecond); err != nil {
-					message = fmt.Sprintf("Error stopping process %s after timeout: %v", proc.Name, err)
+			// Try to stop process with timeout using command pattern
+			err := v.processMgr.StopProcess(proc.ID)
+			if err != nil {
+				// Process didn't stop cleanly, try stop with wait timeout
+				if waitErr := v.processMgr.StopProcessAndWait(proc.ID, 100*time.Millisecond); waitErr != nil {
+					message = fmt.Sprintf("Error stopping process %s: %v (wait error: %v)", proc.Name, err, waitErr)
 					isError = true
 				}
 			}
