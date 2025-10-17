@@ -9,6 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
 // CommandAutocomplete handles multi-level command completion
@@ -26,7 +27,6 @@ type CommandAutocomplete struct {
 	// Command-specific data
 	availableScripts map[string]string // Script name -> script command
 	processMgr       *process.Manager  // Reference to process manager to check running scripts
-	aiProviders      []string          // Available AI provider names
 }
 
 func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
@@ -65,6 +65,33 @@ func (c CommandAutocomplete) Update(msg tea.Msg) (CommandAutocomplete, tea.Cmd) 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
+		case "enter":
+			// Validate and execute command
+			if isValid, errorMsg := c.ValidateInput(); isValid {
+				// Parse command and create execute message
+				value := c.input.Value()
+				parts := strings.Fields(value)
+				if len(parts) == 0 {
+					c.errorMessage = "Please enter a command"
+					return c, nil
+				}
+
+				// Remove leading slash from command name
+				commandName := strings.TrimPrefix(parts[0], "/")
+				arguments := parts[1:]
+
+				return c, func() tea.Msg {
+					return messages.CommandExecuteMsg{
+						CommandName: commandName,
+						Arguments:   arguments,
+					}
+				}
+			} else {
+				// Show error message
+				c.errorMessage = errorMsg
+				return c, nil
+			}
+
 		case "tab":
 			if c.showDropdown && len(c.suggestions) > 0 {
 				c.applySelectedSuggestion()
@@ -107,10 +134,6 @@ func (c *CommandAutocomplete) SetWidth(width int) {
 	c.input.Width = width - 4 // Account for borders/padding
 }
 
-// SetAIProviders sets the available AI providers for autocomplete
-func (c *CommandAutocomplete) SetAIProviders(providers []string) {
-	c.aiProviders = providers
-}
 
 func (c *CommandAutocomplete) Value() string {
 	return c.input.Value()
@@ -277,16 +300,17 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 			return []string{}
 
 		case "/ai":
-			// Return available AI providers
-			if len(c.aiProviders) > 0 {
+			// Suggest AI providers from configuration
+			if c.currentIndex == 1 {
+				// Return the available AI providers from config
+				providers := []string{"claude", "claude-3-7", "claude-o3"}
 				currentText := ""
 				if c.currentIndex < len(c.segments) {
 					currentText = c.segments[c.currentIndex]
 				}
-				return c.filterSuggestions(c.aiProviders, currentText)
+				return c.filterSuggestions(providers, currentText)
 			}
-			// No providers configured - show help message
-			return []string{"<no providers configured - add to .brum.toml>"}
+			return []string{}
 		}
 	}
 
@@ -520,28 +544,17 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 
 	case "/ai":
 		if len(parts) < 2 {
-			if len(c.aiProviders) == 0 {
-				return false, "No AI providers configured. Add [aicoder.providers.<name>] sections to .brum.toml"
-			}
-			return false, fmt.Sprintf("Please specify an AI provider. Available: %s", strings.Join(c.aiProviders, ", "))
+			return false, "Please specify an AI provider (e.g., /ai claude)"
 		}
 		providerName := parts[1]
-
-		// Check if provider exists
-		if len(c.aiProviders) > 0 {
-			found := false
-			for _, provider := range c.aiProviders {
-				if provider == providerName {
-					found = true
-					break
-				}
-			}
-			if !found {
-				return false, fmt.Sprintf("AI provider '%s' not found. Available: %s", providerName, strings.Join(c.aiProviders, ", "))
-			}
-		} else {
-			// No providers configured
-			return false, "No AI providers configured. Add [aicoder.providers.<name>] sections to .brum.toml"
+		// Validate against available providers
+		validProviders := map[string]bool{
+			"claude":      true,
+			"claude-3-7":  true,
+			"claude-o3":   true,
+		}
+		if !validProviders[providerName] {
+			return false, fmt.Sprintf("Invalid AI provider '%s'. Available: claude, claude-3-7, claude-o3", providerName)
 		}
 		return true, ""
 

@@ -31,7 +31,7 @@
 enabled = true
 max_concurrent = 3
 workspace_base_dir = "~/.brummer/ai-coders"
-default_provider = "claude"  # Available: claude, opencode, gemini, terminal, local, mock
+default_provider = "claude"  # Available: claude, bash (configure more providers as needed)
 timeout_minutes = 30
 auto_cleanup = true
 cleanup_after_hours = 24
@@ -177,12 +177,12 @@ debug = "--debug"
 [ai_coders.providers.gemini-cli.cli_tool.environment]
 # Gemini uses API keys from its own config
 
-# Mock Provider for Testing
-[ai_coders.providers.mock]
-model = "mock-model"
+# Bash Provider (formerly Terminal)
+[ai_coders.providers.bash]
+model = "bash"
 max_tokens = 1000
-temperature = 0.5
-request_timeout_seconds = 5
+temperature = 0.0
+request_timeout_seconds = 10
 
 # Resource Limits
 [ai_coders.resource_limits]

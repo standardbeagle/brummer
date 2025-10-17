@@ -18,27 +18,52 @@ type MessageRouter struct {
 }
 
 // NewMessageRouter creates a new message router with all handlers
+// Note: This is called during Model creation before keyRegistry exists,
+// so keyboard handler registration happens later via RegisterKeyboardHandler
 func NewMessageRouter() *MessageRouter {
 	router := &MessageRouter{
 		handlers: make([]MessageHandler, 0),
 	}
 
 	// Register handlers in order of priority
-	router.RegisterHandler(NewDialogMessageHandler()) // Handle dialogs first (highest priority)
+	// Priority 0: Notifications (observes all messages, never blocks)
+	router.RegisterHandler(NewNotificationsMessageHandler())
+
+	// Priority 1: Dialogs (highest blocking priority)
+	router.RegisterHandler(NewDialogMessageHandler())
+
+	// Priority 2: System messages
 	router.RegisterHandler(NewSystemMessageHandler())
+
+	// Priority 3: Domain-specific handlers
 	router.RegisterHandler(NewProcessMessageHandler())
 	router.RegisterHandler(NewLogMessageHandler())
 	router.RegisterHandler(NewMCPMessageHandler())
 	router.RegisterHandler(NewAICoderMessageHandler())
-	router.RegisterHandler(NewSettingsMessageHandler())   // Settings service messages
-	router.RegisterHandler(NewNavigationMessageHandler()) // Navigation messages
+	router.RegisterHandler(NewSettingsMessageHandler())
+	router.RegisterHandler(NewNavigationMessageHandler())
 
-	// NOTE: Keyboard handling has been moved to KeyHandlerRegistry in Model.Update()
-	// These handlers remain for non-keyboard message processing only
-	router.RegisterHandler(NewViewSpecificHandler()) // Currently inactive (returns false from CanHandle)
-	router.RegisterHandler(NewViewMessageHandler())  // Handles window sizing, mouse, refresh (no keyboard)
+	// Priority 4: View-specific handlers (low priority)
+	router.RegisterHandler(NewViewSpecificHandler())
+	router.RegisterHandler(NewViewMessageHandler())
+
+	// Note: KeyboardMessageHandler is registered after keyRegistry creation
+	// via RegisterKeyboardHandler() method
 
 	return router
+}
+
+// RegisterKeyboardHandler adds the keyboard handler to the router
+// This must be called after keyRegistry is created
+func (r *MessageRouter) RegisterKeyboardHandler(keyRegistry *KeyHandlerRegistry) {
+	// Insert keyboard handler at priority position (after dialogs, before view-specific)
+	// Find the right position (after DialogMessageHandler, before ViewSpecificHandler)
+	insertPos := len(r.handlers) - 2 // Before ViewSpecificHandler and ViewMessageHandler
+
+	keyboardHandler := NewKeyboardMessageHandler(keyRegistry)
+
+	// Insert at the calculated position
+	r.handlers = append(r.handlers[:insertPos], append([]MessageHandler{keyboardHandler}, r.handlers[insertPos:]...)...)
 }
 
 // RegisterHandler adds a message handler to the router

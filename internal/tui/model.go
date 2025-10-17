@@ -714,87 +714,84 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// 13. Initialize AI Coder service (T028 - new service-based architecture, replaces legacy controller)
 	//     - Required by: AI coder features (new architecture)
 	//     - Dependencies: context (for lifecycle management)
-	// DISABLED FOR DEBUGGING - Commenting out to identify TUI startup issue
-	// ctx := context.Background() // TODO: Use proper context from application lifecycle
-	// m.aiCoderService = services.NewAICoderService(ctx)
+	ctx := context.Background() // TODO: Use proper context from application lifecycle
+	m.aiCoderService = services.NewAICoderService(ctx)
 
 	// 13.6. Subscribe to AI Coder service events (T028 - event routing)
 	//     - Required by: Service-to-component communication
 	//     - Dependencies: aiCoderService created, updateChan available
-	// DISABLED FOR DEBUGGING - Commenting out to identify TUI startup issue
-	// if m.aiCoderService != nil {
-	// 	svc := m.aiCoderService.(*services.AICoderService)
-	// 	eventBus := svc.EventBus().(*events.EventBus)
+	if m.aiCoderService != nil {
+		svc := m.aiCoderService.(*services.AICoderService)
+		eventBus := svc.EventBus().(*events.EventBus)
 
-	// 	// Subscribe to events and forward to component as proper message types
-	// 	eventBus.Subscribe("aicoder.session.created", func(event events.Event) {
-	// 		// Extract session info from event
-	// 		sessionID := event.ProcessID
-	// 		name := ""
-	// 		if nameVal, ok := event.Data["name"]; ok {
-	// 			name = nameVal.(string)
-	// 		}
-	// 		// Forward as proper message type
-	// 		m.updateChan <- aiCoderSessionMsg{
-	// 			SessionID: sessionID,
-	// 			Event:     "created",
-	// 			Data:      map[string]interface{}{"name": name},
-	// 		}
-	// 	})
+		// Subscribe to events and forward to component as proper message types
+		eventBus.Subscribe("aicoder.session.created", func(event events.Event) {
+			// Extract session info from event
+			sessionID := event.ProcessID
+			name := ""
+			if nameVal, ok := event.Data["name"]; ok {
+				name = nameVal.(string)
+			}
+			// Forward as proper message type
+			m.updateChan <- aiCoderSessionMsg{
+				SessionID: sessionID,
+				Event:     "created",
+				Data:      map[string]interface{}{"name": name},
+			}
+		})
 
-	// 	eventBus.Subscribe("aicoder.session.updated", func(event events.Event) {
-	// 		sessionID := event.ProcessID
-	// 		m.updateChan <- aiCoderSessionMsg{
-	// 			SessionID: sessionID,
-	// 			Event:     "updated",
-	// 		}
-	// 	})
+		eventBus.Subscribe("aicoder.session.updated", func(event events.Event) {
+			sessionID := event.ProcessID
+			m.updateChan <- aiCoderSessionMsg{
+				SessionID: sessionID,
+				Event:     "updated",
+			}
+		})
 
-	// 	eventBus.Subscribe("aicoder.session.ended", func(event events.Event) {
-	// 		sessionID := event.ProcessID
-	// 		reason := ""
-	// 		if reasonVal, ok := event.Data["reason"]; ok {
-	// 			reason = reasonVal.(string)
-	// 		}
-	// 		m.updateChan <- aiCoderSessionMsg{
-	// 			SessionID: sessionID,
-	// 			Event:     "ended",
-	// 			Data:      map[string]interface{}{"reason": reason},
-	// 		}
-	// 	})
+		eventBus.Subscribe("aicoder.session.ended", func(event events.Event) {
+			sessionID := event.ProcessID
+			reason := ""
+			if reasonVal, ok := event.Data["reason"]; ok {
+				reason = reasonVal.(string)
+			}
+			m.updateChan <- aiCoderSessionMsg{
+				SessionID: sessionID,
+				Event:     "ended",
+				Data:      map[string]interface{}{"reason": reason},
+			}
+		})
 
-	// 	eventBus.Subscribe("aicoder.pty.output", func(event events.Event) {
-	// 		sessionID := event.ProcessID
-	// 		output := ""
-	// 		if outputVal, ok := event.Data["output"]; ok {
-	// 			output = outputVal.(string)
-	// 		}
-	// 		m.updateChan <- aiCoderOutputMsg{
-	// 			SessionID: sessionID,
-	// 			Output:    output,
-	// 		}
-	// 	})
+		eventBus.Subscribe("aicoder.pty.output", func(event events.Event) {
+			sessionID := event.ProcessID
+			output := ""
+			if outputVal, ok := event.Data["output"]; ok {
+				output = outputVal.(string)
+			}
+			m.updateChan <- aiCoderOutputMsg{
+				SessionID: sessionID,
+				Output:    output,
+			}
+		})
 
-	// 	eventBus.Subscribe("aicoder.error", func(event events.Event) {
-	// 		sessionID := event.ProcessID
-	// 		var err error
-	// 		if errVal, ok := event.Data["error"]; ok {
-	// 			if e, ok := errVal.(error); ok {
-	// 				err = e
-	// 			}
-	// 		}
-	// 		m.updateChan <- aiCoderErrorMsg{
-	// 			SessionID: sessionID,
-	// 			Error:     err,
-	// 		}
-	// 	})
-	// }
+		eventBus.Subscribe("aicoder.error", func(event events.Event) {
+			sessionID := event.ProcessID
+			var err error
+			if errVal, ok := event.Data["error"]; ok {
+				if e, ok := errVal.(error); ok {
+					err = e
+				}
+			}
+			m.updateChan <- aiCoderErrorMsg{
+				SessionID: sessionID,
+				Error:     err,
+			}
+		})
+	}
 
 	// 13.7. Initialize AI Coders view component with service (Feature 005)
 	//     - Required by: AI Coders view rendering
 	//     - Dependencies: aiCoderService must be created
-	// DISABLED FOR DEBUGGING - Commenting out to identify TUI startup issue
-	// m.aicodersView = components.NewAICodersViewComponent(m.aiCoderService)
+	m.aicodersView = components.NewAICodersViewComponent(m.aiCoderService)
 
 	// 13.8. Connect AI coder service to ServiceBridge (Task 3 - ServiceBridge integration)
 	//     - Required by: Service event routing to UI components
@@ -834,6 +831,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// SIMPLIFIED: Pass viewManager directly instead of navigationService
 	m.keyRegistry.Register(NewGlobalNavigationHandler(m.viewManager, m.debugMode))
 
+	
 	// Priority 250: AI Coder specific keys (when in AI Coder view)
 	if m.aicodersView != nil {
 		m.keyRegistry.Register(NewAICoderKeyHandler(m.aicodersView))
@@ -853,6 +851,12 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	m.logStore.Add("system", "KeyRegistry",
 		fmt.Sprintf("✅ Simplified keyboard system initialized with %d handlers",
 			len(m.keyRegistry.handlers)), false)
+
+	// Register keyboard handler with message router
+	// This integrates keyboard handling into the unified routing system
+	m.messageRouter.RegisterKeyboardHandler(m.keyRegistry)
+	m.logStore.Add("system", "MessageRouter",
+		"✅ Keyboard handler registered with message router", false)
 
 	// 19. Set up event subscriptions immediately in constructor (not in Init)
 	//     - Required by: Event handling
@@ -883,15 +887,14 @@ func (m *Model) Init() tea.Cmd {
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
-	// Handle notification messages first
-	if m.notificationsComponent != nil {
-		_, cmd := m.notificationsComponent.Update(msg)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-	}
-
-	// Route message through Message Router for all handling
+	// CONSOLIDATED MESSAGE ROUTING
+	// All messages (including keyboard) are routed through the message router
+	// The router handles messages in priority order:
+	//   1. NotificationsMessageHandler (observes all messages)
+	//   2. DialogMessageHandler (handles modals/dialogs)
+	//   3. System/Process/Log/MCP/AI handlers
+	//   4. KeyboardMessageHandler (integrated key registry)
+	//   5. ViewMessageHandler (window size, mouse, etc.)
 	if m.messageRouter != nil {
 		newModel, cmd := m.messageRouter.Route(msg, m)
 		if cmd != nil {
@@ -900,43 +903,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m = newModel.(*Model)
 	}
 
-	// SIMPLIFIED KEYBOARD HANDLING - All keyboard events go through the registry
+	// Handle application-level messages that don't need routing
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		// Debug logging for key 3 lockup investigation
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '3' {
-			if m.logStore != nil {
-				m.logStore.Add("Update", "Debug", "Key 3 received in Update", false)
-			}
-		}
-
-		// Build rich context for key handlers
-		ctx := m.buildKeyContext()
-
-		if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '3' {
-			if m.logStore != nil {
-				m.logStore.Add("Update", "Debug", "Key 3: buildKeyContext completed", false)
-			}
-		}
-
-		// Route through the simplified key handler registry
-		if m.keyRegistry != nil {
-			if msg.Type == tea.KeyRunes && len(msg.Runes) == 1 && msg.Runes[0] == '3' {
-				if m.logStore != nil {
-					m.logStore.Add("Update", "Debug", "Key 3: Calling keyRegistry.HandleKey", false)
-				}
-			}
-			return m, m.keyRegistry.HandleKey(msg, ctx, m)
-		}
-
-		// Fallback: Let the legacy system handle it temporarily
-		// TODO: Remove this fallback once all handlers are migrated
-		newModel, cmd := m.messageRouter.Route(msg, m)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
-		}
-		m = newModel.(*Model)
-
 	case restartProcessMsg:
 		if msg.clearLogs {
 			m.logStore.ClearLogs()
@@ -1057,6 +1025,108 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		// Always trigger a view update when PTY events arrive
 		cmds = append(cmds, m.waitForUpdates())
+
+	case aiCoderSessionMsg:
+		// Handle AI Coder session events
+		if m.currentView() == ViewAICoders && m.aicodersView != nil {
+			// The AI Coder component will handle the session event via BubbleTea Update
+			_, cmd := m.aicodersView.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		// Log session events
+		switch msg.Event {
+		case "created":
+			if msg.Data != nil {
+				if dataMap, ok := msg.Data.(map[string]interface{}); ok {
+					if name, ok := dataMap["name"].(string); ok {
+						m.logStore.Add("system", "AI Coder", fmt.Sprintf("🤖 Session created: %s", name), false)
+					}
+				}
+			}
+		case "ended":
+			if msg.Data != nil {
+				if dataMap, ok := msg.Data.(map[string]interface{}); ok {
+					if reason, ok := dataMap["reason"].(string); ok {
+						m.logStore.Add("system", "AI Coder", fmt.Sprintf("🔚 Session ended: %s", reason), false)
+					}
+				}
+			}
+		}
+		cmds = append(cmds, m.waitForUpdates())
+
+	case aiCoderOutputMsg:
+		// Handle AI Coder output - update AI Coder view if it's active
+		if m.currentView() == ViewAICoders && m.aicodersView != nil {
+			// The AI Coder component will handle the output via BubbleTea Update
+			_, cmd := m.aicodersView.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		// Always trigger a view update when AI output arrives
+		cmds = append(cmds, m.waitForUpdates())
+
+	case aiCoderErrorMsg:
+		// Handle AI Coder errors - update AI Coder view if it's active
+		if m.currentView() == ViewAICoders && m.aicodersView != nil {
+			// The AI Coder component will handle the error via BubbleTea Update
+			_, cmd := m.aicodersView.Update(msg)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+		// Log AI errors
+		if msg.Error != nil {
+			m.logStore.Add("system", "AI Coder", fmt.Sprintf("❌ AI Error: %v", msg.Error), true)
+		}
+		cmds = append(cmds, m.waitForUpdates())
+
+	case messages.CommandExecuteMsg:
+		// Handle command execution from command window
+		// Close command window if open
+		if m.commandWindowView.IsShowingCommandWindow() {
+			m.commandWindowView.HideCommandWindow()
+		}
+
+		// Execute the command using the model's command handling
+		commandStr := "/" + msg.CommandName
+		if len(msg.Arguments) > 0 {
+			commandStr += " " + strings.Join(msg.Arguments, " ")
+		}
+		cmd := m.handleSlashCommand(commandStr)
+		if cmd != nil {
+			cmds = append(cmds, cmd)
+		}
+
+	case commands.CommandResultMsg:
+		// Handle command results from slash commands
+		switch msg.Command {
+		case "clear":
+			m.handleClearCommand(msg.Message)
+		case "show":
+			*m.logsView.GetShowPatternPtr() = msg.Message
+		case "hide":
+			*m.logsView.GetHidePatternPtr() = msg.Message
+		case "proxy":
+			if msg.Message == "list" {
+				m.listProxies()
+			} else {
+				m.handleProxyCommand(msg.Message)
+			}
+		case "toggle-proxy":
+			m.toggleProxyMode()
+		case "ai":
+			m.handleAICommand(msg.Message)
+		case "term":
+			m.showTerminal()
+		}
+
+		// Switch view if specified
+		if msg.View != "" {
+			m.switchToView(messages.ViewType(msg.View))
+		}
 
 	default:
 		// Handle generic update messages (including nil messages from script selector)
@@ -1758,32 +1828,16 @@ func (m *Model) calculateContentHeight() int {
 
 // renderErrorsViewSplit moved to ErrorsViewController
 
-func (m *Model) handleSlashCommand(input string) {
-	// Create the context for the slash command handler
-	currentView := string(m.currentView())
+func (m *Model) handleSlashCommand(input string) tea.Cmd {
+	// Create simplified context with only essential dependencies
 	ctx := &commands.SlashCommandContext{
 		ProcessManager: m.processMgr,
 		LogStore:       m.logStore,
-		UpdateChan:     m.updateChan,
-
-		// Current state pointers - get from LogsViewController
-		ShowPattern:   m.logsView.GetShowPatternPtr(),
-		HidePattern:   m.logsView.GetHidePatternPtr(),
-		SearchResults: m.logsView.GetSearchResultsPtr(),
-		CurrentView:   &currentView,
-
-		// Callbacks
-		UpdateLogsView: func() { m.updateLogsView() },
-		ClearLogs:      func(target string) { m.handleClearCommand(target) },
-		SetProxyURL:    func(urlStr string) { m.handleProxyCommand(urlStr) },
-		ListProxies:    func() { m.listProxies() },
-		ToggleProxy:    func() { m.toggleProxyMode() },
-		StartAICoder:   func(providerName string) { m.handleAICommand(providerName) },
-		ShowTerminal:   func() { m.showTerminal() },
+		Model:          m, // Pass model for callbacks
 	}
 
-	// Delegate to the functional handler
-	commands.HandleSlashCommand(ctx, input)
+	// Delegate to the simplified handler - returns tea.Cmd
+	return commands.HandleSlashCommand(ctx, input)
 }
 
 // Helper methods for slash command callbacks
@@ -1893,53 +1947,11 @@ func (m *Model) toggleProxyMode() {
 }
 
 func (m *Model) handleAICommand(providerName string) {
-	if m.aiCoderService == nil {
-		m.logStore.Add("system", "System", "Error: AI Coder feature is not initialized", true)
-		return
-	}
-
-	// Get provider configuration
-	adapter := &configAdapter{cfg: m.cfg}
-	providerConfigs := adapter.GetProviderConfigs()
-
-	providerConfig, exists := providerConfigs[providerName]
-	if !exists {
-		// Get available provider names for error message
-		availableProviders := make([]string, 0, len(providerConfigs))
-		for name := range providerConfigs {
-			availableProviders = append(availableProviders, name)
-		}
-		m.logStore.Add("system", "System", fmt.Sprintf("Provider %s not configured. Available: %v", providerName, availableProviders), true)
-		return
-	}
-
-	// Get CLI command from provider config
-	if providerConfig.CLITool == nil {
-		m.logStore.Add("system", "System", fmt.Sprintf("Provider %s does not have CLI tool configured", providerName), true)
-		return
-	}
-
-	// Build command with proper template substitution
-	// Access the raw config to get CLI tool configuration with templates
-	var command string
-	var args []string
-	var err error
-
-	if m.cfg != nil && m.cfg.AICoders != nil && m.cfg.AICoders.Providers != nil {
-		if rawProvider, exists := m.cfg.AICoders.Providers[providerName]; exists && rawProvider.CLITool != nil {
-			// Use CLICommandHelper to process templates
-			cliHelper := NewCLICommandHelper(m.cfg)
-			command, args, err = cliHelper.buildCommandFromConfig(providerName, rawProvider.CLITool, "")
-			if err != nil {
-				m.logStore.Add("system", "System", fmt.Sprintf("Error building CLI command for %s: %v", providerName, err), true)
-				return
-			}
-		} else {
-			m.logStore.Add("system", "System", fmt.Sprintf("Provider %s does not have CLI tool configured in raw config", providerName), true)
-			return
-		}
-	} else {
-		m.logStore.Add("system", "System", "No AI coder configuration available", true)
+	// Use the existing PTY infrastructure to launch Claude CLI tool
+	// Get CLI command and args from configuration
+	command, args, err := m.getCLICommandFromConfig(providerName, "")
+	if err != nil {
+		m.logStore.Add("system", "System", fmt.Sprintf("Error getting CLI command for %s: %v", providerName, err), true)
 		return
 	}
 
@@ -1949,35 +1961,34 @@ func (m *Model) handleAICommand(providerName string) {
 		fullCommand = command + " " + strings.Join(args, " ")
 	}
 
-	// Get working directory
-	workingDir := m.workingDir
-	if providerConfig.CLITool.WorkingDir != "" {
-		workingDir = providerConfig.CLITool.WorkingDir
-	}
+	// Create session using existing PTY infrastructure
+	if m.aiCoderService != nil {
+		// Use the AI coder service to create a PTY session
+		svc := m.aiCoderService.(*services.AICoderService)
+		sessionID, err := svc.CreateSession(
+			context.Background(),
+			fmt.Sprintf("AI: %s", providerName),
+			fullCommand,
+			m.workingDir,
+		)
+		if err != nil {
+			m.logStore.Add("system", "System", fmt.Sprintf("Error creating AI session: %v", err), true)
+			return
+		}
 
-	// Create session via service
-	svc := m.aiCoderService.(*services.AICoderService)
-	sessionID, err := svc.CreateSession(
-		context.Background(),
-		fmt.Sprintf("AI: %s", providerName),
-		fullCommand,
-		workingDir,
-	)
-	if err != nil {
-		m.logStore.Add("system", "System", fmt.Sprintf("Error creating AI session: %v", err), true)
-		return
-	}
+		// Start the session with default terminal dimensions
+		err = svc.StartSession(context.Background(), sessionID, 80, 24)
+		if err != nil {
+			m.logStore.Add("system", "System", fmt.Sprintf("Error starting AI session: %v", err), true)
+			return
+		}
 
-	// Start the session with default terminal dimensions
-	err = svc.StartSession(context.Background(), sessionID, 80, 24)
-	if err != nil {
-		m.logStore.Add("system", "System", fmt.Sprintf("Error starting AI session: %v", err), true)
-		return
+		// Switch to AI Coders view to show the session
+		m.switchToView(ViewAICoders)
+		m.logStore.Add("system", "System", fmt.Sprintf("Started AI coder session: %s", providerName), false)
+	} else {
+		m.logStore.Add("system", "System", "Error: AI Coder service is not initialized", true)
 	}
-
-	// Switch to AI Coders view to show the session
-	m.switchToView(ViewAICoders)
-	m.logStore.Add("system", "System", fmt.Sprintf("Started AI coder session: %s", providerName), false)
 }
 
 func (m *Model) showTerminal() {
@@ -2017,16 +2028,7 @@ func (m *Model) handleToggleProxy() {
 
 func (m *Model) showCommandWindow() {
 	scripts := m.processMgr.GetScripts()
-
-	// Get AI providers from configuration
-	var aiProviders []string
-	adapter := &configAdapter{cfg: m.cfg}
-	providerConfigs := adapter.GetProviderConfigs()
-	for name := range providerConfigs {
-		aiProviders = append(aiProviders, name)
-	}
-
-	m.commandWindowView.ShowCommandWindow(scripts, aiProviders)
+	m.commandWindowView.ShowCommandWindow(scripts)
 }
 
 // System message methods have been moved to systemController
@@ -2162,7 +2164,7 @@ func (m *Model) buildKeyContext() KeyContext {
 	// Check for special contexts
 	// Command window takes precedence
 	if m.commandWindowView != nil && m.commandWindowView.IsShowingCommandWindow() {
-		ctx.Context = "command_palette"
+		ctx.Context = "command_window"
 		return ctx
 	}
 

@@ -48,7 +48,7 @@ func initialModel() model {
 	registry.RegisterMultiple(components.GetProcessCommands(processMgr))
 	registry.RegisterMultiple(components.GetLogCommands(logStore))
 	registry.RegisterMultiple(components.GetProxyCommands(proxyServer))
-	registry.RegisterMultiple(components.GetAICommands([]string{"claude", "gpt4", "mock"}))
+	registry.RegisterMultiple(components.GetAICommands([]string{"claude", "bash"}))
 	registry.RegisterMultiple(components.GetDockerCommands())
 
 	// Create command executor with real services (aiCoderManager can be nil for testing)

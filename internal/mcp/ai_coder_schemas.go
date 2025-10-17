@@ -15,9 +15,8 @@ var aiCoderCreateSchema = json.RawMessage(`{
 		},
 		"provider": {
 			"type": "string",
-			"description": "AI provider to use (claude, gpt4, local, mock)",
-			"enum": ["claude", "gpt4", "local", "mock"],
-			"default": "mock"
+			"description": "AI provider to use (configured in .brum.toml)",
+			"default": "claude"
 		},
 		"workspace_files": {
 			"type": "array",

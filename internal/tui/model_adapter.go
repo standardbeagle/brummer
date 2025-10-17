@@ -112,18 +112,9 @@ func (ma *ModelAdapter) IsCommandWindowVisible() bool {
 }
 
 func (ma *ModelAdapter) ShowCommandWindow() {
-	// Get scripts and AI providers
+	// Get scripts
 	scripts := ma.model.processMgr.GetScripts()
-
-	// Get AI providers from configuration
-	var aiProviders []string
-	adapter := &configAdapter{cfg: ma.model.cfg}
-	providerConfigs := adapter.GetProviderConfigs()
-	for name := range providerConfigs {
-		aiProviders = append(aiProviders, name)
-	}
-
-	ma.model.commandWindowView.ShowCommandWindow(scripts, aiProviders)
+	ma.model.commandWindowView.ShowCommandWindow(scripts)
 }
 
 func (ma *ModelAdapter) HideCommandWindow() {

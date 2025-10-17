@@ -32,7 +32,6 @@ type CommandAutocompleteInterface interface {
 	View() string
 	RenderDropdown(maxSuggestions int) string
 	GetErrorMessage() string
-	SetAIProviders(providers []string)
 	Value() string
 	GetSuggestions() []string
 	Update(msg tea.Msg) (CommandAutocompleteInterface, tea.Cmd)
@@ -101,9 +100,46 @@ func (v *CommandWindowView) Init() tea.Cmd {
 
 // Update handles messages (BubbleTea interface)
 func (v *CommandWindowView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	// Command window is primarily controlled by input controller
-	// No automatic updates needed
-	return v, nil
+	var cmds []tea.Cmd
+
+	// If command window is showing, update the command autocomplete component
+	if v.showingCommandWindow && v.commandAutocomplete != nil {
+		switch keyMsg := msg.(type) {
+		case tea.KeyMsg:
+			// Forward keyboard events to the command autocomplete component
+			newAutocomplete, cmd := v.commandAutocomplete.Update(keyMsg)
+			v.commandAutocomplete = newAutocomplete
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+
+	// Update custom command input if showing
+	if v.showingCustomCommand {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			newInput, cmd := v.customCommandInput.Update(msg)
+			v.customCommandInput = newInput
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+
+	// Update commands list if run dialog is showing
+	if v.showingRunDialog {
+		switch msg := msg.(type) {
+		case tea.KeyMsg:
+			newList, cmd := v.commandsList.Update(msg)
+			v.commandsList = newList
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+	}
+
+	return v, tea.Batch(cmds...)
 }
 
 // View renders the component (BubbleTea interface)
@@ -154,7 +190,7 @@ func (v *CommandWindowView) UpdateSize(width, height int) {
 }
 
 // ShowCommandWindow shows the command palette window
-func (v *CommandWindowView) ShowCommandWindow(scripts map[string]string, aiProviders []string) {
+func (v *CommandWindowView) ShowCommandWindow(scripts map[string]string) {
 	v.showingCommandWindow = true
 	v.commandAutocomplete = v.autocompleteFactory(scripts, v.processMgr)
 
@@ -163,11 +199,6 @@ func (v *CommandWindowView) ShowCommandWindow(scripts map[string]string, aiProvi
 		windowWidth = v.width - CommandWindowPadding
 	}
 	v.commandAutocomplete.SetWidth(windowWidth)
-
-	// Set AI providers if available
-	if len(aiProviders) > 0 {
-		v.commandAutocomplete.SetAIProviders(aiProviders)
-	}
 
 	v.commandAutocomplete.Focus()
 }
@@ -230,6 +261,11 @@ func (v *CommandWindowView) IsShowingCustomCommand() bool {
 // GetCommandAutocomplete returns the command autocomplete for input handling
 func (v *CommandWindowView) GetCommandAutocomplete() CommandAutocompleteInterface {
 	return v.commandAutocomplete
+}
+
+// SetCommandAutocomplete sets the command autocomplete (used by DialogMessageHandler)
+func (v *CommandWindowView) SetCommandAutocomplete(autocomplete CommandAutocompleteInterface) {
+	v.commandAutocomplete = autocomplete
 }
 
 // GetCustomCommandInput returns the custom command input for input handling

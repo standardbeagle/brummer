@@ -355,6 +355,7 @@ func (h *AICoderKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 type ExitPTYModeMsg struct{}
 type EnterPTYModeMsg struct{}
 
+
 // StatusMsg displays a status message to the user
 type StatusMsg struct {
 	Message string

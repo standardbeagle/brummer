@@ -286,6 +286,7 @@ func (f *SafeOperationCommandFactory) CreateErrorHandlingTestCommand(operationID
 }
 
 // SafeOperationCommands provides high-level commands for safe operations
+// NOTE: All operations include panic recovery - this is not optional
 type SafeOperationCommands struct {
 	factory *SafeOperationCommandFactory
 }
@@ -297,42 +298,137 @@ func NewSafeOperationCommands() *SafeOperationCommands {
 	}
 }
 
-// ExecuteWithPanicRecovery returns a command to execute with panic recovery
-func (soc *SafeOperationCommands) ExecuteWithPanicRecovery(operationID, operationName string, shouldFail bool, model tea.Model) tea.Cmd {
+// ExecuteOperation returns a command to execute an operation with automatic panic recovery
+// The operation function is required and will be wrapped with panic recovery automatically
+// All operations are executed safely - panic recovery is always enabled
+func (soc *SafeOperationCommands) ExecuteOperation(operationID, operationName string, operation func() error) tea.Cmd {
+	if operation == nil {
+		panic("ExecuteOperation requires a non-nil operation function")
+	}
+
 	return func() tea.Msg {
-		cmd := soc.factory.CreateExecuteWithPanicRecoveryCommand(operationID, operationName, shouldFail, model)
-		return cmd.Run()
+		// Execute with panic recovery
+		defer func() {
+			if r := recover(); r != nil {
+				stack := debug.Stack()
+				fmt.Printf("Panic recovered in operation %s: %v\nStack trace:\n%s", operationName, r, string(stack))
+			}
+		}()
+
+		err := operation()
+		if err != nil {
+			return messages.NewCommandFailedMessage(
+				operationID,
+				types.CommandTypeSystem,
+				err,
+				0,
+				types.OperationContext{
+					RequestID:   operationID,
+					OperationID: operationID,
+					Priority:    types.PriorityNormal,
+					Metadata: map[string]interface{}{
+						"operationName": operationName,
+					},
+				},
+				true,
+			)
+		}
+
+		return messages.NewCommandCompletedMessage(
+			operationID,
+			types.CommandTypeSystem,
+			fmt.Sprintf("Operation %s completed successfully", operationName),
+			0,
+			types.OperationContext{
+				RequestID:   operationID,
+				OperationID: operationID,
+				Priority:    types.PriorityNormal,
+				Metadata: map[string]interface{}{
+					"operationName": operationName,
+				},
+			},
+		)
 	}
 }
 
-// ExecuteNoErrorWithPanicRecovery returns a command to execute without error return but with panic recovery
-func (soc *SafeOperationCommands) ExecuteNoErrorWithPanicRecovery(operationID, operationName string, shouldPanic bool, model tea.Model) tea.Cmd {
-	return func() tea.Msg {
-		cmd := soc.factory.CreateExecuteNoErrorWithPanicRecoveryCommand(operationID, operationName, shouldPanic, model)
-		return cmd.Run()
+// ExecuteAsyncOperation returns a command for async operations with timeout and panic recovery
+// The operation function is required and will be wrapped with both timeout and panic recovery
+func (soc *SafeOperationCommands) ExecuteAsyncOperation(operationID, operationName string, timeout time.Duration, operation func() error) tea.Cmd {
+	if operation == nil {
+		panic("ExecuteAsyncOperation requires a non-nil operation function")
 	}
-}
-
-// SafeAsyncOperation returns a command for safe async operations
-func (soc *SafeOperationCommands) SafeAsyncOperation(operationID, operationName string, timeout time.Duration, model tea.Model) tea.Cmd {
-	return func() tea.Msg {
-		cmd := soc.factory.CreateSafeAsyncOperationCommand(operationID, operationName, timeout, model)
-		return cmd.Run()
+	if timeout <= 0 {
+		panic("ExecuteAsyncOperation requires a positive timeout duration")
 	}
-}
 
-// PanicRecoveryTest returns a command to test panic recovery
-func (soc *SafeOperationCommands) PanicRecoveryTest(operationID, testType string, model tea.Model) tea.Cmd {
 	return func() tea.Msg {
-		cmd := soc.factory.CreatePanicRecoveryTestCommand(operationID, testType, model)
-		return cmd.Run()
-	}
-}
+		// Execute with panic recovery and timeout
+		done := make(chan error, 1)
 
-// ErrorHandlingTest returns a command to test error handling
-func (soc *SafeOperationCommands) ErrorHandlingTest(operationID, errorType string, model tea.Model) tea.Cmd {
-	return func() tea.Msg {
-		cmd := soc.factory.CreateErrorHandlingTestCommand(operationID, errorType, model)
-		return cmd.Run()
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					stack := debug.Stack()
+					fmt.Printf("Panic recovered in async operation %s: %v\nStack trace:\n%s", operationName, r, string(stack))
+					done <- fmt.Errorf("panic recovered: %v", r)
+				}
+			}()
+			done <- operation()
+		}()
+
+		select {
+		case err := <-done:
+			if err != nil {
+				return messages.NewCommandFailedMessage(
+					operationID,
+					types.CommandTypeSystem,
+					err,
+					0,
+					types.OperationContext{
+						RequestID:   operationID,
+						OperationID: operationID,
+						Priority:    types.PriorityNormal,
+						Timeout:     timeout,
+						Metadata: map[string]interface{}{
+							"operationName": operationName,
+						},
+					},
+					true,
+				)
+			}
+
+			return messages.NewCommandCompletedMessage(
+				operationID,
+				types.CommandTypeSystem,
+				fmt.Sprintf("Async operation %s completed successfully", operationName),
+				0,
+				types.OperationContext{
+					RequestID:   operationID,
+					OperationID: operationID,
+					Priority:    types.PriorityNormal,
+					Timeout:     timeout,
+					Metadata: map[string]interface{}{
+						"operationName": operationName,
+					},
+				},
+			)
+		case <-time.After(timeout):
+			return messages.NewCommandFailedMessage(
+				operationID,
+				types.CommandTypeSystem,
+				fmt.Errorf("operation timed out after %v", timeout),
+				timeout,
+				types.OperationContext{
+					RequestID:   operationID,
+					OperationID: operationID,
+					Priority:    types.PriorityNormal,
+					Timeout:     timeout,
+					Metadata: map[string]interface{}{
+						"operationName": operationName,
+					},
+				},
+				true,
+			)
+		}
 	}
 }

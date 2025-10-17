@@ -31,9 +31,6 @@ func (a *CommandAutocompleteAdapter) GetErrorMessage() string {
 	return a.inner.GetErrorMessage()
 }
 
-func (a *CommandAutocompleteAdapter) SetAIProviders(providers []string) {
-	a.inner.SetAIProviders(providers)
-}
 
 func (a *CommandAutocompleteAdapter) Value() string {
 	return a.inner.Value()
