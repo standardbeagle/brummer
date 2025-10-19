@@ -115,6 +115,98 @@ As a developer using Brummer, I need all TUI tabs to be fully functional with re
 - How do tabs recover from View() rendering errors?
 - What happens when multiple updates occur simultaneously?
 
+## Detailed Design: Errors vs Web Tabs *(mandatory)*
+
+### Errors Tab Content
+The Errors tab displays **process output errors** - these are errors emitted by the running processes themselves:
+
+#### Content Sources:
+- **stderr output** from running processes (npm scripts, custom commands)
+- **Error-level log entries** parsed from process output (e.g., `[ERROR]`, `Error:`, stack traces)
+- **Process crash information** (exit codes, termination signals)
+- **Application-level errors** from the processes being monitored
+
+#### Content Characteristics:
+- **Source**: Process stdout/stderr streams
+- **Format**: Plain text output from processes, may include:
+  - JavaScript/TypeScript stack traces
+  - Compilation errors from build tools
+  - Runtime exceptions from applications
+  - Linter/test framework error messages
+- **Timestamp**: When the error was captured from process output
+- **Context**: Process name, PID, and line context from logs
+- **Lifecycle**: Cleared when user presses 'c' or when process is removed
+
+#### Example Error Content:
+```
+[2025-10-19 14:32:15] dev (PID: 12345)
+Error: Cannot find module './config'
+    at Function.Module._resolveFilename (node:internal/modules/cjs/loader:1075:15)
+    at Function.Module._load (node:internal/modules/cjs/loader:920:27)
+
+[2025-10-19 14:33:02] test (PID: 12389)
+FAIL src/components/Button.test.tsx
+  ● Button component › should render with correct text
+    Expected: "Submit"
+    Received: "Click Me"
+```
+
+### Web Tab Content
+The Web tab displays **HTTP proxy events** - these are network requests/responses captured by Brummer's integrated proxy server:
+
+#### Content Sources:
+- **HTTP requests** intercepted by the proxy server
+- **HTTP responses** captured by the proxy server
+- **WebSocket connections** proxied through the server
+- **Discovered endpoints** from proxy traffic analysis
+
+#### Content Characteristics:
+- **Source**: Proxy server's HTTP/HTTPS interception layer
+- **Format**: Structured HTTP data including:
+  - Request method (GET, POST, PUT, DELETE, etc.)
+  - Request/response headers
+  - Request/response body (JSON, HTML, etc.)
+  - Status codes (200, 404, 500, etc.)
+  - Response times and payload sizes
+- **Timestamp**: When the HTTP transaction occurred
+- **Context**: Endpoint URL, client IP, proxy status
+- **Lifecycle**: Cleared when user presses 'c' or when proxy is reset
+
+#### Example Web Content:
+```
+[2025-10-19 14:35:12] GET http://localhost:3000/api/users
+Status: 200 OK | Size: 2.4 KB | Time: 45ms
+Headers:
+  Content-Type: application/json
+  Cache-Control: no-cache
+Response: { "users": [...], "total": 42 }
+
+[2025-10-19 14:35:15] POST http://localhost:3000/api/auth/login
+Status: 401 Unauthorized | Size: 156 B | Time: 12ms
+Headers:
+  Content-Type: application/json
+Response: { "error": "Invalid credentials" }
+```
+
+### Key Differences Summary
+
+| Aspect | Errors Tab | Web Tab |
+|--------|-----------|---------|
+| **Data Source** | Process stdout/stderr | Proxy server HTTP events |
+| **Content Type** | Application errors, stack traces | HTTP requests/responses |
+| **Structure** | Unstructured text logs | Structured HTTP data |
+| **When Populated** | When processes write to stderr or log errors | When proxy intercepts HTTP traffic |
+| **Primary Use Case** | Debugging application code issues | Monitoring API calls and network activity |
+| **Filtering** | By process name, error pattern | By endpoint, status code, HTTP method |
+| **Detail View** | Error context and stack trace | Request/response headers and body |
+
+### Design Rationale
+Separating errors and web events into distinct tabs provides:
+- **Clarity**: Users immediately know where to look for different types of issues
+- **Performance**: Each tab can be optimized for its specific data type
+- **Workflow**: Developers can monitor application errors separately from API/network activity
+- **Filtering**: Each tab can have specialized filters appropriate to its content type
+
 ## Requirements *(mandatory)*
 
 ### Functional Requirements
