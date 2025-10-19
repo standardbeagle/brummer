@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,9 +23,6 @@ type StateManager struct {
 	// Operation tracking
 	operations *OperationsTracker `json:"operations"`
 
-	// Cache management
-	cache *Cache `json:"cache"`
-
 	// Performance metrics
 	metrics *PerformanceMetrics `json:"metrics"`
 
@@ -34,7 +30,6 @@ type StateManager struct {
 	config *Configuration `json:"config"`
 
 	// Synchronization
-	mu sync.RWMutex
 }
 
 // UIState represents the current UI state
@@ -150,9 +145,6 @@ type Configuration struct {
 	// Performance settings
 	MaxConcurrentCommands int              `json:"maxConcurrentCommands"`
 	CommandTimeout        time.Duration    `json:"commandTimeout"`
-	CacheSize            int               `json:"cacheSize"`
-	CacheTTL             time.Duration     `json:"cacheTTL"`
-
 	// Feature flags
 	EnableDebugMode      bool              `json:"enableDebugMode"`
 	EnableMetrics        bool              `json:"enableMetrics"`
@@ -210,7 +202,6 @@ func NewStateManager() *StateManager {
 		uiState:    NewUIState(),
 		components: make(map[string]*ComponentState),
 		operations: NewOperationsTracker(),
-		cache:      NewCache(1000, 5*time.Minute),
 		metrics:    NewPerformanceMetrics(),
 		config:     NewConfiguration(),
 	}
@@ -267,8 +258,6 @@ func NewConfiguration() *Configuration {
 		ShowStatusBar:         true,
 		MaxConcurrentCommands: 10,
 		CommandTimeout:        30 * time.Second,
-		CacheSize:             1000,
-		CacheTTL:              5 * time.Minute,
 		EnableDebugMode:       false,
 		EnableMetrics:         true,
 		EnableAutoSave:        true,
@@ -287,18 +276,14 @@ func (s *StateManager) GetVersion() uint64 {
 // IncrementVersion increments the state version atomically
 func (s *StateManager) IncrementVersion() uint64 {
 	newVersion := atomic.AddUint64(&s.version, 1)
-	s.mu.Lock()
 	s.lastUpdate = time.Now()
-	s.mu.Unlock()
 	return newVersion
 }
 
 // SetVersion sets the state version (for initialization)
 func (s *StateManager) SetVersion(version uint64) {
 	atomic.StoreUint64(&s.version, version)
-	s.mu.Lock()
 	s.lastUpdate = time.Now()
-	s.mu.Unlock()
 }
 
 // State modification methods
@@ -337,8 +322,6 @@ func (s *StateManager) TrackUpdate(msg tea.Msg) {
 
 // handleUIStateUpdate processes UI state updates
 func (s *StateManager) handleUIStateUpdate(msg *UIStateUpdateMessage, version uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	switch msg.Field {
 	case "activeTab":
@@ -392,8 +375,6 @@ func (s *StateManager) handleUIStateUpdate(msg *UIStateUpdateMessage, version ui
 
 // handleComponentStateUpdate processes component state updates
 func (s *StateManager) handleComponentStateUpdate(msg *ComponentStateUpdateMessage, version uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	component, exists := s.components[msg.ComponentID]
 	if !exists {
@@ -437,8 +418,6 @@ func (s *StateManager) handleComponentStateUpdate(msg *ComponentStateUpdateMessa
 
 // handleConfigurationUpdate processes configuration updates
 func (s *StateManager) handleConfigurationUpdate(msg *ConfigurationUpdateMessage, version uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	switch msg.Field {
 	case "theme":
@@ -453,10 +432,6 @@ func (s *StateManager) handleConfigurationUpdate(msg *ConfigurationUpdateMessage
 		s.config.MaxConcurrentCommands = msg.Value.(int)
 	case "commandTimeout":
 		s.config.CommandTimeout = msg.Value.(time.Duration)
-	case "cacheSize":
-		s.config.CacheSize = msg.Value.(int)
-	case "cacheTTL":
-		s.config.CacheTTL = msg.Value.(time.Duration)
 	case "enableDebugMode":
 		s.config.EnableDebugMode = msg.Value.(bool)
 	case "enableMetrics":
@@ -475,8 +450,6 @@ func (s *StateManager) handleConfigurationUpdate(msg *ConfigurationUpdateMessage
 
 // handleMetricsUpdate processes metrics updates
 func (s *StateManager) handleMetricsUpdate(msg *MetricsUpdateMessage, version uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	switch msg.Type {
 	case "responseTime":
@@ -509,8 +482,6 @@ func (s *StateManager) handleMetricsUpdate(msg *MetricsUpdateMessage, version ui
 
 // handlePerformanceMetrics processes performance metrics
 func (s *StateManager) handlePerformanceMetrics(msg *PerformanceMetricsMessage, version uint64) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	s.metrics = msg.Metrics
 	s.metrics.LastUpdateTime = time.Now()
@@ -530,8 +501,6 @@ func (s *StateManager) updateCommandSuccessRate() {
 
 // GetUIState returns a copy of the current UI state
 func (s *StateManager) GetUIState() UIState {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	// Return a deep copy
 	state := *s.uiState
@@ -552,8 +521,6 @@ func (s *StateManager) GetUIState() UIState {
 
 // GetComponentState returns the state of a specific component
 func (s *StateManager) GetComponentState(componentID string) (*ComponentState, bool) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	component, exists := s.components[componentID]
 	if !exists {
@@ -586,8 +553,6 @@ func (s *StateManager) GetComponentState(componentID string) (*ComponentState, b
 
 // GetConfiguration returns a copy of the current configuration
 func (s *StateManager) GetConfiguration() Configuration {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	config := *s.config
 	config.CustomSettings = make(map[string]interface{})
@@ -601,16 +566,12 @@ func (s *StateManager) GetConfiguration() Configuration {
 
 // GetMetrics returns a copy of the current performance metrics
 func (s *StateManager) GetMetrics() PerformanceMetrics {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	return *s.metrics
 }
 
 // GetActiveComponents returns all active components
 func (s *StateManager) GetActiveComponents() map[string]*ComponentState {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	result := make(map[string]*ComponentState)
 	for id, component := range s.components {
@@ -645,8 +606,6 @@ func (s *StateManager) GetActiveComponents() map[string]*ComponentState {
 
 // GetLoadingComponents returns all components that are currently loading
 func (s *StateManager) GetLoadingComponents() map[string]*ComponentState {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	result := make(map[string]*ComponentState)
 	for id, component := range s.components {
@@ -660,8 +619,6 @@ func (s *StateManager) GetLoadingComponents() map[string]*ComponentState {
 
 // GetComponentsWithError returns all components that have errors
 func (s *StateManager) GetComponentsWithError() map[string]*ComponentState {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	result := make(map[string]*ComponentState)
 	for id, component := range s.components {
@@ -675,8 +632,6 @@ func (s *StateManager) GetComponentsWithError() map[string]*ComponentState {
 
 // CreateSnapshot creates a snapshot of the current state
 func (s *StateManager) CreateSnapshot() *StateSnapshot {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	return &StateSnapshot{
 		Version:    s.GetVersion(),
@@ -712,8 +667,6 @@ func (s *StateManager) createStateMap() map[string]interface{} {
 
 // RestoreFromSnapshot restores state from a snapshot
 func (s *StateManager) RestoreFromSnapshot(snapshot *StateSnapshot) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	// Restore version
 	s.SetVersion(snapshot.Version)
@@ -746,8 +699,6 @@ func (s *StateManager) RestoreFromSnapshot(snapshot *StateSnapshot) error {
 
 // Cleanup removes old and unused state data
 func (s *StateManager) Cleanup(maxAge time.Duration) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	cutoff := time.Now().Add(-maxAge)
 

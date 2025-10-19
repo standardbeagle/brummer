@@ -65,6 +65,13 @@ func NewURLsView() *URLsViewComponentNew {
 }
 
 // ViewWithState renders the URLs view using external state (Redux/Elm compliant)
+//
+// ⚠️  CRITICAL: This method MUST be pure and non-blocking!
+// ❌ WRONG:  urls := urlService.DiscoverURLs()  // DON'T call services that might block!
+// WHY: View() must return immediately. Blocking freezes the BubbleTea event loop.
+// ✅ CORRECT: Only read from masterData (cached state).
+//
+// See: /docs/architecture/tui-deadlock-prevention.md for mandatory patterns
 func (c *URLsViewComponentNew) ViewWithState(masterData *state.MasterData) string {
 	if !c.IsVisible() {
 		return ""

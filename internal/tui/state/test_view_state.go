@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"time"
 )
 
@@ -81,7 +80,6 @@ type TestViewState struct {
 
 	// Version for atomic updates and state tracking
 	version         uint64
-	mu              sync.RWMutex
 }
 
 // NewTestViewState creates a new test view sub-model with initial state
@@ -112,8 +110,6 @@ func NewTestViewState() *TestViewState {
 
 // StartTestRun starts a new test run (immutable)
 func (s *TestViewState) StartTestRun(run TestRunInfo) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 
@@ -147,8 +143,6 @@ func (s *TestViewState) StartTestRun(run TestRunInfo) *TestViewState {
 
 // UpdateTestRun updates an existing test run (immutable)
 func (s *TestViewState) UpdateTestRun(runID string, updates TestRunInfo) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 
@@ -187,8 +181,6 @@ func (s *TestViewState) UpdateTestRun(runID string, updates TestRunInfo) *TestVi
 
 // AddTestResult adds a test result to a run (immutable)
 func (s *TestViewState) AddTestResult(runID string, result TestResultInfo) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 
@@ -207,8 +199,6 @@ func (s *TestViewState) AddTestResult(runID string, result TestResultInfo) *Test
 
 // SetSelectedRun updates the selected run (immutable)
 func (s *TestViewState) SetSelectedRun(runID string) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SelectedRunID = runID
@@ -218,8 +208,6 @@ func (s *TestViewState) SetSelectedRun(runID string) *TestViewState {
 
 // SetSelectedTab updates the selected tab (immutable)
 func (s *TestViewState) SetSelectedTab(tab TestTab) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SelectedTab = tab
@@ -229,8 +217,6 @@ func (s *TestViewState) SetSelectedTab(tab TestTab) *TestViewState {
 
 // ToggleDetails toggles the detail view (immutable)
 func (s *TestViewState) ToggleDetails() *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowDetails = !newState.ShowDetails
@@ -240,8 +226,6 @@ func (s *TestViewState) ToggleDetails() *TestViewState {
 
 // SetFilter updates the filter setting (immutable)
 func (s *TestViewState) SetFilter(filter string) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.FilterStatus = filter
@@ -251,8 +235,6 @@ func (s *TestViewState) SetFilter(filter string) *TestViewState {
 
 // ToggleAutoRefresh toggles auto-refresh setting (immutable)
 func (s *TestViewState) ToggleAutoRefresh() *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.AutoRefresh = !newState.AutoRefresh
@@ -262,8 +244,6 @@ func (s *TestViewState) ToggleAutoRefresh() *TestViewState {
 
 // SetViewportOffset updates the viewport offset (immutable)
 func (s *TestViewState) SetViewportOffset(offset int) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ViewportOffset = offset
@@ -273,8 +253,6 @@ func (s *TestViewState) SetViewportOffset(offset int) *TestViewState {
 
 // SetSize updates the component dimensions (immutable)
 func (s *TestViewState) SetSize(width, height int) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Width = width
@@ -286,8 +264,6 @@ func (s *TestViewState) SetSize(width, height int) *TestViewState {
 
 // SetLoading updates the loading state (immutable)
 func (s *TestViewState) SetLoading(loading bool) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Loading = loading
@@ -297,8 +273,6 @@ func (s *TestViewState) SetLoading(loading bool) *TestViewState {
 
 // SetError updates the error state (immutable)
 func (s *TestViewState) SetError(err error) *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -313,8 +287,6 @@ func (s *TestViewState) SetError(err error) *TestViewState {
 
 // ClearTestRuns clears all test runs (immutable)
 func (s *TestViewState) ClearTestRuns() *TestViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ActiveRuns = []TestRunInfo{}
@@ -330,8 +302,6 @@ func (s *TestViewState) ClearTestRuns() *TestViewState {
 
 // GetSelectedRun returns the currently selected run
 func (s *TestViewState) GetSelectedRun() *TestRunInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	for _, run := range s.ActiveRuns {
 		if run.ID == s.SelectedRunID {
@@ -343,8 +313,6 @@ func (s *TestViewState) GetSelectedRun() *TestRunInfo {
 
 // GetFilteredResults returns test results filtered by current filter
 func (s *TestViewState) GetFilteredResults(runID string) []TestResultInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	results, exists := s.Results[runID]
 	if !exists {
@@ -366,8 +334,6 @@ func (s *TestViewState) GetFilteredResults(runID string) []TestResultInfo {
 
 // GetStateSummary returns a summary of current state
 func (s *TestViewState) GetStateSummary() map[string]interface{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	selectedRun := s.GetSelectedRun()
 	var selectedRunName string
@@ -400,8 +366,6 @@ func (s *TestViewState) GetStateSummary() map[string]interface{} {
 
 // Validate checks for state consistency
 func (s *TestViewState) Validate() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var issues []string
 
@@ -451,8 +415,6 @@ func (s *TestViewState) Validate() []string {
 
 // Getters for current state values
 func (s *TestViewState) GetActiveRuns() []TestRunInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	runs := make([]TestRunInfo, len(s.ActiveRuns))
 	copy(runs, s.ActiveRuns)
@@ -460,80 +422,54 @@ func (s *TestViewState) GetActiveRuns() []TestRunInfo {
 }
 
 func (s *TestViewState) GetSelectedRunID() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedRunID
 }
 
 func (s *TestViewState) GetSelectedTab() TestTab {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedTab
 }
 
 func (s *TestViewState) IsShowingDetails() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowDetails
 }
 
 func (s *TestViewState) GetFilterStatus() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.FilterStatus
 }
 
 func (s *TestViewState) IsAutoRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.AutoRefresh
 }
 
 func (s *TestViewState) GetViewportOffset() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ViewportOffset
 }
 
 func (s *TestViewState) GetSize() (int, int) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Width, s.Height
 }
 
 func (s *TestViewState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Loading
 }
 
 func (s *TestViewState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastError
 }
 
 func (s *TestViewState) GetLastUpdated() time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastUpdated
 }
 
 func (s *TestViewState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 
 func (s *TestViewState) IsRunning() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Running
 }
 
 func (s *TestViewState) GetCurrentRun() *TestRunInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.CurrentRun
 }
 

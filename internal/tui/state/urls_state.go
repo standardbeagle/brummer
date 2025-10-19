@@ -3,7 +3,6 @@ package state
 import (
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -18,6 +17,9 @@ type URLInfo struct {
 
 // URLsState manages all URLs-related UI state
 // This is a sub-model that encapsulates URLs display according to Elm/Redux patterns
+//
+// IMMUTABLE: This struct is immutable. All update methods return a NEW instance.
+// NO MUTEXES: Thread-safety is achieved through immutability and atomic operations.
 type URLsState struct {
 	// URL data cache
 	URLs           []URLInfo
@@ -45,9 +47,8 @@ type URLsState struct {
 	UniqueDomains  map[string]int
 	LastActivity   time.Time
 
-	// Version for atomic updates and state tracking
+	// Version for state tracking
 	version        uint64
-	mu             sync.RWMutex
 }
 
 // NewURLsState creates a new URLs sub-model with initial state
@@ -75,8 +76,6 @@ func NewURLsState() *URLsState {
 
 // UpdateURLs updates the cached URLs list (immutable)
 func (s *URLsState) UpdateURLs(urls []URLInfo) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.URLs = make([]URLInfo, len(urls))
@@ -91,8 +90,6 @@ func (s *URLsState) UpdateURLs(urls []URLInfo) *URLsState {
 
 // AddURL adds a new URL to the list (immutable)
 func (s *URLsState) AddURL(url URLInfo) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.URLs = append(newState.URLs, url)
@@ -105,8 +102,6 @@ func (s *URLsState) AddURL(url URLInfo) *URLsState {
 
 // SetSelectedURL updates the selected URL (immutable)
 func (s *URLsState) SetSelectedURL(urlID string) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SelectedURLID = urlID
@@ -126,8 +121,6 @@ func (s *URLsState) SetSelectedURL(urlID string) *URLsState {
 
 // SetShowDetails updates the detail view setting (immutable)
 func (s *URLsState) SetShowDetails(show bool) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowDetails = show
@@ -137,8 +130,6 @@ func (s *URLsState) SetShowDetails(show bool) *URLsState {
 
 // SetGroupByProcess updates the grouping setting (immutable)
 func (s *URLsState) SetGroupByProcess(group bool) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.GroupByProcess = group
@@ -148,8 +139,6 @@ func (s *URLsState) SetGroupByProcess(group bool) *URLsState {
 
 // SetSortBy updates the sort setting (immutable)
 func (s *URLsState) SetSortBy(sortBy string) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SortBy = sortBy
@@ -159,8 +148,6 @@ func (s *URLsState) SetSortBy(sortBy string) *URLsState {
 
 // SetFilterText updates the filter text (immutable)
 func (s *URLsState) SetFilterText(filter string) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.FilterText = strings.ToLower(filter)
@@ -170,8 +157,6 @@ func (s *URLsState) SetFilterText(filter string) *URLsState {
 
 // SetAutoRefresh updates the auto-refresh setting (immutable)
 func (s *URLsState) SetAutoRefresh(refresh bool) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.AutoRefresh = refresh
@@ -181,8 +166,6 @@ func (s *URLsState) SetAutoRefresh(refresh bool) *URLsState {
 
 // SetLoading updates the loading state (immutable)
 func (s *URLsState) SetLoading(loading bool) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Loading = loading
@@ -195,8 +178,6 @@ func (s *URLsState) SetLoading(loading bool) *URLsState {
 
 // SetError updates the error state (immutable)
 func (s *URLsState) SetError(err error) *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -211,8 +192,6 @@ func (s *URLsState) SetError(err error) *URLsState {
 
 // MarkForRefresh marks that the URLs data needs refreshing (immutable)
 func (s *URLsState) MarkForRefresh() *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.NeedsRefresh = true
@@ -222,8 +201,6 @@ func (s *URLsState) MarkForRefresh() *URLsState {
 
 // ClearURLs clears all URLs (immutable)
 func (s *URLsState) ClearURLs() *URLsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.URLs = []URLInfo{}
@@ -261,8 +238,6 @@ func (s *URLsState) updateStatistics() {
 
 // IsCacheValid checks if the cached URLs are still valid
 func (s *URLsState) IsCacheValid(maxAge time.Duration) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.CacheTimestamp.IsZero() || s.NeedsRefresh {
 		return false
@@ -273,8 +248,6 @@ func (s *URLsState) IsCacheValid(maxAge time.Duration) bool {
 
 // GetFilteredURLs returns URLs filtered by current settings
 func (s *URLsState) GetFilteredURLs() []URLInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	// Filter by text
 	var filtered []URLInfo
@@ -322,8 +295,6 @@ func (s *URLsState) sortURLs(urls []URLInfo) {
 
 // GetURLsByProcess returns URLs grouped by process name
 func (s *URLsState) GetURLsByProcess() map[string][]URLInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	grouped := make(map[string][]URLInfo)
 	for _, url := range s.URLs {
@@ -342,8 +313,6 @@ func (s *URLsState) GetURLsByProcess() map[string][]URLInfo {
 
 // GetStateSummary returns a summary of current state
 func (s *URLsState) GetStateSummary() map[string]interface{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	return map[string]interface{}{
 		"total_urls":       s.TotalURLs,
@@ -365,8 +334,6 @@ func (s *URLsState) GetStateSummary() map[string]interface{} {
 
 // Validate checks for state consistency
 func (s *URLsState) Validate() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var issues []string
 
@@ -398,8 +365,6 @@ func (s *URLsState) Validate() []string {
 
 // Getters for current state values
 func (s *URLsState) GetURLs() []URLInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	urls := make([]URLInfo, len(s.URLs))
 	copy(urls, s.URLs)
@@ -407,80 +372,54 @@ func (s *URLsState) GetURLs() []URLInfo {
 }
 
 func (s *URLsState) GetSelectedURL() *URLInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedURL
 }
 
 func (s *URLsState) GetSelectedURLID() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedURLID
 }
 
 func (s *URLsState) GetShowDetails() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowDetails
 }
 
 func (s *URLsState) GetGroupByProcess() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.GroupByProcess
 }
 
 func (s *URLsState) GetSortBy() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SortBy
 }
 
 func (s *URLsState) GetFilterText() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.FilterText
 }
 
 func (s *URLsState) GetAutoRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.AutoRefresh
 }
 
 func (s *URLsState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Loading
 }
 
 func (s *URLsState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastError
 }
 
 func (s *URLsState) GetTotalURLs() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.TotalURLs
 }
 
 func (s *URLsState) GetUniqueDomainCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return len(s.UniqueDomains)
 }
 
 func (s *URLsState) GetLastActivity() time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastActivity
 }
 
 func (s *URLsState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 

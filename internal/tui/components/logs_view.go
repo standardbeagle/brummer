@@ -67,6 +67,14 @@ func (c *LogsViewComponent) Init() tea.Cmd {
 }
 
 // ViewWithState renders the component using external state (stateless/Elm-compliant)
+//
+// ⚠️  CRITICAL: This method MUST be pure and non-blocking!
+// ❌ WRONG:  logs := logStore.FetchAllLogs()  // DON'T call blocking methods!
+// WHY: View() is called frequently and MUST return immediately. Blocking operations
+//      freeze the BubbleTea event loop, causing UI freezes and breaking keyboard input.
+// ✅ CORRECT: Only read from masterData (cached state) and use logStore read-only methods.
+//
+// See: /docs/architecture/tui-deadlock-prevention.md for mandatory patterns
 func (c *LogsViewComponent) ViewWithState(masterData *state.MasterData, logStore *logs.Store) string {
 	if !c.IsVisible() || masterData == nil || masterData.LogsState == nil {
 		return ""

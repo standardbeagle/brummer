@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/parser"
@@ -35,7 +34,6 @@ type CommandWindowState struct {
 
 	// Version for atomic updates and state tracking
 	version uint64
-	mu      sync.RWMutex
 }
 
 // NewCommandWindowState creates a new command window sub-model with initial state
@@ -60,8 +58,6 @@ func NewCommandWindowState() *CommandWindowState {
 
 // ShowCommandWindow shows the command palette window (immutable)
 func (s *CommandWindowState) ShowCommandWindow() *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowingCommandWindow = true
@@ -71,8 +67,6 @@ func (s *CommandWindowState) ShowCommandWindow() *CommandWindowState {
 
 // HideCommandWindow hides the command palette window (immutable)
 func (s *CommandWindowState) HideCommandWindow() *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowingCommandWindow = false
@@ -82,8 +76,6 @@ func (s *CommandWindowState) HideCommandWindow() *CommandWindowState {
 
 // SetCommandWindowWidth updates the command window width (immutable)
 func (s *CommandWindowState) SetCommandWindowWidth(width int) *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.CommandWindowWidth = width
@@ -93,8 +85,6 @@ func (s *CommandWindowState) SetCommandWindowWidth(width int) *CommandWindowStat
 
 // ShowRunDialog shows the run dialog with detected commands (immutable)
 func (s *CommandWindowState) ShowRunDialog(commands []parser.ExecutableCommand, monorepoInfo *parser.MonorepoInfo) *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowingRunDialog = true
@@ -112,8 +102,6 @@ func (s *CommandWindowState) ShowRunDialog(commands []parser.ExecutableCommand, 
 
 // HideRunDialog hides the run dialog (immutable)
 func (s *CommandWindowState) HideRunDialog() *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowingRunDialog = false
@@ -123,8 +111,6 @@ func (s *CommandWindowState) HideRunDialog() *CommandWindowState {
 
 // SetSelectedCommand updates the selected command index (immutable)
 func (s *CommandWindowState) SetSelectedCommand(index int) *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if index >= 0 && index < len(newState.DetectedCommands) {
@@ -136,8 +122,6 @@ func (s *CommandWindowState) SetSelectedCommand(index int) *CommandWindowState {
 
 // GetSelectedCommand returns the currently selected command
 func (s *CommandWindowState) GetSelectedCommand() *parser.ExecutableCommand {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if !s.ShowingRunDialog || len(s.DetectedCommands) == 0 {
 		return nil
@@ -152,8 +136,6 @@ func (s *CommandWindowState) GetSelectedCommand() *parser.ExecutableCommand {
 
 // ShowCustomCommandDialog shows the custom command input dialog (immutable)
 func (s *CommandWindowState) ShowCustomCommandDialog() *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowingCustomCommand = true
@@ -164,8 +146,6 @@ func (s *CommandWindowState) ShowCustomCommandDialog() *CommandWindowState {
 
 // HideCustomCommandDialog hides the custom command dialog (immutable)
 func (s *CommandWindowState) HideCustomCommandDialog() *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowingCustomCommand = false
@@ -175,8 +155,6 @@ func (s *CommandWindowState) HideCustomCommandDialog() *CommandWindowState {
 
 // SetCustomCommandText updates the custom command text (immutable)
 func (s *CommandWindowState) SetCustomCommandText(text string) *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.CustomCommandText = text
@@ -186,8 +164,6 @@ func (s *CommandWindowState) SetCustomCommandText(text string) *CommandWindowSta
 
 // SetTerminalSize updates the terminal size (immutable)
 func (s *CommandWindowState) SetTerminalSize(width, height int) *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.TerminalWidth = width
@@ -198,8 +174,6 @@ func (s *CommandWindowState) SetTerminalSize(width, height int) *CommandWindowSt
 
 // SetLoading updates the loading state (immutable)
 func (s *CommandWindowState) SetLoading(loading bool) *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Loading = loading
@@ -209,8 +183,6 @@ func (s *CommandWindowState) SetLoading(loading bool) *CommandWindowState {
 
 // SetError updates the error state (immutable)
 func (s *CommandWindowState) SetError(err error) *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -225,8 +197,6 @@ func (s *CommandWindowState) SetError(err error) *CommandWindowState {
 
 // ClearError clears the error state (immutable)
 func (s *CommandWindowState) ClearError() *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.LastError = ""
@@ -236,8 +206,6 @@ func (s *CommandWindowState) ClearError() *CommandWindowState {
 
 // UpdateLastUpdated updates the last updated timestamp (immutable)
 func (s *CommandWindowState) UpdateLastUpdated() *CommandWindowState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.LastUpdated = time.Now()
@@ -247,8 +215,6 @@ func (s *CommandWindowState) UpdateLastUpdated() *CommandWindowState {
 
 // GetStateSummary returns a summary of current state
 func (s *CommandWindowState) GetStateSummary() map[string]interface{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	return map[string]interface{}{
 		"showing_command_window": s.ShowingCommandWindow,
@@ -269,8 +235,6 @@ func (s *CommandWindowState) GetStateSummary() map[string]interface{} {
 
 // Validate checks for state consistency
 func (s *CommandWindowState) Validate() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var issues []string
 
@@ -309,32 +273,22 @@ func (s *CommandWindowState) Validate() []string {
 
 // Getters for current state values
 func (s *CommandWindowState) IsShowingCommandWindow() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowingCommandWindow
 }
 
 func (s *CommandWindowState) IsShowingRunDialog() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowingRunDialog
 }
 
 func (s *CommandWindowState) IsShowingCustomCommand() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowingCustomCommand
 }
 
 func (s *CommandWindowState) GetCommandWindowWidth() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.CommandWindowWidth
 }
 
 func (s *CommandWindowState) GetDetectedCommands() []parser.ExecutableCommand {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	commands := make([]parser.ExecutableCommand, len(s.DetectedCommands))
 	copy(commands, s.DetectedCommands)
@@ -342,44 +296,30 @@ func (s *CommandWindowState) GetDetectedCommands() []parser.ExecutableCommand {
 }
 
 func (s *CommandWindowState) GetMonorepoInfo() *parser.MonorepoInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.MonorepoInfo
 }
 
 func (s *CommandWindowState) GetCustomCommandText() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.CustomCommandText
 }
 
 func (s *CommandWindowState) GetTerminalSize() (int, int) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.TerminalWidth, s.TerminalHeight
 }
 
 func (s *CommandWindowState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Loading
 }
 
 func (s *CommandWindowState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastError
 }
 
 func (s *CommandWindowState) GetLastUpdated() time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastUpdated
 }
 
 func (s *CommandWindowState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 

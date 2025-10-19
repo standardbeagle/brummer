@@ -3,7 +3,6 @@ package state
 import (
 	"sort"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -56,7 +55,6 @@ type MCPDebugState struct {
 
 	// Version for atomic updates and state tracking
 	version uint64
-	mu      sync.RWMutex
 }
 
 // NewMCPDebugState creates a new MCP debug sub-model with initial state
@@ -82,8 +80,6 @@ func NewMCPDebugState() *MCPDebugState {
 
 // AddConnection adds or updates a connection (immutable)
 func (s *MCPDebugState) AddConnection(sessionId, clientInfo string, connected bool, connectedAt time.Time, connectionType, method string) *MCPDebugState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 
@@ -132,8 +128,6 @@ func (s *MCPDebugState) AddConnection(sessionId, clientInfo string, connected bo
 
 // AddActivity adds an activity to a connection (immutable)
 func (s *MCPDebugState) AddActivity(sessionId string, activity MCPActivity) *MCPDebugState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 
@@ -174,8 +168,6 @@ func (s *MCPDebugState) AddActivity(sessionId string, activity MCPActivity) *MCP
 
 // SetSelectedClient updates the selected client (immutable)
 func (s *MCPDebugState) SetSelectedClient(clientID string) *MCPDebugState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.selectedClient = clientID
@@ -185,8 +177,6 @@ func (s *MCPDebugState) SetSelectedClient(clientID string) *MCPDebugState {
 
 // SetShowDetails updates the detail view setting (immutable)
 func (s *MCPDebugState) SetShowDetails(show bool) *MCPDebugState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.showDetails = show
@@ -196,8 +186,6 @@ func (s *MCPDebugState) SetShowDetails(show bool) *MCPDebugState {
 
 // SetAutoRefresh updates the auto-refresh setting (immutable)
 func (s *MCPDebugState) SetAutoRefresh(refresh bool) *MCPDebugState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.autoRefresh = refresh
@@ -207,8 +195,6 @@ func (s *MCPDebugState) SetAutoRefresh(refresh bool) *MCPDebugState {
 
 // SetLoading updates the loading state (immutable)
 func (s *MCPDebugState) SetLoading(loading bool) *MCPDebugState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.loading = loading
@@ -218,8 +204,6 @@ func (s *MCPDebugState) SetLoading(loading bool) *MCPDebugState {
 
 // SetError updates the error state (immutable)
 func (s *MCPDebugState) SetError(err error) *MCPDebugState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -233,8 +217,6 @@ func (s *MCPDebugState) SetError(err error) *MCPDebugState {
 
 // CleanupOldData removes old connections and activities to manage memory usage (immutable)
 func (s *MCPDebugState) CleanupOldData() *MCPDebugState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 
@@ -298,8 +280,6 @@ func (s *MCPDebugState) CleanupOldData() *MCPDebugState {
 
 // GetSortedConnections returns connections sorted by connection time (newest first)
 func (s *MCPDebugState) GetSortedConnections() []MCPConnectionItem {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	items := make([]MCPConnectionItem, 0, len(s.connections))
 
@@ -318,8 +298,6 @@ func (s *MCPDebugState) GetSortedConnections() []MCPConnectionItem {
 
 // GetActivitiesForClient returns activities for a specific client
 func (s *MCPDebugState) GetActivitiesForClient(clientID string) []MCPActivity {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	activities, exists := s.activities[clientID]
 	if !exists {
@@ -334,8 +312,6 @@ func (s *MCPDebugState) GetActivitiesForClient(clientID string) []MCPActivity {
 
 // GetConnectionByID returns a specific connection by ID
 func (s *MCPDebugState) GetConnectionByID(clientID string) *MCPConnectionItem {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if conn, exists := s.connections[clientID]; exists {
 		// Return a copy to prevent mutation
@@ -347,8 +323,6 @@ func (s *MCPDebugState) GetConnectionByID(clientID string) *MCPConnectionItem {
 
 // GetMemoryStats returns current memory usage statistics
 func (s *MCPDebugState) GetMemoryStats() map[string]interface{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	totalActivities := 0
 	for _, activities := range s.activities {
@@ -368,8 +342,6 @@ func (s *MCPDebugState) GetMemoryStats() map[string]interface{} {
 
 // GetStateSummary returns a summary of current state
 func (s *MCPDebugState) GetStateSummary() map[string]interface{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	activeConnections := 0
 	for _, conn := range s.connections {
@@ -393,8 +365,6 @@ func (s *MCPDebugState) GetStateSummary() map[string]interface{} {
 
 // Validate checks for state consistency
 func (s *MCPDebugState) Validate() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var issues []string
 
@@ -423,44 +393,30 @@ func (s *MCPDebugState) Validate() []string {
 
 // Getters for current state values
 func (s *MCPDebugState) GetSelectedClient() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.selectedClient
 }
 
 func (s *MCPDebugState) GetShowDetails() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.showDetails
 }
 
 func (s *MCPDebugState) GetAutoRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.autoRefresh
 }
 
 func (s *MCPDebugState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.loading
 }
 
 func (s *MCPDebugState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.lastError
 }
 
 func (s *MCPDebugState) GetConnectionsCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return len(s.connections)
 }
 
 func (s *MCPDebugState) GetActiveConnectionsCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	count := 0
 	for _, conn := range s.connections {
@@ -472,8 +428,6 @@ func (s *MCPDebugState) GetActiveConnectionsCount() int {
 }
 
 func (s *MCPDebugState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 

@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/logs"
@@ -9,6 +8,9 @@ import (
 
 // ErrorsState manages all errors-related UI state
 // This is a sub-model that encapsulates errors display state according to Elm/Redux patterns
+//
+// IMMUTABLE: This struct is immutable. All update methods return a NEW instance.
+// NO MUTEXES: Thread-safety is achieved through immutability and atomic operations.
 type ErrorsState struct {
 	// Error data cache
 	ErrorContexts    []logs.ErrorContext
@@ -29,9 +31,8 @@ type ErrorsState struct {
 	LastError        string
 	ErrorCount       int
 
-	// Version for atomic updates and state tracking
+	// Version for state tracking
 	version          uint64
-	mu               sync.RWMutex
 }
 
 // NewErrorsState creates a new errors sub-model with initial state
@@ -54,8 +55,6 @@ func NewErrorsState() *ErrorsState {
 
 // UpdateErrorContexts updates the cached error contexts (immutable)
 func (s *ErrorsState) UpdateErrorContexts(contexts []logs.ErrorContext) *ErrorsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ErrorContexts = make([]logs.ErrorContext, len(contexts))
@@ -69,8 +68,6 @@ func (s *ErrorsState) UpdateErrorContexts(contexts []logs.ErrorContext) *ErrorsS
 
 // SetSelectedError updates the selected error (immutable)
 func (s *ErrorsState) SetSelectedError(errorID string) *ErrorsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SelectedErrorID = errorID
@@ -90,8 +87,6 @@ func (s *ErrorsState) SetSelectedError(errorID string) *ErrorsState {
 
 // SetShowDetailView updates the detail view setting (immutable)
 func (s *ErrorsState) SetShowDetailView(show bool) *ErrorsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowDetailView = show
@@ -101,8 +96,6 @@ func (s *ErrorsState) SetShowDetailView(show bool) *ErrorsState {
 
 // SetShowList updates the list view setting (immutable)
 func (s *ErrorsState) SetShowList(show bool) *ErrorsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowList = show
@@ -112,8 +105,6 @@ func (s *ErrorsState) SetShowList(show bool) *ErrorsState {
 
 // SetAutoRefresh updates the auto-refresh setting (immutable)
 func (s *ErrorsState) SetAutoRefresh(refresh bool) *ErrorsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.AutoRefresh = refresh
@@ -123,8 +114,6 @@ func (s *ErrorsState) SetAutoRefresh(refresh bool) *ErrorsState {
 
 // SetLoading updates the loading state (immutable)
 func (s *ErrorsState) SetLoading(loading bool) *ErrorsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Loading = loading
@@ -134,8 +123,6 @@ func (s *ErrorsState) SetLoading(loading bool) *ErrorsState {
 
 // SetError updates the error state (immutable)
 func (s *ErrorsState) SetError(err error) *ErrorsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -149,8 +136,6 @@ func (s *ErrorsState) SetError(err error) *ErrorsState {
 
 // MarkForRefresh marks that the error list needs refreshing (immutable)
 func (s *ErrorsState) MarkForRefresh() *ErrorsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.NeedsRefresh = true
@@ -160,8 +145,6 @@ func (s *ErrorsState) MarkForRefresh() *ErrorsState {
 
 // ClearErrors clears all errors (immutable)
 func (s *ErrorsState) ClearErrors() *ErrorsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ErrorContexts = []logs.ErrorContext{}
@@ -176,8 +159,6 @@ func (s *ErrorsState) ClearErrors() *ErrorsState {
 
 // IsCacheValid checks if the cached errors are still valid
 func (s *ErrorsState) IsCacheValid(maxAge time.Duration) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.CacheTimestamp.IsZero() || s.NeedsRefresh {
 		return false
@@ -188,8 +169,6 @@ func (s *ErrorsState) IsCacheValid(maxAge time.Duration) bool {
 
 // GetErrorByID finds an error by its ID
 func (s *ErrorsState) GetErrorByID(id string) *logs.ErrorContext {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	for _, ec := range s.ErrorContexts {
 		if ec.ID == id {
@@ -201,8 +180,6 @@ func (s *ErrorsState) GetErrorByID(id string) *logs.ErrorContext {
 
 // GetLatestError returns the most recent error
 func (s *ErrorsState) GetLatestError() *logs.ErrorContext {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if len(s.ErrorContexts) == 0 {
 		return nil
@@ -221,8 +198,6 @@ func (s *ErrorsState) GetLatestError() *logs.ErrorContext {
 
 // GetErrorsByType returns errors filtered by type
 func (s *ErrorsState) GetErrorsByType(errorType string) []logs.ErrorContext {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var filtered []logs.ErrorContext
 	for _, ec := range s.ErrorContexts {
@@ -235,8 +210,6 @@ func (s *ErrorsState) GetErrorsByType(errorType string) []logs.ErrorContext {
 
 // GetErrorsByProcess returns errors filtered by process name
 func (s *ErrorsState) GetErrorsByProcess(processName string) []logs.ErrorContext {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var filtered []logs.ErrorContext
 	for _, ec := range s.ErrorContexts {
@@ -249,8 +222,6 @@ func (s *ErrorsState) GetErrorsByProcess(processName string) []logs.ErrorContext
 
 // Getters for current state values
 func (s *ErrorsState) GetErrorContexts() []logs.ErrorContext {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	contexts := make([]logs.ErrorContext, len(s.ErrorContexts))
 	copy(contexts, s.ErrorContexts)
@@ -258,62 +229,42 @@ func (s *ErrorsState) GetErrorContexts() []logs.ErrorContext {
 }
 
 func (s *ErrorsState) GetSelectedError() *logs.ErrorContext {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedError
 }
 
 func (s *ErrorsState) GetSelectedErrorID() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedErrorID
 }
 
 func (s *ErrorsState) GetShowDetailView() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowDetailView
 }
 
 func (s *ErrorsState) GetShowList() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowList
 }
 
 func (s *ErrorsState) GetAutoRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.AutoRefresh
 }
 
 func (s *ErrorsState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Loading
 }
 
 func (s *ErrorsState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastError
 }
 
 func (s *ErrorsState) GetErrorCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ErrorCount
 }
 
 func (s *ErrorsState) GetNeedsRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.NeedsRefresh
 }
 
 func (s *ErrorsState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 

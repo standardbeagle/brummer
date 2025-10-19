@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"time"
 )
 
@@ -62,7 +61,6 @@ type WebViewState struct {
 
 	// Version for atomic updates and state tracking
 	version          uint64
-	mu               sync.RWMutex
 }
 
 // NewWebViewState creates a new web view sub-model with initial state
@@ -91,8 +89,6 @@ func NewWebViewState() *WebViewState {
 
 // AddRequest adds a new request to the list (immutable)
 func (s *WebViewState) AddRequest(request RequestInfo) *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 
@@ -126,8 +122,6 @@ func (s *WebViewState) AddRequest(request RequestInfo) *WebViewState {
 
 // SetSelectedIndex updates the selected request index (immutable)
 func (s *WebViewState) SetSelectedIndex(index int) *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	filteredRequests := newState.getFilteredRequests()
@@ -146,8 +140,6 @@ func (s *WebViewState) SetSelectedIndex(index int) *WebViewState {
 
 // ToggleDetailView toggles the detail view (immutable)
 func (s *WebViewState) ToggleDetailView() *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowDetail = !newState.ShowDetail
@@ -157,8 +149,6 @@ func (s *WebViewState) ToggleDetailView() *WebViewState {
 
 // SetFilter updates the filter setting (immutable)
 func (s *WebViewState) SetFilter(filter string) *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Filter = filter
@@ -179,8 +169,6 @@ func (s *WebViewState) SetFilter(filter string) *WebViewState {
 
 // ToggleAutoScroll toggles auto-scroll setting (immutable)
 func (s *WebViewState) ToggleAutoScroll() *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.AutoScroll = !newState.AutoScroll
@@ -190,8 +178,6 @@ func (s *WebViewState) ToggleAutoScroll() *WebViewState {
 
 // SetViewportOffset updates the viewport offset (immutable)
 func (s *WebViewState) SetViewportOffset(offset int) *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ViewportOffset = offset
@@ -201,8 +187,6 @@ func (s *WebViewState) SetViewportOffset(offset int) *WebViewState {
 
 // SetSize updates the component dimensions (immutable)
 func (s *WebViewState) SetSize(width, height int) *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Width = width
@@ -214,8 +198,6 @@ func (s *WebViewState) SetSize(width, height int) *WebViewState {
 
 // SetLoading updates the loading state (immutable)
 func (s *WebViewState) SetLoading(loading bool) *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Loading = loading
@@ -225,8 +207,6 @@ func (s *WebViewState) SetLoading(loading bool) *WebViewState {
 
 // SetError updates the error state (immutable)
 func (s *WebViewState) SetError(err error) *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -241,8 +221,6 @@ func (s *WebViewState) SetError(err error) *WebViewState {
 
 // ClearRequests clears all requests (immutable)
 func (s *WebViewState) ClearRequests() *WebViewState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Requests = []RequestInfo{}
@@ -300,8 +278,6 @@ func (s *WebViewState) getStatusCodeCategory(statusCode int) string {
 
 // GetStateSummary returns a summary of current state
 func (s *WebViewState) GetStateSummary() map[string]interface{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	filteredRequests := s.getFilteredRequests()
 
@@ -328,8 +304,6 @@ func (s *WebViewState) GetStateSummary() map[string]interface{} {
 
 // Validate checks for state consistency
 func (s *WebViewState) Validate() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var issues []string
 
@@ -366,8 +340,6 @@ func (s *WebViewState) Validate() []string {
 
 // Getters for current state values
 func (s *WebViewState) GetRequests() []RequestInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	requests := make([]RequestInfo, len(s.Requests))
 	copy(requests, s.Requests)
@@ -375,86 +347,58 @@ func (s *WebViewState) GetRequests() []RequestInfo {
 }
 
 func (s *WebViewState) GetFilteredRequests() []RequestInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.getFilteredRequests()
 }
 
 func (s *WebViewState) GetSelectedIndex() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedIndex
 }
 
 func (s *WebViewState) GetSelectedRequest() *RequestInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedRequest
 }
 
 func (s *WebViewState) IsShowingDetail() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowDetail
 }
 
 func (s *WebViewState) GetFilter() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Filter
 }
 
 func (s *WebViewState) IsAutoScroll() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.AutoScroll
 }
 
 func (s *WebViewState) GetViewportOffset() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ViewportOffset
 }
 
 func (s *WebViewState) GetSize() (int, int) {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Width, s.Height
 }
 
 func (s *WebViewState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Loading
 }
 
 func (s *WebViewState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastError
 }
 
 func (s *WebViewState) GetLastUpdated() time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastUpdated
 }
 
 func (s *WebViewState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 
 func (s *WebViewState) GetTotalRequests() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.TotalRequests
 }
 
 func (s *WebViewState) GetRequestsByStatus() map[string]int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	result := make(map[string]int)
 	for k, v := range s.RequestsByStatus {
@@ -464,8 +408,6 @@ func (s *WebViewState) GetRequestsByStatus() map[string]int {
 }
 
 func (s *WebViewState) GetRequestsByMethod() map[string]int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	result := make(map[string]int)
 	for k, v := range s.RequestsByMethod {

@@ -71,6 +71,21 @@ func (c *ProcessesViewComponent) Init() tea.Cmd {
 }
 
 // ViewWithState renders the component using external state (stateless/Elm-compliant)
+//
+// ⚠️  CRITICAL: This method MUST be pure and non-blocking!
+// ❌ WRONG:  processes := processMgr.GetAllProcesses()  // DON'T call managers/services!
+// WHY: Calling external services can block, freezing the BubbleTea event loop and
+//      breaking keyboard navigation. This was the root cause of the keyboard freeze bug.
+// ✅ CORRECT: Only read from masterData (cached state). Services update state via commands.
+//
+// ⚠️  CRITICAL: DO NOT call ANY blocking operations!
+// ❌ WRONG:  data := http.Get(url)  // DON'T do I/O in View()!
+// ❌ WRONG:  time.Sleep(duration)   // DON'T block execution!
+// ❌ WRONG:  <-channel              // DON'T wait on channels!
+// WHY: View() is called frequently and must return immediately.
+// ✅ CORRECT: Return a string based ONLY on the data in masterData.
+//
+// See: /docs/architecture/tui-deadlock-prevention.md for detailed explanation
 func (c *ProcessesViewComponent) ViewWithState(masterData *state.MasterData, processMgr *processes.Manager) string {
 	if !c.IsVisible() || masterData == nil || masterData.ProcessesState == nil {
 		return ""
@@ -78,13 +93,10 @@ func (c *ProcessesViewComponent) ViewWithState(masterData *state.MasterData, pro
 
 	processesState := masterData.ProcessesState
 
-	// Get processes from cache or process manager
-	var processes []*processes.Process
-	if processesState.IsCacheValid(2*time.Second) {
-		processes = processesState.GetProcesses()
-	} else if processMgr != nil {
-		processes = processMgr.GetAllProcesses()
-	}
+	// CRITICAL: ALWAYS use cached data from state - NEVER call processMgr directly!
+	// The cache is updated by refreshProcessesCmd() in Update() via TickMsg handler (every second).
+	// View() must be a pure function that only renders from state.
+	processes := processesState.GetProcesses()
 
 	if len(processes) == 0 {
 		return c.renderEmptyState()

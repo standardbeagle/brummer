@@ -25,6 +25,22 @@ var (
 type ViewTransitionCallback func(fromView, toView messages.ViewType) error
 
 // NavigationService manages view navigation state and transitions
+//
+// ⚠️  SPECIAL CASE: This service has LIMITED internal state using lock-free patterns
+//
+// WHY THIS IS OK:
+// - Uses atomic.Value for currentView (lock-free reads/writes)
+// - Uses sync.Map for callbacks (lock-free concurrent access)
+// - State is NOT duplicated from MasterData (navigation is service-specific)
+// - No cached data from Model (would violate Redux/Elm pattern)
+//
+// ⚠️  WARNING: DO NOT add cached data from MasterData!
+// ❌ WRONG:  cachedProcesses []*Process  // DON'T cache Model data!
+// ❌ WRONG:  lastViewState    ViewState  // DON'T duplicate MasterData!
+// WHY: Creates multiple sources of truth, requires synchronization, breaks Redux/Elm
+// ✅ CORRECT: Only store service-specific state (navigation, callbacks, config)
+//
+// Note: The mu RWMutex protects viewOrder/numberKeyMappings (config only, rarely changed)
 type NavigationService struct {
 	// Current view state (atomic for lock-free access)
 	currentView atomic.Value // messages.ViewType
@@ -39,7 +55,7 @@ type NavigationService struct {
 	// Event system
 	eventBus *events.EventBus
 
-	// State management
+	// State management (ONLY for config protection, NOT for data access)
 	mu sync.RWMutex
 }
 

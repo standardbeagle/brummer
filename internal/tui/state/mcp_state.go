@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"time"
 )
 
@@ -36,7 +35,6 @@ type MCPState struct {
 
 	// Version for atomic updates and state tracking
 	version uint64
-	mu      sync.RWMutex
 }
 
 // NewMCPState creates a new MCP sub-model with initial state
@@ -64,8 +62,6 @@ func NewMCPState() *MCPState {
 
 // SetConnectionStatus updates the server connection status (immutable)
 func (s *MCPState) SetConnectionStatus(active bool, address string, port int) *MCPState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Active = active
@@ -81,8 +77,6 @@ func (s *MCPState) SetConnectionStatus(active bool, address string, port int) *M
 
 // SetAvailableTools updates the available tools list (immutable)
 func (s *MCPState) SetAvailableTools(tools []string) *MCPState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.AvailableTools = make([]string, len(tools))
@@ -96,8 +90,6 @@ func (s *MCPState) SetAvailableTools(tools []string) *MCPState {
 
 // UpdateStatistics updates request and session statistics (immutable)
 func (s *MCPState) UpdateStatistics(requestCount, sessionCount int) *MCPState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.RequestCount = requestCount
@@ -109,8 +101,6 @@ func (s *MCPState) UpdateStatistics(requestCount, sessionCount int) *MCPState {
 
 // SetError updates the error state (immutable)
 func (s *MCPState) SetError(err error) *MCPState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -125,8 +115,6 @@ func (s *MCPState) SetError(err error) *MCPState {
 
 // SetShowDetails updates the detail view setting (immutable)
 func (s *MCPState) SetShowDetails(show bool) *MCPState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowDetails = show
@@ -136,8 +124,6 @@ func (s *MCPState) SetShowDetails(show bool) *MCPState {
 
 // SetAutoRefresh updates the auto-refresh setting (immutable)
 func (s *MCPState) SetAutoRefresh(refresh bool) *MCPState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.AutoRefresh = refresh
@@ -147,8 +133,6 @@ func (s *MCPState) SetAutoRefresh(refresh bool) *MCPState {
 
 // SetRefreshInterval updates the refresh interval (immutable)
 func (s *MCPState) SetRefreshInterval(interval time.Duration) *MCPState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.RefreshInterval = interval
@@ -158,8 +142,6 @@ func (s *MCPState) SetRefreshInterval(interval time.Duration) *MCPState {
 
 // SetLoading updates the loading state (immutable)
 func (s *MCPState) SetLoading(loading bool) *MCPState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Loading = loading
@@ -169,8 +151,6 @@ func (s *MCPState) SetLoading(loading bool) *MCPState {
 
 // MarkForRefresh marks that the MCP data needs refreshing (immutable)
 func (s *MCPState) MarkForRefresh() *MCPState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.NeedsRefresh = true
@@ -180,8 +160,6 @@ func (s *MCPState) MarkForRefresh() *MCPState {
 
 // IsCacheValid checks if the cached MCP data is still valid
 func (s *MCPState) IsCacheValid(maxAge time.Duration) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.CacheTimestamp.IsZero() || s.NeedsRefresh {
 		return false
@@ -192,8 +170,6 @@ func (s *MCPState) IsCacheValid(maxAge time.Duration) bool {
 
 // GetToolsByCategory returns tools grouped by category
 func (s *MCPState) GetToolsByCategory() map[string][]string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	categories := map[string][]string{
 		"Scripts":   []string{},
@@ -240,8 +216,6 @@ func (s *MCPState) GetToolsByCategory() map[string][]string {
 
 // GetStateSummary returns a summary of current state
 func (s *MCPState) GetStateSummary() map[string]interface{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	return map[string]interface{}{
 		"active":          s.Active,
@@ -260,8 +234,6 @@ func (s *MCPState) GetStateSummary() map[string]interface{} {
 
 // Validate checks for state consistency
 func (s *MCPState) Validate() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var issues []string
 
@@ -291,26 +263,18 @@ func (s *MCPState) Validate() []string {
 
 // Getters for current state values
 func (s *MCPState) GetActive() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Active
 }
 
 func (s *MCPState) GetPort() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Port
 }
 
 func (s *MCPState) GetAddress() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Address
 }
 
 func (s *MCPState) GetAvailableTools() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	tools := make([]string, len(s.AvailableTools))
 	copy(tools, s.AvailableTools)
@@ -318,80 +282,54 @@ func (s *MCPState) GetAvailableTools() []string {
 }
 
 func (s *MCPState) GetToolsCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ToolsCount
 }
 
 func (s *MCPState) GetRequestCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.RequestCount
 }
 
 func (s *MCPState) GetSessionCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SessionCount
 }
 
 func (s *MCPState) GetShowDetails() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowDetails
 }
 
 func (s *MCPState) GetAutoRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.AutoRefresh
 }
 
 func (s *MCPState) GetRefreshInterval() time.Duration {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.RefreshInterval
 }
 
 func (s *MCPState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Loading
 }
 
 func (s *MCPState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastError
 }
 
 func (s *MCPState) GetLastConnected() time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastConnected
 }
 
 func (s *MCPState) GetLastRequest() time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastRequest
 }
 
 func (s *MCPState) GetCacheTimestamp() time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.CacheTimestamp
 }
 
 func (s *MCPState) GetNeedsRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.NeedsRefresh
 }
 
 func (s *MCPState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 

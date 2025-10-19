@@ -897,10 +897,43 @@ func (m *Model) Init() tea.Cmd {
 	return tea.Batch(cmds...)
 }
 
+// Update is the ONLY place where Model state should be modified (Redux/Elm reducer pattern)
+//
+// ⚠️  CRITICAL: This is the PURE REDUCER function - follow these rules strictly!
+//
+// ✅ CORRECT patterns:
+// 1. Receive message → Update state → Return new model + command
+// 2. Return tea.Cmd for ALL async operations (network, I/O, timers)
+// 3. Keep Update() fast (<5ms) - defer heavy work to commands
+// 4. State changes ONLY in Update() - nowhere else!
+//
+// ❌ WRONG patterns that WILL cause bugs:
+//
+// 1. DON'T block in Update() (freezes entire TUI):
+//    ❌ data := http.Get(url)          // Blocks event loop!
+//    ❌ time.Sleep(duration)            // Freezes UI!
+//    ❌ result := <-channel             // Waits forever!
+//    ✅ return m, fetchDataCmd()        // Async via command
+//
+// 2. DON'T spawn goroutines directly (can't communicate back):
+//    ❌ go func() { result := work(); /* how to send back? */ }()
+//    ✅ return m, tea.Cmd(func() tea.Msg { return WorkDoneMsg{work()} })
+//
+// 3. DON'T modify state outside Update():
+//    ❌ m.processMgr.AddProcess(proc)   // Direct modification!
+//    ❌ m.state.Processes = newList      // Bypasses Update()!
+//    ✅ return m, addProcessCmd(proc)    // Goes through Update()
+//
+// 4. DON'T call services that might block:
+//    ❌ procs := m.service.GetProcesses()  // Might block!
+//    ✅ Read from m.masterData (cached)    // Always fast
+//
+// See: /docs/architecture/redux-elm-architecture.md for full explanation
+// See: /docs/architecture/tui-deadlock-prevention.md for deadlock patterns
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
-	
+
 	// CONSOLIDATED MESSAGE ROUTING
 	// All messages (including keyboard) are routed through the message router
 	// The router handles messages in priority order:

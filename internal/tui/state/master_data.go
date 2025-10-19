@@ -18,7 +18,6 @@ type MasterData struct {
 	StateManager      *StateManager
 	OperationsTracker *OperationsTracker
 	UiComponents      *UIComponentsManager
-	CacheState        *Cache
 
 	// AI Coder sub-model for PTY/VT10x terminal state
 	AICoderState      *AICoderState
@@ -67,7 +66,6 @@ func NewMasterData() *MasterData {
 		StateManager:      NewStateManager(),
 		OperationsTracker: NewOperationsTracker(),
 		UiComponents:      NewUIComponentsManager(1000), // max size
-		CacheState:        NewCache(1000, 5*time.Minute), // max size, TTL
 
 		// Initialize AI Coder sub-model
 		AICoderState:      NewAICoderState(),
@@ -221,9 +219,6 @@ func (md *MasterData) ValidateState() []string {
 	}
 	if md.UiComponents == nil {
 		issues = append(issues, "UiComponents is nil")
-	}
-	if md.CacheState == nil {
-		issues = append(issues, "CacheState is nil")
 	}
 	if md.AICoderState == nil {
 		issues = append(issues, "AICoderState is nil")

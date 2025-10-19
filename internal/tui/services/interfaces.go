@@ -6,6 +6,43 @@ import (
 	"github.com/standardbeagle/brummer/internal/shared/types"
 )
 
+// ⚠️  CRITICAL: ALL SERVICES MUST BE STATELESS!
+//
+// Services in this package follow the Redux/Elm action creator pattern:
+// - Services are STATELESS command creators (like Redux action creators)
+// - Services NEVER store state (no fields except dependencies)
+// - Services NEVER spawn goroutines in Update()
+// - Services ONLY return tea.Cmd for async operations
+//
+// ❌ WRONG - Service with state (FOOTGUN!):
+//   type ProcessService struct {
+//       cachedProcesses []*Process  // DON'T cache in services!
+//       mu              sync.Mutex  // DON'T add mutexes!
+//   }
+//
+// WHY WRONG:
+// - Creates multiple sources of truth (state should only be in Model/MasterData)
+// - Requires mutexes (violates lock-free architecture)
+// - Breaks Redux/Elm pattern (state not in single store)
+// - Makes state changes unpredictable
+//
+// ✅ CORRECT - Stateless service:
+//   type ProcessService struct {
+//       // Only dependencies (managers, clients, etc.)
+//       processMgr *processes.Manager
+//   }
+//
+//   func (s *ProcessService) GetProcessesCmd() tea.Cmd {
+//       return func() tea.Msg {
+//           processes := s.processMgr.GetAllProcesses()
+//           return ProcessesLoadedMsg{Processes: processes}
+//       }
+//   }
+//
+// PATTERN: Service receives state → creates command → command executes async → returns message
+//
+// See: /docs/architecture/redux-elm-architecture.md for detailed explanation
+
 // ServiceCommandFactory defines the interface for creating service commands
 // This ensures all services are stateless and return commands instead of executing directly
 type ServiceCommandFactory interface {

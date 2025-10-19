@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/tui/messages"
@@ -27,7 +26,6 @@ type SettingsState struct {
 
 	// Version for atomic updates and state tracking
 	version          uint64
-	mu               sync.RWMutex
 }
 
 // NewSettingsState creates a new settings sub-model with initial state
@@ -48,8 +46,6 @@ func NewSettingsState() *SettingsState {
 
 // UpdateSettingsInfo updates the cached settings information (immutable)
 func (s *SettingsState) UpdateSettingsInfo(settingsInfo *messages.SettingsInfo) *SettingsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SettingsInfo = settingsInfo
@@ -63,8 +59,6 @@ func (s *SettingsState) UpdateSettingsInfo(settingsInfo *messages.SettingsInfo) 
 
 // SetLoading updates the loading state (immutable)
 func (s *SettingsState) SetLoading(loading bool) *SettingsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Loading = loading
@@ -77,8 +71,6 @@ func (s *SettingsState) SetLoading(loading bool) *SettingsState {
 
 // SetError updates the error state (immutable)
 func (s *SettingsState) SetError(err error) *SettingsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -93,8 +85,6 @@ func (s *SettingsState) SetError(err error) *SettingsState {
 
 // SetShowDetails updates the detail view setting (immutable)
 func (s *SettingsState) SetShowDetails(show bool) *SettingsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowDetails = show
@@ -104,8 +94,6 @@ func (s *SettingsState) SetShowDetails(show bool) *SettingsState {
 
 // SetAutoRefresh updates the auto-refresh setting (immutable)
 func (s *SettingsState) SetAutoRefresh(refresh bool) *SettingsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.AutoRefresh = refresh
@@ -115,8 +103,6 @@ func (s *SettingsState) SetAutoRefresh(refresh bool) *SettingsState {
 
 // SetRefreshInterval updates the refresh interval (immutable)
 func (s *SettingsState) SetRefreshInterval(interval time.Duration) *SettingsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.RefreshInterval = interval
@@ -126,8 +112,6 @@ func (s *SettingsState) SetRefreshInterval(interval time.Duration) *SettingsStat
 
 // MarkForRefresh marks that the settings data needs refreshing (immutable)
 func (s *SettingsState) MarkForRefresh() *SettingsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.NeedsRefresh = true
@@ -137,8 +121,6 @@ func (s *SettingsState) MarkForRefresh() *SettingsState {
 
 // ClearError clears any existing error (immutable)
 func (s *SettingsState) ClearError() *SettingsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.LastError = ""
@@ -148,8 +130,6 @@ func (s *SettingsState) ClearError() *SettingsState {
 
 // IsCacheValid checks if the cached settings data is still valid
 func (s *SettingsState) IsCacheValid(maxAge time.Duration) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.CacheTimestamp.IsZero() || s.NeedsRefresh {
 		return false
@@ -160,8 +140,6 @@ func (s *SettingsState) IsCacheValid(maxAge time.Duration) bool {
 
 // GetMCPServerInfo returns MCP server information
 func (s *SettingsState) GetMCPServerInfo() *messages.MCPServerInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.SettingsInfo == nil {
 		return nil
@@ -171,8 +149,6 @@ func (s *SettingsState) GetMCPServerInfo() *messages.MCPServerInfo {
 
 // GetProxyServerInfo returns proxy server information
 func (s *SettingsState) GetProxyServerInfo() *messages.ProxyServerInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.SettingsInfo == nil {
 		return nil
@@ -182,8 +158,6 @@ func (s *SettingsState) GetProxyServerInfo() *messages.ProxyServerInfo {
 
 // GetPackageManagers returns package manager information
 func (s *SettingsState) GetPackageManagers() *messages.PackageMgrInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.SettingsInfo == nil {
 		return nil
@@ -193,8 +167,6 @@ func (s *SettingsState) GetPackageManagers() *messages.PackageMgrInfo {
 
 // GetWorkingDirectory returns the working directory
 func (s *SettingsState) GetWorkingDirectory() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.SettingsInfo == nil {
 		return ""
@@ -204,8 +176,6 @@ func (s *SettingsState) GetWorkingDirectory() string {
 
 // IsMCPConfigured returns whether MCP is configured
 func (s *SettingsState) IsMCPConfigured() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.SettingsInfo == nil {
 		return false
@@ -215,8 +185,6 @@ func (s *SettingsState) IsMCPConfigured() bool {
 
 // GetStateSummary returns a summary of current state
 func (s *SettingsState) GetStateSummary() map[string]interface{} {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	summary := map[string]interface{}{
 		"loading":           s.Loading,
@@ -242,8 +210,6 @@ func (s *SettingsState) GetStateSummary() map[string]interface{} {
 
 // Validate checks for state consistency
 func (s *SettingsState) Validate() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var issues []string
 
@@ -276,8 +242,6 @@ func (s *SettingsState) Validate() []string {
 
 // Getters for current state values
 func (s *SettingsState) GetSettingsInfo() *messages.SettingsInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.SettingsInfo == nil {
 		return nil
@@ -288,50 +252,34 @@ func (s *SettingsState) GetSettingsInfo() *messages.SettingsInfo {
 }
 
 func (s *SettingsState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Loading
 }
 
 func (s *SettingsState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastError
 }
 
 func (s *SettingsState) GetShowDetails() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowDetails
 }
 
 func (s *SettingsState) GetAutoRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.AutoRefresh
 }
 
 func (s *SettingsState) GetRefreshInterval() time.Duration {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.RefreshInterval
 }
 
 func (s *SettingsState) GetNeedsRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.NeedsRefresh
 }
 
 func (s *SettingsState) GetLastUpdateTime() time.Time {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastUpdateTime
 }
 
 func (s *SettingsState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 

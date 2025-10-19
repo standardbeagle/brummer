@@ -2,7 +2,6 @@ package state
 
 import (
 	"regexp"
-	"sync"
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/logs"
@@ -10,6 +9,9 @@ import (
 
 // LogsState manages all logs-related UI state
 // This is a sub-model that encapsulates logs display state according to Elm/Redux patterns
+//
+// IMMUTABLE: This struct is immutable. All update methods return a NEW instance.
+// NO MUTEXES: Thread-safety is achieved through immutability and atomic operations.
 type LogsState struct {
 	// Filter settings
 	ShowPattern      string
@@ -37,9 +39,8 @@ type LogsState struct {
 	// Viewport state (for persistence)
 	ScrollOffset int
 
-	// Version for atomic updates and state tracking
+	// Version for state tracking
 	version uint64
-	mu      sync.RWMutex
 }
 
 // NewLogsState creates a new logs sub-model with initial state
@@ -65,8 +66,6 @@ func NewLogsState() *LogsState {
 
 // SetShowPattern updates the show pattern filter (immutable)
 func (s *LogsState) SetShowPattern(pattern string) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowPattern = pattern
@@ -77,8 +76,6 @@ func (s *LogsState) SetShowPattern(pattern string) *LogsState {
 
 // SetHidePattern updates the hide pattern filter (immutable)
 func (s *LogsState) SetHidePattern(pattern string) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.HidePattern = pattern
@@ -89,8 +86,6 @@ func (s *LogsState) SetHidePattern(pattern string) *LogsState {
 
 // SetShowHighPriority updates the high priority filter (immutable)
 func (s *LogsState) SetShowHighPriority(show bool) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowHighPriority = show
@@ -101,8 +96,6 @@ func (s *LogsState) SetShowHighPriority(show bool) *LogsState {
 
 // SetSelectedProcess updates the selected process filter (immutable)
 func (s *LogsState) SetSelectedProcess(processID string) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SelectedProcess = processID
@@ -113,8 +106,6 @@ func (s *LogsState) SetSelectedProcess(processID string) *LogsState {
 
 // ToggleAutoScroll toggles the auto-scroll setting (immutable)
 func (s *LogsState) ToggleAutoScroll() *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.AutoScroll = !newState.AutoScroll
@@ -124,8 +115,6 @@ func (s *LogsState) ToggleAutoScroll() *LogsState {
 
 // SetScrollOffset updates the scroll offset (immutable)
 func (s *LogsState) SetScrollOffset(offset int) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ScrollOffset = offset
@@ -136,8 +125,6 @@ func (s *LogsState) SetScrollOffset(offset int) *LogsState {
 
 // SetAtBottom marks whether the view is at the bottom (immutable)
 func (s *LogsState) SetAtBottom(atBottom bool) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.AtBottom = atBottom
@@ -150,8 +137,6 @@ func (s *LogsState) SetAtBottom(atBottom bool) *LogsState {
 
 // SetSearchQuery updates the search query (immutable)
 func (s *LogsState) SetSearchQuery(query string) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SearchQuery = query
@@ -161,8 +146,6 @@ func (s *LogsState) SetSearchQuery(query string) *LogsState {
 
 // SetSearchResults updates the search results (immutable)
 func (s *LogsState) SetSearchResults(results []logs.LogEntry) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SearchResults = make([]logs.LogEntry, len(results))
@@ -173,8 +156,6 @@ func (s *LogsState) SetSearchResults(results []logs.LogEntry) *LogsState {
 
 // SetLoading updates the loading state (immutable)
 func (s *LogsState) SetLoading(loading bool) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Loading = loading
@@ -184,8 +165,6 @@ func (s *LogsState) SetLoading(loading bool) *LogsState {
 
 // SetError updates the error state (immutable)
 func (s *LogsState) SetError(err error) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -199,8 +178,6 @@ func (s *LogsState) SetError(err error) *LogsState {
 
 // UpdateCachedLogs updates the cached logs (immutable)
 func (s *LogsState) UpdateCachedLogs(logEntries []logs.CollapsedLogEntry, processID string) *LogsState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.CachedLogs = make([]logs.CollapsedLogEntry, len(logEntries))
@@ -213,8 +190,6 @@ func (s *LogsState) UpdateCachedLogs(logEntries []logs.CollapsedLogEntry, proces
 
 // ApplyFilters applies current filters to log entries
 func (s *LogsState) ApplyFilters(entries []logs.CollapsedLogEntry) []logs.CollapsedLogEntry {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.ShowPattern == "" && s.HidePattern == "" && !s.ShowHighPriority {
 		return entries
@@ -259,8 +234,6 @@ func (s *LogsState) ApplyFilters(entries []logs.CollapsedLogEntry) []logs.Collap
 
 // IsCacheValid checks if the cached logs are still valid
 func (s *LogsState) IsCacheValid(processID string, maxAge time.Duration) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.CacheTimestamp.IsZero() || s.CacheProcess != processID {
 		return false
@@ -271,56 +244,38 @@ func (s *LogsState) IsCacheValid(processID string, maxAge time.Duration) bool {
 
 // Getters for current state values
 func (s *LogsState) GetShowPattern() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowPattern
 }
 
 func (s *LogsState) GetHidePattern() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.HidePattern
 }
 
 func (s *LogsState) GetShowHighPriority() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowHighPriority
 }
 
 func (s *LogsState) GetSelectedProcess() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedProcess
 }
 
 func (s *LogsState) GetAutoScroll() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.AutoScroll
 }
 
 func (s *LogsState) GetAtBottom() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.AtBottom
 }
 
 func (s *LogsState) GetScrollOffset() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ScrollOffset
 }
 
 func (s *LogsState) GetSearchQuery() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SearchQuery
 }
 
 func (s *LogsState) GetSearchResults() []logs.LogEntry {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	results := make([]logs.LogEntry, len(s.SearchResults))
 	copy(results, s.SearchResults)
@@ -328,20 +283,14 @@ func (s *LogsState) GetSearchResults() []logs.LogEntry {
 }
 
 func (s *LogsState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Loading
 }
 
 func (s *LogsState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastError
 }
 
 func (s *LogsState) GetCachedLogs() []logs.CollapsedLogEntry {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	logs := make([]logs.CollapsedLogEntry, len(s.CachedLogs))
 	copy(logs, s.CachedLogs)
@@ -349,8 +298,6 @@ func (s *LogsState) GetCachedLogs() []logs.CollapsedLogEntry {
 }
 
 func (s *LogsState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 

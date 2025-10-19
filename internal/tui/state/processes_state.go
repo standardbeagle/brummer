@@ -1,7 +1,6 @@
 package state
 
 import (
-	"sync"
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/domain/processes"
@@ -9,6 +8,22 @@ import (
 
 // ProcessesState manages all processes-related UI state
 // This is a sub-model that encapsulates processes display state according to Elm/Redux patterns
+//
+// IMMUTABLE: This struct is immutable. All update methods return a NEW instance.
+// NO MUTEXES: Thread-safety is achieved through immutability and atomic operations.
+//
+// ⚠️  CRITICAL: DO NOT add mutexes to this struct!
+// ❌ WRONG:  mu sync.RWMutex  // DON'T DO THIS!
+// WHY: Adding mutexes creates deadlocks when Update() locks the OLD object while
+//      View() tries to read from it. This caused the keyboard navigation freeze bug.
+// ✅ CORRECT: Keep this struct mutex-free. Immutability provides thread-safety.
+//
+// ⚠️  CRITICAL: DO NOT add mutable fields (channels, maps with pointer values, etc.)!
+// ❌ WRONG:  UpdateChan chan Update  // DON'T DO THIS!
+// WHY: Mutable fields break the immutability guarantee and create race conditions.
+// ✅ CORRECT: Only use immutable types (strings, ints, slices of values, time.Time, etc.)
+//
+// See: /docs/architecture/redux-elm-architecture.md for detailed explanation
 type ProcessesState struct {
 	// Selection state
 	SelectedProcess string
@@ -27,9 +42,8 @@ type ProcessesState struct {
 	Loading         bool
 	LastError       string
 
-	// Version for atomic updates and state tracking
+	// Version for state tracking
 	version         uint64
-	mu              sync.RWMutex
 }
 
 // NewProcessesState creates a new processes sub-model with initial state
@@ -49,9 +63,13 @@ func NewProcessesState() *ProcessesState {
 }
 
 // SetSelectedProcess updates the selected process (immutable)
+//
+// ⚠️  CRITICAL: DO NOT modify state in place!
+// ❌ WRONG:  s.SelectedProcess = processID; s.version++; return s  // DON'T mutate!
+// WHY: Breaks immutability guarantee. Old references would see new data (race condition).
+//      View() might read mid-modification, causing inconsistent state.
+// ✅ CORRECT: Create NEW object via s.copy(), modify copy, return new object.
 func (s *ProcessesState) SetSelectedProcess(processID string) *ProcessesState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SelectedProcess = processID
@@ -60,9 +78,15 @@ func (s *ProcessesState) SetSelectedProcess(processID string) *ProcessesState {
 }
 
 // UpdateProcesses updates the cached process list (immutable)
+//
+// ⚠️  CRITICAL: DO NOT modify state in place!
+// ❌ WRONG:  s.Processes = processList; s.version++; return s  // DON'T mutate!
+// WHY: Multiple goroutines might hold references to old state. Mutating in place
+//      creates race conditions where View() reads partially updated data.
+// ✅ CORRECT: Always copy the entire state object and return NEW instance.
+//
+// Note: Deep copy the slice to prevent external modifications from affecting state.
 func (s *ProcessesState) UpdateProcesses(processList []*processes.Process) *ProcessesState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Processes = make([]*processes.Process, len(processList))
@@ -75,8 +99,6 @@ func (s *ProcessesState) UpdateProcesses(processList []*processes.Process) *Proc
 
 // SetGroupByStatus updates the grouping setting (immutable)
 func (s *ProcessesState) SetGroupByStatus(group bool) *ProcessesState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.GroupByStatus = group
@@ -86,8 +108,6 @@ func (s *ProcessesState) SetGroupByStatus(group bool) *ProcessesState {
 
 // SetSortByUptime updates the sorting setting (immutable)
 func (s *ProcessesState) SetSortByUptime(sort bool) *ProcessesState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.SortByUptime = sort
@@ -97,8 +117,6 @@ func (s *ProcessesState) SetSortByUptime(sort bool) *ProcessesState {
 
 // SetShowStopped updates the show stopped setting (immutable)
 func (s *ProcessesState) SetShowStopped(show bool) *ProcessesState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.ShowStopped = show
@@ -108,8 +126,6 @@ func (s *ProcessesState) SetShowStopped(show bool) *ProcessesState {
 
 // SetLoading updates the loading state (immutable)
 func (s *ProcessesState) SetLoading(loading bool) *ProcessesState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.Loading = loading
@@ -119,8 +135,6 @@ func (s *ProcessesState) SetLoading(loading bool) *ProcessesState {
 
 // SetError updates the error state (immutable)
 func (s *ProcessesState) SetError(err error) *ProcessesState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	if err != nil {
@@ -134,8 +148,6 @@ func (s *ProcessesState) SetError(err error) *ProcessesState {
 
 // MarkForRefresh marks that the process list needs refreshing (immutable)
 func (s *ProcessesState) MarkForRefresh() *ProcessesState {
-	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	newState := s.copy()
 	newState.NeedsRefresh = true
@@ -145,8 +157,6 @@ func (s *ProcessesState) MarkForRefresh() *ProcessesState {
 
 // IsCacheValid checks if the cached processes are still valid
 func (s *ProcessesState) IsCacheValid(maxAge time.Duration) bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	if s.CacheTimestamp.IsZero() || s.NeedsRefresh {
 		return false
@@ -157,8 +167,6 @@ func (s *ProcessesState) IsCacheValid(maxAge time.Duration) bool {
 
 // GetRunningProcesses returns only running processes
 func (s *ProcessesState) GetRunningProcesses() []*processes.Process {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var running []*processes.Process
 	for _, proc := range s.Processes {
@@ -171,8 +179,6 @@ func (s *ProcessesState) GetRunningProcesses() []*processes.Process {
 
 // GetStoppedProcesses returns only stopped processes
 func (s *ProcessesState) GetStoppedProcesses() []*processes.Process {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	var stopped []*processes.Process
 	for _, proc := range s.Processes {
@@ -185,8 +191,6 @@ func (s *ProcessesState) GetStoppedProcesses() []*processes.Process {
 
 // FindProcessByID finds a process by its ID
 func (s *ProcessesState) FindProcessByID(id string) *processes.Process {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	for _, proc := range s.Processes {
 		if proc.ID == id {
@@ -198,8 +202,6 @@ func (s *ProcessesState) FindProcessByID(id string) *processes.Process {
 
 // FindProcessByName finds a process by its name
 func (s *ProcessesState) FindProcessByName(name string) *processes.Process {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	for _, proc := range s.Processes {
 		if proc.Name == name {
@@ -211,15 +213,11 @@ func (s *ProcessesState) FindProcessByName(name string) *processes.Process {
 
 // GetProcessCount returns the total number of processes
 func (s *ProcessesState) GetProcessCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return len(s.Processes)
 }
 
 // GetRunningCount returns the number of running processes
 func (s *ProcessesState) GetRunningCount() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	count := 0
 	for _, proc := range s.Processes {
@@ -232,14 +230,10 @@ func (s *ProcessesState) GetRunningCount() int {
 
 // Getters for current state values
 func (s *ProcessesState) GetSelectedProcess() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SelectedProcess
 }
 
 func (s *ProcessesState) GetProcesses() []*processes.Process {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 
 	processes := make([]*processes.Process, len(s.Processes))
 	copy(processes, s.Processes)
@@ -247,48 +241,42 @@ func (s *ProcessesState) GetProcesses() []*processes.Process {
 }
 
 func (s *ProcessesState) GetGroupByStatus() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.GroupByStatus
 }
 
 func (s *ProcessesState) GetSortByUptime() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.SortByUptime
 }
 
 func (s *ProcessesState) GetShowStopped() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.ShowStopped
 }
 
 func (s *ProcessesState) GetLoading() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.Loading
 }
 
 func (s *ProcessesState) GetError() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.LastError
 }
 
 func (s *ProcessesState) GetNeedsRefresh() bool {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.NeedsRefresh
 }
 
 func (s *ProcessesState) GetVersion() uint64 {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.version
 }
 
 // Helper methods
+//
+// ⚠️  CRITICAL: copy() performs shallow copy - sufficient for immutable pattern
+// WHY: Shallow copy creates new struct with same field values. Since we NEVER mutate
+//      the Processes slice itself (only replace it entirely), shallow copy is safe.
+// ✅ CORRECT: newState := *s creates new struct, then update specific fields.
+//
+// DANGER: If you add mutable fields (channels, maps), you MUST update copy() to
+//         deep copy those fields, or better: DON'T add mutable fields at all!
 func (s *ProcessesState) copy() *ProcessesState {
 	newState := *s
 	return &newState

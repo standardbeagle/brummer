@@ -72,6 +72,13 @@ func (c *ErrorsViewComponent) Init() tea.Cmd {
 }
 
 // ViewWithState renders the component using external state (stateless/Elm-compliant)
+//
+// ⚠️  CRITICAL: This method MUST be pure and non-blocking!
+// ❌ WRONG:  errors := errorService.FetchErrors()  // DON'T call external services!
+// WHY: Blocking in View() freezes the entire TUI event loop and breaks keyboard navigation.
+// ✅ CORRECT: Only read from masterData (cached state) and logStore (non-blocking reads).
+//
+// See: /docs/architecture/tui-deadlock-prevention.md for mandatory patterns
 func (c *ErrorsViewComponent) ViewWithState(masterData *state.MasterData, logStore *logs.Store) string {
 	if !c.IsVisible() || masterData == nil || masterData.ErrorsState == nil {
 		return ""
