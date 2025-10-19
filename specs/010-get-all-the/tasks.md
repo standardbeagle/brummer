@@ -6,9 +6,11 @@
 
 ## Overview
 
-This task list implements complete TUI tab functionality with error grouping intelligence and comprehensive automated testing following TDD principles. All 45 tasks are organized into 6 phases (A-F) with clear dependencies and parallel execution opportunities.
+This task list implements complete TUI tab functionality with error grouping intelligence and comprehensive automated testing following TDD principles. All 52 tasks (45 implementation + 7 build checkpoints) are organized into 8 phases (A-H) with clear dependencies and parallel execution opportunities.
 
 **Strategy**: Test-First Development (TDD) - Write failing tests, then implement to make tests pass
+
+**Build-First Approach**: The application MUST build successfully after every task. 7 mandatory build checkpoints ensure continuous integration throughout development.
 
 ## Task Categories
 
@@ -16,6 +18,18 @@ This task list implements complete TUI tab functionality with error grouping int
 - **[S]** = Must be executed sequentially (same file or has dependencies)
 - **[TEST]** = Write failing tests first (TDD)
 - **[IMPL]** = Implementation to make tests pass
+- **[BUILD]** = Build verification checkpoint (MANDATORY)
+
+## 🔨 Build Verification Policy
+
+**CRITICAL**: The application MUST build successfully after EVERY task completion.
+
+**After completing ANY task, you MUST:**
+1. Run `make build` to verify the application compiles
+2. If build fails, fix compilation errors immediately before proceeding
+3. Never leave the codebase in a non-building state
+
+**Build Checkpoints** are inserted throughout the task list to ensure continuous integration. These are MANDATORY gates that cannot be skipped.
 
 ---
 
@@ -63,6 +77,14 @@ mkdir -p test/tui/fixtures
 
 **Dependencies**: None
 **Note**: Critical for TUI integration testing
+
+### T004a: [BUILD] Build Verification Checkpoint - Phase A Complete
+**Command**: `make build`
+**Action**: Verify application builds successfully after Phase A
+**Expected**: Clean build with no compilation errors
+**If Failed**: Fix all compilation errors before proceeding to Phase B
+**Dependencies**: T001, T002, T003, T004
+**Note**: MANDATORY - Do not skip this verification
 
 ---
 
@@ -130,6 +152,15 @@ mkdir -p test/tui/fixtures
 **Test Function**: `TestErrorGrouping(t *testing.T)`
 **Expected**: All tests FAIL (grouping service not implemented)
 **Dependencies**: T002
+
+### T008a: [BUILD] Build Verification Checkpoint - Phase B Complete
+**Command**: `make build`
+**Action**: Verify application builds with all contract tests
+**Expected**: Clean build (tests may fail, but code compiles)
+**Test Verification**: `go test ./test/tui/contracts/... -v` - should compile but tests FAIL (expected)
+**If Failed**: Fix all compilation errors before proceeding to Phase C
+**Dependencies**: T005, T006, T007, T008
+**Note**: MANDATORY - Tests should fail (no implementation), but code must compile
 
 ---
 
@@ -233,6 +264,22 @@ WebState *WebState
 **Dependencies**: T013
 **Note**: Not parallel - modifies existing file
 
+### T017a: [BUILD] Build Verification Checkpoint - Phase C Complete
+**Command**: `make build`
+**Action**: Verify application builds with all state implementations
+**Expected**: Clean build with no compilation errors
+**Test Verification**:
+```bash
+go test ./test/tui/contracts/... -v -run TestState
+# State contract tests should now PASS
+```
+**If Failed**:
+1. Fix compilation errors first
+2. If state contract tests fail, fix state implementations
+3. Do not proceed until state tests pass
+**Dependencies**: T009-T017
+**Note**: MANDATORY - State contract tests MUST pass before Phase D
+
 ---
 
 ## Phase D: Service Implementation (Make Tests Pass)
@@ -259,6 +306,24 @@ WebState *WebState
 
 **Expected**: Service contract tests pass
 **Dependencies**: T007
+
+### T019a: [BUILD] Build Verification Checkpoint - Phase D Complete
+**Command**: `make build`
+**Action**: Verify application builds with all service implementations
+**Expected**: Clean build with no compilation errors
+**Test Verification**:
+```bash
+go test ./test/tui/contracts/... -v -run TestService
+# Service contract tests should now PASS
+go test ./test/tui/unit/... -v -run TestErrorGrouping
+# Error grouping unit tests should now PASS
+```
+**If Failed**:
+1. Fix compilation errors first
+2. If service contract tests fail, fix service implementations
+3. Do not proceed until service tests pass
+**Dependencies**: T018, T019
+**Note**: MANDATORY - Service contract tests MUST pass before Phase E
 
 ---
 
@@ -300,6 +365,22 @@ WebState *WebState
 **Expected**: View contract tests for LogsView pass
 **Dependencies**: T006
 **Note**: Not parallel - modifies existing file
+
+### T022a: [BUILD] Build Verification Checkpoint - Phase E Complete
+**Command**: `make build`
+**Action**: Verify application builds with all view updates
+**Expected**: Clean build with no compilation errors
+**Test Verification**:
+```bash
+go test ./test/tui/contracts/... -v -run TestView
+# View contract tests should now PASS
+```
+**If Failed**:
+1. Fix compilation errors first
+2. If view contract tests fail, fix view implementations
+3. Do not proceed until view tests pass
+**Dependencies**: T020, T021, T022
+**Note**: MANDATORY - View contract tests MUST pass before Phase F
 
 ---
 
@@ -366,6 +447,27 @@ type ShowClearConfirmationMsg struct {
 
 **Dependencies**: T018, T024
 **Note**: Not parallel - modifies existing file
+
+### T027a: [BUILD] Build Verification Checkpoint - Phase F Complete
+**Command**: `make build`
+**Action**: Verify application builds with complete integration
+**Expected**: Clean build with no compilation errors
+**Test Verification**:
+```bash
+# Verify application runs
+./brum --help
+# Should display help without errors
+
+# Quick smoke test
+timeout 5s ./brum --no-tui || true
+# Should start without crashes
+```
+**If Failed**:
+1. Fix compilation errors first
+2. If runtime errors occur, fix integration issues
+3. Test that TUI starts without panicking
+**Dependencies**: T023-T027
+**Note**: MANDATORY - Application MUST run before integration tests
 
 ---
 
@@ -446,6 +548,27 @@ type ShowClearConfirmationMsg struct {
 **Test Scenario**: Quickstart Scenario 8
 **Dependencies**: T004
 **Build Tags**: `// +build integration`
+
+### T033a: [BUILD] Build Verification Checkpoint - Phase G Complete
+**Command**: `make build`
+**Action**: Verify application builds with all integration tests
+**Expected**: Clean build with no compilation errors
+**Test Verification**:
+```bash
+# Verify integration tests compile
+go test -tags=integration ./test/tui/integration/... -c
+# Should compile successfully
+
+# Build should still work
+make build
+./brum --version
+```
+**If Failed**:
+1. Fix compilation errors in integration tests
+2. Ensure build tags are correct
+3. Verify all imports are valid
+**Dependencies**: T028-T033
+**Note**: MANDATORY - Integration tests must compile before validation phase
 
 ---
 
@@ -549,18 +672,55 @@ go tool cover -html=coverage.out -o coverage.html
 
 ### T045: [S] Final verification checklist
 **Action**: Verify all completion criteria:
+
+**Build Verification**:
+- [ ] `make build` completes successfully
+- [ ] `./brum --version` displays correct version
+- [ ] `./brum --help` shows all commands
+- [ ] Application starts without panics
+
+**Functionality Verification**:
 - [ ] All 7 tabs fully functional
 - [ ] Error grouping working (stack traces, compilation, tests)
 - [ ] Clear commands working ('c' and 'C')
+- [ ] Tab navigation responsive (<50ms)
+
+**Test Verification**:
+- [ ] All contract tests passing (100%)
+- [ ] All integration tests passing (100%)
+- [ ] Manual quickstart tests passed (all 10 scenarios)
 - [ ] >80% test coverage achieved
-- [ ] Zero race conditions
-- [ ] <5ms View() rendering
-- [ ] <50ms keyboard response
-- [ ] All contract tests passing
-- [ ] All integration tests passing
-- [ ] Manual quickstart tests passed
+- [ ] Zero race conditions detected
+- [ ] <5ms View() rendering verified
+- [ ] <50ms keyboard response verified
+
+**Production Readiness**:
+- [ ] Application builds on all platforms (Linux, macOS, Windows)
+- [ ] No compilation warnings
+- [ ] No linter errors (`make lint`)
+- [ ] Documentation updated
+
+**Final Build Verification**:
+```bash
+# Clean build from scratch
+make clean
+make build
+
+# Verify binary works
+./brum --version
+./brum --help
+timeout 10s ./brum --no-tui
+
+# Verify cross-platform builds
+GOOS=linux GOARCH=amd64 go build -o brum-linux ./cmd/brum
+GOOS=darwin GOARCH=amd64 go build -o brum-darwin ./cmd/brum
+GOOS=windows GOARCH=amd64 go build -o brum-windows.exe ./cmd/brum
+
+echo "✅ All builds successful - Feature complete!"
+```
 
 **Dependencies**: All previous tasks
+**Note**: This is the FINAL gate - all checks must pass
 
 ---
 
@@ -643,7 +803,25 @@ Phase H (T034-T045) - Sequential (validation pipeline)
 
 ---
 
-*Total Tasks: 45*
+## Build Checkpoint Summary
+
+**7 Mandatory Build Checkpoints** ensure the application builds throughout development:
+
+1. **T004a**: After Phase A (Test Infrastructure) - Verify fixtures compile
+2. **T008a**: After Phase B (Contract Tests) - Verify tests compile (may fail, but compile)
+3. **T017a**: After Phase C (State Implementation) - Verify states build, state tests pass
+4. **T019a**: After Phase D (Service Implementation) - Verify services build, service tests pass
+5. **T022a**: After Phase E (View Implementation) - Verify views build, view tests pass
+6. **T027a**: After Phase F (Integration) - Verify application runs without crashes
+7. **T033a**: After Phase G (Integration Tests) - Verify integration tests compile
+8. **T045**: Final Build Verification - Cross-platform builds, all tests pass
+
+**Critical Rule**: If any build checkpoint fails, STOP and fix before proceeding.
+
+---
+
+*Total Tasks: 52 (45 implementation + 7 build checkpoints)*
 *Estimated Duration: 3-4 sprints*
 *Parallel Execution Opportunities: 25 tasks*
+*Build Checkpoints: 7 mandatory gates*
 *Implementation Status: Ready for execution*
