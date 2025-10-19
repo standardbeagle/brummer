@@ -63,15 +63,30 @@ As a developer using Brummer, I need all TUI tabs to be fully functional with re
 1. **Given** processes have generated error output, **When** I switch to the Errors tab, **Then** I see all error messages with timestamps, process names, and error context
 2. **Given** I'm viewing the Errors tab, **When** I filter by process name, **Then** only errors from that process are displayed
 3. **Given** errors are cached, **When** new errors occur, **Then** they appear in real-time without requiring manual refresh
-4. **Given** I'm viewing an error entry, **When** I press 'c' to clear, **Then** the error is removed from the display
+4. **Given** I'm viewing the Errors tab, **When** I press 'c' key, **Then** all errors are cleared from the display
+5. **Given** I'm viewing the Errors tab with errors present, **When** I press 'C' key (shift+c), **Then** I'm prompted to confirm clearing all errors
 
 #### Logs Tab
 1. **Given** processes are generating log output, **When** I switch to the Logs tab, **Then** I see all log entries with severity levels, timestamps, and sources
 2. **Given** I'm viewing the Logs tab, **When** I filter by severity level (info/warn/error), **Then** only matching log entries are displayed
 3. **Given** I'm viewing the Logs tab, **When** I search for text, **Then** matching log entries are highlighted
-4. **Given** I'm viewing the Logs tab, **When** I view the top row **Then** tabs with sources are displayed and can be selected to filter
-4. **Given** I'm viewing the Logs tab, **When** I fiter by source process, **Then** matching log entries are filtered
-5. **Given** logs are scrolling, **When** I pause auto-scroll, **Then** new logs accumulate without disrupting my view
+4. **Given** I'm viewing the Logs tab, **When** I view the top row, **Then** tabs with sources are displayed and can be selected to filter
+5. **Given** I'm viewing the Logs tab, **When** I filter by source process, **Then** matching log entries are filtered
+6. **Given** logs are scrolling, **When** I pause auto-scroll, **Then** new logs accumulate without disrupting my view
+7. **Given** I'm viewing the Logs tab, **When** I press 'c' key, **Then** all logs are cleared from the display
+8. **Given** I'm viewing the Logs tab with logs present, **When** I press 'C' key (shift+c), **Then** I'm prompted to confirm clearing all logs
+
+#### URLs Tab
+1. **Given** processes have output URLs in their logs, **When** I switch to the URLs tab, **Then** I see all discovered URLs with process sources and timestamps
+2. **Given** I'm viewing the URLs tab, **When** I filter by process, **Then** only URLs from that process are displayed
+3. **Given** I'm viewing the URLs tab, **When** I click a URL, **Then** the URL opens in my default browser
+
+#### Web Tab
+1. **Given** the proxy server is capturing HTTP events, **When** I switch to the Web tab, **Then** I see all proxy event logs with request/response data, timestamps, and status codes
+2. **Given** I'm viewing the Web tab, **When** I filter by endpoint, **Then** only events for that endpoint are displayed
+3. **Given** I'm viewing the Web tab, **When** I select an event, **Then** I see detailed request/response headers and body
+4. **Given** I'm viewing the Web tab, **When** I press 'c' key, **Then** all web event logs are cleared from the display
+5. **Given** I'm viewing the Web tab with events present, **When** I press 'C' key (shift+c), **Then** I'm prompted to confirm clearing all web event logs
 
 #### Proxy Tab
 1. **Given** the proxy server is running, **When** I switch to the Proxy tab, **Then** I see proxy status, active connections, and discovered endpoints
@@ -122,6 +137,8 @@ As a developer using Brummer, I need all TUI tabs to be fully functional with re
 - **FR-011**: System MUST display all error messages with timestamp, source process, and error context
 - **FR-012**: System MUST support filtering errors by process name
 - **FR-013**: System MUST support clearing individual or all errors
+- **FR-013-KEY**: System MUST support 'c' key to clear all errors immediately from the Errors tab
+- **FR-013-CONFIRM**: System MUST support 'C' key (shift+c) to prompt for confirmation before clearing all errors
 - **FR-014**: System MUST highlight new errors that arrive while viewing the tab
 - **FR-015**: System MUST cache errors with configurable retention (e.g., last 1000 errors)
 
@@ -130,7 +147,23 @@ As a developer using Brummer, I need all TUI tabs to be fully functional with re
 - **FR-017**: System MUST support filtering by severity level (debug, info, warn, error)
 - **FR-018**: System MUST support text search across log messages
 - **FR-019**: System MUST support auto-scroll mode that pauses when user scrolls up
+- **FR-019-KEY**: System MUST support 'c' key to clear all logs immediately from the Logs tab
+- **FR-019-CONFIRM**: System MUST support 'C' key (shift+c) to prompt for confirmation before clearing all logs
 - **FR-020**: System MUST cache logs with configurable retention (e.g., last 5000 entries)
+
+#### URLs Tab Requirements
+- **FR-020-URL**: System MUST display all discovered URLs with source process, timestamp, and metadata
+- **FR-020-URL-FILTER**: System MUST support filtering URLs by source process
+- **FR-020-URL-DEDUPE**: System MUST deduplicate URLs per process to avoid showing duplicates
+- **FR-020-URL-CLICK**: System MUST support clicking URLs to open them in the default browser
+
+#### Web Tab Requirements
+- **FR-020-WEB**: System MUST display all proxy event logs with request/response data, timestamps, status codes, and HTTP methods
+- **FR-020-WEB-FILTER**: System MUST support filtering web events by endpoint, status code, or HTTP method
+- **FR-020-WEB-DETAIL**: System MUST display detailed request/response headers and body when an event is selected
+- **FR-020-WEB-KEY**: System MUST support 'c' key to clear all web event logs immediately from the Web tab
+- **FR-020-WEB-CONFIRM**: System MUST support 'C' key (shift+c) to prompt for confirmation before clearing all web event logs
+- **FR-020-WEB-REALTIME**: System MUST update web event display in real-time as proxy captures new HTTP traffic
 
 #### Proxy Tab Requirements
 - **FR-021**: System MUST display proxy server status (enabled/disabled, port)
@@ -197,6 +230,7 @@ As a developer using Brummer, I need all TUI tabs to be fully functional with re
 - **ErrorsState**: Represents the state of the Errors tab, including error contexts, filters, selected error, and cache validity
 - **LogsState**: Represents the state of the Logs tab, including log entries, severity filters, search query, scroll position, and auto-scroll mode
 - **URLsState**: Represents discovered URLs from process logs with deduplication per process
+- **WebState**: Represents the state of the Web tab, including proxy event logs, HTTP request/response data, filters, selected event, and real-time update status
 - **ProxyState**: Represents proxy server status, discovered endpoints, active connections, and traffic statistics
 - **SettingsState**: Represents application configuration with setting values, sources, and modification tracking
 - **CommandWindowState**: Represents slash command palette state, including available commands, filter query, selected command, and execution results
