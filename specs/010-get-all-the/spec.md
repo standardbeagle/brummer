@@ -118,7 +118,18 @@ As a developer using Brummer, I need all TUI tabs to be fully functional with re
 ## Detailed Design: Errors vs Web Tabs *(mandatory)*
 
 ### Errors Tab Content
-The Errors tab displays **process output errors** - these are errors emitted by the running processes themselves:
+The Errors tab displays **process output errors** - these are errors emitted by the running processes themselves.
+
+#### Primary Purpose:
+The Errors tab solves a critical monitoring problem: **errors get lost in the continuous flow of logs**. When processes generate high volumes of log output, important errors scroll past and become difficult to find. The Errors tab:
+
+1. **Prevents Error Loss**: Extracts and isolates errors from the log stream so they never get buried by normal log output
+2. **Groups Related Error Lines**: Intelligently groups multi-line errors (stack traces, compilation errors, test failures) into single, cohesive error entries
+3. **Enables Quick Collection**: Allows developers to quickly scan and copy all errors without sifting through thousands of log lines
+4. **Provides Error History**: Maintains a dedicated view of all errors even as logs continue to flow
+
+**Example Problem Solved:**
+Without the Errors tab, a single `Error: Cannot find module './config'` with a 15-line stack trace could be scattered across 100+ lines of debug/info logs, making it nearly impossible to find and copy the complete error context. The Errors tab groups those 15 lines together as one error entry.
 
 #### Content Sources:
 - **stderr output** from running processes (npm scripts, custom commands)
@@ -133,9 +144,15 @@ The Errors tab displays **process output errors** - these are errors emitted by 
   - Compilation errors from build tools
   - Runtime exceptions from applications
   - Linter/test framework error messages
-- **Timestamp**: When the error was captured from process output
-- **Context**: Process name, PID, and line context from logs
+- **Grouping Behavior**: Multi-line errors are intelligently grouped into single entries:
+  - Stack traces: All lines from "Error:" through the last stack frame are grouped together
+  - Compilation errors: Error message + file location + code snippet grouped as one entry
+  - Test failures: Test name + expectation + received value + stack trace grouped together
+  - Multi-line exceptions: Exception type + message + all related context lines grouped
+- **Timestamp**: When the first line of the error was captured from process output
+- **Context**: Process name, PID, and complete error context (not just single lines)
 - **Lifecycle**: Cleared when user presses 'c' or when process is removed
+- **Persistence**: Errors remain visible in the tab even as new logs flow in the Logs tab
 
 #### Example Error Content:
 ```
@@ -194,18 +211,34 @@ Response: { "error": "Invalid credentials" }
 |--------|-----------|---------|
 | **Data Source** | Process stdout/stderr | Proxy server HTTP events |
 | **Content Type** | Application errors, stack traces | HTTP requests/responses |
-| **Structure** | Unstructured text logs | Structured HTTP data |
+| **Structure** | Grouped multi-line error entries | Structured HTTP data |
 | **When Populated** | When processes write to stderr or log errors | When proxy intercepts HTTP traffic |
-| **Primary Use Case** | Debugging application code issues | Monitoring API calls and network activity |
+| **Primary Purpose** | Prevent errors from getting lost in log flow; group related error lines | Monitor API calls and network activity |
+| **Grouping Behavior** | Intelligently groups stack traces, compilation errors, test failures into single entries | Groups request/response pairs |
+| **Primary Use Case** | Quick error collection and debugging | Monitoring API calls and network activity |
 | **Filtering** | By process name, error pattern | By endpoint, status code, HTTP method |
-| **Detail View** | Error context and stack trace | Request/response headers and body |
+| **Detail View** | Complete grouped error context and stack trace | Request/response headers and body |
+| **Persistence** | Errors remain visible independent of log scroll | Events remain visible independent of proxy activity |
 
 ### Design Rationale
 Separating errors and web events into distinct tabs provides:
+
+**For Errors Tab:**
+- **Error Visibility**: Prevents critical errors from getting lost in continuous log streams with hundreds of lines per second
+- **Intelligent Grouping**: Groups related error lines (stack traces, compilation errors) into single, copyable entries
+- **Quick Collection**: Developers can instantly scan all errors and copy complete contexts without searching through logs
+- **Debugging Efficiency**: Maintains error history even as logs continue to scroll, allowing developers to reference earlier errors
+
+**For Web Tab:**
+- **Network Monitoring**: Provides dedicated view of HTTP traffic separate from application logs
+- **Structured Display**: Shows request/response data in organized format with headers, bodies, and timing
+- **API Debugging**: Enables monitoring of API calls, status codes, and response payloads independently
+
+**General Benefits:**
 - **Clarity**: Users immediately know where to look for different types of issues
-- **Performance**: Each tab can be optimized for its specific data type
+- **Performance**: Each tab can be optimized for its specific data type (text parsing vs. HTTP structure)
 - **Workflow**: Developers can monitor application errors separately from API/network activity
-- **Filtering**: Each tab can have specialized filters appropriate to its content type
+- **Filtering**: Each tab has specialized filters appropriate to its content type
 
 ## Requirements *(mandatory)*
 
@@ -227,10 +260,18 @@ Separating errors and web events into distinct tabs provides:
 
 #### Errors Tab Requirements
 - **FR-011**: System MUST display all error messages with timestamp, source process, and error context
+- **FR-011-GROUP**: System MUST intelligently group multi-line errors into single, cohesive error entries:
+  - Stack traces: Group all lines from error header through final stack frame
+  - Compilation errors: Group error message, file location, and code snippet
+  - Test failures: Group test name, expectation, received value, and stack trace
+  - Multi-line exceptions: Group exception type, message, and all context lines
+- **FR-011-EXTRACT**: System MUST extract errors from the continuous log stream to prevent them from getting lost in high-volume log output
+- **FR-011-PERSIST**: System MUST maintain error visibility in the Errors tab independently of the Logs tab scroll state
 - **FR-012**: System MUST support filtering errors by process name
 - **FR-013**: System MUST support clearing individual or all errors
 - **FR-013-KEY**: System MUST support 'c' key to clear all errors immediately from the Errors tab
 - **FR-013-CONFIRM**: System MUST support 'C' key (shift+c) to prompt for confirmation before clearing all errors
+- **FR-013-COPY**: System MUST allow copying complete grouped error entries with all context lines preserved
 - **FR-014**: System MUST highlight new errors that arrive while viewing the tab
 - **FR-015**: System MUST cache errors with configurable retention (e.g., last 1000 errors)
 
