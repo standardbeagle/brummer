@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
-	"github.com/standardbeagle/brummer/internal/tui/types"
+	"github.com/standardbeagle/brummer/internal/shared/types"
 )
 
 // AsyncBatchCommand represents a batch command that executes asynchronously using Bubble Tea commands

@@ -60,12 +60,12 @@ func RegisterViewSpecificHandlers(registry *KeyHandlerRegistry) {
 		case "s":
 			return func() tea.Msg {
 				// Stop selected process
-				return StatusMsg{Message: "Stopping process..."}
+				return StatusMsg{Message: "Stopping processes..."}
 			}
 		case "r":
 			return func() tea.Msg {
 				// Restart selected process
-				return StatusMsg{Message: "Restarting process..."}
+				return StatusMsg{Message: "Restarting processes..."}
 			}
 		case "l":
 			return func() tea.Msg {
@@ -129,7 +129,7 @@ func (h *CommandPaletteHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 	case tea.KeyEsc:
 		// Close command palette
 		return func() tea.Msg {
-			model.commandWindowView.HideCommandWindow()
+			model.masterData.CommandWindowState = model.masterData.CommandWindowState.HideCommandWindow()
 			return nil
 		}
 	case tea.KeyEnter:

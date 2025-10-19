@@ -9,7 +9,8 @@ import (
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui"
 	"github.com/standardbeagle/brummer/pkg/events"
@@ -54,7 +55,7 @@ func main() {
 	cfg := &config.Config{}
 
 	// Create process manager
-	processMgr := process.NewManager(logStore, eventBus, cfg, ".")
+	processMgr := processes.NewManager(logStore, eventBus, cfg, ".")
 
 	// Create MCP and proxy servers (minimal)
 	mcpServer := &mcp.Server{} // minimal implementation

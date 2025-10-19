@@ -7,7 +7,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
@@ -49,7 +50,7 @@ type ScriptSelector struct {
 	quickMode      bool
 
 	// Direct service access
-	processMgr    *process.Manager
+	processMgr    *processes.Manager
 	logStore      *logs.Store
 	updateChan    chan tea.Msg
 	navController NavigationControllerInterface
@@ -86,7 +87,7 @@ const (
 // NewScriptSelector creates a new script selector component
 func NewScriptSelector(
 	scriptSelector ScriptSelectorAutocompleteInterface,
-	processMgr *process.Manager,
+	processMgr *processes.Manager,
 	logStore *logs.Store,
 	updateChan chan tea.Msg,
 	navController NavigationControllerInterface,

@@ -263,7 +263,7 @@ func TestLongRunningProcess(t *testing.T) {
 	}
 
 	// Check that it started
-	err = bt.WaitForOutput("[long] Long running process...", 5*time.Second)
+	err = bt.WaitForOutput("[long] Long running processes...", 5*time.Second)
 	if err != nil {
 		t.Fatalf("Long-running process did not start: %v", err)
 	}

@@ -49,7 +49,7 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 			model.processesView.UpdateSize(m.Width, m.Height, headerHeight, footerHeight, contentHeight)
 		}
 		if model.logsView != nil {
-			model.logsView.UpdateSize(m.Width, m.Height, headerHeight, footerHeight, contentHeight)
+			model.logsView.SetSize(m.Width, contentHeight)
 		}
 		if model.webView != nil {
 			model.webView.UpdateSize(m.Width, m.Height, headerHeight, footerHeight, contentHeight)
@@ -60,7 +60,8 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 
 		// Update overlay controllers
 		if model.commandWindowView != nil {
-			model.commandWindowView.UpdateSize(m.Width, m.Height)
+			// Sizing is handled by component itself in stateless pattern
+			// model.commandWindowView.UpdateSize(m.Width, m.Height)
 		}
 		// Note: ScriptSelectorController gets size directly via getTerminalSize()
 		// to ensure proper sizing for overlay rendering

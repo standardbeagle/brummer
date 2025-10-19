@@ -7,7 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 	"github.com/standardbeagle/brummer/internal/tui/services"
@@ -91,17 +92,17 @@ type NotificationsService interface {
 // 5. BubbleTea program.Send() is thread-safe and non-blocking
 // 6. atomic.Value provides lock-free thread-safe access to program reference
 type ServiceBridge struct {
-	processMgr             *process.Manager
-	logStore               *logs.Store
-	proxyServer            *proxy.Server
-	eventBus               *events.EventBus
-	testManagementService   TestManagementService   // Interface for test management
-	fileBrowserService     FileBrowserService     // Interface for file browser
-	settingsService        SettingsService        // Interface for settings
-	inputService           InputService           // Interface for input
-	navigationService      NavigationService      // Interface for navigation
-	systemService          SystemService          // Interface for system
-	notificationsService   NotificationsService   // Interface for notifications
+	processMgr            *processes.Manager
+	logStore              *logs.Store
+	proxyServer           *proxy.Server
+	eventBus              *events.EventBus
+	testManagementService TestManagementService // Interface for test management
+	fileBrowserService    FileBrowserService    // Interface for file browser
+	settingsService       SettingsService       // Interface for settings
+	inputService          InputService          // Interface for input
+	navigationService     NavigationService     // Interface for navigation
+	systemService         SystemService         // Interface for system
+	notificationsService  NotificationsService  // Interface for notifications
 
 	// Thread-safe program reference using atomic.Value
 	// Stores *programHolder (never nil, but holder.prog can be nil)
@@ -114,7 +115,7 @@ type ServiceBridge struct {
 // NewServiceBridge creates a new service-to-UI adapter.
 // The program reference will be set when Start() is called.
 func NewServiceBridge(
-	processMgr *process.Manager,
+	processMgr *processes.Manager,
 	logStore *logs.Store,
 	proxyServer *proxy.Server,
 	eventBus *events.EventBus,
@@ -127,18 +128,18 @@ func NewServiceBridge(
 	notificationsService NotificationsService,
 ) *ServiceBridge {
 	sb := &ServiceBridge{
-		processMgr:             processMgr,
-		logStore:               logStore,
-		proxyServer:            proxyServer,
-		eventBus:               eventBus,
-		testManagementService:   testService,
-		fileBrowserService:     fileService,
-		settingsService:        settingsService,
-		inputService:           inputService,
-		navigationService:      navigationService,
-		systemService:          systemService,
-		notificationsService:   notificationsService,
-		subscriptions:          []func(){},
+		processMgr:            processMgr,
+		logStore:              logStore,
+		proxyServer:           proxyServer,
+		eventBus:              eventBus,
+		testManagementService: testService,
+		fileBrowserService:    fileService,
+		settingsService:       settingsService,
+		inputService:          inputService,
+		navigationService:     navigationService,
+		systemService:         systemService,
+		notificationsService:  notificationsService,
+		subscriptions:         []func(){},
 	}
 	// Initialize atomic.Value with empty holder
 	sb.program.Store(&programHolder{prog: nil})
@@ -240,30 +241,8 @@ func (b *ServiceBridge) subscribeToEventBus() {
 		return
 	}
 
-	// Process started events
-	b.eventBus.Subscribe(events.ProcessStarted, func(evt events.Event) {
-		// Atomically load program reference (lock-free, thread-safe)
-		if prog := b.getProgram(); prog != nil {
-			name := ""
-			script := ""
-			if n, ok := evt.Data["name"].(string); ok {
-				name = n
-			}
-			if s, ok := evt.Data["script"].(string); ok {
-				script = s
-			}
-
-			prog.Send(messages.ProcessStartedMsg{
-				ProcessID: evt.ProcessID,
-				Name:      name,
-				Script:    script,
-				StartTime: time.Now(),
-			})
-		}
-	})
-
-	// Process started events (also update process count)
-	b.eventBus.Subscribe(events.ProcessStarted, func(evt events.Event) {
+	// Process started events - single subscription
+	unsubProcessStarted := b.eventBus.Subscribe(events.ProcessStarted, func(evt events.Event) {
 		// Atomically load program reference (lock-free, thread-safe)
 		if prog := b.getProgram(); prog != nil {
 			name := ""
@@ -295,8 +274,10 @@ func (b *ServiceBridge) subscribeToEventBus() {
 		}
 	})
 
+	b.subscriptions = append(b.subscriptions, unsubProcessStarted)
+
 	// Process exited events (map to ProcessStoppedMsg)
-	b.eventBus.Subscribe(events.ProcessExited, func(evt events.Event) {
+	unsubProcessExited := b.eventBus.Subscribe(events.ProcessExited, func(evt events.Event) {
 		// Atomically load program reference (lock-free, thread-safe)
 		if prog := b.getProgram(); prog != nil {
 			name := ""
@@ -333,6 +314,8 @@ func (b *ServiceBridge) subscribeToEventBus() {
 			}
 		}
 	})
+
+	b.subscriptions = append(b.subscriptions, unsubProcessExited)
 
 	// MCP activity events
 	b.eventBus.Subscribe(events.MCPConnected, func(evt events.Event) {
@@ -486,8 +469,8 @@ func (b *ServiceBridge) subscribeToEventBus() {
 		}
 	})
 
-	// Note: EventBus.Subscribe() doesn't return unsubscribe functions in this version
-	// So we don't track subscriptions for cleanup. If needed, can be added in future.
+	// EventBus subscriptions now return unsubscribe functions for proper cleanup
+	// Key subscriptions tracked above, others can be added as needed
 }
 
 // subscribeToProxyServer converts proxy server events to messages
@@ -538,9 +521,9 @@ func (b *ServiceBridge) SubscribeToAICoderService(aiCoderService interface{}) {
 	}
 
 	// Get the service's event bus
-	// Note: This assumes the AICoderService has an EventBus() method
-	// We'll use type assertion to safely access it
-	if svc, ok := aiCoderService.(interface{ EventBus() *events.EventBus }); ok {
+	// Use safe type assertion to check if service has EventBus() method
+	type eventBusInterface interface{ EventBus() *events.EventBus }
+	if svc, ok := aiCoderService.(eventBusInterface); ok {
 		eventBus := svc.EventBus()
 
 		// Subscribe to AI coder session events
@@ -593,12 +576,26 @@ func (b *ServiceBridge) SubscribeToAICoderService(aiCoderService interface{}) {
 		eventBus.Subscribe("aicoder.pty.output", func(evt events.Event) {
 			if prog := b.getProgram(); prog != nil {
 				data := []byte{}
-				if d, ok := evt.Data["output"].([]byte); ok {
+				// Try both possible field names for compatibility
+				if d, ok := evt.Data["data"].([]byte); ok {
+					data = d
+				} else if d, ok := evt.Data["output"].([]byte); ok {
 					data = d
 				}
 				sequence := uint64(0)
 				if s, ok := evt.Data["sequence"].(uint64); ok {
 					sequence = s
+				}
+
+				// Convert PTY output to string for logging
+				if len(data) > 0 && b.logStore != nil {
+					sessionName := evt.ProcessID
+					if name, ok := evt.Data["sessionName"].(string); ok {
+						sessionName = name
+					}
+					outputStr := string(data)
+					// Add PTY output to log store with AI coder context
+					b.logStore.Add("ai-coder", sessionName, outputStr, false)
 				}
 
 				prog.Send(messages.AICoderPTYOutputMsg{
@@ -625,6 +622,24 @@ func (b *ServiceBridge) SubscribeToAICoderService(aiCoderService interface{}) {
 					Error:     err,
 					Severity:  severity,
 				})
+			}
+		})
+
+		eventBus.Subscribe("aicoder.log", func(evt events.Event) {
+			if prog := b.getProgram(); prog != nil {
+				message := ""
+				source := "ai-coder"
+				if m, ok := evt.Data["message"].(string); ok {
+					message = m
+				}
+				if s, ok := evt.Data["source"].(string); ok {
+					source = s
+				}
+
+				// Add AI coder logs to the main log store
+				if b.logStore != nil {
+					b.logStore.Add("system", source, fmt.Sprintf("[AI-Coder] %s", message), false)
+				}
 			}
 		})
 	}
@@ -1135,10 +1150,10 @@ func (b *ServiceBridge) subscribeToInputService() {
 			}
 
 			prog.Send(messages.KeyBindingChangedMsg{
-				Action:   "configuration_changed",
-				Key:      nil,
-				Binding:  keyBindings,
-				Time:     time.Now(),
+				Action:  "configuration_changed",
+				Key:     nil,
+				Binding: keyBindings,
+				Time:    time.Now(),
 			})
 		}
 	})

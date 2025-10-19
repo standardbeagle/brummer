@@ -16,7 +16,7 @@ func NewLogMessageHandler() MessageHandler {
 // CanHandle checks if this handler can process the message
 func (h *LogMessageHandler) CanHandle(msg tea.Msg) bool {
 	switch msg.(type) {
-	case logUpdateMsg, logsClearedMsg, messages.LogAddedMsg:
+	case LogUpdateMsg, logsClearedMsg, messages.LogAddedMsg:
 		return true
 	default:
 		return false
@@ -28,15 +28,14 @@ func (h *LogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model,
 	var cmds []tea.Cmd
 
 	switch msg.(type) {
-	case logUpdateMsg, messages.LogAddedMsg:
+	case LogUpdateMsg, messages.LogAddedMsg:
 		// Always update logs, regardless of current view
 		// LogAddedMsg is sent by ServiceBridge when a new log entry is added
 		model.updateLogsView()
-		// If we're currently viewing logs, we need to refresh the viewport
-		if model.currentView() == ViewLogs || model.currentView() == ViewURLs {
-			// Force a viewport update to show new content
-			if model.logsView.IsAutoScrollEnabled() {
-				model.logsView.GetLogsViewport().GotoBottom()
+		// If we're currently viewing logs and auto-scroll is enabled, mark as at bottom
+		if (model.currentView() == ViewLogs || model.currentView() == ViewURLs) && model.masterData != nil && model.masterData.LogsState != nil {
+			if model.masterData.LogsState.GetAutoScroll() {
+				model.masterData.LogsState = model.masterData.LogsState.SetAtBottom(true)
 			}
 		}
 		cmds = append(cmds, model.waitForUpdates())

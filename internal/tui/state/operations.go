@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/standardbeagle/brummer/internal/tui/types"
+	"github.com/standardbeagle/brummer/internal/shared/types"
 )
 
 // OperationsTracker tracks in-flight operations and their status

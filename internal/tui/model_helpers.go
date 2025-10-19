@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/config"
-	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/tui/services"
 )
 
@@ -23,19 +23,19 @@ func NewHeaderRenderer(model *Model) *HeaderRenderer {
 
 // RenderProcessInfo returns formatted process information for the header
 func (h *HeaderRenderer) RenderProcessInfo() string {
-	processes := h.model.processMgr.GetAllProcesses()
+	allProcesses := h.model.processMgr.GetAllProcesses()
 	runningCount := 0
-	for _, proc := range processes {
-		if proc.GetStatus() == process.StatusRunning {
+	for _, proc := range allProcesses {
+		if proc.GetStatus() == processes.StatusRunning {
 			runningCount++
 		}
 	}
 
-	if len(processes) > 0 {
+	if len(allProcesses) > 0 {
 		if runningCount > 0 {
-			return fmt.Sprintf(" (%d processes, %d running)", len(processes), runningCount)
+			return fmt.Sprintf(" (%d processes, %d running)", len(allProcesses), runningCount)
 		}
-		return fmt.Sprintf(" (%d processes)", len(processes))
+		return fmt.Sprintf(" (%d processes)", len(allProcesses))
 	}
 	return ""
 }
@@ -129,14 +129,14 @@ func NewViewStatusProvider(model *Model) *ViewStatusProvider {
 func (v *ViewStatusProvider) GetStatus() string {
 	switch v.model.currentView() {
 	case ViewProcesses:
-		processes := v.model.processMgr.GetAllProcesses()
+		allProcesses := v.model.processMgr.GetAllProcesses()
 		running := 0
-		for _, p := range processes {
-			if p.GetStatus() == process.StatusRunning {
+		for _, p := range allProcesses {
+			if p.GetStatus() == processes.StatusRunning {
 				running++
 			}
 		}
-		return fmt.Sprintf("%d processes, %d running", len(processes), running)
+		return fmt.Sprintf("%d processes, %d running", len(allProcesses), running)
 
 	case ViewLogs:
 		if v.model.selectedProcess != "" {

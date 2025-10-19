@@ -4,7 +4,8 @@ import (
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 )
 
 // Process lifecycle events
@@ -33,8 +34,8 @@ type ProcessOutputMsg struct {
 
 type ProcessStateChangedMsg struct {
 	ProcessID string
-	OldState  process.ProcessStatus
-	NewState  process.ProcessStatus
+	OldState  processes.ProcessStatus
+	NewState  processes.ProcessStatus
 }
 
 // Log events

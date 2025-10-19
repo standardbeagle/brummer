@@ -9,14 +9,15 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
+	"github.com/standardbeagle/brummer/internal/tui/commands"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
 // CommandExecutor handles execution of commands by routing them to appropriate services
 type CommandExecutor struct {
-	processMgr     *process.Manager
+	processMgr     *processes.Manager
 	logStore       *logs.Store
 	proxyServer    *proxy.Server
 	registry       *CommandRegistry
@@ -25,7 +26,7 @@ type CommandExecutor struct {
 
 // NewCommandExecutor creates a new command executor with service references
 func NewCommandExecutor(
-	processMgr *process.Manager,
+	processMgr *processes.Manager,
 	logStore *logs.Store,
 	proxyServer *proxy.Server,
 	registry *CommandRegistry,
@@ -119,9 +120,9 @@ func (e *CommandExecutor) handleStop(args []string) tea.Cmd {
 	scriptName := args[0]
 
 	// Find process by name and stop it
-	processes := e.processMgr.GetAllProcesses()
-	for _, proc := range processes {
-		if proc.Name == scriptName && proc.GetStatus() == process.StatusRunning {
+	allProcesses := e.processMgr.GetAllProcesses()
+	for _, proc := range allProcesses {
+		if proc.Name == scriptName && proc.GetStatus() == processes.StatusRunning {
 			err := e.processMgr.StopProcess(proc.ID)
 			if err != nil {
 				return e.sendError(fmt.Sprintf("Failed to stop %s: %v", scriptName, err))
@@ -290,7 +291,8 @@ func (e *CommandExecutor) handleAI(args []string) tea.Cmd {
 			Task:     task,
 		})
 		if err != nil {
-			return messages.CommandResultMsg{
+			return commands.CommandResultMsg{
+				Command: "ai",
 				Success: false,
 				Message: fmt.Sprintf("Error creating AI coder with provider '%s': %v", providerName, err),
 			}
@@ -305,7 +307,8 @@ func (e *CommandExecutor) handleAI(args []string) tea.Cmd {
 					e.logStore.Add("system", "System", fmt.Sprintf("Error cleaning up AI coder '%s': %v", coder.ID, deleteErr), true)
 				}
 			}
-			return messages.CommandResultMsg{
+			return commands.CommandResultMsg{
+				Command: "ai",
 				Success: false,
 				Message: fmt.Sprintf("Error starting AI coder '%s': %v", coder.ID, err),
 			}

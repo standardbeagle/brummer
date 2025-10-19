@@ -22,7 +22,8 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/repl"
 	"github.com/standardbeagle/brummer/pkg/events"
@@ -92,7 +93,7 @@ type MCPServer struct {
 
 	// Brummer components
 	port        int
-	processMgr  *process.Manager
+	processMgr  *processes.Manager
 	logStore    *logs.Store
 	proxyServer *proxy.Server
 	eventBus    *events.EventBus
@@ -219,7 +220,7 @@ type ResourceUpdate struct {
 }
 
 // NewMCPServer creates a new MCP server with streaming support
-func NewMCPServer(port int, processMgr *process.Manager, logStore *logs.Store, proxyServer *proxy.Server, eventBus *events.EventBus) *MCPServer {
+func NewMCPServer(port int, processMgr *processes.Manager, logStore *logs.Store, proxyServer *proxy.Server, eventBus *events.EventBus) *MCPServer {
 	s := &MCPServer{
 		router:            mux.NewRouter(),
 		sessions:          make(map[string]*ClientSession),
@@ -270,21 +271,45 @@ func NewMCPServer(port int, processMgr *process.Manager, logStore *logs.Store, p
 	return s
 }
 
+// Helper methods for log store interface conversion
+func (s *MCPServer) logStoreGetAllInterface() []interface{} {
+	logs := s.logStore.GetAll()
+	result := make([]interface{}, len(logs))
+	for i, log := range logs {
+		result[i] = s.logEntryToInterface(log)
+	}
+	return result
+}
+
+func (s *MCPServer) logStoreGetByProcessInterface(processID string) []interface{} {
+	logs := s.logStore.GetByProcess(processID)
+	result := make([]interface{}, len(logs))
+	for i, log := range logs {
+		result[i] = s.logEntryToInterface(log)
+	}
+	return result
+}
+
+func (s *MCPServer) logEntryToInterface(entry logs.LogEntry) map[string]interface{} {
+	return map[string]interface{}{
+		"id":          entry.ID,
+		"processId":   entry.ProcessID,
+		"processName": entry.ProcessName,
+		"content":     entry.Content,
+		"timestamp":   entry.Timestamp.Format(time.RFC3339),
+		"isError":     entry.IsError,
+		"priority":    entry.Priority,
+		"level":       entry.Level,
+		"tags":        entry.Tags,
+	}
+}
+
 func (s *MCPServer) setupRoutes() {
 	// Main MCP endpoint implementing Streamable HTTP Transport
 	// - POST with Accept: application/json → Standard JSON-RPC response
 	// - POST with Accept: text/event-stream → SSE stream response
 	// - GET with Accept: text/event-stream → SSE streaming connection
 	s.router.HandleFunc("/mcp", s.handleRequest).Methods("POST", "GET")
-
-	// Legacy endpoints for backward compatibility
-	s.router.HandleFunc("/mcp/connect", s.handleLegacyConnect).Methods("POST")
-	s.router.HandleFunc("/mcp/events", s.handleLegacySSE).Methods("GET")
-	s.router.HandleFunc("/mcp/logs", s.handleLegacyGetLogs).Methods("GET")
-	s.router.HandleFunc("/mcp/processes", s.handleLegacyGetProcesses).Methods("GET")
-	s.router.HandleFunc("/mcp/scripts", s.handleLegacyGetScripts).Methods("GET")
-	s.router.HandleFunc("/mcp/execute", s.handleLegacyExecuteScript).Methods("POST")
-	s.router.HandleFunc("/mcp/stop", s.handleLegacyStopProcess).Methods("POST")
 
 	// Health check
 	s.router.HandleFunc("/health", s.handleHealth).Methods("GET")
@@ -896,7 +921,14 @@ func (s *MCPServer) getLibraryManager() *repl.LibraryManager {
 				err := repl.InstallBuiltinScripts()
 				if err != nil {
 					s.builtinScriptsInstallError = err
-					fmt.Printf("Warning: failed to install builtin scripts: %v\n", err)
+					// Log via event bus instead of stdout
+					s.eventBus.Publish(events.Event{
+						Type: events.SystemMessage,
+						Data: map[string]interface{}{
+							"level":   "warning",
+							"message": fmt.Sprintf("Failed to install builtin scripts: %v", err),
+						},
+					})
 				}
 				// Mark installation complete (success or failure)
 				atomic.StoreInt32(&s.builtinScriptsInstalled, 2)

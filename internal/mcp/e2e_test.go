@@ -14,7 +14,8 @@ import (
 	"github.com/standardbeagle/brummer/internal/discovery"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
@@ -24,7 +25,7 @@ func TestPhase1MCPServerImplementation(t *testing.T) {
 	// Setup
 	eventBus := events.NewEventBus()
 	logStore := logs.NewStore(1000, nil)
-	processMgr, err := process.NewManager(".", eventBus, false)
+	processMgr, err := processes.NewManager(".", eventBus, false)
 	if err != nil {
 		t.Fatalf("Failed to create process manager: %v", err)
 	}
@@ -368,7 +369,7 @@ func TestEndToEndScenario(t *testing.T) {
 	// Setup components
 	eventBus := events.NewEventBus()
 	logStore := logs.NewStore(1000, nil)
-	processMgr, err := process.NewManager(testDir, eventBus, true)
+	processMgr, err := processes.NewManager(testDir, eventBus, true)
 	if err != nil {
 		t.Fatalf("Failed to create process manager: %v", err)
 	}

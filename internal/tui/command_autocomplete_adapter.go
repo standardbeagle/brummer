@@ -2,7 +2,8 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/tui/components"
 )
 
@@ -55,8 +56,8 @@ func (a *CommandAutocompleteAdapter) SetError(errMsg string) {
 }
 
 // NewCommandAutocompleteFactory creates a factory for command autocomplete instances
-func NewCommandAutocompleteFactory() func(scripts map[string]string, pm *process.Manager) components.CommandAutocompleteInterface {
-	return func(scripts map[string]string, pm *process.Manager) components.CommandAutocompleteInterface {
+func NewCommandAutocompleteFactory() func(scripts map[string]string, pm *processes.Manager) components.CommandAutocompleteInterface {
+	return func(scripts map[string]string, pm *processes.Manager) components.CommandAutocompleteInterface {
 		ca := NewCommandAutocompleteWithProcessManager(scripts, pm)
 		return &CommandAutocompleteAdapter{inner: &ca}
 	}

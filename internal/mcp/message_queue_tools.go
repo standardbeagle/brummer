@@ -444,8 +444,14 @@ func (s *MCPServer) setupMessageQueueEventHandlers() {
 	// Listen for queue messages from WebSocket
 	s.eventBus.Subscribe(events.EventType("queue.message"), func(e events.Event) {
 		if err := s.handleWebSocketQueueMessage(e.Data); err != nil {
-			// Log error but don't crash
-			fmt.Printf("Error handling WebSocket queue message: %v\n", err)
+			// Log via event bus but don't crash
+			s.eventBus.Publish(events.Event{
+				Type: events.SystemMessage,
+				Data: map[string]interface{}{
+					"level":   "error",
+					"message": fmt.Sprintf("Error handling WebSocket queue message: %v", err),
+				},
+			})
 		}
 	})
 }

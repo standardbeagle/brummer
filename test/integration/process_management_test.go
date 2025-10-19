@@ -6,7 +6,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 )
 
 // TestProcessManagementWorkflow tests the complete process management workflow
@@ -55,10 +56,10 @@ func TestProcessManagementWorkflow(t *testing.T) {
 		assert.NotNil(t, proc, "Process should not be nil")
 
 		// Wait for process to reach running status
-		ctx.WaitForProcess(proc.ID, process.StatusRunning, 3*time.Second)
+		ctx.WaitForProcess(proc.ID, processes.StatusRunning, 3*time.Second)
 
 		// Verify process is running
-		ctx.AssertProcessStatus(proc.ID, process.StatusRunning)
+		ctx.AssertProcessStatus(proc.ID, processes.StatusRunning)
 
 		// Check that logs are being captured
 		time.Sleep(500 * time.Millisecond)
@@ -72,24 +73,24 @@ func TestProcessManagementWorkflow(t *testing.T) {
 		assert.NotEmpty(t, processes, "Should have running processes")
 
 		// Find the running process
-		var runningProcess *process.Process
+		var runningProcess *processes.Process
 		for _, proc := range processes {
-			if proc.Status == process.StatusRunning {
+			if proc.Status == processes.StatusRunning {
 				runningProcess = proc
 				break
 			}
 		}
 
 		assert.NotNil(t, runningProcess, "Should have at least one running process")
-		assert.Equal(t, process.StatusRunning, runningProcess.Status)
+		assert.Equal(t, processes.StatusRunning, runningProcess.Status)
 	})
 
 	// Test Step 5: Press 's' to stop the running process
 	t.Run("stop_process", func(t *testing.T) {
 		processes := ctx.ProcessMgr.GetAllProcesses()
-		var runningProcess *process.Process
+		var runningProcess *processes.Process
 		for _, proc := range processes {
-			if proc.Status == process.StatusRunning {
+			if proc.Status == processes.StatusRunning {
 				runningProcess = proc
 				break
 			}
@@ -102,10 +103,10 @@ func TestProcessManagementWorkflow(t *testing.T) {
 		assert.NoError(t, err, "Should stop process")
 
 		// Wait for process to stop
-		ctx.WaitForProcess(runningProcess.ID, process.StatusStopped, 3*time.Second)
+		ctx.WaitForProcess(runningProcess.ID, processes.StatusStopped, 3*time.Second)
 
 		// Verify process is stopped
-		ctx.AssertProcessStatus(runningProcess.ID, process.StatusStopped)
+		ctx.AssertProcessStatus(runningProcess.ID, processes.StatusStopped)
 	})
 
 	// Test Step 6: Verify process shows "Stopped" status
@@ -114,16 +115,16 @@ func TestProcessManagementWorkflow(t *testing.T) {
 		assert.NotEmpty(t, processes, "Should have processes")
 
 		// Find stopped process
-		var stoppedProcess *process.Process
+		var stoppedProcess *processes.Process
 		for _, proc := range processes {
-			if proc.Status == process.StatusStopped {
+			if proc.Status == processes.StatusStopped {
 				stoppedProcess = proc
 				break
 			}
 		}
 
 		assert.NotNil(t, stoppedProcess, "Should have at least one stopped process")
-		assert.Equal(t, process.StatusStopped, stoppedProcess.Status)
+		assert.Equal(t, processes.StatusStopped, stoppedProcess.Status)
 	})
 }
 
@@ -188,7 +189,7 @@ func TestProcessStartStop(t *testing.T) {
 	// Verify process is running
 	proc, _ := ctx.ProcessMgr.GetProcess(processID)
 	assert.NotNil(t, proc)
-	assert.Equal(t, process.StatusRunning, proc.Status)
+	assert.Equal(t, processes.StatusRunning, proc.Status)
 	assert.Equal(t, "test", proc.Script)
 
 	// Stop the process
@@ -197,7 +198,7 @@ func TestProcessStartStop(t *testing.T) {
 	// Verify process is stopped
 	proc, exists := ctx.ProcessMgr.GetProcess(processID)
 	assert.True(t, exists)
-	assert.Equal(t, process.StatusStopped, proc.Status)
+	assert.Equal(t, processes.StatusStopped, proc.Status)
 }
 
 // TestProcessRestart tests restarting a process
@@ -219,20 +220,20 @@ func TestProcessRestart(t *testing.T) {
 	// Restart the process (stop then start)
 	err := ctx.ProcessMgr.StopProcess(processID)
 	assert.NoError(t, err)
-	ctx.WaitForProcess(processID, process.StatusStopped, 2*time.Second)
+	ctx.WaitForProcess(processID, processes.StatusStopped, 2*time.Second)
 
 	proc, err := ctx.ProcessMgr.StartScript(originalProc.Script)
 	assert.NoError(t, err)
 	assert.NotNil(t, proc)
 
 	// Wait for restart to complete
-	ctx.WaitForProcess(proc.ID, process.StatusRunning, 2*time.Second)
+	ctx.WaitForProcess(proc.ID, processes.StatusRunning, 2*time.Second)
 
 	// Verify process is running
 	proc, exists = ctx.ProcessMgr.GetProcess(proc.ID)
 	assert.True(t, exists)
 	assert.NotNil(t, proc)
-	assert.Equal(t, process.StatusRunning, proc.Status)
+	assert.Equal(t, processes.StatusRunning, proc.Status)
 }
 
 // TestMultipleProcesses tests running multiple processes simultaneously
@@ -252,8 +253,8 @@ func TestMultipleProcesses(t *testing.T) {
 	}()
 
 	// Verify both processes are running
-	ctx.AssertProcessStatus(devID, process.StatusRunning)
-	ctx.AssertProcessStatus(testID, process.StatusRunning)
+	ctx.AssertProcessStatus(devID, processes.StatusRunning)
+	ctx.AssertProcessStatus(testID, processes.StatusRunning)
 
 	// Verify we have exactly 2 processes
 	processes := ctx.ProcessMgr.GetAllProcesses()
@@ -277,7 +278,7 @@ func TestProcessErrorHandling(t *testing.T) {
 		proc, exists := ctx.ProcessMgr.GetProcess(proc.ID)
 		if exists && proc != nil {
 			// Process should have failed
-			assert.NotEqual(t, process.StatusRunning, proc.Status)
+			assert.NotEqual(t, processes.StatusRunning, proc.Status)
 		}
 	}
 }

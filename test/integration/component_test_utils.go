@@ -7,41 +7,42 @@ import (
 	"github.com/stretchr/testify/mock"
 
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
-// MockProcessManager is a mock implementation of process.Manager for testing
+// MockProcessManager is a mock implementation of processes.Manager for testing
 type MockProcessManager struct {
 	mock.Mock
-	processes map[string]*process.Process
+	processes map[string]*processes.Process
 }
 
 func NewMockProcessManager() *MockProcessManager {
 	return &MockProcessManager{
-		processes: make(map[string]*process.Process),
+		processes: make(map[string]*processes.Process),
 	}
 }
 
-func (m *MockProcessManager) GetAllProcesses() []*process.Process {
+func (m *MockProcessManager) GetAllProcesses() []*processes.Process {
 	args := m.Called()
 	if result := args.Get(0); result != nil {
-		return result.([]*process.Process)
+		return result.([]*processes.Process)
 	}
 
 	// Return internal processes if not mocked
-	processes := make([]*process.Process, 0, len(m.processes))
+	processes := make([]*processes.Process, 0, len(m.processes))
 	for _, proc := range m.processes {
 		processes = append(processes, proc)
 	}
 	return processes
 }
 
-func (m *MockProcessManager) GetProcess(id string) *process.Process {
+func (m *MockProcessManager) GetProcess(id string) *processes.Process {
 	args := m.Called(id)
 	if result := args.Get(0); result != nil {
-		return result.(*process.Process)
+		return result.(*processes.Process)
 	}
 	return m.processes[id]
 }
@@ -66,12 +67,12 @@ func (m *MockProcessManager) RestartProcess(id string) error {
 	return args.Error(0)
 }
 
-// Note: GetURLs is actually on logs.Store, not process.Manager
+// Note: GetURLs is actually on logs.Store, not processes.Manager
 // This method is here for backward compatibility in tests
 
 // AddTestProcess adds a test process to the mock
-func (m *MockProcessManager) AddTestProcess(id string, name string, status process.ProcessStatus) {
-	m.processes[id] = &process.Process{
+func (m *MockProcessManager) AddTestProcess(id string, name string, status processes.ProcessStatus) {
+	m.processes[id] = &processes.Process{
 		ID:     id,
 		Name:   name,
 		Script: name,

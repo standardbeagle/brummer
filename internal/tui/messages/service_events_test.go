@@ -5,7 +5,8 @@ import (
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 )
 
 func TestProcessStartedMsg(t *testing.T) {
@@ -71,17 +72,17 @@ func TestProcessOutputMsg(t *testing.T) {
 func TestProcessStateChangedMsg(t *testing.T) {
 	msg := ProcessStateChangedMsg{
 		ProcessID: "test-123",
-		OldState:  process.StatusPending,
-		NewState:  process.StatusRunning,
+		OldState:  processes.StatusPending,
+		NewState:  processes.StatusRunning,
 	}
 
 	if msg.ProcessID != "test-123" {
 		t.Errorf("Expected ProcessID test-123, got %s", msg.ProcessID)
 	}
-	if msg.OldState != process.StatusPending {
+	if msg.OldState != processes.StatusPending {
 		t.Errorf("Expected OldState StatusPending, got %v", msg.OldState)
 	}
-	if msg.NewState != process.StatusRunning {
+	if msg.NewState != processes.StatusRunning {
 		t.Errorf("Expected NewState StatusRunning, got %v", msg.NewState)
 	}
 }

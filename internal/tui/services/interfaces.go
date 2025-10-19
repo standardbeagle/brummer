@@ -3,7 +3,7 @@ package services
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/state"
-	"github.com/standardbeagle/brummer/internal/tui/types"
+	"github.com/standardbeagle/brummer/internal/shared/types"
 )
 
 // ServiceCommandFactory defines the interface for creating service commands

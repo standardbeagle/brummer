@@ -66,7 +66,8 @@ func (h *StandardErrorHandler) HandleError(err error, ctx ErrorContext) {
 	}
 
 	// Trigger UI update with timeout to prevent blocking
-	safeSendWithTimeout(updateChan, logUpdateMsg{}, 100*time.Millisecond, logStore)
+	// Use generic nil message since specific message types would cause circular imports
+	safeSendWithTimeout(updateChan, nil, 100*time.Millisecond, logStore)
 }
 
 // HandleSuccess handles successful operations with consistent messaging
@@ -87,7 +88,8 @@ func (h *StandardErrorHandler) HandleSuccess(message string, ctx ErrorContext) {
 	}
 
 	// Trigger UI update with timeout to prevent blocking
-	safeSendWithTimeout(updateChan, processUpdateMsg{}, 100*time.Millisecond, logStore)
+	// Use generic nil message since specific message types would cause circular imports
+	safeSendWithTimeout(updateChan, nil, 100*time.Millisecond, logStore)
 }
 
 // Common error contexts for frequent operations
@@ -142,6 +144,4 @@ func safeSendWithTimeout(updateChan chan<- tea.Msg, msg tea.Msg, timeout time.Du
 	}
 }
 
-// Message types used for updates
-type logUpdateMsg struct{}
-type processUpdateMsg struct{}
+// Message types are now centralized in model_messages.go to avoid duplicates

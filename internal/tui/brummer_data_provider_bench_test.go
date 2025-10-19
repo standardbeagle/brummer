@@ -6,7 +6,8 @@ import (
 	"testing"
 
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -15,7 +16,7 @@ func BenchmarkDataProviderAtomic(b *testing.B) {
 	// Setup
 	eventBus := events.NewEventBus()
 	logStore := logs.NewStore(1000, eventBus)
-	processMgr, _ := process.NewManager(".", eventBus, false)
+	processMgr, _ := processes.NewManager(".", eventBus, false)
 
 	model := &Model{
 		logStore:   logStore,
@@ -70,7 +71,7 @@ func BenchmarkDataProviderMutex(b *testing.B) {
 	// Setup
 	eventBus := events.NewEventBus()
 	logStore := logs.NewStore(1000, eventBus)
-	processMgr, _ := process.NewManager(".", eventBus, false)
+	processMgr, _ := processes.NewManager(".", eventBus, false)
 
 	model := &Model{
 		logStore:   logStore,

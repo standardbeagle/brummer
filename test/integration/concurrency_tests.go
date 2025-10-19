@@ -9,7 +9,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 )
 
 // TestConcurrentProcessOperations tests concurrent process management
@@ -23,7 +24,7 @@ func TestConcurrentProcessOperations(t *testing.T) {
 		// Start multiple processes concurrently
 		var wg sync.WaitGroup
 		errors := make(chan error, 3)
-		processes := make(chan *process.Process, 3)
+		processes := make(chan *processes.Process, 3)
 
 		scripts := []string{"dev", "test", "build"}
 

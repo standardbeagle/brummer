@@ -8,9 +8,11 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -22,7 +24,8 @@ import (
 	"github.com/standardbeagle/brummer/internal/discovery"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/startup"
 	"github.com/standardbeagle/brummer/internal/tui"
@@ -161,10 +164,10 @@ func runApp(cmd *cobra.Command, args []string) {
 	errorReporter := startup.NewErrorReporter()
 
 	// Set up signal handling FIRST - before anything else
-	// This ensures Ctrl+C always works, even if startup hangs
+	// This ensures graceful shutdown on Ctrl+C, SIGTERM, and terminal closure
 	sigChan := make(chan os.Signal, 1)
-	setupSignalHandling(sigChan)
-
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
+	
 	// Handle version flag
 	if showVersion {
 		fmt.Printf("brum version %s\n", Version)
@@ -198,7 +201,7 @@ func runApp(cmd *cobra.Command, args []string) {
 	// Initialize components
 	eventBus := events.NewEventBus()
 
-	processMgr, err := process.NewManager(absWorkDir, eventBus, hasPackageJSON)
+	processMgr, err := processes.NewManager(absWorkDir, eventBus, hasPackageJSON)
 	if err != nil {
 		errorReporter.ReportError(errorReporter.CriticalProcessManager(err), true)
 	}
@@ -309,6 +312,7 @@ func runApp(cmd *cobra.Command, args []string) {
 			entry := logStore.Add(processID, proc.Name, line, isError)
 			detector.ProcessLogLine(processID, proc.Name, line, isError)
 
+			
 			// Register URLs with proxy server
 			if proxyServer != nil && entry != nil {
 				// Only check URLs that were detected in this specific log entry
@@ -712,68 +716,40 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Previous hardcoded TTY error checks were forcing fallback to non-AltScreen mode in WSL2,
 		// which broke WindowSizeMsg functionality. Standard BubbleTea initialization works correctly.
 
-		// Check if PTY should be used
-		shouldUsePTY := usePTY || (!noPTY && !isTerminal())
+		// Test signal handling BEFORE starting TUI
+		fmt.Printf("🧪 Testing signal handling - try Ctrl+C now...\n")
 
-		if shouldUsePTY {
-			// Use PTY integration for TUI
-			if debugMode {
-				fmt.Printf("🖥  Starting TUI with PTY terminal emulation\n")
+		signalTest := time.NewTimer(5 * time.Second)
+
+		select {
+		case sig := <-sigChan:
+			fmt.Printf("\n✅ Signal received! %v - signal handling works\n", sig)
+			return // Exit before starting TUI
+		case <-signalTest.C:
+			fmt.Printf("⏰ No signals in 5 seconds - proceeding with TUI\n")
+		}
+
+		// Start TUI with standard BubbleTea
+		p := tea.NewProgram(model, tea.WithAltScreen())
+
+		// Set up signal handler for graceful shutdown
+		done := make(chan error, 1)
+		go func() {
+			_, err := p.Run()
+			done <- err
+		}()
+
+		// Wait for either TUI to complete or signal
+		select {
+		case err := <-done:
+			if err != nil {
+				errorReporter.ReportError(errorReporter.CriticalTUI(err), true)
 			}
-
-			// Configure PTY wrapper
-			ptyConfig := tui.DefaultPTYMainWrapperConfig()
-			ptyConfig.EnableDebug = debugMode || mcpDebug
-			ptyConfig.LogStartupSteps = debugMode
-			ptyConfig.LogPerformance = debugMode
-			ptyConfig.ForcePTY = usePTY
-			ptyConfig.EnableTerminalEmulation = true
-			ptyConfig.EnableAdvancedHandling = true
-
-			// Create and run PTY wrapper
-			result := tui.RunWithPTYAndOptions(model, ptyConfig, tea.WithAltScreen())
-
-			if result.Error != nil {
-				errorReporter.ReportError(errorReporter.CriticalTUI(result.Error), true)
-			}
-
-			if debugMode {
-				stats := result.PerformanceStats
-				fmt.Printf("PTY Performance: %+v\n", stats)
-			}
-		} else {
-			// Standard BubbleTea initialization
-			if debugMode {
-				fmt.Printf("🖥  Starting TUI with standard BubbleTea\n")
-			}
-
-			// Create BubbleTea program with standard AltScreen initialization
-			var p *tea.Program
-
-			// Standard BubbleTea initialization with Model
-			p = tea.NewProgram(model, tea.WithAltScreen())
-
-			// ServiceBridge disabled for TUI startup debugging
-			// serviceBridge.StartWithoutInitialMessages(p)
-
-			// Run TUI in goroutine so we can handle signals
-			done := make(chan error)
-			go func() {
-				_, err := p.Run()
-				done <- err
-			}()
-
-			// Wait for either TUI to exit or signal
-			select {
-			case err := <-done:
-				if err != nil {
-					// Use improved error reporting for TUI startup failures
-					errorReporter.ReportError(errorReporter.CriticalTUI(err), true)
-				}
-			case <-sigChan:
-				fmt.Println("\nShutting down gracefully...")
+		case sig := <-sigChan:
+			fmt.Printf("\n🛑 Received signal %v - shutting down gracefully...\n", sig)
+			if p != nil {
 				p.Quit()
-				<-done // Wait for TUI to actually exit
+				p.Wait() // Wait for TUI to exit cleanly
 			}
 		}
 

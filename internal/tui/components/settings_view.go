@@ -2,109 +2,111 @@ package components
 
 import (
 	"fmt"
-	"time"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/tui/messages"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/standardbeagle/brummer/internal/tui/state"
 )
 
-// SettingsView is a BubbleTea component for displaying settings
-// Refactored to use ServiceBridge message-based architecture
-type SettingsView struct {
-	settingsList list.Model
-	width        int
-	height       int
-	// Cached settings information from ServiceBridge
-	cachedSettingsInfo *messages.SettingsInfo
-	lastUpdateTime     time.Time
+// SettingsViewComponentNew is a stateless BubbleTea component for displaying settings
+// Architecture: Stateless rendering with external state (Redux/Elm compliant)
+type SettingsViewComponentNew struct {
+	BaseComponent
+
+	// UI configuration only (no state)
+	width  int
+	height int
+
+	// List model for display (minimal, stateless)
+	list   list.Model
+
+	// Styles
+	headerStyle     lipgloss.Style
+	sectionStyle    lipgloss.Style
+	infoStyle       lipgloss.Style
+	valueStyle      lipgloss.Style
+	errorStyle      lipgloss.Style
+	loadingStyle    lipgloss.Style
+	successStyle    lipgloss.Style
+	copyableStyle   lipgloss.Style
 }
 
-// NewSettingsView creates a new settings view component
-func NewSettingsView() *SettingsView {
+// NewSettingsView creates a new stateless settings view component
+func NewSettingsView() *SettingsViewComponentNew {
 	settingsList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
 	settingsList.Title = "Settings"
 	settingsList.SetShowStatusBar(false)
 
-	return &SettingsView{
-		settingsList: settingsList,
+	return &SettingsViewComponentNew{
+		BaseComponent: NewBaseComponent(),
+		width:         80,
+		height:        24,
+		list:          settingsList,
+
+		// Initialize styles
+		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")), // Bright Blue
+		sectionStyle:  lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("13")), // Bright Magenta
+		infoStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color("15")),            // White
+		valueStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("14")),            // Bright Cyan
+		errorStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("196")),           // Bright Red
+		loadingStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color("11")),            // Bright Yellow
+		successStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color("10")),            // Bright Green
+		copyableStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("8")),             // Gray
 	}
 }
 
-// Init initializes the component (BubbleTea interface)
-func (v *SettingsView) Init() tea.Cmd {
-	return nil
-}
-
-// Update handles messages (BubbleTea interface)
-func (v *SettingsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	v.settingsList, cmd = v.settingsList.Update(msg)
-
-	switch msg := msg.(type) {
-	case messages.SettingsRefreshedMsg:
-		// Update cached settings information
-		v.cachedSettingsInfo = msg.SettingsInfo
-		v.lastUpdateTime = msg.Timestamp
-		v.updateSettingsListFromCache()
-
-	case messages.SettingsMCPInstalledMsg:
-		// MCP configuration was installed - could trigger a refresh
-		// This will be handled by the main model requesting a settings refresh
-
-	case messages.SettingsErrorMsg:
-		// Handle settings errors - could display error state
-		// For now, just log or could update UI to show error
+// ViewWithState renders the settings view using external state (Redux/Elm compliant)
+func (c *SettingsViewComponentNew) ViewWithState(masterData *state.MasterData) string {
+	if !c.IsVisible() {
+		return ""
 	}
 
-	return v, cmd
+	if masterData == nil || masterData.SettingsState == nil {
+		return c.renderErrorState("Settings state not available")
+	}
+
+	settingsState := masterData.SettingsState
+
+	// Update list with current state
+	c.updateListFromState(settingsState)
+
+	// Render the list
+	return c.list.View()
 }
 
-// View renders the component (BubbleTea interface)
-func (v *SettingsView) View() string {
-	return v.Render()
-}
-
-// SetSize updates the component's dimensions (Component interface)
-func (v *SettingsView) SetSize(width, height int) {
-	v.width = width
-	v.height = height
-	v.settingsList.SetSize(width, height-6)
-}
-
-// Focus gives keyboard focus to the component (Component interface)
-func (v *SettingsView) Focus() tea.Cmd {
-	return nil
-}
-
-// Blur removes keyboard focus from the component (Component interface)
-func (v *SettingsView) Blur() tea.Cmd {
-	return nil
-}
-
-// GetSize returns current dimensions (Component interface)
-func (v *SettingsView) GetSize() (width, height int) {
-	return v.width, v.height
-}
-
-// UpdateSize updates dimensions with pre-calculated content height
-func (v *SettingsView) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
-	v.width = width
-	v.height = height
-	v.settingsList.SetSize(width, contentHeight)
-}
-
-// GetSettingsList returns the settings list
-func (v *SettingsView) GetSettingsList() *list.Model {
-	return &v.settingsList
-}
-
-// updateSettingsListFromCache updates the settings list using cached service information
-func (v *SettingsView) updateSettingsListFromCache() {
-	if v.cachedSettingsInfo == nil {
+// updateListFromState updates the settings list using current state
+func (c *SettingsViewComponentNew) updateListFromState(settingsState *state.SettingsState) {
+	if settingsState.GetLoading() {
 		// Show loading state
-		v.settingsList.SetItems([]list.Item{
-			SettingsSectionItem{TitleText: "⏳ Loading Settings..."},
+		c.list.SetItems([]list.Item{
+			SettingsSectionItemWrapper{TitleText: "⏳ Loading Settings..."},
+		})
+		return
+	}
+
+	if error := settingsState.GetError(); error != "" {
+		// Show error state
+		c.list.SetItems([]list.Item{
+			SettingsSectionItemWrapper{TitleText: "❌ Error Loading Settings"},
+			InfoDisplayItemWrapper{
+				TitleText:       "Error Details",
+				DescriptionText: error,
+			},
+		})
+		return
+	}
+
+	settingsInfo := settingsState.GetSettingsInfo()
+	if settingsInfo == nil {
+		// Show empty state
+		c.list.SetItems([]list.Item{
+			SettingsSectionItemWrapper{TitleText: "📋 No Settings Available"},
+			InfoDisplayItemWrapper{
+				TitleText:       "Status",
+				DescriptionText: "Settings information not available. Try refreshing.",
+			},
 		})
 		return
 	}
@@ -112,55 +114,65 @@ func (v *SettingsView) updateSettingsListFromCache() {
 	items := make([]list.Item, 0)
 
 	// Server Information section
-	items = append(items, SettingsSectionItem{TitleText: "🔗 Server Information"})
+	items = append(items, SettingsSectionItemWrapper{TitleText: "🔗 Server Information"})
 
 	// MCP Server info
-	items = append(items, MCPServerInfoItem{
-		Port:   v.cachedSettingsInfo.ServerInfo.MCPServer.Port,
-		Status: v.cachedSettingsInfo.ServerInfo.MCPServer.Status,
-	})
+	mcpInfo := settingsState.GetMCPServerInfo()
+	if mcpInfo != nil {
+		items = append(items, MCPServerInfoItemWrapper{
+			Port:   mcpInfo.Port,
+			Status: mcpInfo.Status,
+		})
 
-	items = append(items, InfoDisplayItem{
-		TitleText:       "🔗 MCP Endpoint",
-		DescriptionText: fmt.Sprintf("%s (JSON-RPC 2.0 - all tools, resources & prompts)", v.cachedSettingsInfo.ServerInfo.MCPServer.URL),
-		Value:           v.cachedSettingsInfo.ServerInfo.MCPServer.URL,
-		Copyable:        true,
-	})
+		items = append(items, InfoDisplayItemWrapper{
+			TitleText:       "🔗 MCP Endpoint",
+			DescriptionText: fmt.Sprintf("%s (JSON-RPC 2.0 - all tools, resources & prompts)", mcpInfo.URL),
+			Value:           mcpInfo.URL,
+			Copyable:        true,
+		})
+	}
 
 	// Proxy info
-	if v.cachedSettingsInfo.ServerInfo.ProxyServer.Running {
-		items = append(items, ProxyInfoItem{
-			PacURL: v.cachedSettingsInfo.ServerInfo.ProxyServer.PacURL,
-			Mode:   v.cachedSettingsInfo.ServerInfo.ProxyServer.Mode,
-			Port:   v.cachedSettingsInfo.ServerInfo.ProxyServer.Port,
+	proxyInfo := settingsState.GetProxyServerInfo()
+	if proxyInfo != nil && proxyInfo.Running {
+		items = append(items, ProxyInfoItemWrapper{
+			PacURL: proxyInfo.PacURL,
+			Mode:   proxyInfo.Mode,
+			Port:   proxyInfo.Port,
 		})
 	}
 
 	// Package manager section
-	items = append(items, SettingsSectionItem{TitleText: "📦 Package Manager"})
-	for _, mgr := range v.cachedSettingsInfo.PackageMgr.Available {
-		items = append(items, PackageManagerItem{
-			Name:      mgr,
-			IsCurrent: mgr == v.cachedSettingsInfo.PackageMgr.Current,
-		})
+	items = append(items, SettingsSectionItemWrapper{TitleText: "📦 Package Manager"})
+	pkgMgrInfo := settingsState.GetPackageManagers()
+	if pkgMgrInfo != nil {
+		for _, mgr := range pkgMgrInfo.Available {
+			items = append(items, PackageManagerItemWrapper{
+				Name:      mgr,
+				IsCurrent: mgr == pkgMgrInfo.Current,
+			})
+		}
 	}
 
 	// Working directory section
-	items = append(items, SettingsSectionItem{TitleText: "📁 Working Directory"})
-	items = append(items, InfoDisplayItem{
-		TitleText:       "Current Directory",
-		DescriptionText: v.cachedSettingsInfo.WorkingDir,
-		Value:           v.cachedSettingsInfo.WorkingDir,
-		Copyable:        false,
-	})
+	items = append(items, SettingsSectionItemWrapper{TitleText: "📁 Working Directory"})
+	workingDir := settingsState.GetWorkingDirectory()
+	if workingDir != "" {
+		items = append(items, InfoDisplayItemWrapper{
+			TitleText:       "Current Directory",
+			DescriptionText: workingDir,
+			Value:           workingDir,
+			Copyable:        false,
+		})
+	}
 
 	// MCP Configuration status
-	items = append(items, SettingsSectionItem{TitleText: "⚙️ Configuration"})
+	items = append(items, SettingsSectionItemWrapper{TitleText: "⚙️ Configuration"})
 	mcpStatus := "❌ Not Configured"
-	if v.cachedSettingsInfo.MCPConfigured {
+	if settingsState.IsMCPConfigured() {
 		mcpStatus = "✅ Configured"
 	}
-	items = append(items, InfoDisplayItem{
+	items = append(items, InfoDisplayItemWrapper{
 		TitleText:       "Claude Desktop MCP",
 		DescriptionText: fmt.Sprintf("MCP configuration status: %s", mcpStatus),
 		Value:           mcpStatus,
@@ -168,101 +180,152 @@ func (v *SettingsView) updateSettingsListFromCache() {
 	})
 
 	// Last refresh info
-	items = append(items, InfoDisplayItem{
-		TitleText:       "Last Updated",
-		DescriptionText: v.lastUpdateTime.Format("2006-01-02 15:04:05"),
-		Value:           "",
-		Copyable:        false,
-	})
-
-	v.settingsList.SetItems(items)
-}
-
-// Render renders the settings view
-func (v *SettingsView) Render() string {
-	return v.settingsList.View()
-}
-
-// RequestSettingsRefresh returns a command to request settings refresh
-func (v *SettingsView) RequestSettingsRefresh() tea.Cmd {
-	return func() tea.Msg {
-		return messages.SettingsUpdateMsg{
-			Refresh: true,
-		}
+	lastUpdate := settingsState.GetLastUpdateTime()
+	if !lastUpdate.IsZero() {
+		items = append(items, InfoDisplayItemWrapper{
+			TitleText:       "Last Updated",
+			DescriptionText: lastUpdate.Format("2006-01-02 15:04:05"),
+			Value:           "",
+			Copyable:        false,
+		})
 	}
+
+	c.list.SetItems(items)
 }
 
-// RequestMCPInstall returns a command to request MCP installation
-func (v *SettingsView) RequestMCPInstall() tea.Cmd {
-	return func() tea.Msg {
-		return messages.SettingsUpdateMsg{
-			InstallMCP: true,
-		}
+// renderErrorState renders an error state when settings data is not available
+func (c *SettingsViewComponentNew) renderErrorState(message string) string {
+	var content strings.Builder
+
+	headerStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("12")).
+		Padding(0, 1).
+		MarginBottom(1)
+
+	content.WriteString(headerStyle.Render("⚙️  Settings"))
+	content.WriteString("\n")
+
+	errorStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("196")).
+		Bold(true).
+		Margin(1)
+
+	content.WriteString(errorStyle.Render("⚠️  "+message))
+	content.WriteString("\n")
+
+	helpStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("245")).
+		Italic(true).
+		Margin(1)
+
+	content.WriteString(helpStyle.Render("Settings information will be available when the application is fully initialized"))
+
+	return content.String()
+}
+
+// SetSize updates component dimensions
+func (c *SettingsViewComponentNew) SetSize(width, height int) {
+	c.width = width
+	c.height = height
+	c.list.SetSize(width, height-6)
+}
+
+// UpdateSize updates dimensions with pre-calculated content height
+func (c *SettingsViewComponentNew) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
+	c.width = width
+	c.height = height
+	c.list.SetSize(width, contentHeight)
+}
+
+// View renders the component (legacy method for compatibility)
+func (c *SettingsViewComponentNew) View() string {
+	if !c.IsVisible() {
+		return ""
 	}
+	return c.list.View()
 }
 
-// InitializeWithLoadingState sets up the initial loading state
-func (v *SettingsView) InitializeWithLoadingState() {
-	v.settingsList.SetItems([]list.Item{
-		SettingsSectionItem{TitleText: "⏳ Loading Settings..."},
-	})
+// Update handles messages (minimal - stateless component)
+func (c *SettingsViewComponentNew) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		c.SetSize(msg.Width, msg.Height)
+		return c, nil
+
+	case tea.KeyMsg:
+		// Forward keyboard input to list for selection
+		c.list, cmd = c.list.Update(msg)
+		return c, cmd
+	}
+
+	return c, nil
 }
 
-// SettingsSectionItem represents a section header in the settings list
-type SettingsSectionItem struct {
+// Init initializes the component
+func (c *SettingsViewComponentNew) Init() tea.Cmd {
+	return nil
+}
+
+// Wrapper types for list.Item interface compatibility
+
+// SettingsSectionItemWrapper represents a section header in the settings list
+type SettingsSectionItemWrapper struct {
 	TitleText string
 }
 
-func (i SettingsSectionItem) FilterValue() string { return "" }
-func (i SettingsSectionItem) Title() string       { return i.TitleText }
-func (i SettingsSectionItem) Description() string { return "" }
+func (i SettingsSectionItemWrapper) FilterValue() string { return "" }
+func (i SettingsSectionItemWrapper) Title() string       { return i.TitleText }
+func (i SettingsSectionItemWrapper) Description() string { return "" }
 
-// MCPServerInfoItem represents MCP server information
-type MCPServerInfoItem struct {
+// MCPServerInfoItemWrapper represents MCP server information
+type MCPServerInfoItemWrapper struct {
 	Port   int
 	Status string
 }
 
-func (i MCPServerInfoItem) FilterValue() string { return "mcp server" }
-func (i MCPServerInfoItem) Title() string       { return fmt.Sprintf("MCP Server: %s", i.Status) }
-func (i MCPServerInfoItem) Description() string { return fmt.Sprintf("Port: %d", i.Port) }
+func (i MCPServerInfoItemWrapper) FilterValue() string { return "mcp server" }
+func (i MCPServerInfoItemWrapper) Title() string       { return fmt.Sprintf("MCP Server: %s", i.Status) }
+func (i MCPServerInfoItemWrapper) Description() string { return fmt.Sprintf("Port: %d", i.Port) }
 
-// InfoDisplayItem represents a display-only information item
-type InfoDisplayItem struct {
+// InfoDisplayItemWrapper represents a display-only information item
+type InfoDisplayItemWrapper struct {
 	TitleText       string
 	DescriptionText string
 	Value           string
 	Copyable        bool
 }
 
-func (i InfoDisplayItem) FilterValue() string { return i.TitleText }
-func (i InfoDisplayItem) Title() string       { return i.TitleText }
-func (i InfoDisplayItem) Description() string { return i.DescriptionText }
+func (i InfoDisplayItemWrapper) FilterValue() string { return i.TitleText }
+func (i InfoDisplayItemWrapper) Title() string       { return i.TitleText }
+func (i InfoDisplayItemWrapper) Description() string { return i.DescriptionText }
 
-// ProxyInfoItem represents proxy server information
-type ProxyInfoItem struct {
+// ProxyInfoItemWrapper represents proxy server information
+type ProxyInfoItemWrapper struct {
 	PacURL string
 	Mode   string
 	Port   int
 }
 
-func (i ProxyInfoItem) FilterValue() string { return "proxy" }
-func (i ProxyInfoItem) Title() string       { return "🌐 Proxy Server: Running" }
-func (i ProxyInfoItem) Description() string {
+func (i ProxyInfoItemWrapper) FilterValue() string { return "proxy" }
+func (i ProxyInfoItemWrapper) Title() string       { return "🌐 Proxy Server: Running" }
+func (i ProxyInfoItemWrapper) Description() string {
 	return fmt.Sprintf("Mode: %s | Port: %d | PAC URL: %s", i.Mode, i.Port, i.PacURL)
 }
 
-// PackageManagerItem represents a package manager option
-type PackageManagerItem struct {
+// PackageManagerItemWrapper represents a package manager option
+type PackageManagerItemWrapper struct {
 	Name      string
 	IsCurrent bool
 }
 
-func (i PackageManagerItem) FilterValue() string { return i.Name }
-func (i PackageManagerItem) Title() string {
+func (i PackageManagerItemWrapper) FilterValue() string { return i.Name }
+func (i PackageManagerItemWrapper) Title() string {
 	if i.IsCurrent {
 		return fmt.Sprintf("✅ %s (current)", i.Name)
 	}
 	return fmt.Sprintf("   %s", i.Name)
 }
-func (i PackageManagerItem) Description() string { return "" }
+func (i PackageManagerItemWrapper) Description() string { return "" }

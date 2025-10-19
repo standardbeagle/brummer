@@ -1,0 +1,370 @@
+package state
+
+import (
+	"regexp"
+	"sync"
+	"time"
+
+	"github.com/standardbeagle/brummer/internal/logs"
+)
+
+// LogsState manages all logs-related UI state
+// This is a sub-model that encapsulates logs display state according to Elm/Redux patterns
+type LogsState struct {
+	// Filter settings
+	ShowPattern      string
+	HidePattern      string
+	ShowHighPriority bool
+	SelectedProcess  string
+
+	// Display settings
+	AutoScroll bool
+	AtBottom   bool
+
+	// Search state
+	SearchQuery   string
+	SearchResults []logs.LogEntry
+
+	// UI state
+	Loading   bool
+	LastError string
+
+	// Cache for formatted logs
+	CachedLogs     []logs.CollapsedLogEntry
+	CacheTimestamp time.Time
+	CacheProcess   string
+
+	// Viewport state (for persistence)
+	ScrollOffset int
+
+	// Version for atomic updates and state tracking
+	version uint64
+	mu      sync.RWMutex
+}
+
+// NewLogsState creates a new logs sub-model with initial state
+func NewLogsState() *LogsState {
+	return &LogsState{
+		ShowPattern:      "",
+		HidePattern:      "",
+		ShowHighPriority: false,
+		SelectedProcess:  "",
+		AutoScroll:       true,
+		AtBottom:         true,
+		SearchQuery:      "",
+		SearchResults:    []logs.LogEntry{},
+		Loading:          false,
+		LastError:        "",
+		CachedLogs:       []logs.CollapsedLogEntry{},
+		CacheTimestamp:   time.Time{},
+		CacheProcess:     "",
+		ScrollOffset:     0,
+		version:          0,
+	}
+}
+
+// SetShowPattern updates the show pattern filter (immutable)
+func (s *LogsState) SetShowPattern(pattern string) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.ShowPattern = pattern
+	newState.incrementVersion()
+	newState.invalidateCache()
+	return newState
+}
+
+// SetHidePattern updates the hide pattern filter (immutable)
+func (s *LogsState) SetHidePattern(pattern string) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.HidePattern = pattern
+	newState.incrementVersion()
+	newState.invalidateCache()
+	return newState
+}
+
+// SetShowHighPriority updates the high priority filter (immutable)
+func (s *LogsState) SetShowHighPriority(show bool) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.ShowHighPriority = show
+	newState.incrementVersion()
+	newState.invalidateCache()
+	return newState
+}
+
+// SetSelectedProcess updates the selected process filter (immutable)
+func (s *LogsState) SetSelectedProcess(processID string) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.SelectedProcess = processID
+	newState.incrementVersion()
+	newState.invalidateCache()
+	return newState
+}
+
+// ToggleAutoScroll toggles the auto-scroll setting (immutable)
+func (s *LogsState) ToggleAutoScroll() *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.AutoScroll = !newState.AutoScroll
+	newState.incrementVersion()
+	return newState
+}
+
+// SetScrollOffset updates the scroll offset (immutable)
+func (s *LogsState) SetScrollOffset(offset int) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.ScrollOffset = offset
+	newState.AtBottom = false
+	newState.incrementVersion()
+	return newState
+}
+
+// SetAtBottom marks whether the view is at the bottom (immutable)
+func (s *LogsState) SetAtBottom(atBottom bool) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.AtBottom = atBottom
+	if atBottom {
+		newState.ScrollOffset = 0
+	}
+	newState.incrementVersion()
+	return newState
+}
+
+// SetSearchQuery updates the search query (immutable)
+func (s *LogsState) SetSearchQuery(query string) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.SearchQuery = query
+	newState.incrementVersion()
+	return newState
+}
+
+// SetSearchResults updates the search results (immutable)
+func (s *LogsState) SetSearchResults(results []logs.LogEntry) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.SearchResults = make([]logs.LogEntry, len(results))
+	copy(newState.SearchResults, results)
+	newState.incrementVersion()
+	return newState
+}
+
+// SetLoading updates the loading state (immutable)
+func (s *LogsState) SetLoading(loading bool) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.Loading = loading
+	newState.incrementVersion()
+	return newState
+}
+
+// SetError updates the error state (immutable)
+func (s *LogsState) SetError(err error) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	if err != nil {
+		newState.LastError = err.Error()
+	} else {
+		newState.LastError = ""
+	}
+	newState.incrementVersion()
+	return newState
+}
+
+// UpdateCachedLogs updates the cached logs (immutable)
+func (s *LogsState) UpdateCachedLogs(logEntries []logs.CollapsedLogEntry, processID string) *LogsState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	newState := s.copy()
+	newState.CachedLogs = make([]logs.CollapsedLogEntry, len(logEntries))
+	copy(newState.CachedLogs, logEntries)
+	newState.CacheTimestamp = time.Now()
+	newState.CacheProcess = processID
+	newState.incrementVersion()
+	return newState
+}
+
+// ApplyFilters applies current filters to log entries
+func (s *LogsState) ApplyFilters(entries []logs.CollapsedLogEntry) []logs.CollapsedLogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.ShowPattern == "" && s.HidePattern == "" && !s.ShowHighPriority {
+		return entries
+	}
+
+	var filtered []logs.CollapsedLogEntry
+	var showRe, hideRe *regexp.Regexp
+	var err error
+
+	if s.ShowPattern != "" {
+		showRe, err = regexp.Compile(s.ShowPattern)
+		if err != nil {
+			showRe = nil
+		}
+	}
+
+	if s.HidePattern != "" {
+		hideRe, err = regexp.Compile(s.HidePattern)
+		if err != nil {
+			hideRe = nil
+		}
+	}
+
+	for _, entry := range entries {
+		if s.ShowHighPriority && entry.Priority == 0 {
+			continue
+		}
+
+		if showRe != nil && !showRe.MatchString(entry.Content) {
+			continue
+		}
+
+		if hideRe != nil && hideRe.MatchString(entry.Content) {
+			continue
+		}
+
+		filtered = append(filtered, entry)
+	}
+
+	return filtered
+}
+
+// IsCacheValid checks if the cached logs are still valid
+func (s *LogsState) IsCacheValid(processID string, maxAge time.Duration) bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.CacheTimestamp.IsZero() || s.CacheProcess != processID {
+		return false
+	}
+
+	return time.Since(s.CacheTimestamp) < maxAge
+}
+
+// Getters for current state values
+func (s *LogsState) GetShowPattern() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ShowPattern
+}
+
+func (s *LogsState) GetHidePattern() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.HidePattern
+}
+
+func (s *LogsState) GetShowHighPriority() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ShowHighPriority
+}
+
+func (s *LogsState) GetSelectedProcess() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.SelectedProcess
+}
+
+func (s *LogsState) GetAutoScroll() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.AutoScroll
+}
+
+func (s *LogsState) GetAtBottom() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.AtBottom
+}
+
+func (s *LogsState) GetScrollOffset() int {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.ScrollOffset
+}
+
+func (s *LogsState) GetSearchQuery() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.SearchQuery
+}
+
+func (s *LogsState) GetSearchResults() []logs.LogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	results := make([]logs.LogEntry, len(s.SearchResults))
+	copy(results, s.SearchResults)
+	return results
+}
+
+func (s *LogsState) GetLoading() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.Loading
+}
+
+func (s *LogsState) GetError() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.LastError
+}
+
+func (s *LogsState) GetCachedLogs() []logs.CollapsedLogEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	logs := make([]logs.CollapsedLogEntry, len(s.CachedLogs))
+	copy(logs, s.CachedLogs)
+	return logs
+}
+
+func (s *LogsState) GetVersion() uint64 {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.version
+}
+
+// Helper methods
+func (s *LogsState) copy() *LogsState {
+	newState := *s
+	return &newState
+}
+
+func (s *LogsState) incrementVersion() {
+	s.version++
+}
+
+func (s *LogsState) invalidateCache() {
+	s.CacheTimestamp = time.Time{}
+	s.CacheProcess = ""
+}

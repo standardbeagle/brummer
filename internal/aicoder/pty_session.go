@@ -154,6 +154,7 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", key, value))
 	}
 
+	
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{
 		Rows: 24,
 		Cols: 80,
@@ -167,9 +168,7 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 	// This solves the issue where the last typed character has ~1 second delay
 	terminalState, err := configurePTYForResponsiveness(ptmx)
 	if err != nil {
-		// Log warning but don't fail - PTY will still work with default buffering
-		// Note: In a production system, this should use the project's logging framework
-		fmt.Fprintf(os.Stderr, "Warning: Could not configure PTY for optimal responsiveness: %v\n", err)
+		// PTY will still work with default buffering
 		terminalState = nil // Ensure we don't try to restore invalid state
 	}
 
@@ -198,6 +197,7 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 		terminalState: terminalState,              // Store for cleanup
 	}
 
+	
 	// Start I/O goroutines
 	go session.readLoop()
 	go session.writeLoop()
@@ -538,10 +538,7 @@ func (s *PTYSession) Close() error {
 	s.closeOnce.Do(func() {
 		// Restore terminal state before closing
 		if s.terminalState != nil {
-			if err := restoreTerminalState(s.terminalState); err != nil {
-				// Log error but don't fail the close operation
-				fmt.Fprintf(os.Stderr, "Warning: Failed to restore terminal state: %v\n", err)
-			}
+			restoreTerminalState(s.terminalState)
 		}
 
 		// Cancel context to signal goroutines to stop

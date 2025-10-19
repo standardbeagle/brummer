@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"reflect"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -56,14 +57,10 @@ func NewMessageRouter() *MessageRouter {
 // RegisterKeyboardHandler adds the keyboard handler to the router
 // This must be called after keyRegistry is created
 func (r *MessageRouter) RegisterKeyboardHandler(keyRegistry *KeyHandlerRegistry) {
-	// Insert keyboard handler at priority position (after dialogs, before view-specific)
-	// Find the right position (after DialogMessageHandler, before ViewSpecificHandler)
-	insertPos := len(r.handlers) - 2 // Before ViewSpecificHandler and ViewMessageHandler
-
+	// Add keyboard handler at the end - it should process key messages that
+	// haven't been handled by more specific handlers like dialogs
 	keyboardHandler := NewKeyboardMessageHandler(keyRegistry)
-
-	// Insert at the calculated position
-	r.handlers = append(r.handlers[:insertPos], append([]MessageHandler{keyboardHandler}, r.handlers[insertPos:]...)...)
+	r.handlers = append(r.handlers, keyboardHandler)
 }
 
 // RegisterHandler adds a message handler to the router
@@ -75,15 +72,45 @@ func (r *MessageRouter) RegisterHandler(handler MessageHandler) {
 func (r *MessageRouter) Route(msg tea.Msg, model *Model) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	// Quick keyboard diagnostic
+	if _, isKeyMsg := msg.(tea.KeyMsg); isKeyMsg && model.logStore != nil {
+		model.logStore.Add("router", "MessageRouter", "📬 Router received keyboard message", false)
+	}
+
 	// Try each handler that can handle the message
 	// Multiple handlers may process the same message (e.g., for cross-cutting concerns)
 	for _, handler := range r.handlers {
 		if handler.CanHandle(msg) {
-			newModel, cmd := handler.HandleMessage(msg, model)
+			var cmd tea.Cmd
+			var newModel tea.Model
+			var err error
+
+			// Safe handler execution with error checking
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						err = fmt.Errorf("handler panic: %v", r)
+						if model.logStore != nil {
+							model.logStore.Add("error", "MessageRouter", fmt.Sprintf("🚨 Handler panic: %v", r), true)
+						}
+					}
+				}()
+				newModel, cmd = handler.HandleMessage(msg, model)
+			}()
+
+			if err != nil {
+				if model.logStore != nil {
+					model.logStore.Add("error", "MessageRouter", fmt.Sprintf("❌ Handler error: %v", err), true)
+				}
+				continue // Skip this handler and continue with others
+			}
+
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}
-			model = newModel.(*Model)
+			if newModel != nil {
+				model = newModel.(*Model)
+			}
 		}
 	}
 

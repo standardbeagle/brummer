@@ -1,7 +1,6 @@
 package components
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -9,702 +8,471 @@ import (
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/standardbeagle/brummer/internal/test"
-	"github.com/standardbeagle/brummer/internal/tui/messages"
+	"github.com/standardbeagle/brummer/internal/tui/state"
 )
 
-// TestViewComponent displays test results and manages test execution
-// It receives test-related messages and updates the display accordingly.
-//
-// Design principles:
-// - Read-only access to test manager for initial load
-// - All updates via test event messages
-// - Compact view with focus on failures and summary
-// - Keyboard shortcuts for test execution (r, R, c)
-type TestViewComponent struct {
+// TestViewComponentNew is a stateless BubbleTea component for displaying test results and managing test execution
+// Architecture: Stateless rendering with external state (Redux/Elm compliant)
+type TestViewComponentNew struct {
 	BaseComponent
 
-	viewport     viewport.Model
-	testMgr      *test.TestManager
-	testExecutor *test.TestExecutor
-	activeRuns   []*test.TestRun
-	selectedRun  string
-	selectedTab  TestTab
-
-	// Cache for test results
-	results    map[string]*test.TestResults
-	lastUpdate time.Time
-
-	// Current execution state
-	isRunning  bool
-	currentRun *test.TestRun
+	// UI configuration only (no state)
+	viewport viewport.Model
 
 	// Styles
-	headerStyle   lipgloss.Style
-	successStyle  lipgloss.Style
-	failureStyle  lipgloss.Style
-	skippedStyle  lipgloss.Style
-	runningStyle  lipgloss.Style
-	normalStyle   lipgloss.Style
-	selectedStyle lipgloss.Style
-	borderStyle   lipgloss.Style
+	headerStyle    lipgloss.Style
+	successStyle   lipgloss.Style
+	failureStyle   lipgloss.Style
+	skippedStyle   lipgloss.Style
+	runningStyle   lipgloss.Style
+	normalStyle    lipgloss.Style
+	selectedStyle  lipgloss.Style
+	borderStyle    lipgloss.Style
+	tabStyle       lipgloss.Style
+	activeTabStyle lipgloss.Style
+	statsStyle     lipgloss.Style
 }
 
-// TestTab represents the active tab in the test view
-type TestTab int
-
-const (
-	TestTabSummary TestTab = iota
-	TestTabResults
-	TestTabCoverage
-	TestTabPerformance
-)
-
+// Test tab names
 var testTabNames = []string{"Summary", "Results", "Coverage", "Performance"}
 
-// NewTestViewComponent creates a test view with initial data from test manager
-func NewTestViewComponent(testMgr *test.TestManager, width, height int) *TestViewComponent {
-	vp := viewport.New(width-4, height-6) // Account for borders and header
+// NewTestViewComponentNew creates a new stateless test view component
+func NewTestViewComponentNew() *TestViewComponentNew {
+	vp := viewport.New(80, 24)
 	vp.Style = lipgloss.NewStyle().Padding(0, 1)
 
-	tv := &TestViewComponent{
-		BaseComponent: BaseComponent{
-			visible: true,
-			width:   width,
-			height:  height,
-		},
-		viewport:     vp,
-		testMgr:      testMgr,
-		testExecutor: test.NewTestExecutor(),
-		results:      make(map[string]*test.TestResults),
-		selectedTab:  TestTabSummary,
-		isRunning:    false,
+	return &TestViewComponentNew{
+		BaseComponent: NewBaseComponent(),
+		viewport:      vp,
+
+		// Initialize styles
+		headerStyle: lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("12")).  // Bright Blue
+			Background(lipgloss.Color("#7D56F4")).
+			Padding(0, 1).
+			MarginBottom(1),
+
+		successStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("10")), // Bright Green
+		failureStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("9")),  // Bright Red
+		skippedStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("11")), // Bright Yellow
+		runningStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("14")), // Bright Cyan
+		normalStyle:  lipgloss.NewStyle().Foreground(lipgloss.Color("15")), // White
+
+		selectedStyle: lipgloss.NewStyle().
+			Background(lipgloss.Color("240")).
+			Foreground(lipgloss.Color("15")).
+
+			Bold(true),
+
+		borderStyle: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("8")), // Gray
+
+		tabStyle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("8")).
+			Padding(0, 2),
+
+		activeTabStyle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color("15")).
+			Background(lipgloss.Color("12")).
+			Bold(true).
+			Padding(0, 2),
+
+		statsStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("245")), // Gray
 	}
-
-	// Initialize styles
-	tv.initStyles()
-
-	// Load initial data
-	if testMgr != nil {
-		tv.activeRuns = testMgr.GetActiveRuns()
-	}
-
-	return tv
 }
 
-// initStyles initializes the styling for the test view
-func (tv *TestViewComponent) initStyles() {
-	tv.headerStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("#FFFFFF")).
-		Background(lipgloss.Color("#7D56F4")).
-		Padding(0, 1).
-		MarginBottom(1)
-
-	tv.successStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#4ADE80"))
-
-	tv.failureStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#F87171"))
-
-	tv.skippedStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FBBF24"))
-
-	tv.runningStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#60A5FA"))
-
-	tv.normalStyle = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#E5E7EB"))
-
-	tv.selectedStyle = lipgloss.NewStyle().
-		Background(lipgloss.Color("#374151")).
-		Foreground(lipgloss.Color("#FFFFFF"))
-
-	tv.borderStyle = lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#4B5563"))
-}
-
-// Init initializes the test view component
-func (tv *TestViewComponent) Init() tea.Cmd {
-	return nil
-}
-
-// Update handles updates to the test view component
-func (tv *TestViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		return tv.handleKeyMsg(msg)
-
-	case messages.TestRunStartedMsg:
-		tv.handleTestRunStarted(msg)
-		return tv, nil
-
-	case messages.TestRunCompletedMsg:
-		tv.handleTestRunCompleted(msg)
-		return tv, nil
-
-	case messages.TestCaseStartedMsg:
-		tv.handleTestCaseStarted(msg)
-		return tv, nil
-
-	case messages.TestCaseCompletedMsg:
-		tv.handleTestCaseCompleted(msg)
-		return tv, nil
-
-	case messages.TestResultsClearedMsg:
-		tv.handleTestResultsCleared(msg)
-		return tv, nil
-
-	case messages.TestCoverageUpdatedMsg:
-		tv.handleTestCoverageUpdated(msg)
-		return tv, nil
-
-	case messages.TestPerformanceUpdatedMsg:
-		tv.handleTestPerformanceUpdated(msg)
-		return tv, nil
-	}
-
-	// Handle viewport updates
-	var cmd tea.Cmd
-	tv.viewport, cmd = tv.viewport.Update(msg)
-	return tv, cmd
-}
-
-// handleKeyMsg handles keyboard input for the test view
-func (tv *TestViewComponent) handleKeyMsg(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.Type {
-	case tea.KeyEnter:
-		// Toggle selection if we have runs
-		if len(tv.activeRuns) > 0 {
-			if tv.selectedRun == "" {
-				tv.selectedRun = tv.activeRuns[0].ID
-			} else {
-				tv.selectedRun = ""
-			}
-		}
-
-	case tea.KeyUp:
-		// Move selection up
-		tv.moveSelection(-1)
-
-	case tea.KeyDown:
-		// Move selection down
-		tv.moveSelection(1)
-
-	case tea.KeyTab:
-		// Switch tabs
-		tv.selectedTab = (tv.selectedTab + 1) % TestTab(len(testTabNames))
-
-	case tea.KeyShiftTab:
-		// Switch tabs backwards
-		tv.selectedTab = (tv.selectedTab - 1 + TestTab(len(testTabNames))) % TestTab(len(testTabNames))
-
-	case 'r':
-		// Run all tests
-		if !tv.isRunning {
-			tv.isRunning = true
-
-			// Create a new test run
-			run := &test.TestRun{
-				ID:        fmt.Sprintf("run-%d", time.Now().Unix()),
-				Framework: "auto",
-				Pattern:   "",
-				StartTime: time.Now(),
-				Status:    test.TestRunStatusRunning,
-				Options: test.TestOptions{
-					Verbose: true,
-					Timeout: 5 * time.Minute,
-				},
-			}
-
-			tv.currentRun = run
-			tv.activeRuns = append(tv.activeRuns, run)
-			tv.lastUpdate = time.Now()
-
-			// Execute tests using command-driven approach
-			return tv, tv.executeTestsCommand(run)
-		}
-
-	case 'R':
-		// Run specific test/file
-		return tv, tea.Cmd(func() tea.Msg {
-			// TODO: Show input prompt for test pattern
-			return nil
-		})
-
-	case 'c':
-		// Clear test results
-		tv.handleTestResultsCleared(messages.TestResultsClearedMsg{})
-		return tv, nil
-	}
-
-	return tv, nil
-}
-
-// moveSelection moves the selection up or down
-func (tv *TestViewComponent) moveSelection(direction int) {
-	if len(tv.activeRuns) == 0 {
-		return
-	}
-
-	currentIndex := -1
-	if tv.selectedRun != "" {
-		for i, run := range tv.activeRuns {
-			if run.ID == tv.selectedRun {
-				currentIndex = i
-				break
-			}
-		}
-	}
-
-	newIndex := currentIndex + direction
-	if newIndex < 0 {
-		newIndex = len(tv.activeRuns) - 1
-	} else if newIndex >= len(tv.activeRuns) {
-		newIndex = 0
-	}
-
-	tv.selectedRun = tv.activeRuns[newIndex].ID
-}
-
-// handleTestRunStarted handles test run started messages
-func (tv *TestViewComponent) handleTestRunStarted(msg messages.TestRunStartedMsg) {
-	// Refresh active runs from test manager
-	if tv.testMgr != nil {
-		tv.activeRuns = tv.testMgr.GetActiveRuns()
-	}
-	tv.lastUpdate = time.Now()
-}
-
-// handleTestRunCompleted handles test run completed messages
-func (tv *TestViewComponent) handleTestRunCompleted(msg messages.TestRunCompletedMsg) {
-	// This would typically be handled by updating the test manager
-	// and then refreshing our view
-	if tv.testMgr != nil {
-		tv.activeRuns = tv.testMgr.GetActiveRuns()
-	}
-	tv.lastUpdate = time.Now()
-}
-
-// handleTestCaseStarted handles test case started messages
-func (tv *TestViewComponent) handleTestCaseStarted(msg messages.TestCaseStartedMsg) {
-	tv.lastUpdate = time.Now()
-}
-
-// handleTestCaseCompleted handles test case completed messages
-func (tv *TestViewComponent) handleTestCaseCompleted(msg messages.TestCaseCompletedMsg) {
-	tv.lastUpdate = time.Now()
-}
-
-// handleTestResultsCleared handles test results cleared messages
-func (tv *TestViewComponent) handleTestResultsCleared(msg messages.TestResultsClearedMsg) {
-	if msg.RunID == "" {
-		tv.results = make(map[string]*test.TestResults)
-	} else {
-		delete(tv.results, msg.RunID)
-	}
-	tv.lastUpdate = time.Now()
-}
-
-// handleTestCoverageUpdated handles test coverage updated messages
-func (tv *TestViewComponent) handleTestCoverageUpdated(msg messages.TestCoverageUpdatedMsg) {
-	tv.lastUpdate = time.Now()
-}
-
-// handleTestPerformanceUpdated handles test performance updated messages
-func (tv *TestViewComponent) handleTestPerformanceUpdated(msg messages.TestPerformanceUpdatedMsg) {
-	tv.lastUpdate = time.Now()
-}
-
-// View renders the test view component
-func (tv *TestViewComponent) View() string {
-	if !tv.visible {
+// ViewWithState renders the test view using external state (Redux/Elm compliant)
+func (c *TestViewComponentNew) ViewWithState(masterData *state.MasterData) string {
+	if !c.IsVisible() {
 		return ""
 	}
 
+	if masterData == nil || masterData.TestViewState == nil {
+		return c.renderErrorState("Test view state not available")
+	}
+
+	testViewState := masterData.TestViewState
+
+	if testViewState.GetLoading() {
+		return c.renderLoadingState()
+	}
+
+	if error := testViewState.GetError(); error != "" {
+		return c.renderErrorState(error)
+	}
+
+	// Update viewport with current state
+	c.updateViewportFromState(testViewState)
+
+	// Render based on selected tab
+	switch testViewState.GetSelectedTab() {
+	case state.TestTabSummary:
+		return c.renderSummaryTab(testViewState)
+	case state.TestTabResults:
+		return c.renderResultsTab(testViewState)
+	case state.TestTabCoverage:
+		return c.renderCoverageTab(testViewState)
+	case state.TestTabPerformance:
+		return c.renderPerformanceTab(testViewState)
+	default:
+		return c.renderSummaryTab(testViewState)
+	}
+}
+
+// renderSummaryTab renders the summary tab
+func (c *TestViewComponentNew) renderSummaryTab(testViewState *state.TestViewState) string {
 	var content strings.Builder
 
 	// Header with tabs
-	content.WriteString(tv.renderHeader())
+	content.WriteString(c.renderTabs(testViewState))
+	content.WriteString("\n")
 
-	// Main content based on selected tab
-	switch tv.selectedTab {
-	case TestTabSummary:
-		content.WriteString(tv.renderSummaryView())
-	case TestTabResults:
-		content.WriteString(tv.renderResultsView())
-	case TestTabCoverage:
-		content.WriteString(tv.renderCoverageView())
-	case TestTabPerformance:
-		content.WriteString(tv.renderPerformanceView())
+	// Statistics overview
+	activeRuns := testViewState.GetActiveRuns()
+	runsByStatus := testViewState.RunsByStatus
+
+	stats := []string{
+		fmt.Sprintf("Total Runs: %d", len(activeRuns)),
 	}
 
-	// Footer with keyboard shortcuts
-	content.WriteString("\n")
-	content.WriteString(tv.renderFooter())
+	for status, count := range runsByStatus {
+		stats = append(stats, fmt.Sprintf("%s: %d", status, count))
+	}
 
-	return tv.borderStyle.Render(content.String())
+	if testViewState.IsRunning() {
+		stats = append(stats, "Status: Running")
+	}
+
+	content.WriteString(c.headerStyle.Render("Test Summary"))
+	content.WriteString("\n")
+	content.WriteString(strings.Join(stats, " | "))
+	content.WriteString("\n\n")
+
+	// Recent runs
+	if len(activeRuns) > 0 {
+		content.WriteString(c.headerStyle.Render("Recent Test Runs"))
+		content.WriteString("\n")
+		content.WriteString(strings.Repeat("─", 80))
+		content.WriteString("\n")
+
+		for i, run := range activeRuns {
+			if i >= 10 { // Show only 10 most recent
+				break
+			}
+
+			statusStyle := c.getStatusStyle(run.Status)
+			runLine := fmt.Sprintf("%s %s - %s (%s) - %d/%d passed",
+				statusStyle.Render(c.getStatusIcon(run.Status)),
+				run.Name,
+				c.formatDuration(run.Duration),
+				run.Status,
+				run.PassedTests,
+				run.TotalTests,
+			)
+
+			if run.ID == testViewState.GetSelectedRunID() {
+				runLine = c.selectedStyle.Render(runLine)
+			}
+
+			content.WriteString(runLine)
+			content.WriteString("\n")
+		}
+	} else {
+		content.WriteString(c.statsStyle.Render("No test runs yet. Press 'r' to run tests."))
+	}
+
+	// Help text
+	content.WriteString("\n\n")
+	content.WriteString(c.statsStyle.Render("Commands: r=Run tests, R=Run with coverage, c=Clear results, 1-4=Switch tabs, ↑↓=Select run"))
+
+	// Set viewport content
+	c.viewport.SetContent(content.String())
+	return c.viewport.View()
 }
 
-// renderHeader renders the header with tabs
-func (tv *TestViewComponent) renderHeader() string {
-	var tabs strings.Builder
+// renderResultsTab renders the detailed results tab
+func (c *TestViewComponentNew) renderResultsTab(testViewState *state.TestViewState) string {
+	var content strings.Builder
+
+	// Header with tabs
+	content.WriteString(c.renderTabs(testViewState))
+	content.WriteString("\n")
+
+	selectedRun := testViewState.GetSelectedRun()
+	if selectedRun == nil {
+		content.WriteString(c.statsStyle.Render("Select a test run to view results"))
+		c.viewport.SetContent(content.String())
+		return c.viewport.View()
+	}
+
+	// Run details
+	content.WriteString(c.headerStyle.Render(fmt.Sprintf("Test Results: %s", selectedRun.Name)))
+	content.WriteString("\n")
+
+	// Filter status
+	filterStatus := testViewState.GetFilterStatus()
+	if filterStatus != "all" {
+		content.WriteString(fmt.Sprintf("Filter: %s", filterStatus))
+		content.WriteString("\n\n")
+	}
+
+	// Test results
+	results := testViewState.GetFilteredResults(selectedRun.ID)
+	if len(results) == 0 {
+		content.WriteString(c.statsStyle.Render("No test results to display"))
+	} else {
+		for _, result := range results {
+			statusStyle := c.getStatusStyle(result.Status)
+			resultLine := fmt.Sprintf("%s %s - %s",
+				statusStyle.Render(c.getStatusIcon(result.Status)),
+				result.Name,
+				c.formatDuration(result.Duration),
+			)
+
+			if result.ErrorMessage != "" {
+				resultLine += fmt.Sprintf(" - %s", result.ErrorMessage)
+			}
+
+			content.WriteString(resultLine)
+			content.WriteString("\n")
+		}
+	}
+
+	// Set viewport content
+	c.viewport.SetContent(content.String())
+	return c.viewport.View()
+}
+
+// renderCoverageTab renders the coverage tab
+func (c *TestViewComponentNew) renderCoverageTab(testViewState *state.TestViewState) string {
+	var content strings.Builder
+
+	// Header with tabs
+	content.WriteString(c.renderTabs(testViewState))
+	content.WriteString("\n")
+
+	content.WriteString(c.headerStyle.Render("Code Coverage"))
+	content.WriteString("\n")
+
+	selectedRun := testViewState.GetSelectedRun()
+	if selectedRun == nil {
+		content.WriteString(c.statsStyle.Render("Select a test run to view coverage"))
+	} else if selectedRun.Coverage > 0 {
+		content.WriteString(fmt.Sprintf("Coverage: %.1f%%\n", selectedRun.Coverage))
+		content.WriteString(c.renderCoverageBar(selectedRun.Coverage))
+	} else {
+		content.WriteString(c.statsStyle.Render("No coverage data available. Run tests with coverage enabled (press 'R')."))
+	}
+
+	// Set viewport content
+	c.viewport.SetContent(content.String())
+	return c.viewport.View()
+}
+
+// renderPerformanceTab renders the performance tab
+func (c *TestViewComponentNew) renderPerformanceTab(testViewState *state.TestViewState) string {
+	var content strings.Builder
+
+	// Header with tabs
+	content.WriteString(c.renderTabs(testViewState))
+	content.WriteString("\n")
+
+	content.WriteString(c.headerStyle.Render("Test Performance"))
+	content.WriteString("\n")
+
+	selectedRun := testViewState.GetSelectedRun()
+	if selectedRun == nil {
+		content.WriteString(c.statsStyle.Render("Select a test run to view performance"))
+	} else {
+		content.WriteString(fmt.Sprintf("Total Duration: %s\n", c.formatDuration(selectedRun.Duration)))
+
+		if selectedRun.TotalTests > 0 {
+			avgDuration := selectedRun.Duration / time.Duration(selectedRun.TotalTests)
+			content.WriteString(fmt.Sprintf("Average Test Duration: %s\n", c.formatDuration(avgDuration)))
+		}
+
+		// Add more performance metrics here as needed
+	}
+
+	// Set viewport content
+	c.viewport.SetContent(content.String())
+	return c.viewport.View()
+}
+
+// renderTabs renders the tab navigation
+func (c *TestViewComponentNew) renderTabs(testViewState *state.TestViewState) string {
+	var tabs []string
 
 	for i, tabName := range testTabNames {
-		style := tv.normalStyle
-		if i == int(tv.selectedTab) {
-			style = tv.selectedStyle.Copy().Background(lipgloss.Color("#7D56F4"))
-		}
-		tabs.WriteString(style.Render(tabName))
-		if i < len(testTabNames)-1 {
-			tabs.WriteString(" ")
+		if state.TestTab(i) == testViewState.GetSelectedTab() {
+			tabs = append(tabs, c.activeTabStyle.Render(tabName))
+		} else {
+			tabs = append(tabs, c.tabStyle.Render(tabName))
 		}
 	}
 
-	header := tv.headerStyle.Render("Test Management")
-	return header + "\n" + tabs.String()
+	return strings.Join(tabs, " ")
 }
 
-// renderSummaryView renders the summary tab
-func (tv *TestViewComponent) renderSummaryView() string {
-	if len(tv.activeRuns) == 0 && !tv.isRunning {
-		return tv.normalStyle.Render("No test runs found. Press 'r' to run tests.")
-	}
+// renderCoverageBar renders a visual coverage bar
+func (c *TestViewComponentNew) renderCoverageBar(coverage float64) string {
+	width := 50
+	filled := int(coverage * float64(width) / 100.0)
 
-	var summary strings.Builder
-	summary.WriteString("\n")
+	var bar strings.Builder
+	bar.WriteString("[")
 
-	// Show running state if active
-	if tv.isRunning && tv.currentRun != nil {
-		summary.WriteString(tv.runningStyle.Render(fmt.Sprintf(
-			"  ► Running %s tests... (%.1fs)\n",
-			tv.currentRun.Framework,
-			time.Since(tv.currentRun.StartTime).Seconds(),
-		)))
-		summary.WriteString("\n")
-	}
-
-	// Show recent test runs
-	for i, run := range tv.activeRuns {
-		if i >= 5 { // Show only recent 5 runs
-			break
-		}
-
-		style := tv.normalStyle
-		if run.ID == tv.selectedRun {
-			style = tv.selectedStyle
-		}
-
-		statusText := tv.getRunStatusText(run)
-		duration := tv.formatDuration(run.Duration)
-
-		// Show special styling for currently running test
-		if run.Status == test.TestRunStatusRunning {
-			style = tv.runningStyle
-			statusText = fmt.Sprintf("Running... (%.1fs)", time.Since(run.StartTime).Seconds())
-		}
-
-		line := fmt.Sprintf("  %s %s - %s (%s)\n",
-			style.Render("•"),
-			style.Render(run.Framework),
-			style.Render(statusText),
-			style.Render(duration),
-		)
-		summary.WriteString(line)
-	}
-
-	// Show current results if available
-	if tv.selectedRun != "" {
-		if results, exists := tv.results[tv.selectedRun]; exists {
-			summary.WriteString("\n")
-			summary.WriteString(tv.normalStyle.Render(fmt.Sprintf(
-				"Results: %d total, %s%d%s passed, %s%d%s failed, %s%d%s skipped\n",
-				results.TotalTests,
-				tv.successStyle.Render(""), results.PassedTests, tv.successStyle.Render(""),
-				tv.failureStyle.Render(""), results.FailedTests, tv.failureStyle.Render(""),
-				tv.skippedStyle.Render(""), results.SkippedTests, tv.skippedStyle.Render(""),
-			)))
-		}
-	}
-
-	return summary.String()
-}
-
-// renderResultsView renders the detailed results tab
-func (tv *TestViewComponent) renderResultsView() string {
-	if tv.selectedRun == "" {
-		return tv.normalStyle.Render("\nSelect a test run to view detailed results.")
-	}
-
-	results, exists := tv.results[tv.selectedRun]
-	if !exists {
-		return tv.normalStyle.Render("\nNo results available for selected run.")
-	}
-
-	var content strings.Builder
-	content.WriteString("\n")
-
-	// Summary line
-	content.WriteString(tv.normalStyle.Render(fmt.Sprintf(
-		"Total: %d | Passed: %s%d%s | Failed: %s%d%s | Skipped: %s%d%s\n",
-		results.TotalTests,
-		tv.successStyle.Render(""), results.PassedTests, tv.successStyle.Render(""),
-		tv.failureStyle.Render(""), results.FailedTests, tv.failureStyle.Render(""),
-		tv.skippedStyle.Render(""), results.SkippedTests, tv.skippedStyle.Render(""),
-	)))
-
-	// Show failures first
-	if len(results.TestCases) > 0 {
-		content.WriteString("\n")
-		content.WriteString(tv.normalStyle.Render("Test Cases:\n"))
-
-		for _, tc := range results.TestCases {
-			if len(content.String()) > 2000 { // Limit output
-				break
-			}
-
-			statusStyle := tv.normalStyle
-			statusChar := "✓"
-			switch tc.Status {
-			case test.TestCaseStatusPassed:
-				statusStyle = tv.successStyle
-				statusChar = "✓"
-			case test.TestCaseStatusFailed:
-				statusStyle = tv.failureStyle
-				statusChar = "✗"
-			case test.TestCaseStatusSkipped:
-				statusStyle = tv.skippedStyle
-				statusChar = "⊘"
-			}
-
-			line := fmt.Sprintf("  %s %s - %s\n",
-				statusStyle.Render(statusChar),
-				tc.Name,
-				tv.formatDuration(tc.Duration),
-			)
-			content.WriteString(line)
-
-			// Show failure info if available and compact display
-			if tc.Status == test.TestCaseStatusFailed && tc.FailureInfo != nil {
-				failureLine := fmt.Sprintf("    %s\n", tv.failureStyle.Render(tc.FailureInfo.Message))
-				content.WriteString(failureLine)
-			}
-		}
-	}
-
-	return content.String()
-}
-
-// renderCoverageView renders the coverage tab
-func (tv *TestViewComponent) renderCoverageView() string {
-	if tv.selectedRun == "" {
-		return tv.normalStyle.Render("\nSelect a test run to view coverage.")
-	}
-
-	results, exists := tv.results[tv.selectedRun]
-	if !exists || results.Coverage == nil {
-		return tv.normalStyle.Render("\nNo coverage data available for selected run.")
-	}
-
-	var content strings.Builder
-	content.WriteString("\n")
-
-	coverage := results.Coverage
-	coverageStyle := tv.normalStyle
-	if coverage.OverallPct >= 80 {
-		coverageStyle = tv.successStyle
-	} else if coverage.OverallPct >= 60 {
-		coverageStyle = tv.skippedStyle
-	} else {
-		coverageStyle = tv.failureStyle
-	}
-
-	content.WriteString(tv.normalStyle.Render(fmt.Sprintf(
-		"Overall Coverage: %s%.1f%%%s (%d/%d lines)\n",
-		coverageStyle.Render(""),
-		coverage.OverallPct,
-		coverageStyle.Render(""),
-		coverage.LineCoverage,
-		coverage.TotalLines,
-	)))
-
-	if len(coverage.Files) > 0 {
-		content.WriteString("\n")
-		content.WriteString(tv.normalStyle.Render("File Coverage:\n"))
-
-		for _, file := range coverage.Files {
-			if len(content.String()) > 1500 { // Limit output
-				break
-			}
-
-			fileStyle := tv.normalStyle
-			if file.CoveragePct >= 80 {
-				fileStyle = tv.successStyle
-			} else if file.CoveragePct >= 60 {
-				fileStyle = tv.skippedStyle
+	for i := 0; i < width; i++ {
+		if i < filled {
+			if coverage >= 80 {
+				bar.WriteString("█") // High coverage - green would be ideal
+			} else if coverage >= 60 {
+				bar.WriteString("▓") // Medium coverage
 			} else {
-				fileStyle = tv.failureStyle
+				bar.WriteString("░") // Low coverage
 			}
-
-			line := fmt.Sprintf("  %s %s (%.1f%%)\n",
-				fileStyle.Render(file.FilePath),
-				tv.normalStyle.Render(fmt.Sprintf("%d/%d lines", file.LinesCovered, file.TotalLines)),
-				file.CoveragePct,
-			)
-			content.WriteString(line)
+		} else {
+			bar.WriteString(" ")
 		}
 	}
 
-	return content.String()
-}
+	bar.WriteString(fmt.Sprintf("] %.1f%%", coverage))
 
-// renderPerformanceView renders the performance tab
-func (tv *TestViewComponent) renderPerformanceView() string {
-	if tv.selectedRun == "" {
-		return tv.normalStyle.Render("\nSelect a test run to view performance.")
+	// Color based on coverage level
+	var style lipgloss.Style
+	if coverage >= 80 {
+		style = c.successStyle
+	} else if coverage >= 60 {
+		style = c.runningStyle
+	} else {
+		style = c.failureStyle
 	}
 
-	results, exists := tv.results[tv.selectedRun]
-	if !exists || results.Performance == nil {
-		return tv.normalStyle.Render("\nNo performance data available for selected run.")
-	}
-
-	var content strings.Builder
-	content.WriteString("\n")
-
-	perf := results.Performance
-	content.WriteString(tv.normalStyle.Render(fmt.Sprintf(
-		"Total Duration: %s\n",
-		tv.formatDuration(perf.TotalDuration),
-	)))
-	content.WriteString(tv.normalStyle.Render(fmt.Sprintf(
-		"Average Duration: %s\n",
-		tv.formatDuration(perf.AverageDuration),
-	)))
-
-	if len(perf.SlowTests) > 0 {
-		content.WriteString("\n")
-		content.WriteString(tv.failureStyle.Render(fmt.Sprintf(
-			"Slow Tests (> %s):\n",
-			tv.formatDuration(perf.SlowThreshold),
-		)))
-
-		for _, slowTest := range perf.SlowTests {
-			if len(content.String()) > 1500 { // Limit output
-				break
-			}
-
-			line := fmt.Sprintf("  %s - %s\n",
-				slowTest.TestName,
-				tv.formatDuration(slowTest.Duration),
-			)
-			content.WriteString(line)
-		}
-	}
-
-	return content.String()
+	return style.Render(bar.String())
 }
 
-// renderFooter renders the footer with keyboard shortcuts
-func (tv *TestViewComponent) renderFooter() string {
-	shortcuts := "[r] Run all tests | [R] Run specific | [c] Clear | [Tab] Switch tabs | [↑/↓] Navigate | [Enter] Select"
-	return tv.normalStyle.Render(shortcuts)
+// renderLoadingState renders the loading state
+func (c *TestViewComponentNew) renderLoadingState() string {
+	content := c.headerStyle.Render("Test View") + "\n"
+	content += strings.Repeat("─", 80) + "\n"
+	content += c.statsStyle.Render("Loading test data...")
+
+	c.viewport.SetContent(content)
+	return c.viewport.View()
 }
 
-// getRunStatusText returns formatted status text for a test run
-func (tv *TestViewComponent) getRunStatusText(run *test.TestRun) string {
-	switch run.Status {
-	case test.TestRunStatusPending:
-		return "Pending"
-	case test.TestRunStatusRunning:
-		return "Running"
-	case test.TestRunStatusCompleted:
-		if run.Results != nil {
-			return fmt.Sprintf("%d passed, %d failed", run.Results.PassedTests, run.Results.FailedTests)
-		}
-		return "Completed"
-	case test.TestRunStatusFailed:
-		return "Failed"
-	case test.TestRunStatusCancelled:
-		return "Cancelled"
+// renderErrorState renders the error state
+func (c *TestViewComponentNew) renderErrorState(message string) string {
+	content := c.headerStyle.Render("Test View") + "\n"
+	content += strings.Repeat("─", 80) + "\n"
+	content += c.failureStyle.Render(fmt.Sprintf("Error: %s", message))
+
+	c.viewport.SetContent(content)
+	return c.viewport.View()
+}
+
+// getStatusStyle returns the appropriate style for a status
+func (c *TestViewComponentNew) getStatusStyle(status string) lipgloss.Style {
+	switch status {
+	case "passed", "completed":
+		return c.successStyle
+	case "failed", "error":
+		return c.failureStyle
+	case "skipped":
+		return c.skippedStyle
+	case "running":
+		return c.runningStyle
 	default:
-		return "Unknown"
+		return c.normalStyle
+	}
+}
+
+// getStatusIcon returns the appropriate icon for a status
+func (c *TestViewComponentNew) getStatusIcon(status string) string {
+	switch status {
+	case "passed", "completed":
+		return "✓"
+	case "failed", "error":
+		return "✗"
+	case "skipped":
+		return "⊘"
+	case "running":
+		return "⟳"
+	case "cancelled":
+		return "⏹"
+	default:
+		return "?"
 	}
 }
 
 // formatDuration formats a duration for display
-func (tv *TestViewComponent) formatDuration(d time.Duration) string {
+func (c *TestViewComponentNew) formatDuration(d time.Duration) string {
+	if d == 0 {
+		return "0s"
+	}
 	if d < time.Millisecond {
-		return fmt.Sprintf("%.1fms", float64(d.Nanoseconds())/1000000.0)
-	} else if d < time.Second {
-		return fmt.Sprintf("%.0fms", float64(d.Nanoseconds())/1000000.0)
-	} else if d < time.Minute {
+		return fmt.Sprintf("%.0fμs", float64(d.Nanoseconds())/1000)
+	}
+	if d < time.Second {
+		return fmt.Sprintf("%.0fms", float64(d.Nanoseconds())/1000000)
+	}
+	if d < time.Minute {
 		return fmt.Sprintf("%.1fs", d.Seconds())
-	} else {
-		return fmt.Sprintf("%.0fm", d.Minutes())
+	}
+	return fmt.Sprintf("%.1fm", d.Minutes())
+}
+
+// updateViewportFromState updates the viewport based on current state
+func (c *TestViewComponentNew) updateViewportFromState(testViewState *state.TestViewState) {
+	width, height := testViewState.GetSize()
+	c.viewport.Width = width
+	c.viewport.Height = height - 6 // Account for header and tabs
+
+	// Update viewport offset from state
+	offset := testViewState.GetViewportOffset()
+	if offset >= 0 && offset < c.viewport.TotalLineCount() {
+		c.viewport.YOffset = offset
 	}
 }
 
-// executeTestsCommand creates a command to execute tests without goroutines
-func (tv *TestViewComponent) executeTestsCommand(run *test.TestRun) tea.Cmd {
-	return func() tea.Msg {
-		// NO MORE GOROUTINES - Test execution will be command-driven
-		// through BubbleTea Update() cycle instead of background goroutine
-
-		// Detect available frameworks
-		detected := tv.testExecutor.DetectAvailableFrameworks()
-		var frameworkName string
-
-		if len(detected) == 0 {
-			// Fallback to Node.js test runner
-			frameworkName = "node"
-		} else {
-			frameworkName = detected[0].Name()
-		}
-
-		// Update run with detected framework
-		run.Framework = frameworkName
-
-		// Execute tests synchronously in the command
-		results, err := tv.testExecutor.ExecuteTests(
-			context.Background(),
-			frameworkName,
-			"",
-			test.TestOptions{Verbose: true},
-		)
-
-		// Update run status and store results
-		endTime := time.Now()
-		run.EndTime = &endTime
-		run.Duration = endTime.Sub(run.StartTime)
-
-		if err != nil {
-			run.Status = test.TestRunStatusFailed
-			fmt.Printf("Test execution error: %v\n", err)
-		} else {
-			run.Status = test.TestRunStatusCompleted
-			run.Results = results
-		}
-
-		// Return a message to update the UI
-		msg := messages.TestRunCompletedMsg{
-			RunID:   run.ID,
-		}
-		if results != nil {
-			msg.TotalTests = results.TotalTests
-			msg.PassedTests = results.PassedTests
-			msg.FailedTests = results.FailedTests
-			msg.SkippedTests = results.SkippedTests
-		}
-		return msg
-	}
+// SetSize updates component dimensions
+func (c *TestViewComponentNew) SetSize(width, height int) {
+	c.viewport.Width = width
+	c.viewport.Height = height - 6 // Account for header and tabs
 }
 
-// SetSize updates the component size
-func (tv *TestViewComponent) SetSize(width, height int) {
-	tv.width = width
-	tv.height = height
-	tv.viewport.Width = width - 4
-	tv.viewport.Height = height - 6
+// UpdateSize updates dimensions with pre-calculated content height
+func (c *TestViewComponentNew) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
+	c.viewport.Width = width
+	c.viewport.Height = contentHeight
+}
+
+// View renders the component (legacy method for compatibility)
+func (c *TestViewComponentNew) View() string {
+	if !c.IsVisible() {
+		return ""
+	}
+	return "" // Rendering is done via ViewWithState
+}
+
+// Update handles messages (minimal - stateless component)
+func (c *TestViewComponentNew) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
+
+	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		c.SetSize(msg.Width, msg.Height)
+		return c, nil
+	}
+
+	// Update viewport
+	c.viewport, cmd = c.viewport.Update(msg)
+	return c, cmd
+}
+
+// Init initializes the component
+func (c *TestViewComponentNew) Init() tea.Cmd {
+	return nil
 }

@@ -47,16 +47,22 @@ func GetViewConfigs() map[View]ViewConfig {
 			KeyBinding:  "6",
 			Icon:        "🤖",
 		},
+		ViewMCPStatus: {
+			Title:       "MCP Status",
+			Description: "MCP server status",
+			KeyBinding:  "7",
+			Icon:        "📊",
+		},
 		ViewSettings: {
 			Title:       "Settings",
 			Description: "Configuration",
-			KeyBinding:  "7",
+			KeyBinding:  "8",
 			Icon:        "⚙️",
 		},
 		ViewMCPConnections: {
-			Title:       "MCP",
+			Title:       "MCP Debug",
 			Description: "MCP Connections",
-			KeyBinding:  "8",
+			KeyBinding:  "9",
 			Icon:        "🔌",
 		},
 	}
@@ -64,7 +70,7 @@ func GetViewConfigs() map[View]ViewConfig {
 
 // GetOrderedViews returns the views in the order they should appear in tabs
 func GetOrderedViews(debugMode bool) []View {
-	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewAICoders, ViewSettings}
+	views := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewAICoders, ViewMCPStatus, ViewSettings}
 	if debugMode {
 		views = append(views, ViewMCPConnections)
 	}

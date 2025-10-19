@@ -5,13 +5,18 @@ import (
 	"runtime"
 	"testing"
 	"time"
+
+	"github.com/standardbeagle/brummer/internal/logs"
+	"github.com/standardbeagle/brummer/pkg/events"
 )
 
 // TestNewAICoderService verifies that the service initializes with empty registry
 func TestNewAICoderService(t *testing.T) {
 	// This test will fail until we implement NewAICoderService
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	if service == nil {
 		t.Fatal("NewAICoderService returned nil")
@@ -27,7 +32,9 @@ func TestNewAICoderService(t *testing.T) {
 // TestServiceEventBusReference verifies EventBus is valid
 func TestServiceEventBusReference(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	if service == nil {
 		t.Fatal("NewAICoderService returned nil")
@@ -43,7 +50,9 @@ func TestServiceEventBusReference(t *testing.T) {
 // TestServiceShutdownChannel verifies shutdown channel created
 func TestServiceShutdownChannel(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	if service == nil {
 		t.Fatal("NewAICoderService returned nil")
@@ -66,7 +75,9 @@ func TestServiceShutdownChannel(t *testing.T) {
 // TestNoGoroutineLeaks_SessionLifecycle verifies goroutine count returns to baseline
 func TestNoGoroutineLeaks_SessionLifecycle(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	// Record baseline goroutine count (allow for test framework goroutines)
 	baseline := countGoroutines()
@@ -110,7 +121,9 @@ func TestNoGoroutineLeaks_SessionLifecycle(t *testing.T) {
 // TestNoGoroutineLeaks_MultipleStarts verifies no leaks with rapid create/stop
 func TestNoGoroutineLeaks_MultipleStarts(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	baseline := countGoroutines()
 
@@ -152,7 +165,9 @@ func TestNoGoroutineLeaks_MultipleStarts(t *testing.T) {
 // TestMonitoringGoroutineCleanup verifies monitoring goroutines stopped
 func TestMonitoringGoroutineCleanup(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	// Create multiple sessions
 	sessionIDs := make([]string, 3)
@@ -209,7 +224,9 @@ func TestPTYFileDescriptorCleanup(t *testing.T) {
 // TestSyncMapCleanup verifies session registry cleared
 func TestSyncMapCleanup(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	// Create multiple sessions
 	sessionIDs := make([]string, 3)
@@ -261,7 +278,9 @@ func TestNoZombieProcesses(t *testing.T) {
 // TestCleanupTiming verifies cleanup completes <100ms
 func TestCleanupTiming(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	// Create and start a session
 	sessionID, err := service.CreateSession(ctx, "Timing Test", "sleep 5", ".")
@@ -304,7 +323,9 @@ func TestCleanupTiming(t *testing.T) {
 // TestShutdown_AllSessionsStopped verifies all sessions cleaned up
 func TestShutdown_AllSessionsStopped(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	// Create multiple sessions
 	for i := 0; i < 3; i++ {
@@ -344,7 +365,9 @@ func TestShutdown_AllSessionsStopped(t *testing.T) {
 // TestShutdown_GracefulTimeout verifies respects context timeout
 func TestShutdown_GracefulTimeout(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	// Create a session
 	sessionID, err := service.CreateSession(ctx, "Timeout Test", "sleep 10", ".")
@@ -379,7 +402,9 @@ func TestShutdown_GracefulTimeout(t *testing.T) {
 // TestShutdown_Idempotent verifies safe to call multiple times
 func TestShutdown_Idempotent(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	// First shutdown
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -406,7 +431,9 @@ func TestShutdown_Idempotent(t *testing.T) {
 // TestShutdown_NoDeadlock verifies completes even with active sessions
 func TestShutdown_NoDeadlock(t *testing.T) {
 	ctx := context.Background()
-	service := NewAICoderService(ctx)
+	eventBus := events.NewEventBus()
+	logStore := logs.NewStore(1000, eventBus)
+	service := NewAICoderService(ctx, logStore)
 
 	// Create multiple long-running sessions
 	for i := 0; i < 5; i++ {

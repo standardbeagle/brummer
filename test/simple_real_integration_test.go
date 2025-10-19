@@ -9,7 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/tui/commands"
 	"github.com/standardbeagle/brummer/pkg/events"
 	"github.com/stretchr/testify/assert"
@@ -26,7 +27,7 @@ func TestRealVsFakeIntegrationTest(t *testing.T) {
 	// NOT the component-based system our previous tests covered
 	eventBus := events.NewEventBus()
 	logStore := logs.NewStore(1000, eventBus)
-	processManager, err := process.NewManager(".", eventBus, false)
+	processManager, err := processes.NewManager(".", eventBus, false)
 	require.NoError(t, err)
 
 	updateChan := make(chan tea.Msg, 10)
@@ -205,7 +206,7 @@ func TestCompleteUserExperienceIntegration(t *testing.T) {
 	// 3. Simulate the exact user scenario
 	eventBus := events.NewEventBus()
 	logStore := logs.NewStore(1000, eventBus)
-	processManager, err := process.NewManager(".", eventBus, false)
+	processManager, err := processes.NewManager(".", eventBus, false)
 	require.NoError(t, err)
 
 	updateChan := make(chan tea.Msg, 10)

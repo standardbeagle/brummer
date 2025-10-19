@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/tui/commands"
-	"github.com/standardbeagle/brummer/internal/tui/messages"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

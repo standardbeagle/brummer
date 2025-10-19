@@ -70,7 +70,7 @@ func TestSettingsViewComponent_SettingDisplay(t *testing.T) {
 		"mcp.enabled",
 		"proxy.enabled",
 		"proxy.port",
-		"process.max",
+		"processes.max",
 		"logs.max_entries",
 		"ui.refresh_rate",
 	}

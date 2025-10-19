@@ -6,7 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
-	"github.com/standardbeagle/brummer/internal/tui/types"
+	"github.com/standardbeagle/brummer/internal/shared/types"
 )
 
 // PTYCommand represents a PTY-related operation

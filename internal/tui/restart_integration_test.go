@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/pkg/events"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -28,7 +29,7 @@ func TestRestartProcessIntegration(t *testing.T) {
 
 	// Create process manager
 	eventBus := events.NewEventBus()
-	processMgr, err := process.NewManager(tempDir, eventBus, true) // true = has package.json
+	processMgr, err := processes.NewManager(tempDir, eventBus, true) // true = has package.json
 	require.NoError(t, err)
 
 	// Start the initial process
@@ -42,7 +43,7 @@ func TestRestartProcessIntegration(t *testing.T) {
 	// Verify initial process is running
 	allProcs := processMgr.GetAllProcesses()
 	require.Len(t, allProcs, 1)
-	assert.Equal(t, process.StatusRunning, allProcs[0].Status)
+	assert.Equal(t, processes.StatusRunning, allProcs[0].Status)
 	initialPID := allProcs[0].ID
 
 	t.Logf("Initial process: %s (PID: %s, Status: %s)", allProcs[0].Name, allProcs[0].ID, allProcs[0].Status)
@@ -88,13 +89,13 @@ func TestRestartProcessIntegration(t *testing.T) {
 	var runningCount, failedCount, stoppedCount, successCount int
 	for _, p := range finalProcs {
 		switch p.Status {
-		case process.StatusRunning:
+		case processes.StatusRunning:
 			runningCount++
-		case process.StatusFailed:
+		case processes.StatusFailed:
 			failedCount++
-		case process.StatusStopped:
+		case processes.StatusStopped:
 			stoppedCount++
-		case process.StatusSuccess:
+		case processes.StatusSuccess:
 			successCount++
 		}
 	}
@@ -111,13 +112,13 @@ func TestRestartProcessIntegration(t *testing.T) {
 		// The original process should not be running
 		for _, p := range finalProcs {
 			if p.ID == initialPID {
-				assert.NotEqual(t, process.StatusRunning, p.Status, "Original process should not be running after restart")
+				assert.NotEqual(t, processes.StatusRunning, p.Status, "Original process should not be running after restart")
 			}
 		}
 	} else {
 		// If StartScript succeeded, we should have a running process
 		require.NotNil(t, newProc, "New process should be created")
-		assert.Equal(t, process.StatusRunning, newProc.Status, "New process should be running")
+		assert.Equal(t, processes.StatusRunning, newProc.Status, "New process should be running")
 
 		// The key assertion: we should not have 2 failed processes
 		assert.Less(t, failedCount, 2, "Should not have 2 failed processes after restart")
@@ -156,7 +157,7 @@ func TestRestartProcessWithPortConflict(t *testing.T) {
 
 	// Create process manager
 	eventBus := events.NewEventBus()
-	processMgr, err := process.NewManager(tempDir, eventBus, true)
+	processMgr, err := processes.NewManager(tempDir, eventBus, true)
 	require.NoError(t, err)
 
 	// Start the initial process
@@ -202,7 +203,7 @@ func TestRestartProcessWithPortConflict(t *testing.T) {
 	// Count failed processes - this is where the bug manifests
 	var failedCount int
 	for _, p := range finalProcs {
-		if p.GetStatus() == process.StatusFailed {
+		if p.GetStatus() == processes.StatusFailed {
 			failedCount++
 		}
 	}
@@ -213,7 +214,7 @@ func TestRestartProcessWithPortConflict(t *testing.T) {
 
 		// Additional debugging
 		for _, p := range finalProcs {
-			if p.GetStatus() == process.StatusFailed {
+			if p.GetStatus() == processes.StatusFailed {
 				t.Logf("Failed process: %s (PID: %s)", p.Name, p.ID)
 			}
 		}

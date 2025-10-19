@@ -9,7 +9,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/parser"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 )
 
@@ -32,7 +33,7 @@ func (i RunCustomItem) Description() string { return "Run a custom command not l
 
 // ProcessItem represents a process in the processes view
 type ProcessItem struct {
-	process    *process.Process
+	process    *processes.Process
 	isHeader   bool
 	headerText string
 }
@@ -64,13 +65,13 @@ func (i ProcessItem) Title() string {
 	status := string(state.Status)
 	var statusEmoji string
 	switch state.Status {
-	case process.StatusRunning:
+	case processes.StatusRunning:
 		statusEmoji = "🟢"
-	case process.StatusStopped:
+	case processes.StatusStopped:
 		statusEmoji = "✓" // Thin checkmark for gracefully stopped
-	case process.StatusFailed:
+	case processes.StatusFailed:
 		statusEmoji = "❌"
-	case process.StatusSuccess:
+	case processes.StatusSuccess:
 		statusEmoji = "✓" // Thin checkmark for success
 	default:
 		statusEmoji = "⏸️"

@@ -3,6 +3,7 @@ package tui
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/services"
+	"github.com/standardbeagle/brummer/pkg/events"
 )
 
 // ModelAdapter implements ModelInterface for the concrete Model type
@@ -58,7 +59,7 @@ func (ma *ModelAdapter) GetLogStore() LogStoreInterface {
 
 // Events
 func (ma *ModelAdapter) GetEventBus() EventBusInterface {
-	return ma.model.eventBus
+	return &EventBusAdapter{eventBus: ma.model.eventBus}
 }
 
 func (ma *ModelAdapter) GetUpdateChannel() chan tea.Msg {
@@ -88,37 +89,36 @@ func (ma *ModelAdapter) HideScriptSelector() {
 
 // Search
 func (ma *ModelAdapter) IsSearchActive() bool {
-	return ma.model.logsView != nil &&
-		(ma.model.logsView.GetShowPattern() != "" ||
-			ma.model.logsView.GetHidePattern() != "")
+	return ma.model.masterData != nil && ma.model.masterData.LogsState != nil &&
+		(ma.model.masterData.LogsState.GetShowPattern() != "" ||
+			ma.model.masterData.LogsState.GetHidePattern() != "")
 }
 
 func (ma *ModelAdapter) GetSearchPattern() string {
-	if ma.model.logsView != nil {
-		return ma.model.logsView.GetShowPattern()
+	if ma.model.masterData != nil && ma.model.masterData.LogsState != nil {
+		return ma.model.masterData.LogsState.GetShowPattern()
 	}
 	return ""
 }
 
 func (ma *ModelAdapter) SetSearchPattern(pattern string) {
-	if ma.model.logsView != nil {
-		ma.model.logsView.SetShowPattern(pattern)
+	if ma.model.masterData != nil && ma.model.masterData.LogsState != nil {
+		ma.model.masterData.LogsState = ma.model.masterData.LogsState.SetShowPattern(pattern)
 	}
 }
 
 // Command window
 func (ma *ModelAdapter) IsCommandWindowVisible() bool {
-	return ma.model.commandWindowView.IsShowingCommandWindow()
+	return ma.model.masterData.CommandWindowState.IsShowingCommandWindow()
 }
 
 func (ma *ModelAdapter) ShowCommandWindow() {
-	// Get scripts
-	scripts := ma.model.processMgr.GetScripts()
-	ma.model.commandWindowView.ShowCommandWindow(scripts)
+	// Update state directly
+	ma.model.masterData.CommandWindowState = ma.model.masterData.CommandWindowState.ShowCommandWindow()
 }
 
 func (ma *ModelAdapter) HideCommandWindow() {
-	ma.model.commandWindowView.HideCommandWindow()
+	ma.model.masterData.CommandWindowState = ma.model.masterData.CommandWindowState.HideCommandWindow()
 }
 
 // Settings
@@ -145,6 +145,28 @@ func (ma *ModelAdapter) HasActiveAICoders() bool {
 	return len(sessions) > 0
 }
 
-// Removed ProcessManagerAdapter - process.Manager already implements ProcessManagerInterface
+// Removed ProcessManagerAdapter - processes.Manager already implements ProcessManagerInterface
 
 // Removed LogStoreAdapter since logs.Store already implements LogStoreInterface
+
+// EventBusAdapter wraps events.EventBus to match EventBusInterface
+type EventBusAdapter struct {
+	eventBus *events.EventBus
+}
+
+// Publish forwards to the wrapped EventBus
+func (eba *EventBusAdapter) Publish(event events.Event) {
+	eba.eventBus.Publish(event)
+}
+
+// Subscribe wraps the EventBus Subscribe method to match the interface
+// The interface expects no return value, so we discard the unsubscribe function
+func (eba *EventBusAdapter) Subscribe(eventType events.EventType, handler events.Handler) {
+	// Discard the returned unsubscribe function to match interface
+	_ = eba.eventBus.Subscribe(eventType, handler)
+}
+
+// Shutdown forwards to the wrapped EventBus
+func (eba *EventBusAdapter) Shutdown() {
+	eba.eventBus.Shutdown()
+}

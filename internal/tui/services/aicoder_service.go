@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/standardbeagle/brummer/internal/aicoder"
+	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
@@ -52,10 +53,11 @@ type AICoderService struct {
 	sessions sync.Map // map[string]*AICoderSession
 
 	// Lifecycle
-	eventBus   *events.EventBus
-	wg         sync.WaitGroup
-	shutdownCh chan struct{}
-	shutdown   atomic.Bool
+	eventBus *events.EventBus
+	shutdown atomic.Bool
+
+	// Integration
+	logStore *logs.Store // Central log store for AI activity logging
 
 	// Configuration
 	maxConcurrentSessions int
@@ -63,10 +65,10 @@ type AICoderService struct {
 }
 
 // NewAICoderService creates a new AI coder service
-func NewAICoderService(ctx context.Context) *AICoderService {
+func NewAICoderService(ctx context.Context, logStore *logs.Store) *AICoderService {
 	service := &AICoderService{
 		eventBus:              events.NewEventBus(),
-		shutdownCh:            make(chan struct{}),
+		logStore:              logStore,
 		maxConcurrentSessions: 0, // 0 = unlimited
 		ptyCleanupTimeout:     5 * time.Second,
 	}
@@ -160,12 +162,19 @@ func (s *AICoderService) StartSession(ctx context.Context, sessionID string, wid
 	// Create PTY session (this also starts the PTY process and I/O loops)
 	// Note: NewPTYSession starts with default 80x24 dimensions
 	// TODO: Support custom dimensions in NewPTYSession or resize after creation
+	s.logSystemEvent(fmt.Sprintf("Creating PTY session for %s (command: %s %s)", session.Name, command, strings.Join(args, " ")))
+	s.logPTYActivity(sessionID, fmt.Sprintf("🤖 AI creating PTY session: %s", session.Name), false)
+
 	ptySession, err := aicoder.NewPTYSession(sessionID, session.Name, command, args)
 	if err != nil {
 		session.ErrorCount.Add(1)
+		s.logSystemEvent(fmt.Sprintf("Failed to create PTY session: %v", err))
+		s.logPTYActivity(sessionID, fmt.Sprintf("❌ AI PTY creation failed: %v", err), true)
 		s.publishError(sessionID, fmt.Errorf("failed to create PTY: %w", err))
 		return fmt.Errorf("failed to create PTY: %w", err)
 	}
+	s.logSystemEvent(fmt.Sprintf("PTY session created successfully: %s", sessionID))
+	s.logPTYActivity(sessionID, "✅ AI PTY session created successfully", false)
 
 	// Resize to requested dimensions if different from default
 	if width != 80 || height != 24 {
@@ -178,15 +187,15 @@ func (s *AICoderService) StartSession(ctx context.Context, sessionID string, wid
 	// Store PTY session
 	session.PTYSession = ptySession
 
-	// Start monitoring PTY output through command pattern
-	// TODO: Replace with proper command pattern for PTY monitoring
-	// For now, disable monitoring to avoid goroutines
-	// s.wg.Add(1)
-	// s.monitorPTYOutput(sessionID)
+	// PTY output monitoring is handled through Bubble Tea message pattern
+	// No goroutines - the AI Coders view component will poll for PTY output
 
 	// Update status
 	session.Status = messages.SessionActive
 	session.LastActivity = time.Now()
+
+	s.logSystemEvent(fmt.Sprintf("Session started successfully: %s (status: %s)", sessionID, session.Status))
+	s.logPTYActivity(sessionID, "🚀 AI session activated and ready for commands", false)
 
 	// Publish update
 	s.eventBus.Publish(events.Event{
@@ -203,86 +212,14 @@ func (s *AICoderService) StartSession(ctx context.Context, sessionID string, wid
 	return nil
 }
 
-// monitorPTYOutput monitors PTY output and publishes events
-func (s *AICoderService) monitorPTYOutput(sessionID string) {
-	defer s.wg.Done()
-
-	value, ok := s.sessions.Load(sessionID)
-	if !ok {
-		return
-	}
-	session := value.(*AICoderSession)
-
-	if session.PTYSession == nil {
-		return
-	}
-
-	sequence := atomic.Uint64{}
-
-	for {
-		select {
-		case <-s.shutdownCh:
-			return
-
-		case output, ok := <-session.PTYSession.OutputChan:
-			if !ok {
-				// PTY session ended - check if session still exists before updating
-				if value, exists := s.sessions.Load(sessionID); exists {
-					sess := value.(*AICoderSession)
-					sess.Status = messages.SessionStopped
-				}
-				s.eventBus.Publish(events.Event{
-					Type:      "aicoder.session.ended",
-					ProcessID: sessionID,
-					Timestamp: time.Now(),
-					Data: map[string]interface{}{
-						"sessionID": sessionID,
-						"reason":    "pty_closed",
-					},
-				})
-				return
-			}
-
-			// Update metrics - check if session still exists before updating
-			if value, exists := s.sessions.Load(sessionID); exists {
-				sess := value.(*AICoderSession)
-				sess.BytesRead.Add(uint64(len(output)))
-				sess.LastActivity = time.Now()
-			}
-
-			// Publish PTY output event
-			s.eventBus.Publish(events.Event{
-				Type:      "aicoder.pty.output",
-				ProcessID: sessionID,
-				Timestamp: time.Now(),
-				Data: map[string]interface{}{
-					"sessionID": sessionID,
-					"data":      output,
-					"sequence":  sequence.Add(1),
-				},
-			})
-
-		case event, ok := <-session.PTYSession.EventChan:
-			if !ok {
-				return
-			}
-
-			// Handle PTY events (errors, state changes, etc.)
-			if event.Type == "error" {
-				// Check if session still exists before updating
-				if value, exists := s.sessions.Load(sessionID); exists {
-					sess := value.(*AICoderSession)
-					sess.ErrorCount.Add(1)
-					sess.Status = messages.SessionError
-				}
-				s.publishError(sessionID, fmt.Errorf("PTY error: %v", event.Data))
-			}
-		}
-	}
-}
+// Note: PTY output monitoring is handled by the AI Coders view component
+// through Bubble Tea's message pattern. No goroutines are used.
 
 // publishError publishes an error event for a session
 func (s *AICoderService) publishError(sessionID string, err error) {
+	errorMsg := fmt.Sprintf("AI Coder Error: %v", err)
+
+	// Log to event bus for UI components
 	s.eventBus.Publish(events.Event{
 		Type:      "aicoder.error",
 		ProcessID: sessionID,
@@ -293,6 +230,76 @@ func (s *AICoderService) publishError(sessionID string, err error) {
 			"severity":  "error",
 		},
 	})
+
+	// Also log to central logStore for unified logging
+	if s.logStore != nil {
+		s.logStore.Add(sessionID, "ai-coder", errorMsg, true)
+	}
+}
+
+// logSystemEvent logs to the TUI system using the EventBus and logStore
+// This ensures AI coder events appear in both the TUI logs and central logStore
+func (s *AICoderService) logSystemEvent(message string) {
+	// Log to event bus for UI components
+	s.eventBus.Publish(events.Event{
+		Type:      "aicoder.log",
+		ProcessID: "system",
+		Timestamp: time.Now(),
+		Data: map[string]interface{}{
+			"message": message,
+			"source":  "ai-coder-service",
+		},
+	})
+
+	// Also log to central logStore for unified logging
+	if s.logStore != nil {
+		s.logStore.Add("ai-coder", "system", message, false)
+	}
+}
+
+// logPTYActivity logs PTY session activity (proxy interactions, screenshots, etc.)
+// This provides a complete audit trail of AI assistant activities
+func (s *AICoderService) logPTYActivity(sessionID string, activity string, isError bool) {
+	// Log to event bus for UI components
+	s.eventBus.Publish(events.Event{
+		Type:      "aicoder.activity",
+		ProcessID: sessionID,
+		Timestamp: time.Now(),
+		Data: map[string]interface{}{
+			"sessionID": sessionID,
+			"activity":  activity,
+			"isError":   isError,
+		},
+	})
+
+	// Also log to central logStore for unified logging
+	if s.logStore != nil {
+		s.logStore.Add(sessionID, "ai-coder", activity, isError)
+	}
+}
+
+// LogProxyScreenshot logs when AI takes a screenshot via the proxy server
+func (s *AICoderService) LogProxyScreenshot(sessionID, url string) {
+	activity := fmt.Sprintf("📸 AI took screenshot via proxy: %s", url)
+	s.logPTYActivity(sessionID, activity, false)
+}
+
+// LogCSSCapture logs when AI reads CSS/styles from development server
+func (s *AICoderService) LogCSSCapture(sessionID, selector string) {
+	activity := fmt.Sprintf("🎨 AI captured CSS: %s", selector)
+	s.logPTYActivity(sessionID, activity, false)
+}
+
+// LogProxyError logs when proxy errors are auto-forwarded to AI
+func (s *AICoderService) LogProxyError(sessionID, errorMsg string) {
+	activity := fmt.Sprintf("⚠️ Proxy error forwarded to AI: %s", errorMsg)
+	s.logPTYActivity(sessionID, activity, true)
+}
+
+// LogCodeGeneration logs when AI generates/creates code files
+func (s *AICoderService) LogCodeGeneration(sessionID, filename string) {
+	activity := fmt.Sprintf("✍️ AI generated code: %s", filename)
+	s.logPTYActivity(sessionID, activity, false)
 }
 
 // StopSession gracefully stops a session and cleans up resources
@@ -415,6 +422,64 @@ func (s *AICoderService) GetTerminalState(sessionID string) (*messages.TerminalS
 	}, nil
 }
 
+// CheckPTYOutput returns any pending PTY output for a session
+// This is the Bubble Tea-compliant way to get PTY data without goroutines
+func (s *AICoderService) CheckPTYOutput(sessionID string) ([]byte, error) {
+	session, err := s.GetSession(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if session.Status != messages.SessionActive && session.Status != messages.SessionIdle {
+		return nil, ErrSessionNotStarted
+	}
+
+	if session.PTYSession == nil {
+		return nil, ErrSessionNotStarted
+	}
+
+	// Check for available output without blocking
+	select {
+	case output := <-session.PTYSession.OutputChan:
+		// Update metrics
+		session.BytesRead.Add(uint64(len(output)))
+		session.LastActivity = time.Now()
+		return output, nil
+	case event := <-session.PTYSession.EventChan:
+		// Handle PTY events (errors, state changes, etc.)
+		if event.Type == "error" {
+			session.ErrorCount.Add(1)
+			session.Status = messages.SessionError
+			s.publishError(sessionID, fmt.Errorf("PTY error: %v", event.Data))
+		}
+		return nil, fmt.Errorf("PTY event: %s", event.Type)
+	default:
+		// No output available
+		return nil, nil
+	}
+}
+
+// CheckSessionStatus checks if a session is still active
+func (s *AICoderService) CheckSessionStatus(sessionID string) (messages.SessionStatus, error) {
+	session, err := s.GetSession(sessionID)
+	if err != nil {
+		return messages.SessionStopped, err
+	}
+
+	// Check if PTY session is still active
+	if session.PTYSession != nil {
+		select {
+		case <-session.PTYSession.EventChan:
+			// Channel closed, session ended
+			session.Status = messages.SessionStopped
+		default:
+			// Channel still open, session active
+		}
+	}
+
+	return session.Status, nil
+}
+
 // SendInput sends keyboard input to the PTY
 func (s *AICoderService) SendInput(sessionID string, input []byte) error {
 	session, err := s.GetSession(sessionID)
@@ -480,9 +545,6 @@ func (s *AICoderService) Shutdown(ctx context.Context) error {
 		return nil // Already shutdown, idempotent
 	}
 
-	// Close shutdown channel to signal goroutines
-	close(s.shutdownCh)
-
 	// Stop all sessions
 	var sessionIDs []string
 	s.sessions.Range(func(key, value interface{}) bool {
@@ -493,14 +555,9 @@ func (s *AICoderService) Shutdown(ctx context.Context) error {
 	for _, sessionID := range sessionIDs {
 		if err := s.StopSession(ctx, sessionID); err != nil {
 			// Log error but continue shutdown
-			fmt.Printf("Error stopping session %s during shutdown: %v\n", sessionID, err)
+			s.logSystemEvent(fmt.Sprintf("Error stopping session %s during shutdown: %v", sessionID, err))
 		}
 	}
-
-	// Wait for all operations through command pattern
-	// TODO: Replace with proper command pattern for shutdown coordination
-	// For now, perform immediate wait to avoid goroutines
-	s.wg.Wait()
 
 	return nil
 }

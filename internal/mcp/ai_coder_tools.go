@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/aicoder"
+	"github.com/standardbeagle/brummer/pkg/events"
 )
 
 // AICoderManagerInterface defines the interface for AI coder management
@@ -154,8 +155,16 @@ func (s *MCPServer) handleAICoderCreate(args json.RawMessage) (interface{}, erro
 
 	// Auto-start the coder
 	if err := manager.StartCoder(coder.ID); err != nil {
-		// Log but don't fail creation
-		fmt.Printf("Warning: failed to auto-start AI coder: %v\n", err)
+		// Log via event bus but don't fail creation
+		if s.eventBus != nil {
+			s.eventBus.Publish(events.Event{
+				Type: events.SystemMessage,
+				Data: map[string]interface{}{
+					"level":   "warning",
+					"message": fmt.Sprintf("Failed to auto-start AI coder: %v", err),
+				},
+			})
+		}
 	}
 
 	return map[string]interface{}{

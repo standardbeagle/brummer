@@ -6,13 +6,13 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/domain/processes"
 )
 
 // SlashCommandContext contains only essential dependencies for slash commands
 // SIMPLIFIED: Reduced from 14 fields to 3 fields
 type SlashCommandContext struct {
-	ProcessManager *process.Manager
+	ProcessManager *processes.Manager
 	LogStore       *logs.Store
 	Model          interface{} // Access to Model for callbacks - typed as interface{} to avoid import cycle
 }
@@ -144,9 +144,9 @@ func handleRestart(ctx *SlashCommandContext, parts []string) tea.Cmd {
 // restartAllProcesses restarts all running processes
 func restartAllProcesses(ctx *SlashCommandContext) tea.Msg {
 	// Get all running processes
-	processes := ctx.ProcessManager.GetAllProcesses()
+	allProcesses := ctx.ProcessManager.GetAllProcesses()
 	var scriptNames []string
-	for _, p := range processes {
+	for _, p := range allProcesses {
 		snapshot := p.GetSnapshot()
 		if snapshot.IsRunning() {
 			scriptNames = append(scriptNames, snapshot.Name)
@@ -182,9 +182,9 @@ func restartAllProcesses(ctx *SlashCommandContext) tea.Msg {
 // restartProcess restarts a specific process
 func restartProcess(ctx *SlashCommandContext, processName string) tea.Msg {
 	// Find the process
-	var foundProcess *process.Process
-	processes := ctx.ProcessManager.GetAllProcesses()
-	for _, p := range processes {
+	var foundProcess *processes.Process
+	allProcesses := ctx.ProcessManager.GetAllProcesses()
+	for _, p := range allProcesses {
 		snapshot := p.GetSnapshot()
 		if snapshot.Name == processName {
 			foundProcess = p
@@ -227,9 +227,9 @@ func handleStop(ctx *SlashCommandContext, parts []string) tea.Cmd {
 		}
 
 		// Find and stop specific process
-		var foundProcess *process.Process
-		processes := ctx.ProcessManager.GetAllProcesses()
-		for _, p := range processes {
+		var foundProcess *processes.Process
+		allProcesses := ctx.ProcessManager.GetAllProcesses()
+		for _, p := range allProcesses {
 			snapshot := p.GetSnapshot()
 			if snapshot.Name == processName {
 				foundProcess = p

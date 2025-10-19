@@ -5,7 +5,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -87,12 +88,12 @@ type ModelInterface interface {
 
 // ProcessManagerInterface defines process management operations
 type ProcessManagerInterface interface {
-	StartScript(name string) (*process.Process, error)
-	StartCommand(name, command string, args []string) (*process.Process, error)
+	StartScript(name string) (*processes.Process, error)
+	StartCommand(name, command string, args []string) (*processes.Process, error)
 	StopProcess(id string) error
 	StopProcessAndWait(id string, timeout time.Duration) error
-	GetAllProcesses() []*process.Process
-	GetProcess(id string) (*process.Process, bool)
+	GetAllProcesses() []*processes.Process
+	GetProcess(id string) (*processes.Process, bool)
 	GetScripts() map[string]string
 }
 

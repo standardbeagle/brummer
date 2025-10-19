@@ -7,7 +7,8 @@ import (
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 )
 
 // NewScriptSelectorAutocomplete creates an autocomplete for initial script selection
@@ -31,7 +32,7 @@ func NewScriptSelectorAutocomplete(scripts map[string]string) CommandAutocomplet
 }
 
 // NewScriptSelectorAutocompleteWithProcessManager creates a script selector with process manager
-func NewScriptSelectorAutocompleteWithProcessManager(scripts map[string]string, processMgr *process.Manager) CommandAutocomplete {
+func NewScriptSelectorAutocompleteWithProcessManager(scripts map[string]string, processMgr *processes.Manager) CommandAutocomplete {
 	c := NewScriptSelectorAutocomplete(scripts)
 	c.processMgr = processMgr
 	// Re-update suggestions with process manager filter
@@ -47,7 +48,7 @@ func (c *CommandAutocomplete) updateScriptSelectorSuggestions() {
 	runningScripts := make(map[string]bool)
 	if c.processMgr != nil {
 		for _, proc := range c.processMgr.GetAllProcesses() {
-			if proc.GetStatus() == process.StatusRunning {
+			if proc.GetStatus() == processes.StatusRunning {
 				runningScripts[proc.Name] = true
 			}
 		}

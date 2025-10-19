@@ -8,7 +8,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
@@ -26,7 +27,7 @@ type CommandAutocomplete struct {
 
 	// Command-specific data
 	availableScripts map[string]string // Script name -> script command
-	processMgr       *process.Manager  // Reference to process manager to check running scripts
+	processMgr       *processes.Manager  // Reference to process manager to check running scripts
 }
 
 func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
@@ -49,7 +50,7 @@ func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
 }
 
 // NewCommandAutocompleteWithProcessManager creates a command autocomplete with process manager
-func NewCommandAutocompleteWithProcessManager(scripts map[string]string, processMgr *process.Manager) CommandAutocomplete {
+func NewCommandAutocompleteWithProcessManager(scripts map[string]string, processMgr *processes.Manager) CommandAutocomplete {
 	c := NewCommandAutocomplete(scripts)
 	c.processMgr = processMgr
 	return c
@@ -214,7 +215,7 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 			runningScripts := make(map[string]bool)
 			if c.processMgr != nil {
 				for _, proc := range c.processMgr.GetAllProcesses() {
-					if proc.GetStatus() == process.StatusRunning {
+					if proc.GetStatus() == processes.StatusRunning {
 						runningScripts[proc.Name] = true
 					}
 				}
@@ -236,12 +237,12 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 
 		case "/restart", "/stop":
 			// Get running processes with "all" as default option
-			processes := []string{"all"}
+			processNames := []string{"all"}
 
 			if c.processMgr != nil {
 				for _, proc := range c.processMgr.GetAllProcesses() {
-					if proc.GetStatus() == process.StatusRunning {
-						processes = append(processes, proc.Name)
+					if proc.GetStatus() == processes.StatusRunning {
+						processNames = append(processNames, proc.Name)
 					}
 				}
 			}
@@ -250,7 +251,7 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 			if c.currentIndex < len(c.segments) {
 				currentText = c.segments[c.currentIndex]
 			}
-			return c.filterSuggestions(processes, currentText)
+			return c.filterSuggestions(processNames, currentText)
 
 		case "/clear":
 			// Options: all, logs, errors, web, or script names
@@ -456,7 +457,7 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		// Check if script is already running
 		if c.processMgr != nil {
 			for _, proc := range c.processMgr.GetAllProcesses() {
-				if proc.Name == scriptName && proc.GetStatus() == process.StatusRunning {
+				if proc.Name == scriptName && proc.GetStatus() == processes.StatusRunning {
 					return false, fmt.Sprintf("Script '%s' is already running", scriptName)
 				}
 			}
@@ -478,7 +479,7 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		// Check if process exists and is running
 		if c.processMgr != nil {
 			for _, proc := range c.processMgr.GetAllProcesses() {
-				if proc.Name == processName && proc.GetStatus() == process.StatusRunning {
+				if proc.Name == processName && proc.GetStatus() == processes.StatusRunning {
 					return true, ""
 				}
 			}
@@ -586,7 +587,7 @@ func (c *CommandAutocomplete) getAvailableScriptsString() string {
 	runningScripts := make(map[string]bool)
 	if c.processMgr != nil {
 		for _, proc := range c.processMgr.GetAllProcesses() {
-			if proc.GetStatus() == process.StatusRunning {
+			if proc.GetStatus() == processes.StatusRunning {
 				runningScripts[proc.Name] = true
 			}
 		}

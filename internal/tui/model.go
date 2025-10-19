@@ -24,7 +24,8 @@ import (
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
 	"github.com/standardbeagle/brummer/internal/parser"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui/bridge"
 	"github.com/standardbeagle/brummer/internal/tui/commands"
@@ -47,6 +48,7 @@ const (
 	ViewURLs           View = "urls"
 	ViewWeb            View = "web"
 	ViewSettings       View = "settings"
+	ViewMCPStatus      View = "mcp_status"
 	ViewMCPConnections View = "mcp_connections"
 	ViewSearch         View = "search"
 	ViewFilters        View = "filters"
@@ -63,7 +65,7 @@ type MCPServerInterface interface {
 }
 
 type Model struct {
-	processMgr  *process.Manager
+	processMgr  *processes.Manager
 	logStore    *logs.Store
 	eventBus    *events.EventBus
 	mcpServer   MCPServerInterface
@@ -77,13 +79,13 @@ type Model struct {
 	height        int
 
 	// View components (migrated from controllers)
-	processesView     *components.ProcessesView         // Processes view component
-	logsView          *components.LogsView              // Logs view component
-	errorsView        *components.ErrorsView            // Errors view component
-	urlsView          *components.URLsView              // URLs view component
-	webView           *components.WebViewComponent      // Web view component (T056-T061)
-	commandWindowView *components.CommandWindowView     // Command window component
-	settingsView      *components.SettingsView          // Settings view component
+	processesView     *components.ProcessesViewComponent // Processes view component (stateless)
+	logsView          *components.LogsViewComponent     // Logs view component (stateless)
+	errorsView        *components.ErrorsViewComponent   // Errors view component (stateless)
+	urlsView          *components.URLsViewComponentNew // URLs view component (stateless)
+	webView           *components.WebViewComponentNew      // Web view component (stateless) (T056-T061)
+	commandWindowView *components.CommandWindowViewComponentNew     // Command window component (stateless)
+	settingsView      *components.SettingsViewComponentNew // Settings view component (stateless)
 	aicodersView      *components.AICodersViewComponent // AI Coders view component (Feature 005)
 	// New component fields (replacing controllers)
 	fileBrowserComponent   *components.FileBrowserComponent
@@ -110,8 +112,9 @@ type Model struct {
 
 	updateChan chan tea.Msg
 
-	// MCP debug view component
-	mcpDebugView *components.MCPDebugView // MCP debug view component
+	// MCP view components
+	mcpView      *components.MCPViewComponentNew  // MCP status view component (stateless)
+	mcpDebugView *components.MCPDebugViewComponentNew // MCP debug view component (stateless)
 
 	// AI Coder service (Feature 005 - new service-based architecture)
 	aiCoderService interface{} // *services.AICoderService (interface{} to avoid import cycles during transition)
@@ -122,8 +125,9 @@ type Model struct {
 	// SIMPLIFIED KEYBOARD HANDLING
 	keyRegistry *KeyHandlerRegistry // Single registry for all keyboard handlers
 
-	// STATE MANAGEMENT - New StateManager for advanced state tracking
-	stateManager *state.StateManager // Manages versioned state, metrics, and snapshots
+	// STATE MANAGEMENT - Master data with sub-models for Elm/Redux compliance
+	masterData   *state.MasterData   // Single source of truth with AICoderState sub-model
+	stateManager *state.StateManager // Legacy StateManager (to be deprecated)
 }
 
 type keyMap struct {
@@ -287,7 +291,7 @@ func (i runCustomItem) Title() string       { return "➕ Run Custom Command..."
 func (i runCustomItem) Description() string { return "Run a custom command not listed above" }
 
 type processItem struct {
-	process    *process.Process
+	process    *processes.Process
 	isHeader   bool
 	headerText string
 }
@@ -318,13 +322,13 @@ func (i processItem) Title() string {
 	status := string(state.Status)
 	var statusEmoji string
 	switch state.Status {
-	case process.StatusRunning:
+	case processes.StatusRunning:
 		statusEmoji = "🟢"
-	case process.StatusStopped:
+	case processes.StatusStopped:
 		statusEmoji = "✓" // Thin checkmark for gracefully stopped
-	case process.StatusFailed:
+	case processes.StatusFailed:
 		statusEmoji = "❌"
-	case process.StatusSuccess:
+	case processes.StatusSuccess:
 		statusEmoji = "✓" // Thin checkmark for success
 	default:
 		statusEmoji = "⏸️"
@@ -521,11 +525,11 @@ func (i infoDisplayItem) Description() string {
 }
 func (i infoDisplayItem) isSettingsItem() {}
 
-func NewModel(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, cfg *config.Config, workingDir string) *Model {
+func NewModel(processMgr *processes.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, cfg *config.Config, workingDir string) *Model {
 	return NewModelWithView(processMgr, logStore, eventBus, mcpServer, proxyServer, mcpPort, ViewLogs, false, cfg, workingDir)
 }
 
-func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool, cfg *config.Config, workingDir string) *Model {
+func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, eventBus *events.EventBus, mcpServer MCPServerInterface, proxyServer *proxy.Server, mcpPort int, initialView View, debugMode bool, cfg *config.Config, workingDir string) *Model {
 	scripts := processMgr.GetScripts()
 
 	// processesList initialization moved to ProcessViewController
@@ -550,12 +554,17 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		cfg:         cfg,
 		workingDir:  workingDir,
 		// View components initialization
-		processesView:     components.NewProcessesView(processMgr),
-		logsView:          components.NewLogsView(logStore),
-		errorsView:        components.NewErrorsView(logStore),
-		urlsView:          components.NewURLsView(logStore),
-		webView:           components.NewWebViewComponent(proxyServer),
-		commandWindowView: components.NewCommandWindowView(processMgr, NewCommandAutocompleteFactory()),
+		processesView:     components.NewProcessesViewComponent(),
+		logsView:          components.NewLogsViewComponent(),
+		errorsView:        components.NewErrorsViewComponent(),
+		urlsView:          components.NewURLsView(),
+		webView:           components.NewWebViewComponentNew(),
+		commandWindowView: components.NewCommandWindowViewNew(func(scripts map[string]string, processMgr interface{}) components.CommandAutocompleteInterface {
+		if pm, ok := processMgr.(*processes.Manager); ok {
+			return NewCommandAutocompleteFactory()(scripts, pm)
+		}
+		return nil
+	}),
 		keys:              keys,
 		updateChan:        make(chan tea.Msg, UpdateChannelBufferSize),
 		viewManager:       viewManager, // Add the simple view manager
@@ -564,7 +573,10 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 // DIAGNOSTIC: Log basic model creation complete
 	logStore.Add("system", "Model", "✅ Model basic initialization complete", false)
 
-	// Initialize STATE MANAGEMENT - New StateManager for advanced state tracking
+	// Initialize STATE MANAGEMENT - Master data with sub-models
+	m.masterData = state.NewMasterData()
+
+	// Legacy StateManager (to be deprecated)
 	m.stateManager = state.NewStateManager()
 
 	// Note: Log callback is registered in main.go to avoid duplication
@@ -589,15 +601,19 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	// var notificationsService *services.NotificationsService
 	// var fileBrowserService *services.FileBrowserService
 
-	// Create placeholder components that won't crash
+	// Create essential components
 	var fileBrowserComponent *components.FileBrowserComponent
 	var systemComponent *components.SystemComponent
 	var notificationsComponent *components.NotificationsComponent
 	var inputComponent *components.InputComponent
 	var navigationComponent *components.NavigationComponent
 
-	// Create only input component since we have InputService
+	// Create input component since we have InputService
 	inputComponent = components.NewInputComponent(inputService)
+
+	// Create navigation component for view switching
+	navService := services.NewNavigationService(eventBus)
+	navigationComponent = components.NewNavigationComponent(navService)
 
 	// 7. Initialize settings view (still using component)
 	//    - Required by: Settings view display
@@ -608,8 +624,7 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		workingDir = "." // fallback to current directory
 	}
 	m.settingsView = components.NewSettingsView()
-	// Initialize settings view with loading state
-	m.settingsView.InitializeWithLoadingState()
+	// Legacy InitializeWithLoadingState() call removed - new component is stateless
 
 	// 8. Initialize process list with current processes
 	//    - Required by: Process view display
@@ -679,8 +694,8 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		logStore.Add("system", "Model", "❌ InputService: NOT RUNNING - KEYBOARD PROCESSING WILL FAIL", true)
 	}
 
-	// Skip navigation service check since it's disabled for debugging
-	logStore.Add("system", "Model", "⚠️ NavigationService: DISABLED FOR DEBUGGING", false)
+	// Navigation service is now enabled
+	logStore.Add("system", "Model", "✅ NavigationService: Running", false)
 
 	// Check handler count
 	finalHandlerCount := inputService.GetHandlerCount()
@@ -688,34 +703,28 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 
 	logStore.Add("system", "Model", "🎯 DIAGNOSTIC: Model initialization complete - keyboard handling should be functional", false)
 
-	// 14. Initialize MCP debug controller
-	//     - Required by: MCP debugging features
+	// 14. Initialize MCP view components
+	//     - Required by: MCP status and debugging features
 	//     - Dependencies: debugMode flag
-	m.mcpDebugView = components.NewMCPDebugView(debugMode)
+	m.mcpView = components.NewMCPViewComponent() // MCP status view
+	m.mcpDebugView = components.NewMCPDebugView(debugMode) // MCP debug view
 
 	// Unread indicators now managed by system controller
-
-	// 11. Initialize MCP debug controller
-	//     - Required by: MCP debugging features
-	//     - Dependencies: debugMode flag
-	m.mcpDebugView = components.NewMCPDebugView(debugMode)
 
 	// Check for monorepo on startup - this will be handled by command window controller when needed
 
 	// Script selector is now handled by ScriptSelectorController
 
 	// 12. Initialize MCP connections list on first view if in debug mode
-	//     - Required by: Debug view
-	//     - Dependencies: mcpDebugController must be initialized
-	if debugMode && initialView == ViewMCPConnections {
-		m.mcpDebugView.UpdateConnectionsList()
-	}
+	//     - Required by: Debug view (now stateless, no initialization needed)
+	//     - Dependencies: Debug mode flag
+	// Legacy UpdateConnectionsList() call removed - new component is stateless
 
 	// 13. Initialize AI Coder service (T028 - new service-based architecture, replaces legacy controller)
 	//     - Required by: AI coder features (new architecture)
-	//     - Dependencies: context (for lifecycle management)
+	//     - Dependencies: context (for lifecycle management), logStore (for unified logging)
 	ctx := context.Background() // TODO: Use proper context from application lifecycle
-	m.aiCoderService = services.NewAICoderService(ctx)
+	m.aiCoderService = services.NewAICoderService(ctx, m.logStore)
 
 	// 13.6. Subscribe to AI Coder service events (T028 - event routing)
 	//     - Required by: Service-to-component communication
@@ -733,18 +742,19 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 				name = nameVal.(string)
 			}
 			// Forward as proper message type
-			m.updateChan <- aiCoderSessionMsg{
+			m.updateChan <- messages.AICoderSessionCreatedMsg{
 				SessionID: sessionID,
-				Event:     "created",
-				Data:      map[string]interface{}{"name": name},
+				Name:      name,
 			}
 		})
 
 		eventBus.Subscribe("aicoder.session.updated", func(event events.Event) {
 			sessionID := event.ProcessID
-			m.updateChan <- aiCoderSessionMsg{
-				SessionID: sessionID,
-				Event:     "updated",
+			lastActivity := time.Now()
+			m.updateChan <- messages.AICoderSessionUpdatedMsg{
+				SessionID:    sessionID,
+				Status:       messages.SessionActive,
+				LastActivity: lastActivity,
 			}
 		})
 
@@ -754,10 +764,9 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 			if reasonVal, ok := event.Data["reason"]; ok {
 				reason = reasonVal.(string)
 			}
-			m.updateChan <- aiCoderSessionMsg{
+			m.updateChan <- messages.AICoderSessionEndedMsg{
 				SessionID: sessionID,
-				Event:     "ended",
-				Data:      map[string]interface{}{"reason": reason},
+				Reason:    reason,
 			}
 		})
 
@@ -767,9 +776,9 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 			if outputVal, ok := event.Data["output"]; ok {
 				output = outputVal.(string)
 			}
-			m.updateChan <- aiCoderOutputMsg{
+			m.updateChan <- messages.AICoderPTYOutputMsg{
 				SessionID: sessionID,
-				Output:    output,
+				Data:      []byte(output),
 			}
 		})
 
@@ -781,9 +790,10 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 					err = e
 				}
 			}
-			m.updateChan <- aiCoderErrorMsg{
+			m.updateChan <- messages.AICoderErrorMsg{
 				SessionID: sessionID,
 				Error:     err,
+				Severity:  "error",
 			}
 		})
 	}
@@ -826,12 +836,14 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 	//     - Dependencies: navigationService, other services
 	m.keyRegistry = NewKeyHandlerRegistry()
 
+	// Register example view-specific handlers (adds logs/errors/process/web handlers)
+	RegisterViewSpecificHandlers(m.keyRegistry)
+
 	// Register all keyboard handlers in priority order
 	// Priority 100: Global navigation (number keys, Tab)
 	// SIMPLIFIED: Pass viewManager directly instead of navigationService
 	m.keyRegistry.Register(NewGlobalNavigationHandler(m.viewManager, m.debugMode))
 
-	
 	// Priority 250: AI Coder specific keys (when in AI Coder view)
 	if m.aicodersView != nil {
 		m.keyRegistry.Register(NewAICoderKeyHandler(m.aicodersView))
@@ -844,12 +856,15 @@ func NewModelWithView(processMgr *process.Manager, logStore *logs.Store, eventBu
 		return nil
 	}))
 
+	// Priority 900: General key handler (catch-all for common keys)
+	m.keyRegistry.Register(NewGeneralKeyHandler())
+
 	// Priority 1000: Quit handler (double-press protection)
 	m.keyRegistry.Register(NewQuitHandler())
 
 	// Log successful keyboard setup
 	m.logStore.Add("system", "KeyRegistry",
-		fmt.Sprintf("✅ Simplified keyboard system initialized with %d handlers",
+		fmt.Sprintf("✅ Simplified keyboard system initialized with %d handlers (including view-specific)",
 			len(m.keyRegistry.handlers)), false)
 
 	// Register keyboard handler with message router
@@ -879,14 +894,13 @@ func (m *Model) Init() tea.Cmd {
 		m.tickCmd(),
 	}
 
-	// PTY events are now handled by AICoderService and AICodersViewComponent
-	// Remove waitForUpdates() from Init() - no updates to wait for during startup
 	return tea.Batch(cmds...)
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
+	
 	// CONSOLIDATED MESSAGE ROUTING
 	// All messages (including keyboard) are routed through the message router
 	// The router handles messages in priority order:
@@ -895,17 +909,41 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	//   3. System/Process/Log/MCP/AI handlers
 	//   4. KeyboardMessageHandler (integrated key registry)
 	//   5. ViewMessageHandler (window size, mouse, etc.)
-	if m.messageRouter != nil {
-		newModel, cmd := m.messageRouter.Route(msg, m)
-		if cmd != nil {
-			cmds = append(cmds, cmd)
+	// Handle keyboard messages DIRECTLY (like the old working version)
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		// Build rich context for key handlers
+		ctx := m.buildKeyContext()
+
+		// Route through the simplified key handler registry
+		if m.keyRegistry != nil {
+			return m, m.keyRegistry.HandleKey(msg, ctx, m)
 		}
-		m = newModel.(*Model)
+	}
+
+	// Route non-keyboard messages through MessageRouter
+	if m.messageRouter != nil {
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					if m.logStore != nil {
+						m.logStore.Add("error", "Model.Update", fmt.Sprintf("🚨 MessageRouter panic: %v", r), true)
+					}
+				}
+			}()
+			newModel, cmd := m.messageRouter.Route(msg, m)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			if newModel != nil {
+				m = newModel.(*Model)
+			}
+		}()
 	}
 
 	// Handle application-level messages that don't need routing
 	switch msg := msg.(type) {
-	case restartProcessMsg:
+	case RestartProcessMsg:
 		if msg.clearLogs {
 			m.logStore.ClearLogs()
 			m.logStore.ClearErrors()
@@ -915,7 +953,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLogsView()
 		cmds = append(cmds, m.waitForUpdates())
 
-	case restartAllMsg:
+	case RestartAllMsg:
 		if msg.clearLogs {
 			m.logStore.ClearLogs()
 			m.logStore.ClearErrors()
@@ -925,11 +963,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLogsView()
 		cmds = append(cmds, m.waitForUpdates())
 
-	case errorUpdateMsg:
+	case ErrorUpdateMsg:
 		m.updateErrorsList()
 		cmds = append(cmds, m.waitForUpdates())
 
-	case tickMsg:
+	case TickMsg:
 		// Continue ticking for periodic updates
 		cmds = append(cmds, m.tickCmd())
 
@@ -946,39 +984,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ViewURLs gets its updates through the normal message flow instead.
 		}
 
-	case mcpActivityMsg:
-		// TODO: Fix mcpActivityMsg handling - needs proper sessionId and activity data
+	case MCPActivityMsg:
+		// TODO: Fix MCPActivityMsg handling - needs proper sessionId and activity data
 		// For now, skip handling to allow build to pass
-		// m.mcpDebugView.HandleActivity(sessionId, activity)
-		if m.currentView() == ViewMCPConnections {
-			m.mcpDebugView.UpdateConnectionsList()
-		}
+		// Legacy HandleActivity and UpdateConnectionsList calls removed - new component is stateless
 		cmds = append(cmds, m.waitForUpdates())
 
 	case ViewSwitchedMsg:
 		// View has been switched by SimpleViewManager
-		// ✅ SAFE: Using quick timeout to prevent deadlock
-		// View switches are synchronous UI operations that don't need to wait for external updates
-		// The timeout gives any pending updates a chance to be processed but won't freeze the UI
-		if m.logStore != nil {
-			m.logStore.Add("Update", "Debug",
-				fmt.Sprintf("ViewSwitchedMsg: %v -> %v", msg.FromView, msg.ToView), false)
-		}
+		// No additional processing needed - view manager handles the switch
 
-		// Don't wait for updates - this was causing the deadlock!
-		// The view switch is already complete, no need to block waiting for more updates
-		// cmds = append(cmds, m.waitForUpdatesQuick())
-		if m.logStore != nil {
-			m.logStore.Add("Update", "Debug",
-				"ViewSwitchedMsg: NOT calling waitForUpdates to prevent deadlock", false)
-		}
-
-	case switchToAICodersMsg:
+	case SwitchToAICodersMsg:
 		// Switch to AI Coders view
 		m.switchToView(ViewAICoders)
 		cmds = append(cmds, m.waitForUpdates())
 
-	case commandStartedMsg:
+	case CommandStartedMsg:
 		// Handle command completion - switch to logs view and update
 		if msg.success {
 			m.logStore.Add("system", "System", fmt.Sprintf("✅ Started command: %s", msg.commandName), false)
@@ -988,95 +1009,52 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.updateLogsView()
 		cmds = append(cmds, m.waitForUpdates())
 
-	case PTYOutputMsg:
-		// Handle PTY output - update AI Coder view if it's active
-		if m.currentView() == ViewAICoders && m.aicodersView != nil {
-			// The AI Coder component will handle the PTY output via BubbleTea Update
-			_, cmd := m.aicodersView.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
+	case messages.AICoderPTYOutputMsg:
+		// Handle PTY output using sub-model pattern (Elm/Redux compliant)
+		if m.masterData != nil && m.masterData.AICoderState != nil {
+			// Pure state transformation through sub-model
+			newAICoderState := m.masterData.AICoderState.AddPTYOutput(
+				msg.SessionID,
+				string(msg.Data),
+			)
+			m.masterData.AICoderState = newAICoderState
 		}
 		// Always trigger a view update when PTY output arrives
 		cmds = append(cmds, m.waitForUpdates())
 
-	case BatchPTYMsg:
-		// Handle batched PTY messages from lock-free architecture (Phase 3)
-		if m.currentView() == ViewAICoders && m.aicodersView != nil {
-			// Process each message in the batch
-			for _, batchedMsg := range msg.Messages {
-				_, cmd := m.aicodersView.Update(batchedMsg)
-				if cmd != nil {
-					cmds = append(cmds, cmd)
-				}
-			}
-		}
-		// Single view update for entire batch (more efficient)
-		cmds = append(cmds, m.waitForUpdates())
-
-	case PTYEventMsg:
-		// Handle PTY events - update AI Coder view if it's active
-		if m.currentView() == ViewAICoders && m.aicodersView != nil {
-			// The AI Coder component will handle the PTY event via BubbleTea Update
-			_, cmd := m.aicodersView.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
-		// Always trigger a view update when PTY events arrive
-		cmds = append(cmds, m.waitForUpdates())
-
-	case aiCoderSessionMsg:
-		// Handle AI Coder session events
-		if m.currentView() == ViewAICoders && m.aicodersView != nil {
-			// The AI Coder component will handle the session event via BubbleTea Update
-			_, cmd := m.aicodersView.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
-		// Log session events
-		switch msg.Event {
-		case "created":
-			if msg.Data != nil {
-				if dataMap, ok := msg.Data.(map[string]interface{}); ok {
-					if name, ok := dataMap["name"].(string); ok {
-						m.logStore.Add("system", "AI Coder", fmt.Sprintf("🤖 Session created: %s", name), false)
-					}
-				}
-			}
-		case "ended":
-			if msg.Data != nil {
-				if dataMap, ok := msg.Data.(map[string]interface{}); ok {
-					if reason, ok := dataMap["reason"].(string); ok {
-						m.logStore.Add("system", "AI Coder", fmt.Sprintf("🔚 Session ended: %s", reason), false)
-					}
-				}
-			}
+	case messages.TerminalStateMsg:
+		// Handle VT10x terminal state updates using sub-model pattern
+		if m.masterData != nil && m.masterData.AICoderState != nil {
+			// Pure state transformation through sub-model
+			newAICoderState := m.masterData.AICoderState.UpdateTerminalState(
+				msg.SessionID,
+				msg.State,
+			)
+			m.masterData.AICoderState = newAICoderState
 		}
 		cmds = append(cmds, m.waitForUpdates())
 
-	case aiCoderOutputMsg:
-		// Handle AI Coder output - update AI Coder view if it's active
-		if m.currentView() == ViewAICoders && m.aicodersView != nil {
-			// The AI Coder component will handle the output via BubbleTea Update
-			_, cmd := m.aicodersView.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
-		// Always trigger a view update when AI output arrives
+	case messages.AICoderSessionCreatedMsg:
+		// Handle AI Coder session created events
+		// Log session creation
+		m.logStore.Add("system", "AI Coder", fmt.Sprintf("🤖 Session created: %s", msg.Name), false)
 		cmds = append(cmds, m.waitForUpdates())
 
-	case aiCoderErrorMsg:
-		// Handle AI Coder errors - update AI Coder view if it's active
-		if m.currentView() == ViewAICoders && m.aicodersView != nil {
-			// The AI Coder component will handle the error via BubbleTea Update
-			_, cmd := m.aicodersView.Update(msg)
-			if cmd != nil {
-				cmds = append(cmds, cmd)
-			}
-		}
+	case messages.AICoderSessionUpdatedMsg:
+		// Handle AI Coder session updated events
+		cmds = append(cmds, m.waitForUpdates())
+
+	case messages.AICoderSessionEndedMsg:
+		// Handle AI Coder session ended events
+		// Log session end
+		m.logStore.Add("system", "AI Coder", fmt.Sprintf("🔚 Session ended: %s (%s)", msg.SessionID, msg.Reason), false)
+		cmds = append(cmds, m.waitForUpdates())
+
+	// Note: aiCoderOutputMsg has been replaced with messages.AICoderPTYOutputMsg
+	// This case is kept for compatibility with any remaining legacy code
+
+	case messages.AICoderErrorMsg:
+		// Handle AI Coder errors
 		// Log AI errors
 		if msg.Error != nil {
 			m.logStore.Add("system", "AI Coder", fmt.Sprintf("❌ AI Error: %v", msg.Error), true)
@@ -1086,8 +1064,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.CommandExecuteMsg:
 		// Handle command execution from command window
 		// Close command window if open
-		if m.commandWindowView.IsShowingCommandWindow() {
-			m.commandWindowView.HideCommandWindow()
+		if m.masterData.CommandWindowState.IsShowingCommandWindow() {
+			m.masterData.CommandWindowState = m.masterData.CommandWindowState.HideCommandWindow()
 		}
 
 		// Execute the command using the model's command handling
@@ -1106,9 +1084,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "clear":
 			m.handleClearCommand(msg.Message)
 		case "show":
-			*m.logsView.GetShowPatternPtr() = msg.Message
+			if m.masterData != nil && m.masterData.LogsState != nil {
+				m.masterData.LogsState = m.masterData.LogsState.SetShowPattern(msg.Message)
+			}
 		case "hide":
-			*m.logsView.GetHidePatternPtr() = msg.Message
+			if m.masterData != nil && m.masterData.LogsState != nil {
+				m.masterData.LogsState = m.masterData.LogsState.SetHidePattern(msg.Message)
+			}
 		case "proxy":
 			if msg.Message == "list" {
 				m.listProxies()
@@ -1153,8 +1135,8 @@ func (m *Model) View() string {
 		}
 		return m.scriptSelector.View()
 	}
-	if m.commandWindowView != nil && m.commandWindowView.IsShowingCommandWindow() {
-		return m.commandWindowView.RenderCommandWindow()
+	if m.commandWindowView != nil && m.masterData.CommandWindowState.IsShowingCommandWindow() {
+		return m.commandWindowView.ViewWithState(m.masterData)
 	}
 
 	// TODO(Feature 005): Re-implement full screen mode for AI Coder view if needed
@@ -1225,12 +1207,12 @@ func (m *Model) renderLayout(content string) string {
 
 // renderContent renders the main content area based on current view
 func (m *Model) renderContent() string {
-	if m.commandWindowView != nil && m.commandWindowView.IsShowingRunDialog() {
-		return m.commandWindowView.RenderRunDialog()
+	if m.commandWindowView != nil && m.masterData.CommandWindowState.IsShowingRunDialog() {
+		return m.commandWindowView.ViewWithState(m.masterData)
 	}
 
-	if m.commandWindowView != nil && m.commandWindowView.IsShowingCustomCommand() {
-		return m.commandWindowView.RenderCustomCommandDialog()
+	if m.commandWindowView != nil && m.masterData.CommandWindowState.IsShowingCustomCommand() {
+		return m.commandWindowView.ViewWithState(m.masterData)
 	}
 
 	// Calculate content height once for all views
@@ -1238,57 +1220,51 @@ func (m *Model) renderContent() string {
 
 	switch m.currentView() {
 	case ViewProcesses:
-		// Update size and render
-		m.processesView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.processesView.Render()
+		// Update processes state and render statelessly
+		m.processesView.SetSize(m.width, contentHeight)
+		return m.processesView.ViewWithState(m.masterData, m.processMgr)
 	case ViewLogs:
-		// Sync state and render with calculated dimensions
-		m.logsView.SetSelectedProcess(m.selectedProcess)
-		m.logsView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.logsView.Render()
+		// Update logs state and render statelessly
+		if m.masterData != nil && m.masterData.LogsState != nil {
+			// Update selected process if different
+			if m.masterData.LogsState.GetSelectedProcess() != m.selectedProcess {
+				m.masterData.LogsState = m.masterData.LogsState.SetSelectedProcess(m.selectedProcess)
+			}
+		}
+		m.logsView.SetSize(m.width, contentHeight)
+		return m.logsView.ViewWithState(m.masterData, m.logStore)
 	case ViewErrors:
-		// Render with calculated dimensions
-		// Use content layout for split view if available and screen is wide enough
+		// Render with calculated dimensions using stateless component
+		contentHeight := m.height - m.headerHeight - m.footerHeight
+
+		// Use split view for wide screens
 		if m.contentLayout != nil && m.width >= 100 {
-			// Calculate split sizes
+			// Split view: errors list on left, details on right
 			leftWidth := int(float64(m.width) * DefaultSplitRatio)
 			rightWidth := m.width - leftWidth
-			contentHeight := m.height - m.headerHeight - m.footerHeight
 
-			// Update view sizes for split layout
-			m.errorsView.GetErrorsList().SetSize(leftWidth-4, contentHeight-2)
-			m.errorsView.GetErrorDetailView().Width = rightWidth - 4
-			m.errorsView.GetErrorDetailView().Height = contentHeight - 2
+			// Render errors list (left side)
+			m.errorsView.UpdateSize(leftWidth-4, m.height, m.headerHeight, m.footerHeight, contentHeight-2)
+			leftContent := m.errorsView.ViewWithState(m.masterData, m.logStore)
 
-			// ⚠️ CRITICAL: DO NOT call UpdateErrorsList() or UpdateErrorDetailView() here!
-			// These methods contain blocking channel operations that WILL cause deadlocks
-			// when called synchronously during View() rendering.
-			//
-			// CORRECT PATTERN: Updates should only happen through the Update() message loop:
-			//   - User actions trigger messages (e.g., errorUpdateMsg)
-			//   - Update() handles the message and calls update methods
-			//   - Update methods can safely block waiting for data
-			//   - View() is called after Update() completes
-			//
-			// This separation ensures the event loop never blocks during rendering.
-
-			leftContent := m.errorsView.GetErrorsList().View()
-			rightContent := m.errorsView.GetErrorDetailView().View()
+			// Render error details (right side)
+			rightContent := m.renderErrorDetailsView(rightWidth-4, contentHeight-2)
 
 			// Use content layout for split view
 			return m.contentLayout.RenderSplitView(leftContent, rightContent, DefaultSplitRatio)
 		}
+
 		// Fall back to regular rendering for narrow screens
 		m.errorsView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.errorsView.Render()
+		return m.errorsView.ViewWithState(m.masterData, m.logStore)
 	case ViewURLs:
-		// Render with calculated dimensions
+		// Render URLs view using stateless component
 		m.urlsView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.urlsView.Render()
+		return m.urlsView.ViewWithState(m.masterData)
 	case ViewWeb:
-		// Update component dimensions and render
+		// Update component dimensions and render using stateless pattern
 		m.webView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.webView.Render()
+		return m.webView.ViewWithState(m.masterData)
 	case ViewSettings:
 		if m.fileBrowserComponent != nil {
 			// Check if file browser dialog should be shown
@@ -1297,20 +1273,27 @@ func (m *Model) renderContent() string {
 				return dialogView
 			}
 		}
-		// Update controller dimensions and render
+		// Render settings view using stateless component
 		m.settingsView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.settingsView.Render()
+		return m.settingsView.ViewWithState(m.masterData)
+	case ViewMCPStatus:
+		// Render MCP status using stateless component
+		contentHeight := m.height - m.headerHeight - m.footerHeight
+		m.mcpView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+		return m.mcpView.ViewWithState(m.masterData)
 	case ViewMCPConnections:
 		if m.debugMode {
-			m.mcpDebugView.SetSize(m.width, m.height)
-			return m.mcpDebugView.Render()
+			// Render MCP debug view using stateless component
+			contentHeight := m.height - m.headerHeight - m.footerHeight
+			m.mcpDebugView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
+			return m.mcpDebugView.ViewWithState(m.masterData)
 		}
 		// Fallback to settings if not in debug mode
 		m.settingsView.UpdateSize(m.width, m.height, m.headerHeight, m.footerHeight, contentHeight)
-		return m.settingsView.Render()
+		return m.settingsView.ViewWithState(m.masterData)
 	case ViewAICoders:
-		if m.aicodersView != nil {
-			return m.aicodersView.View()
+		if m.aicodersView != nil && m.masterData != nil {
+			return m.aicodersView.ViewWithState(m.masterData)
 		}
 		return "AI Coder feature is not initialized"
 	case ViewFilters:
@@ -1324,14 +1307,14 @@ func (m *Model) renderContent() string {
 func (m *Model) getViewStatus() string {
 	switch m.currentView() {
 	case ViewProcesses:
-		processes := m.processMgr.GetAllProcesses()
+		allProcesses := m.processMgr.GetAllProcesses()
 		running := 0
-		for _, p := range processes {
-			if p.GetStatus() == process.StatusRunning {
+		for _, p := range allProcesses {
+			if p.GetStatus() == processes.StatusRunning {
 				running++
 			}
 		}
-		return fmt.Sprintf("%d processes, %d running", len(processes), running)
+		return fmt.Sprintf("%d processes, %d running", len(allProcesses), running)
 
 	case ViewLogs:
 		if m.selectedProcess != "" {
@@ -1361,6 +1344,28 @@ func (m *Model) getViewStatus() string {
 		}
 		return "0 AI coder sessions"
 
+	case ViewMCPStatus:
+		// Get MCP status from state
+		if m.masterData != nil && m.masterData.MCPState != nil {
+			mcpState := m.masterData.MCPState
+			if mcpState.GetActive() {
+				return fmt.Sprintf("MCP Active - %d tools, %d requests", mcpState.GetToolsCount(), mcpState.GetRequestCount())
+			} else {
+				return "MCP Inactive"
+			}
+		}
+		return "MCP Status Unknown"
+
+	case ViewMCPConnections:
+		// Get MCP debug status from state
+		if m.masterData != nil && m.masterData.MCPDebugState != nil {
+			debugState := m.masterData.MCPDebugState
+			totalConns := debugState.GetConnectionsCount()
+			activeConns := debugState.GetActiveConnectionsCount()
+			return fmt.Sprintf("MCP Debug - %d total, %d active connections", totalConns, activeConns)
+		}
+		return "MCP Debug Unavailable"
+
 	default:
 		return ""
 	}
@@ -1375,7 +1380,7 @@ func (m *Model) updateSizes() {
 	}
 
 	// Use calculated header and footer heights for consistency with other views
-	contentHeight := m.height - m.headerHeight - m.footerHeight
+	// contentHeight := m.height - m.headerHeight - m.footerHeight
 
 	// processesList sizing now handled by ProcessViewController
 
@@ -1385,7 +1390,7 @@ func (m *Model) updateSizes() {
 	// Process controller no longer stores dimensions - they are passed during rendering
 
 	// settingsList sizing now handled by SettingsController
-	m.commandWindowView.GetCommandsList().SetSize(m.width, contentHeight)
+	// Command window list sizing handled by component itself
 	// Errors controller no longer stores dimensions - passed during rendering
 	// Logs controller no longer stores dimensions - passed during rendering
 
@@ -1394,8 +1399,8 @@ func (m *Model) updateSizes() {
 
 	// AI Coder controller no longer stores dimensions - they are passed during rendering
 
-	// Update command window controller size
-	m.commandWindowView.UpdateSize(m.width, m.height)
+	// Update command window controller size (handled by component itself)
+	// m.commandWindowView.UpdateSize(m.width, m.height)
 }
 
 func (m *Model) cycleView() {
@@ -1423,29 +1428,41 @@ func (m *Model) switchToView(view View) {
 }
 
 func (m *Model) updateProcessList() {
-	// Delegate to controller
-	if m.processesView != nil {
-		m.processesView.UpdateProcessList()
-		// Sync the controller's list back to the model's list
-		// processesList synchronization no longer needed - managed by ProcessViewController
+	// Update processes state using Redux/Elm pattern
+	if m.masterData != nil && m.masterData.ProcessesState != nil && m.processMgr != nil {
+		processes := m.processMgr.GetAllProcesses()
+		m.masterData.ProcessesState = m.masterData.ProcessesState.UpdateProcesses(processes)
 	}
 }
 
 func (m *Model) updateLogsView() {
-	// Update the logs view controller with current state
-	m.logsView.SetSelectedProcess(m.selectedProcess)
-	// Show/hide patterns are now managed by LogsViewController
+	// Update logs state using Redux/Elm pattern
+	if m.masterData != nil && m.masterData.LogsState != nil {
+		// Update selected process if different
+		if m.masterData.LogsState.GetSelectedProcess() != m.selectedProcess {
+			m.masterData.LogsState = m.masterData.LogsState.SetSelectedProcess(m.selectedProcess)
+		}
 
-	// Delegate to logs view controller
-	m.logsView.UpdateLogsView()
+		// Invalidate cache to force refresh
+		// This will trigger a refresh on next render
+		if m.logStore != nil {
+			var logEntries []logs.CollapsedLogEntry
+			if m.selectedProcess != "" {
+				logEntries = m.logStore.GetByProcessCollapsed(m.selectedProcess)
+			} else {
+				logEntries = m.logStore.GetAllCollapsed()
+			}
+			m.masterData.LogsState = m.masterData.LogsState.UpdateCachedLogs(logEntries, m.selectedProcess)
+		}
+	}
 }
 
 func (m *Model) renderHeader() string {
 	// Get process count information
-	processes := m.processMgr.GetAllProcesses()
+	allProcesses := m.processMgr.GetAllProcesses()
 	runningCount := 0
-	for _, proc := range processes {
-		if proc.GetStatus() == process.StatusRunning {
+	for _, proc := range allProcesses {
+		if proc.GetStatus() == processes.StatusRunning {
 			runningCount++
 		}
 	}
@@ -1453,11 +1470,11 @@ func (m *Model) renderHeader() string {
 	// Build title with process info
 	baseTitle := "🐝 Brummer - Development Buddy"
 	var processInfo string
-	if len(processes) > 0 {
+	if len(allProcesses) > 0 {
 		if runningCount > 0 {
-			processInfo = fmt.Sprintf(" (%d processes, %d running)", len(processes), runningCount)
+			processInfo = fmt.Sprintf(" (%d processes, %d running)", len(allProcesses), runningCount)
 		} else {
-			processInfo = fmt.Sprintf(" (%d processes)", len(processes))
+			processInfo = fmt.Sprintf(" (%d processes)", len(allProcesses))
 		}
 	}
 
@@ -1487,7 +1504,7 @@ func (m *Model) renderHeader() string {
 	separatorStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
 
 	// Use ordered list of views
-	orderedViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewAICoders, ViewSettings}
+	orderedViews := []View{ViewProcesses, ViewLogs, ViewErrors, ViewURLs, ViewWeb, ViewAICoders, ViewMCPStatus, ViewSettings}
 	if m.debugMode {
 		orderedViews = append(orderedViews, ViewMCPConnections)
 	}
@@ -1575,13 +1592,8 @@ func (m *Model) renderFiltersView() string {
 
 // renderURLsList has been moved to URLsViewController
 
-type logUpdateMsg struct{}
-type tickMsg struct{}
-type switchToAICodersMsg struct{}
-type commandStartedMsg struct {
-	commandName string
-	success     bool
-}
+// logUpdateMsg is now centralized in model_messages.go
+// tickMsg, switchToAICodersMsg, and commandStartedMsg are now centralized in model_messages.go
 
 // ============================================================================
 // UPDATE CHANNEL PATTERNS - CRITICAL FOR PREVENTING DEADLOCKS
@@ -1695,23 +1707,149 @@ func (m *Model) waitForUpdatesQuick() tea.Cmd {
 func (m *Model) tickCmd() tea.Cmd {
 	// Periodic tick for real-time updates (event_controller logic migrated)
 	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
-		return tickMsg{}
+		return TickMsg{}
 	})
 }
 
-func (m *Model) handleRestartProcess(proc *process.Process) tea.Cmd {
-	// Delegate to ProcessViewController
-	return m.processesView.HandleRestartProcess(proc)
+func (m *Model) handleRestartProcess(proc *processes.Process) tea.Cmd {
+	return func() tea.Msg {
+		var message string
+		var isError bool
+
+		// Check if process is still running before trying to stop it
+		if proc.GetStatus() == processes.StatusRunning {
+			// Try to stop process with timeout
+			err := m.processMgr.StopProcess(proc.ID)
+			if err != nil {
+				// Process didn't stop cleanly, try stop with wait timeout
+				if waitErr := m.processMgr.StopProcessAndWait(proc.ID, 100*time.Millisecond); waitErr != nil {
+					message = fmt.Sprintf("Error stopping process %s: %v (wait error: %v)", proc.Name, err, waitErr)
+					isError = true
+				}
+			}
+		}
+
+		// Clean up any finished processes before starting new one
+		m.processMgr.CleanupFinishedProcesses()
+
+		// Also clean up any processes that might be using development ports
+		if proc.Name == "server" || proc.Name == "dev" || proc.Name == "start" {
+			m.processMgr.KillProcessesByPort()
+		}
+
+		// Now start it again
+		_, err := m.processMgr.StartScript(proc.Name)
+		if err != nil {
+			message = fmt.Sprintf("Error restarting script %s: %v", proc.Name, err)
+			isError = true
+		} else {
+			message = fmt.Sprintf("🔄 Restarted process: %s (logs cleared)", proc.Name)
+			// Clear logs for the process
+			m.logStore.ClearLogsForProcess(proc.Name)
+		}
+
+		return RestartProcessMsg{
+			processID: proc.ID,
+			message:   message,
+			isError:   isError,
+			clearLogs: true,
+		}
+	}
 }
 
 func (m *Model) handleRestartAll() tea.Cmd {
-	// Delegate to ProcessViewController
-	return m.processesView.HandleRestartAll()
+	return func() tea.Msg {
+		allProcesses := m.processMgr.GetAllProcesses()
+		restarted := 0
+		var errors []string
+
+		for _, proc := range allProcesses {
+			if proc.GetStatus() == processes.StatusRunning {
+				if err := m.processMgr.StopProcess(proc.ID); err != nil {
+					errors = append(errors, fmt.Sprintf("Error stopping process %s: %v", proc.Name, err))
+					continue
+				}
+
+				_, err := m.processMgr.StartScript(proc.Name)
+				if err != nil {
+					errors = append(errors, fmt.Sprintf("Error restarting script %s: %v", proc.Name, err))
+				} else {
+					restarted++
+					// Clear logs for the process
+					m.logStore.ClearLogsForProcess(proc.Name)
+				}
+			}
+		}
+
+		var message string
+		var isError bool
+		if len(errors) > 0 {
+			message = fmt.Sprintf("🔄 Restarted %d processes with %d errors (logs cleared): %s", restarted, len(errors), strings.Join(errors, "; "))
+			isError = true
+		} else {
+			message = fmt.Sprintf("🔄 Restarted %d processes (logs cleared)", restarted)
+			isError = false
+		}
+
+		return RestartAllMsg{
+			message:   message,
+			isError:   isError,
+			clearLogs: true,
+		}
+	}
 }
 
 func (m *Model) handleCopyError() tea.Cmd {
-	// Delegate to ErrorsViewController
-	return m.errorsView.HandleCopyError()
+	// Delegate to ErrorsViewController (now handled via message pattern)
+	return nil // Placeholder - clipboard functionality
+}
+
+// renderErrorDetailsView renders the error details view for the selected error
+func (m *Model) renderErrorDetailsView(width, height int) string {
+	if m.masterData == nil || m.masterData.ErrorsState == nil {
+		return ""
+	}
+
+	selectedError := m.masterData.ErrorsState.GetSelectedError()
+	if selectedError == nil {
+		return lipgloss.NewStyle().
+			Foreground(lipgloss.Color("245")).
+			Align(lipgloss.Center, lipgloss.Center).
+			Render("No error selected")
+	}
+
+	// Format the error details
+	var content strings.Builder
+	errorStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
+	processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
+	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+
+	content.WriteString(errorStyle.Render(fmt.Sprintf("❌ %s", selectedError.Type)) + "\n")
+	content.WriteString(fmt.Sprintf("%s %s\n\n",
+		timestampStyle.Render(selectedError.Timestamp.Format("2006-01-02 15:04:05")),
+		processStyle.Render(fmt.Sprintf("[%s]", selectedError.ProcessName))))
+
+	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Error Message:") + "\n")
+	content.WriteString(selectedError.Message + "\n\n")
+
+	if len(selectedError.Stack) > 0 {
+		content.WriteString(lipgloss.NewStyle().Bold(true).Render("Stack Trace:") + "\n")
+		for _, line := range selectedError.Stack {
+			content.WriteString("  " + line + "\n")
+		}
+		content.WriteString("\n")
+	}
+
+	if len(selectedError.Context) > 0 {
+		content.WriteString(lipgloss.NewStyle().Bold(true).Render("Context:") + "\n")
+		for _, line := range selectedError.Context {
+			if strings.TrimSpace(line) != "" {
+				content.WriteString("  " + line + "\n")
+			}
+		}
+	}
+
+	return content.String()
 }
 
 func (m *Model) handleClearLogs() {
@@ -1722,7 +1860,11 @@ func (m *Model) handleClearLogs() {
 
 func (m *Model) handleClearErrors() {
 	// Delegate to ErrorsViewController
-	m.errorsView.HandleClearErrors()
+	// Clear errors using Redux/Elm pattern
+	if m.masterData != nil && m.masterData.ErrorsState != nil {
+		m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
+		m.logStore.ClearErrors()
+	}
 	m.updateLogsView()
 }
 
@@ -1752,33 +1894,18 @@ func (m *Model) showRunDialog() {
 	// Get monorepo info
 	monorepoInfo, _ := m.processMgr.GetMonorepoInfo()
 
-	m.commandWindowView.ShowRunDialog(detectedCommands, monorepoInfo)
+	// Update state directly
+	m.masterData.CommandWindowState = m.masterData.CommandWindowState.ShowRunDialog(detectedCommands, monorepoInfo)
 }
 
 func (m *Model) handleRunCommand() tea.Cmd {
-	if !m.commandWindowView.IsShowingRunDialog() {
+	if !m.masterData.CommandWindowState.IsShowingRunDialog() {
 		return nil
 	}
 
-	selectedCommand := m.commandWindowView.GetSelectedCommand()
-	if selectedCommand == nil {
-		return nil
-	}
-
-	m.commandWindowView.HideRunDialog()
-
-	// Check if this is a "custom command" selection or a regular command
-	commandsList := m.commandWindowView.GetCommandsList()
-	selected := commandsList.SelectedItem()
-
-	if _, ok := selected.(runCustomItem); ok {
-		// Show custom command input dialog
-		m.commandWindowView.ShowCustomCommandDialog()
-		return nil
-	}
-
-	// Handle regular command execution
-	return m.startCommandAsync(*selectedCommand)
+	// TODO: Implement run command execution with Redux/Elm pattern
+	// This requires significant refactoring of the command selection logic
+	return nil
 }
 
 // startCommandAsync starts a command using the command pattern instead of goroutines
@@ -1797,7 +1924,7 @@ func (m *Model) startCommandAsync(selectedCommand parser.ExecutableCommand) tea.
 		}
 
 		// Return a message to trigger UI updates
-		return commandStartedMsg{
+		return CommandStartedMsg{
 			commandName: selectedCommand.Name,
 			success:     err == nil,
 		}
@@ -1805,15 +1932,16 @@ func (m *Model) startCommandAsync(selectedCommand parser.ExecutableCommand) tea.
 }
 
 func (m *Model) updateErrorsList() {
-	// Delegate to ErrorsView
-	m.errorsView.UpdateErrorsList()
-
-	// TODO: Re-implement unread indicators when UpdateErrorsList returns count
+	// Update errors state using Redux/Elm pattern
+	if m.masterData != nil && m.masterData.ErrorsState != nil && m.logStore != nil {
+		errorContexts := m.logStore.GetErrorContexts()
+		m.masterData.ErrorsState = m.masterData.ErrorsState.UpdateErrorContexts(errorContexts)
+	}
 }
 
 func (m *Model) updateErrorDetailView() {
-	// Delegate to ErrorsViewController
-	m.errorsView.UpdateErrorDetailView()
+	// Error detail view is now handled by stateless rendering
+	// Selected error is tracked in ErrorsState
 }
 
 // calculateContentHeight returns the available content height with consistent calculation
@@ -1845,7 +1973,10 @@ func (m *Model) handleClearCommand(target string) {
 	switch target {
 	case "all":
 		m.logStore.ClearLogs()
-		m.errorsView.HandleClearErrors()
+		// Clear errors using new Redux/Elm pattern
+		if m.masterData != nil && m.masterData.ErrorsState != nil {
+			m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
+		}
 		if m.proxyServer != nil {
 			m.proxyServer.ClearRequests()
 		}
@@ -1854,7 +1985,10 @@ func (m *Model) handleClearCommand(target string) {
 		m.logStore.ClearLogs()
 		m.logStore.Add("system", "System", "🧹 Cleared all logs", false)
 	case "errors":
-		m.errorsView.HandleClearErrors()
+		// Clear errors using new Redux/Elm pattern
+		if m.masterData != nil && m.masterData.ErrorsState != nil {
+			m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
+		}
 	case "web":
 		if m.proxyServer != nil {
 			m.proxyServer.ClearRequests()
@@ -2027,8 +2161,8 @@ func (m *Model) handleToggleProxy() {
 }
 
 func (m *Model) showCommandWindow() {
-	scripts := m.processMgr.GetScripts()
-	m.commandWindowView.ShowCommandWindow(scripts)
+	// Update state directly
+	m.masterData.CommandWindowState = m.masterData.CommandWindowState.ShowCommandWindow()
 }
 
 // System message methods have been moved to systemController
@@ -2141,6 +2275,15 @@ func (m *Model) GetAICoderManager() *aicoder.AICoderManager {
 	return nil
 }
 
+// GetAICoderService returns the AI coder service for external components
+// This allows proxy server and other components to log AI activities
+func (m *Model) GetAICoderService() interface{} {
+	if m.aiCoderService == nil {
+		return nil
+	}
+	return m.aiCoderService
+}
+
 // ConnectAICoderServiceToBridge connects the AI coder service to the ServiceBridge
 // This method is called after the model is created and the shell has been set up
 func (m *Model) ConnectAICoderServiceToBridge(serviceBridge interface{}) {
@@ -2155,6 +2298,15 @@ func (m *Model) ConnectAICoderServiceToBridge(serviceBridge interface{}) {
 
 // buildKeyContext builds a rich context object for keyboard handlers
 // This provides all the information handlers need to make smart decisions
+
+// KeyHandlersForDebug exposes handler slice length safely for diagnostics
+func (m *Model) KeyHandlersForDebug() []KeyHandler {
+	if m.keyRegistry == nil {
+		return nil
+	}
+	return m.keyRegistry.handlers
+}
+
 func (m *Model) buildKeyContext() KeyContext {
 	ctx := KeyContext{
 		View:    m.currentView(),
@@ -2163,13 +2315,13 @@ func (m *Model) buildKeyContext() KeyContext {
 
 	// Check for special contexts
 	// Command window takes precedence
-	if m.commandWindowView != nil && m.commandWindowView.IsShowingCommandWindow() {
+	if m.commandWindowView != nil && m.masterData.CommandWindowState.IsShowingCommandWindow() {
 		ctx.Context = "command_window"
 		return ctx
 	}
 
 	// Check for modal dialogs
-	if m.commandWindowView != nil && (m.commandWindowView.IsShowingRunDialog() || m.commandWindowView.IsShowingCustomCommand()) {
+	if m.commandWindowView != nil && (m.masterData.CommandWindowState.IsShowingRunDialog() || m.masterData.CommandWindowState.IsShowingCustomCommand()) {
 		ctx.Context = "modal"
 		return ctx
 	}
@@ -2184,14 +2336,16 @@ func (m *Model) buildKeyContext() KeyContext {
 	if m.currentView() == ViewAICoders && m.aicodersView != nil {
 		ctx.ActiveComponent = m.aicodersView
 
-		// Check if in PTY mode
-		viewState := m.aicodersView.GetViewState()
-		if viewState.Mode == components.ViewModePTY {
-			ctx.Context = "pty"
-			// TODO: Get cursor position and input content from PTY
-			// For now, assume cursor is at position 0 for slash command logic
-			ctx.CursorPosition = 0
+		// Check if in PTY mode using AICoderState sub-model
+		if m.masterData != nil && m.masterData.AICoderState != nil {
+			focusedSessionID := m.masterData.AICoderState.FocusedSession
+			if focusedSessionID != "" && m.masterData.AICoderState.HasActiveSessions() {
+				ctx.Context = "pty"
+				// TODO: Get cursor position and input content from PTY
+				// For now, assume cursor is at position 0 for slash command logic
+				ctx.CursorPosition = 0
 			ctx.InputContent = ""
+			}
 		}
 	}
 
@@ -2214,3 +2368,5 @@ func (m *Model) buildKeyContext() KeyContext {
 func (m *Model) getKeyContext() string {
 	return m.buildKeyContext().Context
 }
+
+

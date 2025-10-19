@@ -4,14 +4,15 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/tui/components"
 )
 
 // TabsComponent manages the tab bar rendering using Lipgloss
 type TabsComponent struct {
 	// Dependencies
-	processMgr             *process.Manager
+	processMgr             *processes.Manager
 	notificationsComponent  *components.NotificationsComponent
 	systemComponent        *components.SystemComponent
 
@@ -32,7 +33,7 @@ type TabsComponent struct {
 }
 
 // NewTabsComponent creates a new tabs component
-func NewTabsComponent(processMgr *process.Manager, notificationsComponent *components.NotificationsComponent, systemComponent *components.SystemComponent, debugMode bool) *TabsComponent {
+func NewTabsComponent(processMgr *processes.Manager, notificationsComponent *components.NotificationsComponent, systemComponent *components.SystemComponent, debugMode bool) *TabsComponent {
 	tc := &TabsComponent{
 		processMgr:             processMgr,
 		notificationsComponent:  notificationsComponent,
@@ -125,10 +126,10 @@ func (tc *TabsComponent) Render() string {
 // renderTitle renders the title section with process info and notifications
 func (tc *TabsComponent) renderTitle() string {
 	// Get process count information
-	processes := tc.processMgr.GetAllProcesses()
+	allProcesses := tc.processMgr.GetAllProcesses()
 	runningCount := 0
-	for _, proc := range processes {
-		if proc.GetStatus() == process.StatusRunning {
+	for _, proc := range allProcesses {
+		if proc.GetStatus() == processes.StatusRunning {
 			runningCount++
 		}
 	}
@@ -140,33 +141,33 @@ func (tc *TabsComponent) renderTitle() string {
 	if tc.width < 40 {
 		// Ultra narrow - just emoji and counts
 		baseTitle = "🐝"
-		if len(processes) > 0 {
-			processInfo = fmt.Sprintf(" %d/%d", runningCount, len(processes))
+		if len(allProcesses) > 0 {
+			processInfo = fmt.Sprintf(" %d/%d", runningCount, len(allProcesses))
 		}
 	} else if tc.width < 60 {
 		// Narrow - short title
 		baseTitle = "🐝 Brummer"
-		if len(processes) > 0 {
-			processInfo = fmt.Sprintf(" (%d/%d)", runningCount, len(processes))
+		if len(allProcesses) > 0 {
+			processInfo = fmt.Sprintf(" (%d/%d)", runningCount, len(allProcesses))
 		}
 	} else if tc.width < 100 {
 		// Medium - abbreviated subtitle
 		baseTitle = "🐝 Brummer - Dev Buddy"
-		if len(processes) > 0 {
+		if len(allProcesses) > 0 {
 			if runningCount > 0 {
-				processInfo = fmt.Sprintf(" (%d proc, %d run)", len(processes), runningCount)
+				processInfo = fmt.Sprintf(" (%d proc, %d run)", len(allProcesses), runningCount)
 			} else {
-				processInfo = fmt.Sprintf(" (%d proc)", len(processes))
+				processInfo = fmt.Sprintf(" (%d proc)", len(allProcesses))
 			}
 		}
 	} else {
 		// Full width - complete title
 		baseTitle = "🐝 Brummer - Development Buddy"
-		if len(processes) > 0 {
+		if len(allProcesses) > 0 {
 			if runningCount > 0 {
-				processInfo = fmt.Sprintf(" (%d processes, %d running)", len(processes), runningCount)
+				processInfo = fmt.Sprintf(" (%d processes, %d running)", len(allProcesses), runningCount)
 			} else {
-				processInfo = fmt.Sprintf(" (%d processes)", len(processes))
+				processInfo = fmt.Sprintf(" (%d processes)", len(allProcesses))
 			}
 		}
 	}

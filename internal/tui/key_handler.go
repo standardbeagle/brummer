@@ -62,12 +62,7 @@ func (r *KeyHandlerRegistry) Register(handler KeyHandler) {
 func (r *KeyHandlerRegistry) HandleKey(key tea.KeyMsg, ctx KeyContext, model *Model) tea.Cmd {
 	for _, handler := range r.handlers {
 		if handler.CanHandle(key, ctx) {
-			// Log for debugging
-			if model.logStore != nil {
-				model.logStore.Add("keyboard", handler.Name(),
-					"Handling key: "+keyToString(key), false)
-			}
-			return handler.Handle(key, model)
+						return handler.Handle(key, model)
 		}
 	}
 	return nil
@@ -130,15 +125,6 @@ func (h *GlobalNavigationHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool
 }
 
 func (h *GlobalNavigationHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
-	// Add debug logging to track key 3 lockup
-	if key.Type == tea.KeyRunes && len(key.Runes) == 1 {
-		keyNum := key.Runes[0]
-		if model.logStore != nil {
-			model.logStore.Add("GlobalNavigation", "Debug",
-				fmt.Sprintf("Handle called for key: %c", keyNum), false)
-		}
-	}
-
 	switch key.Type {
 	case tea.KeyTab:
 		// Cycle to next view
@@ -148,16 +134,7 @@ func (h *GlobalNavigationHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 		if len(key.Runes) == 1 {
 			// Try to switch by number key
 			if view, ok := GetViewForNumberKey(key.Runes[0]); ok {
-				if model.logStore != nil {
-					model.logStore.Add("GlobalNavigation", "Debug",
-						fmt.Sprintf("Switching to view: %s", view), false)
-				}
-				cmd := h.viewManager.SwitchToView(view)
-				if model.logStore != nil {
-					model.logStore.Add("GlobalNavigation", "Debug",
-						"SwitchToView returned command", false)
-				}
-				return cmd
+				return h.viewManager.SwitchToView(view)
 			}
 		}
 	}
@@ -212,8 +189,9 @@ func (h *QuitHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 }
 
 func (h *QuitHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
-	// Implement double-press protection for Ctrl+C
-	if key.Type == tea.KeyCtrlC {
+	switch key.Type {
+	case tea.KeyCtrlC:
+		// Implement double-press protection for Ctrl+C
 		now := time.Now().UnixNano()
 		if h.lastPress > 0 && (now-h.lastPress) < int64(500*time.Millisecond) {
 			return tea.Quit
@@ -222,6 +200,9 @@ func (h *QuitHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 		return func() tea.Msg {
 			return StatusMsg{Message: "Press Ctrl+C again to quit"}
 		}
+	case tea.KeyEsc:
+		// ESC key should quit immediately (single press)
+		return tea.Quit
 	}
 	return nil
 }
@@ -355,6 +336,108 @@ func (h *AICoderKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 type ExitPTYModeMsg struct{}
 type EnterPTYModeMsg struct{}
 
+
+// GeneralKeyHandler handles common keys that aren't handled by other handlers
+// This prevents "nothing happens" when users press common navigation/action keys
+type GeneralKeyHandler struct{}
+
+func NewGeneralKeyHandler() KeyHandler {
+	return &GeneralKeyHandler{}
+}
+
+func (h *GeneralKeyHandler) Name() string     { return "GeneralKeys" }
+func (h *GeneralKeyHandler) Priority() int    { return 900 } // Low priority, catch-all
+
+func (h *GeneralKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
+	// Don't handle keys in AI Coder PTY mode (let them pass through)
+	if ctx.Context == "pty" {
+		return false
+	}
+
+	// Handle common keys that might otherwise be ignored
+	switch key.Type {
+	case tea.KeyEnter, tea.KeySpace, tea.KeyBackspace, tea.KeyDelete:
+		return true
+	case tea.KeyUp, tea.KeyDown, tea.KeyLeft, tea.KeyRight:
+		return true
+	case tea.KeyPgUp, tea.KeyPgDown, tea.KeyHome, tea.KeyEnd:
+		return true
+	case tea.KeyRunes:
+		// Handle common single-letter keys that might be pressed
+		if len(key.Runes) == 1 {
+			r := key.Runes[0]
+			// Letters that are commonly used for commands
+			switch r {
+			case 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm',
+				 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z',
+				 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M',
+				 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z':
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func (h *GeneralKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
+	// Log the unhandled key for debugging
+	if model.logStore != nil {
+		model.logStore.Add("keyboard", "GeneralKeyHandler",
+			fmt.Sprintf("🎹 Unhandled key: %s (%s) - no specific handler", keyToString(key), key.Type.String()), false)
+	}
+
+	// Return a helpful message for common keys
+	switch key.Type {
+	case tea.KeyEnter:
+		return func() tea.Msg {
+			return StatusMsg{Message: "Enter key - select item or confirm action"}
+		}
+	case tea.KeyUp, tea.KeyDown:
+		return func() tea.Msg {
+			return StatusMsg{Message: "Use ↑/↓ or j/k to navigate, 1-7 to switch views"}
+		}
+	case tea.KeyLeft, tea.KeyRight:
+		return func() tea.Msg {
+			return StatusMsg{Message: "Use ←/→ to switch views, Tab for next view"}
+		}
+	case tea.KeyRunes:
+		if len(key.Runes) == 1 {
+			r := key.Runes[0]
+			switch r {
+			case 'q':
+				return func() tea.Msg {
+					return StatusMsg{Message: "Press Ctrl+C or Esc to quit"}
+				}
+			case 'h', '?':
+				return func() tea.Msg {
+					return StatusMsg{Message: "Press / for command palette, 1-7 for views"}
+				}
+			case 'f':
+				return func() tea.Msg {
+					return StatusMsg{Message: "Filter commands available in specific views"}
+				}
+			case 's':
+				return func() tea.Msg {
+					return StatusMsg{Message: "Stop commands available in Processes view"}
+				}
+			case 'r':
+				return func() tea.Msg {
+					return StatusMsg{Message: "Restart commands available in Processes view"}
+				}
+			case 'c':
+				return func() tea.Msg {
+					return StatusMsg{Message: "Clear commands available in Logs/Errors views"}
+				}
+			default:
+				return func() tea.Msg {
+					return StatusMsg{Message: fmt.Sprintf("Key '%c' not handled - try / for commands", r)}
+				}
+			}
+		}
+	}
+
+	return nil
+}
 
 // StatusMsg displays a status message to the user
 type StatusMsg struct {

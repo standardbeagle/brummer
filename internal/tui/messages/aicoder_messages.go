@@ -111,6 +111,10 @@ type SwitchToPTYMsg struct {
 	SessionID string
 }
 
+// AICoderPollPTYMsg is a tick message that triggers PTY output polling.
+type AICoderPollPTYMsg struct {
+}
+
 // TerminalState represents a read-only snapshot of terminal state.
 type TerminalState struct {
 	Lines       []string

@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
-	"github.com/standardbeagle/brummer/internal/tui/types"
+	"github.com/standardbeagle/brummer/internal/shared/types"
 )
 
 // ProgressHandlerCommand represents a progress handler operation

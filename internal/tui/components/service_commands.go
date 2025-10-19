@@ -2,13 +2,13 @@ package components
 
 import (
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	"github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
 // GetProcessCommands returns commands exported by ProcessManager
-func GetProcessCommands(processMgr *process.Manager) []messages.Command {
+func GetProcessCommands(processMgr *processes.Manager) []messages.Command {
 	if processMgr == nil {
 		return nil
 	}
@@ -249,7 +249,7 @@ func GetDockerCommands() []messages.Command {
 type CommandArgument = messages.CommandArgument
 
 // getScriptNames returns available script names from ProcessManager
-func getScriptNames(processMgr *process.Manager) []string {
+func getScriptNames(processMgr *processes.Manager) []string {
 	scripts := processMgr.GetScripts()
 	names := make([]string, 0, len(scripts))
 	for name := range scripts {
@@ -259,11 +259,11 @@ func getScriptNames(processMgr *process.Manager) []string {
 }
 
 // getRunningProcessNames returns names of currently running processes
-func getRunningProcessNames(processMgr *process.Manager) []string {
-	processes := processMgr.GetAllProcesses()
-	names := make([]string, 0, len(processes))
-	for _, proc := range processes {
-		if proc.GetStatus() == process.StatusRunning {
+func getRunningProcessNames(processMgr *processes.Manager) []string {
+	allProcesses := processMgr.GetAllProcesses()
+	names := make([]string, 0, len(allProcesses))
+	for _, proc := range allProcesses {
+		if proc.GetStatus() == processes.StatusRunning {
 			names = append(names, proc.Name)
 		}
 	}

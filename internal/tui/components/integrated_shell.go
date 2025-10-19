@@ -381,8 +381,9 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.AddAICoderSessionMsg:
 		// Add session to AI coders view
 		if s.aicodersView != nil {
+			// TODO: Session creation is now handled by main Model through AICoderState sub-model
+			/*
 			if aiCodersView, ok := s.aicodersView.(*AICodersViewComponent); ok {
-				// Convert message session info to component session info
 				sessionInfo := &SessionInfo{
 					ID:             msg.Session.ID,
 					Name:           msg.Session.Name,
@@ -396,6 +397,7 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				aiCodersView.AddSession(sessionInfo)
 			}
+			*/
 		}
 
 	case messages.LogAddedMsg:

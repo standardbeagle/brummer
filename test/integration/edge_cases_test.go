@@ -8,7 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 )
 
 // TestWindowResizeEdgeCases tests edge cases in window resize handling
@@ -177,12 +178,12 @@ func TestProcessEdgeCases(t *testing.T) {
 		proc, err := ctx.ProcessMgr.StartScript("test")
 		require.NoError(t, err)
 
-		ctx.WaitForProcess(proc.ID, process.StatusRunning, 2*time.Second)
+		ctx.WaitForProcess(proc.ID, processes.StatusRunning, 2*time.Second)
 
 		err = ctx.ProcessMgr.StopProcess(proc.ID)
 		require.NoError(t, err)
 
-		ctx.WaitForProcess(proc.ID, process.StatusStopped, 2*time.Second)
+		ctx.WaitForProcess(proc.ID, processes.StatusStopped, 2*time.Second)
 
 		// Try to stop it again
 		err = ctx.ProcessMgr.StopProcess(proc.ID)
@@ -201,7 +202,7 @@ func TestProcessEdgeCases(t *testing.T) {
 		proc1, err := ctx.ProcessMgr.StartScript("dev")
 		require.NoError(t, err)
 
-		ctx.WaitForProcess(proc1.ID, process.StatusRunning, 2*time.Second)
+		ctx.WaitForProcess(proc1.ID, processes.StatusRunning, 2*time.Second)
 
 		// Try to start the same script again
 		proc2, err := ctx.ProcessMgr.StartScript("dev")
@@ -229,7 +230,7 @@ func TestProcessEdgeCases(t *testing.T) {
 		finalProc, exists := ctx.ProcessMgr.GetProcess(proc.ID)
 		assert.True(t, exists, "Process should exist")
 		// May be StatusStopped or StatusCompleted
-		assert.NotEqual(t, process.StatusRunning, finalProc.Status, "Quick process should have exited")
+		assert.NotEqual(t, processes.StatusRunning, finalProc.Status, "Quick process should have exited")
 	})
 
 	t.Run("process_that_fails", func(t *testing.T) {
@@ -244,7 +245,7 @@ func TestProcessEdgeCases(t *testing.T) {
 		finalProc, exists := ctx.ProcessMgr.GetProcess(proc.ID)
 		assert.True(t, exists, "Process should exist")
 		// Should have failed status
-		assert.NotEqual(t, process.StatusRunning, finalProc.Status)
+		assert.NotEqual(t, processes.StatusRunning, finalProc.Status)
 	})
 
 	t.Run("get_nonexistent_process", func(t *testing.T) {
@@ -450,7 +451,7 @@ func TestMemoryAndResourceEdgeCases(t *testing.T) {
 
 	t.Run("multiple_concurrent_processes", func(t *testing.T) {
 		// Start multiple processes concurrently
-		var processes []*process.Process
+		var processes []*processes.Process
 
 		proc1, err1 := ctx.ProcessMgr.StartScript("dev")
 		proc2, err2 := ctx.ProcessMgr.StartScript("build")

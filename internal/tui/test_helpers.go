@@ -9,7 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -39,7 +40,7 @@ func createTestModelWithDefaults() *Model {
 		panic(fmt.Sprintf("Failed to create test package.json: %v", err))
 	}
 
-	processMgr, err := process.NewManager(tempDir, eventBus, true)
+	processMgr, err := processes.NewManager(tempDir, eventBus, true)
 	if err != nil {
 		panic(fmt.Sprintf("Failed to create test process manager: %v", err))
 	}
@@ -71,9 +72,9 @@ type TestMessage struct {
 // createTestProcessManager creates a real process manager for testing
 // This is only used when we need to test process-specific behavior
 // For most tests, use createTestModelWithDefaults() which includes a real process manager
-func createTestProcessManager(t *testing.T) *process.Manager {
+func createTestProcessManager(t *testing.T) *processes.Manager {
 	eventBus := events.NewEventBus()
-	mgr, err := process.NewManager(t.TempDir(), eventBus, true)
+	mgr, err := processes.NewManager(t.TempDir(), eventBus, true)
 	if err != nil {
 		t.Fatalf("Failed to create test process manager: %v", err)
 	}

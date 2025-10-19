@@ -17,8 +17,8 @@ import (
 type EventType string
 
 const (
-	ProcessStarted     EventType = "process.started"
-	ProcessExited      EventType = "process.exited"
+	ProcessStarted     EventType = "processes.started"
+	ProcessExited      EventType = "processes.exited"
 	LogLine            EventType = "log.line"
 	ErrorDetected      EventType = "error.detected"
 	BuildEvent         EventType = "build.event"
@@ -76,6 +76,7 @@ type EventBus struct {
 	config     WorkerPoolConfig
 }
 
+
 func NewEventBus() *EventBus {
 	return NewEventBusWithConfig(DefaultWorkerPoolConfig())
 }
@@ -123,11 +124,27 @@ func (eb *EventBus) worker() {
 	}
 }
 
-func (eb *EventBus) Subscribe(eventType EventType, handler Handler) {
+func (eb *EventBus) Subscribe(eventType EventType, handler Handler) func() {
 	eb.mu.Lock()
 	defer eb.mu.Unlock()
 
 	eb.handlers[eventType] = append(eb.handlers[eventType], handler)
+
+	// Return unsubscribe function - simple approach
+	return func() {
+		eb.mu.Lock()
+		defer eb.mu.Unlock()
+
+		// Remove from handlers list by comparing function identity
+		handlers := eb.handlers[eventType]
+		for i, h := range handlers {
+			// Use uintptr to compare function identity
+			if &h == &handler {
+				eb.handlers[eventType] = append(handlers[:i], handlers[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 func (eb *EventBus) Publish(event Event) {
@@ -150,14 +167,14 @@ func (eb *EventBus) Publish(event Event) {
 			// Task queued successfully
 		default:
 			// Worker pool full - execute synchronously as fallback
-			go func(h Handler, e Event) {
+			func() {
 				defer func() {
 					if r := recover(); r != nil {
 						fmt.Printf("EventBus fallback handler panic: %v\n", r)
 					}
 				}()
-				h(e)
-			}(handler, event)
+				handler(event)
+			}()
 		}
 	}
 }

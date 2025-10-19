@@ -60,7 +60,7 @@ func (h *StandardErrorHandler) HandleError(err error, ctx ErrorContext) {
 
 	// Trigger UI update
 	if updateChan != nil {
-		updateChan <- logUpdateMsg{}
+		updateChan <- LogUpdateMsg{}
 	}
 }
 

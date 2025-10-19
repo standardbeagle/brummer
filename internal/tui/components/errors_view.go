@@ -6,210 +6,199 @@ import (
 	"time"
 
 	"github.com/charmbracelet/bubbles/list"
-	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/tui/commands"
+	"github.com/standardbeagle/brummer/internal/tui/state"
 )
 
-// ErrorsView is a BubbleTea component for displaying errors
-// Migrated from errors_view_controller.go (T050-T054)
-// Architecture: Component → Commands → Service (async error operations)
-type ErrorsView struct {
-	errorsViewport  viewport.Model
-	errorDetailView viewport.Model
-	errorsList      list.Model
-	selectedError   *logs.ErrorContext
-	lastErrorCount  int
+// ErrorsViewComponent is a stateless BubbleTea component for displaying errors
+// Architecture: Stateless rendering with external state (Redux/Elm compliant)
+type ErrorsViewComponent struct {
+	BaseComponent
 
-	// Service access (now through commands)
-	logStore *logs.Store
-	width    int
-	height   int
+	// UI configuration only (no state)
+	width  int
+	height int
 
-	// Command pattern support
-	commandID     string
-	loading       bool
-	lastError     error
-	errorContexts []logs.ErrorContext // Cache for error contexts
+	// List model for error list (minimal, stateless)
+	list list.Model
+
+	// Styles
+	headerStyle      lipgloss.Style
+	errorStyle       lipgloss.Style
+	processStyle     lipgloss.Style
+	timestampStyle   lipgloss.Style
+	typeStyle        lipgloss.Style
+	emptyStyle       lipgloss.Style
+	selectedStyle    lipgloss.Style
+	descriptionStyle lipgloss.Style
 }
 
-// ErrorItem implements list.Item for error contexts
-type ErrorItem struct {
-	ErrorContext *logs.ErrorContext
-	Timestamp    string
-	ProcessName  string
-}
+// NewErrorsViewComponent creates a new stateless errors view component
+func NewErrorsViewComponent() *ErrorsViewComponent {
+	delegate := list.NewDefaultDelegate()
+	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(lipgloss.Color("196"))
+	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(lipgloss.Color("196"))
 
-func (i ErrorItem) FilterValue() string {
-	return i.ErrorContext.Message
-}
-
-func (i ErrorItem) Title() string {
-	return fmt.Sprintf("%s [%s] %s", i.Timestamp, i.ProcessName, i.ErrorContext.Type)
-}
-
-func (i ErrorItem) Description() string {
-	message := i.ErrorContext.Message
-	if len(message) > 100 {
-		message = message[:97] + "..."
-	}
-	return message
-}
-
-// NewErrorsView creates a new errors view component
-func NewErrorsView(logStore *logs.Store) *ErrorsView {
-	errorsList := list.New([]list.Item{}, list.NewDefaultDelegate(), 0, 0)
+	errorsList := list.New([]list.Item{}, delegate, 0, 0)
 	errorsList.Title = "Errors"
 	errorsList.SetShowStatusBar(false)
+	errorsList.SetShowHelp(false)
+	errorsList.SetFilteringEnabled(true)
+	errorsList.SetShowPagination(false)
 
-	return &ErrorsView{
-		errorsViewport:  viewport.New(0, 0),
-		errorDetailView: viewport.New(0, 0),
-		errorsList:      errorsList,
-		logStore:        logStore,
+	return &ErrorsViewComponent{
+		BaseComponent: NewBaseComponent(),
+		width:         80,
+		height:        24,
+		list:          errorsList,
+
+		// Initialize styles
+		headerStyle:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),
+		errorStyle:       lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")),
+		processStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color("39")),
+		timestampStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("245")),
+		typeStyle:        lipgloss.NewStyle().Foreground(lipgloss.Color("208")),
+		emptyStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true).Align(lipgloss.Center, lipgloss.Center),
+		selectedStyle:    lipgloss.NewStyle().Background(lipgloss.Color("240")).Bold(true),
+		descriptionStyle: lipgloss.NewStyle().Foreground(lipgloss.Color("244")),
 	}
 }
 
-// Init initializes the component (BubbleTea interface)
-func (v *ErrorsView) Init() tea.Cmd {
+// Init initializes the component
+func (c *ErrorsViewComponent) Init() tea.Cmd {
 	return nil
 }
 
-// Update handles messages (BubbleTea interface)
-func (v *ErrorsView) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	v.errorsList, cmd = v.errorsList.Update(msg)
-	return v, cmd
-}
+// ViewWithState renders the component using external state (stateless/Elm-compliant)
+func (c *ErrorsViewComponent) ViewWithState(masterData *state.MasterData, logStore *logs.Store) string {
+	if !c.IsVisible() || masterData == nil || masterData.ErrorsState == nil {
+		return ""
+	}
 
-// View renders the component (BubbleTea interface)
-func (v *ErrorsView) View() string {
-	return v.Render()
-}
+	errorsState := masterData.ErrorsState
 
-// SetSize updates the component's dimensions (Component interface)
-func (v *ErrorsView) SetSize(width, height int) {
-	v.width = width
-	v.height = height
-	contentHeight := height - 6
-	v.errorsViewport.Width = width
-	v.errorsViewport.Height = contentHeight
-	v.errorDetailView.Width = width
-	v.errorDetailView.Height = contentHeight
-	v.errorsList.SetSize(width, contentHeight)
-}
-
-// Focus gives keyboard focus to the component (Component interface)
-func (v *ErrorsView) Focus() tea.Cmd {
-	return nil
-}
-
-// Blur removes keyboard focus from the component (Component interface)
-func (v *ErrorsView) Blur() tea.Cmd {
-	return nil
-}
-
-// GetSize returns current dimensions (Component interface)
-func (v *ErrorsView) GetSize() (width, height int) {
-	return v.width, v.height
-}
-
-// UpdateSize updates dimensions with pre-calculated content height
-func (v *ErrorsView) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
-	v.width = width
-	v.height = height
-	v.errorsViewport.Width = width
-	v.errorsViewport.Height = contentHeight
-	v.errorDetailView.Width = width
-	v.errorDetailView.Height = contentHeight
-	v.errorsList.SetSize(width, contentHeight)
-}
-
-// GetErrorsViewport returns the errors viewport for direct manipulation
-func (v *ErrorsView) GetErrorsViewport() *viewport.Model {
-	return &v.errorsViewport
-}
-
-// UpdateErrorsView refreshes the errors view with current data
-func (v *ErrorsView) UpdateErrorsView() {
-	// Direct service call - no controller indirection (T052)
-	errorContexts := v.logStore.GetErrorContexts()
-
-	var content strings.Builder
-	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Recent Errors") + "\n\n")
+	// Get errors from cache or log store
+	var errorContexts []logs.ErrorContext
+	if errorsState.IsCacheValid(5*time.Second) {
+		errorContexts = errorsState.GetErrorContexts()
+	} else if logStore != nil {
+		errorContexts = logStore.GetErrorContexts()
+		// Update state with fresh data
+		newState := errorsState.UpdateErrorContexts(errorContexts)
+		masterData.ErrorsState = newState
+	}
 
 	if len(errorContexts) == 0 {
-		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true).
-			Render("No errors detected. System running smoothly! ✓"))
-	} else {
-		for i, ec := range errorContexts {
-			if i > 0 {
-				content.WriteString("\n" + strings.Repeat("─", v.width) + "\n")
-			}
-			content.WriteString(v.formatErrorContext(&ec))
-		}
+		return c.renderEmptyState()
 	}
 
-	v.errorsViewport.SetContent(content.String())
+	// Render based on view mode
+	if errorsState.GetShowDetailView() && errorsState.GetSelectedError() != nil {
+		return c.renderDetailView(errorsState.GetSelectedError())
+	}
+
+	return c.renderListView(errorContexts, errorsState)
 }
 
-// UpdateErrorsList updates the list of errors
-func (v *ErrorsView) UpdateErrorsList() {
-	// Use cached error contexts
-	errorContexts := v.GetErrorContexts()
+// renderEmptyState renders the empty state when no errors exist
+func (c *ErrorsViewComponent) renderEmptyState() string {
+	content := []string{
+		"No errors detected.",
+		"",
+		"System running smoothly! ✓",
+	}
 
+	emptyText := strings.Join(content, "\n")
+	return c.emptyStyle.Width(c.width).Height(c.height).Render(emptyText)
+}
+
+// renderListView renders the error list view
+func (c *ErrorsViewComponent) renderListView(errorContexts []logs.ErrorContext, errorsState *state.ErrorsState) string {
+	var content strings.Builder
+
+	// Header
+	content.WriteString(c.headerStyle.Render("📋 Recent Errors") + "\n")
+	content.WriteString(strings.Repeat("─", c.width) + "\n\n")
+
+	// Create list items
+	items := c.createErrorListItems(errorContexts, errorsState)
+
+	// Update viewport
+	c.list.SetItems(items)
+	c.list.SetSize(c.width, c.height-4) // Reserve space for header and footer
+
+	// Render list
+	content.WriteString(c.list.View())
+
+	// Footer
+	content.WriteString(strings.Repeat("─", c.width) + "\n")
+	footer := c.renderFooter(errorsState)
+	content.WriteString(footer)
+
+	return content.String()
+}
+
+// renderDetailView renders the detailed view of a single error
+func (c *ErrorsViewComponent) renderDetailView(selectedError *logs.ErrorContext) string {
+	var content strings.Builder
+
+	// Header with navigation
+	content.WriteString(c.headerStyle.Render("🔍 Error Details") + "\n")
+	content.WriteString(strings.Repeat("─", c.width) + "\n\n")
+
+	// Format the error
+	formattedError := c.formatErrorContext(selectedError)
+	content.WriteString(formattedError)
+
+	return content.String()
+}
+
+// renderFooter creates the footer section
+func (c *ErrorsViewComponent) renderFooter(errorsState *state.ErrorsState) string {
+	var parts []string
+
+	if errorsState.GetErrorCount() > 0 {
+		parts = append(parts, fmt.Sprintf("Total: %d error(s)", errorsState.GetErrorCount()))
+	}
+
+	if errorsState.GetAutoRefresh() {
+		parts = append(parts, "🔄 Auto-refresh")
+	}
+
+	if len(parts) > 0 {
+		return strings.Join(parts, " • ") + "\nEnter=Details | c=Clear | f=Filter | r=Refresh"
+	}
+
+	return "c=Clear | f=Filter | r=Refresh"
+}
+
+// createErrorListItems creates list items from error contexts
+func (c *ErrorsViewComponent) createErrorListItems(errorContexts []logs.ErrorContext, errorsState *state.ErrorsState) []list.Item {
 	var items []list.Item
+
 	for _, ec := range errorContexts {
-		ecCopy := ec
-		items = append(items, ErrorItem{
-			ErrorContext: &ecCopy,
+		item := ErrorItemStateless{
+			ErrorContext: &ec,
 			Timestamp:    ec.Timestamp.Format("15:04:05"),
 			ProcessName:  ec.ProcessName,
-		})
+			IsSelected:   ec.ID == errorsState.GetSelectedErrorID(),
+		}
+		items = append(items, item)
 	}
 
-	v.errorsList.SetItems(items)
-}
-
-// Render renders the errors view
-func (v *ErrorsView) Render() string {
-	return v.errorsViewport.View()
-}
-
-// GetErrorsList returns the errors list for direct manipulation
-func (v *ErrorsView) GetErrorsList() *list.Model {
-	return &v.errorsList
-}
-
-// SetSelectedError sets the currently selected error
-func (v *ErrorsView) SetSelectedError(ec *logs.ErrorContext) {
-	v.selectedError = ec
-	if ec != nil {
-		content := v.formatErrorContext(ec)
-		v.errorDetailView.SetContent(content)
-	}
-}
-
-// GetSelectedError returns the currently selected error
-func (v *ErrorsView) GetSelectedError() *logs.ErrorContext {
-	return v.selectedError
+	return items
 }
 
 // formatErrorContext formats an error context for display
-func (v *ErrorsView) formatErrorContext(ec *logs.ErrorContext) string {
+func (c *ErrorsViewComponent) formatErrorContext(ec *logs.ErrorContext) string {
 	var content strings.Builder
 
-	errorStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196"))
-	processStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("39"))
-	timestampStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	_ = lipgloss.NewStyle().Foreground(lipgloss.Color("214")) // typeStyle
-
-	content.WriteString(errorStyle.Render(fmt.Sprintf("❌ %s", ec.Type)) + "\n")
+	content.WriteString(c.errorStyle.Render(fmt.Sprintf("❌ %s", ec.Type)) + "\n")
 	content.WriteString(fmt.Sprintf("%s %s\n\n",
-		timestampStyle.Render(ec.Timestamp.Format("2006-01-02 15:04:05")),
-		processStyle.Render(fmt.Sprintf("[%s]", ec.ProcessName))))
+		c.timestampStyle.Render(ec.Timestamp.Format("2006-01-02 15:04:05")),
+		c.processStyle.Render(fmt.Sprintf("[%s]", ec.ProcessName))))
 
 	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Error Message:") + "\n")
 	content.WriteString(ec.Message + "\n\n")
@@ -234,151 +223,65 @@ func (v *ErrorsView) formatErrorContext(ec *logs.ErrorContext) string {
 	return content.String()
 }
 
-// ClearError clears a specific error by ID
-func (v *ErrorsView) ClearError(errorID string) {
-	// v.logStore.ClearError(errorID) // Method not available in logs.Store
-	v.UpdateErrorsList()
-	v.UpdateErrorsView()
+// SetSize updates component dimensions
+func (c *ErrorsViewComponent) SetSize(width, height int) {
+	c.BaseComponent.SetSize(width, height)
+	c.width = width
+	c.height = height
+	c.list.SetSize(width, height-4)
 }
 
-// ClearAllErrors clears all errors
-func (v *ErrorsView) ClearAllErrors() {
-	v.logStore.ClearErrors()
-	v.selectedError = nil
-	v.UpdateErrorsList()
-	v.UpdateErrorsView()
+// UpdateSize updates dimensions with pre-calculated content height
+func (c *ErrorsViewComponent) UpdateSize(width, height, headerHeight, footerHeight, contentHeight int) {
+	c.width = width
+	c.height = height
+	c.list.SetSize(width, contentHeight)
 }
 
-// GetErrorDetailView returns the error detail viewport for direct manipulation
-func (v *ErrorsView) GetErrorDetailView() *viewport.Model {
-	return &v.errorDetailView
-}
-
-// UpdateErrorDetailView updates the detail view for selected error
-func (v *ErrorsView) UpdateErrorDetailView() {
-	if v.selectedError != nil {
-		content := v.formatErrorContext(v.selectedError)
-		v.errorDetailView.SetContent(content)
-	}
-}
-
-// HandleCopyError handles copying error to clipboard (returns command)
-func (v *ErrorsView) HandleCopyError() tea.Cmd {
-	return nil // Placeholder for clipboard functionality
-}
-
-// HandleClearErrors clears all errors
-func (v *ErrorsView) HandleClearErrors() {
-	v.ClearAllErrors()
-}
-
-// UpdateErrorsCommand returns a command to refresh the errors view asynchronously
-func (v *ErrorsView) UpdateErrorsCommand() tea.Cmd {
-	if v.logStore == nil {
-		return nil
-	}
-
-	// Generate unique command ID
-	v.commandID = fmt.Sprintf("errors-update-%d", time.Now().UnixNano())
-
-	context := commands.UIOperationContext(0) // Version will be set by the model
-
-	return func() tea.Msg {
-		cmd := commands.NewGetErrorsCommand(v.commandID, v.logStore, context)
-		return cmd.Run()
-	}
-}
-
-// UpdateErrorsViewWithCache refreshes the errors view using cached data
-func (v *ErrorsView) UpdateErrorsViewWithCache() {
-	var content strings.Builder
-	content.WriteString(lipgloss.NewStyle().Bold(true).Render("Recent Errors") + "\n\n")
-
-	if len(v.errorContexts) == 0 {
-		content.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("245")).Italic(true).
-			Render("No errors detected. System running smoothly! ✓"))
-	} else {
-		for i, ec := range v.errorContexts {
-			if i > 0 {
-				content.WriteString("\n" + strings.Repeat("─", v.width) + "\n")
-			}
-			content.WriteString(v.formatErrorContext(&ec))
+// GetErrorStats returns error statistics
+func (c *ErrorsViewComponent) GetErrorStats(errorContexts []logs.ErrorContext) (total, critical, warning int) {
+	total = len(errorContexts)
+	for _, ec := range errorContexts {
+		switch ec.Type {
+		case "FATAL", "ERROR", "CRITICAL":
+			critical++
+		case "WARN", "WARNING":
+			warning++
 		}
 	}
-
-	v.errorsViewport.SetContent(content.String())
+	return
 }
 
-// UpdateErrorsListWithCache updates the list of errors using cached data
-func (v *ErrorsView) UpdateErrorsListWithCache() {
-	var items []list.Item
-	for _, ec := range v.errorContexts {
-		ecCopy := ec
-		items = append(items, ErrorItem{
-			ErrorContext: &ecCopy,
-			Timestamp:    ec.Timestamp.Format("15:04:05"),
-			ProcessName:  ec.ProcessName,
-		})
+// ErrorItemStateless represents an error in the list (stateless version)
+type ErrorItemStateless struct {
+	ErrorContext *logs.ErrorContext
+	Timestamp    string
+	ProcessName  string
+	IsSelected   bool
+}
+
+func (i ErrorItemStateless) Title() string {
+	if i.ErrorContext == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s [%s] %s", i.Timestamp, i.ProcessName, i.ErrorContext.Type)
+}
+
+func (i ErrorItemStateless) Description() string {
+	if i.ErrorContext == nil {
+		return ""
 	}
 
-	v.errorsList.SetItems(items)
-}
-
-// HandleErrorResult handles the result of an error command
-func (v *ErrorsView) HandleErrorResult(msg commands.LogResultMsg) {
-	if msg.ID != v.commandID {
-		return // Not our command
+	message := i.ErrorContext.Message
+	if len(message) > 80 {
+		message = message[:77] + "..."
 	}
+	return message
+}
 
-	v.loading = false
-	v.lastError = msg.Error
-
-	if msg.IsSuccess() {
-		// Process the result
-		if errorData, ok := msg.Result.(commands.ErrorData); ok {
-			// Convert log entries to error contexts
-			v.errorContexts = v.convertLogEntriesToErrorContexts(errorData.Entries)
-		}
+func (i ErrorItemStateless) FilterValue() string {
+	if i.ErrorContext == nil {
+		return ""
 	}
-}
-
-// GetErrorContexts returns the cached error contexts (falls back to sync method if cache is empty)
-func (v *ErrorsView) GetErrorContexts() []logs.ErrorContext {
-	if v.errorContexts == nil && v.logStore != nil {
-		// Fallback to sync method
-		v.errorContexts = v.logStore.GetErrorContexts()
-	}
-	return v.errorContexts
-}
-
-// convertLogEntriesToErrorContexts converts log entries to error contexts for compatibility
-func (v *ErrorsView) convertLogEntriesToErrorContexts(entries []logs.LogEntry) []logs.ErrorContext {
-	// This is a simplified conversion - in a full implementation,
-	// we would use the log store's error grouping functionality
-	return v.logStore.GetErrorContexts()
-}
-
-// IsLoading returns whether the component is currently loading data
-func (v *ErrorsView) IsLoading() bool {
-	return v.loading
-}
-
-// SetLoading sets the loading state of the component
-func (v *ErrorsView) SetLoading(loading bool) {
-	v.loading = loading
-}
-
-// GetLastError returns the last error encountered
-func (v *ErrorsView) GetLastError() error {
-	return v.lastError
-}
-
-// ClearCommandError clears the last command error
-func (v *ErrorsView) ClearCommandError() {
-	v.lastError = nil
-}
-
-// ClearCache clears the cached error contexts
-func (v *ErrorsView) ClearCache() {
-	v.errorContexts = nil
+	return i.ErrorContext.Message
 }

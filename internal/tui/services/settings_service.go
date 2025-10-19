@@ -12,7 +12,8 @@ import (
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 	"github.com/standardbeagle/brummer/pkg/events"
@@ -28,7 +29,7 @@ type SettingsService struct {
 	workingDir string
 
 	// Service references (for status information)
-	processMgr  *process.Manager
+	processMgr  *processes.Manager
 	proxyServer *proxy.Server
 	mcpServer   interface {
 		IsRunning() bool
@@ -73,7 +74,7 @@ func NewSettingsService(
 	eventBus *events.EventBus,
 	config *config.Config,
 	workingDir string,
-	processMgr *process.Manager,
+	processMgr *processes.Manager,
 	proxyServer *proxy.Server,
 	mcpServer interface {
 		IsRunning() bool

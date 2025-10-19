@@ -4,11 +4,7 @@ import (
 	"time"
 )
 
-// CommandResultMsg is a message that indicates the result of a command.
-type CommandResultMsg struct {
-	Success bool
-	Message string
-}
+// CommandResultMsg is now defined in commands/slash_commands.go to avoid circular imports
 
 // NavigateToViewMsg is a message that requests a view change.
 type NavigateToViewMsg struct {

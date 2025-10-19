@@ -14,7 +14,8 @@ import (
 
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui"
 	"github.com/standardbeagle/brummer/pkg/events"
@@ -27,7 +28,7 @@ type TestContext struct {
 	Model      *tui.Model
 	Program    *tea.Program
 	EventBus   *events.EventBus
-	ProcessMgr *process.Manager
+	ProcessMgr *processes.Manager
 	LogStore   *logs.Store
 	Pty        *os.File
 	Tty        *os.File
@@ -79,7 +80,7 @@ func NewTestContext(t *testing.T) *TestContext {
 		cfg = &config.Config{} // Use empty config for tests
 	}
 	eventBus := events.NewEventBus()
-	processMgr, err := process.NewManager(tempDir, eventBus, true) // hasPackageJSON = true
+	processMgr, err := processes.NewManager(tempDir, eventBus, true) // hasPackageJSON = true
 	require.NoError(t, err, "Failed to create process manager")
 	logStore := logs.NewStore(10000, eventBus) // maxEntries = 10000
 
@@ -214,7 +215,7 @@ func (ctx *TestContext) WaitForCondition(condition func() bool, timeout time.Dur
 }
 
 // WaitForProcess waits for a process to reach expected status
-func (ctx *TestContext) WaitForProcess(processID string, expectedStatus process.ProcessStatus, timeout time.Duration) {
+func (ctx *TestContext) WaitForProcess(processID string, expectedStatus processes.ProcessStatus, timeout time.Duration) {
 	ctx.T.Helper()
 
 	ctx.WaitForCondition(func() bool {
@@ -264,7 +265,7 @@ func (ctx *TestContext) AssertCurrentView(expectedView string) {
 }
 
 // AssertProcessStatus verifies a process has expected status
-func (ctx *TestContext) AssertProcessStatus(processID string, expectedStatus process.ProcessStatus) {
+func (ctx *TestContext) AssertProcessStatus(processID string, expectedStatus processes.ProcessStatus) {
 	ctx.T.Helper()
 	proc, exists := ctx.ProcessMgr.GetProcess(processID)
 	require.True(ctx.T, exists, "Process should exist: %s", processID)
@@ -307,7 +308,7 @@ func (ctx *TestContext) StartTestProcess(scriptName string) string {
 	require.NoError(ctx.T, err, "Failed to start process")
 	require.NotNil(ctx.T, proc, "Process should not be nil")
 
-	ctx.WaitForProcess(proc.ID, process.StatusRunning, 2*time.Second)
+	ctx.WaitForProcess(proc.ID, processes.StatusRunning, 2*time.Second)
 
 	return proc.ID
 }
@@ -319,7 +320,7 @@ func (ctx *TestContext) StopTestProcess(processID string) {
 	err := ctx.ProcessMgr.StopProcess(processID)
 	require.NoError(ctx.T, err, "Failed to stop process")
 
-	ctx.WaitForProcess(processID, process.StatusStopped, 2*time.Second)
+	ctx.WaitForProcess(processID, processes.StatusStopped, 2*time.Second)
 }
 
 // RunCommand runs an arbitrary command for testing
@@ -351,7 +352,7 @@ func (ctx *TestContext) Cleanup() {
 	// Stop all processes
 	processes := ctx.ProcessMgr.GetAllProcesses()
 	for _, proc := range processes {
-		if proc.Status == process.StatusRunning {
+		if proc.Status == processes.StatusRunning {
 			ctx.ProcessMgr.StopProcess(proc.ID)
 		}
 	}

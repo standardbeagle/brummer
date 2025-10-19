@@ -246,7 +246,7 @@ func TestCleanupShutdown(t *testing.T) {
 	}
 
 	// Wait for process to start
-	err = bt.WaitForOutput("Long running process...", 5*time.Second)
+	err = bt.WaitForOutput("Long running processes...", 5*time.Second)
 	if err != nil {
 		t.Fatalf("Process did not start: %v", err)
 	}

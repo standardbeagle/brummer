@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
 	"github.com/stretchr/testify/assert"
@@ -15,7 +16,7 @@ import (
 
 func setupTestMCPServer(t *testing.T) *MCPServer {
 	eventBus := events.NewEventBus()
-	processMgr, err := process.NewManager("/tmp", eventBus, false)
+	processMgr, err := processes.NewManager("/tmp", eventBus, false)
 	require.NoError(t, err)
 
 	logStore := logs.NewStore(10000, nil)

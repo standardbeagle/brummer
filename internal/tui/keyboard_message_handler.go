@@ -30,6 +30,7 @@ func (h *KeyboardMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.M
 		return model, nil
 	}
 
+	
 	// Build rich context for key handlers
 	ctx := model.buildKeyContext()
 

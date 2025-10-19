@@ -8,6 +8,7 @@ import (
 
 	"github.com/standardbeagle/brummer/internal/tui/commands"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
+	"github.com/standardbeagle/brummer/internal/shared/types"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -27,13 +28,13 @@ type StateHandler struct {
 // Operation represents an in-flight operation
 type Operation struct {
 	ID          string                       `json:"id"`
-	CommandType commands.CommandType         `json:"commandType"`
+	CommandType types.CommandType            `json:"commandType"`
 	Status      commands.OperationStatus     `json:"status"`
 	StartTime   time.Time                    `json:"startTime"`
 	EndTime     time.Time                    `json:"endTime"`
 	Result      interface{}                  `json:"result,omitempty"`
 	Error       error                        `json:"error,omitempty"`
-	Context     commands.OperationContext    `json:"context"`
+	Context     types.OperationContext       `json:"context"`
 	Retries     int                          `json:"retries"`
 	Timeout     time.Duration                `json:"timeout"`
 }
@@ -155,10 +156,10 @@ func (h *StateHandler) handleCommandCompleted(msg *messages.CommandCompletedMess
 	}
 
 	// Update state based on command type
-	h.updateStateForCommand(msg.CommandType, msg.Result, msg.Context.Version)
+	h.updateStateForCommand(msg.CommandType, msg.Result, h.version)
 
 	// Cache result if applicable
-	h.cacheResult(msg.ID, msg.Result, msg.Context.Version)
+	h.cacheResult(msg.ID, msg.Result, h.version)
 
 	h.incrementVersion()
 
@@ -182,7 +183,7 @@ func (h *StateHandler) handleCommandFailed(msg *messages.CommandFailedMessage, m
 	}
 
 	// Update error state
-	h.updateErrorState(msg.ID, msg.Error, msg.Context.Version)
+	h.updateErrorState(msg.ID, msg.Error, h.version)
 
 	h.incrementVersion()
 
@@ -240,7 +241,7 @@ func (h *StateHandler) handleBatchCommandStarted(msg *messages.BatchCommandStart
 
 	operation := &Operation{
 		ID:          msg.ID,
-		CommandType: commands.CommandTypeSystem, // Batch commands are system commands
+		CommandType: types.CommandTypeSystem, // Batch commands are system commands
 		Status:      commands.OperationRunning,
 		StartTime:   msg.Timestamp,
 		Context:     msg.Context,
@@ -271,7 +272,7 @@ func (h *StateHandler) handleBatchCommandCompleted(msg *messages.BatchCommandCom
 	// Process batch results
 	for _, result := range msg.Results {
 		if result.Error == nil {
-			h.cacheResult(result.CommandID, result.Result, msg.Context.Version)
+			h.cacheResult(result.ID, result.Result, h.version)
 		}
 	}
 
@@ -368,15 +369,15 @@ func (h *StateHandler) incrementVersion() {
 }
 
 // updateStateForCommand updates state based on command result
-func (h *StateHandler) updateStateForCommand(cmdType commands.CommandType, result interface{}, version uint64) {
+func (h *StateHandler) updateStateForCommand(cmdType types.CommandType, result interface{}, version uint64) {
 	switch cmdType {
-	case commands.CommandTypeIO:
+	case types.CommandTypeIO:
 		h.state["lastIOOperation"] = result
-	case commands.CommandTypeProcess:
+	case types.CommandTypeProcess:
 		h.state["lastProcessOperation"] = result
-	case commands.CommandTypeNetwork:
+	case types.CommandTypeNetwork:
 		h.state["lastNetworkOperation"] = result
-	case commands.CommandTypeSystem:
+	case types.CommandTypeSystem:
 		h.state["lastSystemOperation"] = result
 	}
 	h.state["version"] = version
@@ -456,18 +457,25 @@ func (h *StateHandler) updateResponseTime(duration time.Duration) {
 // generateCleanupCommand creates a command to clean up resources
 func (h *StateHandler) generateCleanupCommand(operationID string) tea.Cmd {
 	return func() tea.Msg {
+		// Create a proper operation context
+		context := types.OperationContext{
+			OperationID: operationID,
+			Priority:    types.PriorityNormal,
+			CreatedAt:   time.Now(),
+			Metadata:    map[string]interface{}{"version": h.version},
+		}
 		return messages.NewResourceCleanupMessage(
 			"cleanup-"+operationID,
 			"operation",
 			operationID,
 			"operation completed",
-			commands.SystemOperationContext(h.version),
+			context,
 		)
 	}
 }
 
 // generateRetryCommand creates a command to retry a failed operation
-func (h *StateHandler) generateRetryCommand(operationID string, cmdType commands.CommandType, context commands.OperationContext) tea.Cmd {
+func (h *StateHandler) generateRetryCommand(operationID string, cmdType types.CommandType, context types.OperationContext) tea.Cmd {
 	return func() tea.Msg {
 		return messages.NewRetryAttemptMessage(
 			"retry-"+operationID,

@@ -2,14 +2,12 @@ package tui
 
 import (
 	"time"
-
-	"github.com/standardbeagle/brummer/internal/aicoder"
 )
 
 // Message types for the TUI system
 
 // Process-related messages
-// processUpdateMsg already defined in process_view_controller.go
+// ProcessUpdateMsg is now defined in model_messages.go to centralize message types
 
 type processStoppedMsg struct {
 	ProcessID string
@@ -21,7 +19,7 @@ type processStartedMsg struct {
 }
 
 // Log-related messages
-// logUpdateMsg already defined in model.go
+// LogUpdateMsg is now defined in model_messages.go to centralize message types
 
 type logsClearedMsg struct {
 	ProcessID string
@@ -46,34 +44,9 @@ type mcpErrorMsg struct {
 	Timestamp time.Time
 }
 
-// AI Coder messages
-type aiCoderSessionMsg struct {
-	SessionID string
-	Event     string
-	Data      interface{}
-}
+// Note: AI Coder and PTY message types have been moved to messages/aicoder_messages.go
+// to consolidate message definitions and avoid duplication
 
-type aiCoderOutputMsg struct {
-	SessionID string
-	Output    string
-}
-
-type aiCoderErrorMsg struct {
-	SessionID string
-	Error     error
-}
-
-// PTY-related messages (used by lock-free PTY manager)
-type PTYOutputMsg struct {
-	SessionID string
-	Data      []byte
-}
-
-type PTYEventMsg struct {
-	Event aicoder.PTYEvent
-}
-
-// Note: BatchPTYMsg is defined in lockfree_pty_manager.go
 
 // URL detection messages
 type urlDetectedMsg struct {

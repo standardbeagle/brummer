@@ -1,8 +1,8 @@
 package tui
 
 import (
+	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
@@ -34,27 +34,24 @@ func (h *SettingsMessageHandler) CanHandle(msg tea.Msg) bool {
 func (h *SettingsMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case messages.SettingsRefreshedMsg:
-		// Forward to settings view component
-		if model.settingsView != nil {
-			updatedModel, cmd := model.settingsView.Update(msg)
-			model.settingsView = updatedModel.(*components.SettingsView)
-			return model, cmd
+		// Update settings state using Redux/Elm pattern
+		if model.masterData != nil && model.masterData.SettingsState != nil {
+			// Update state immutably with refreshed settings info
+			model.masterData.SettingsState = model.masterData.SettingsState.UpdateSettingsInfo(msg.SettingsInfo)
 		}
 
 	case messages.SettingsMCPInstalledMsg:
-		// Forward to settings view component
-		if model.settingsView != nil {
-			updatedModel, cmd := model.settingsView.Update(msg)
-			model.settingsView = updatedModel.(*components.SettingsView)
-			return model, cmd
+		// MCP configuration was installed - could trigger a refresh
+		// This will be handled by the main model requesting a settings refresh
+		// For now, just mark that settings need refresh
+		if model.masterData != nil && model.masterData.SettingsState != nil {
+			model.masterData.SettingsState = model.masterData.SettingsState.MarkForRefresh()
 		}
 
 	case messages.SettingsErrorMsg:
-		// Forward to settings view component
-		if model.settingsView != nil {
-			updatedModel, cmd := model.settingsView.Update(msg)
-			model.settingsView = updatedModel.(*components.SettingsView)
-			return model, cmd
+		// Handle settings errors - update state with error
+		if model.masterData != nil && model.masterData.SettingsState != nil {
+			model.masterData.SettingsState = model.masterData.SettingsState.SetError(fmt.Errorf("settings error: %s", msg.Error))
 		}
 
 	case messages.SettingsUpdateMsg:

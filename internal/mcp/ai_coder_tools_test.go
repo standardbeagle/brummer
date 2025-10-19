@@ -12,7 +12,8 @@ import (
 
 	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
@@ -120,7 +121,7 @@ func (m *MockAICoderManager) UpdateCoderTask(id string, task string) error {
 // Test Setup
 func setupMCPTestServer(t *testing.T) (*MCPServer, *MockAICoderManager) {
 	// Create dependencies
-	processMgr := &process.Manager{}
+	processMgr := &processes.Manager{}
 	logStore := logs.NewStore(10000, nil)
 	proxyServer := &proxy.Server{}
 	eventBus := events.NewEventBus()

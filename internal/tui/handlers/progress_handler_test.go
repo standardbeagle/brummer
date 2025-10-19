@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/tui/commands"
-	"github.com/standardbeagle/brummer/internal/tui/types"
+	"github.com/standardbeagle/brummer/internal/shared/types"
 	tea "github.com/charmbracelet/bubbletea"
 )
 

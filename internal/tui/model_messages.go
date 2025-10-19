@@ -26,6 +26,12 @@ type TickMsg struct{}
 // SwitchToAICodersMsg is sent to switch to the AI Coders view
 type SwitchToAICodersMsg struct{}
 
+// CommandStartedMsg is sent when a command has been started
+type CommandStartedMsg struct {
+	commandName string
+	success     bool
+}
+
 // LogUpdateMsg is sent when logs need to be refreshed
 type LogUpdateMsg struct{}
 

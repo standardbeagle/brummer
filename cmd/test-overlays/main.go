@@ -7,7 +7,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/internal/tui/components"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
@@ -27,7 +28,7 @@ func initialModel() model {
 	eventBus := events.NewEventBus()
 
 	// Create real services for testing
-	processMgr, err := process.NewManager(".", eventBus, true)
+	processMgr, err := processes.NewManager(".", eventBus, true)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to create process manager: %v\n", err)
 		processMgr = nil

@@ -1,10 +1,10 @@
 package tui
 
 import (
-	"github.com/standardbeagle/brummer/internal/tui/components"
+	"github.com/standardbeagle/brummer/internal/tui/state"
 )
 
-// Type aliases for backward compatibility - types moved to components package (T028)
-type MCPConnectionItem = components.MCPConnectionItem
-type mcpConnectionItem = components.MCPConnectionItem
-type MCPActivity = components.MCPActivity
+// Type aliases for backward compatibility - types moved to state package (Redux/Elm migration)
+type MCPConnectionItem = state.MCPConnectionItem
+type mcpConnectionItem = state.MCPConnectionItem
+type MCPActivity = state.MCPActivity

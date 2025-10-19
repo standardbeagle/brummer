@@ -11,7 +11,8 @@ import (
 
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/mcp"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/proxy"
 	"github.com/standardbeagle/brummer/pkg/events"
 	"github.com/stretchr/testify/assert"
@@ -83,7 +84,7 @@ func TestSystemWideRaceConditions(t *testing.T) {
 		eb := events.NewEventBus()
 		defer eb.Shutdown()
 
-		mgr, err := process.NewManager("/tmp", eb, false)
+		mgr, err := processes.NewManager("/tmp", eb, false)
 		require.NoError(t, err)
 		defer mgr.Cleanup()
 
@@ -117,7 +118,7 @@ func TestSystemWideRaceConditions(t *testing.T) {
 
 					// Query the process status (tests thread-safe getters)
 					status := proc.GetStatus()
-					if status != process.StatusPending && status != process.StatusRunning {
+					if status != processes.StatusPending && status != processes.StatusRunning {
 						t.Logf("Unexpected status: %v", status)
 					}
 
@@ -366,7 +367,7 @@ func TestSystemStressWithRaceDetection(t *testing.T) {
 	store := logs.NewStore(50000, eb)
 	defer store.Close()
 
-	mgr, err := process.NewManager("/tmp", eb, false)
+	mgr, err := processes.NewManager("/tmp", eb, false)
 	require.NoError(t, err)
 	defer mgr.Cleanup()
 

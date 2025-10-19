@@ -11,7 +11,8 @@ import (
 	"github.com/knz/catwalk"
 	"github.com/standardbeagle/brummer/internal/config"
 	"github.com/standardbeagle/brummer/internal/logs"
-	"github.com/standardbeagle/brummer/internal/process"
+	
+	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
@@ -40,7 +41,7 @@ func createTestModelWithWorkingDir() *Model {
 	// Create dependencies
 	eventBus := events.NewEventBus()
 	logStore := logs.NewStore(1000, eventBus)
-	processMgr, err := process.NewManager(workDir, eventBus, false)
+	processMgr, err := processes.NewManager(workDir, eventBus, false)
 	if err != nil {
 		panic(err)
 	}
