@@ -69,7 +69,9 @@ As a developer using Brummer, I need all TUI tabs to be fully functional with re
 1. **Given** processes are generating log output, **When** I switch to the Logs tab, **Then** I see all log entries with severity levels, timestamps, and sources
 2. **Given** I'm viewing the Logs tab, **When** I filter by severity level (info/warn/error), **Then** only matching log entries are displayed
 3. **Given** I'm viewing the Logs tab, **When** I search for text, **Then** matching log entries are highlighted
-4. **Given** logs are scrolling, **When** I pause auto-scroll, **Then** new logs accumulate without disrupting my view
+4. **Given** I'm viewing the Logs tab, **When** I view the top row **Then** tabs with sources are displayed and can be selected to filter
+4. **Given** I'm viewing the Logs tab, **When** I fiter by source process, **Then** matching log entries are filtered
+5. **Given** logs are scrolling, **When** I pause auto-scroll, **Then** new logs accumulate without disrupting my view
 
 #### Proxy Tab
 1. **Given** the proxy server is running, **When** I switch to the Proxy tab, **Then** I see proxy status, active connections, and discovered endpoints
@@ -147,11 +149,30 @@ As a developer using Brummer, I need all TUI tabs to be fully functional with re
 
 #### Slash Command Tab Requirements
 - **FR-032**: System MUST display command palette when '/' key is pressed
-- **FR-033**: System MUST show all available slash commands with descriptions
-- **FR-034**: System MUST filter commands as user types
-- **FR-035**: System MUST execute selected commands with proper argument handling
-- **FR-036**: System MUST display command results or errors clearly
-- **FR-037**: System MUST support command history for recently executed commands
+- **FR-033**: System MUST show all available slash commands with intelligent context-aware autocomplete
+- **FR-034**: System MUST filter commands as user types with prefix matching (case-insensitive)
+- **FR-035**: System MUST execute selected commands with proper argument handling and validation
+- **FR-036**: System MUST display command results or errors clearly with appropriate styling
+- **FR-037**: System MUST support tab completion for multi-level commands (command + arguments)
+- **FR-038-CMD**: System MUST provide autocomplete suggestions based on command context:
+  - `/run` - Show available scripts excluding already running ones
+  - `/restart`, `/stop` - Show "all" plus currently running processes
+  - `/clear` - Show "all", "logs", "errors", "web", plus all script names
+  - `/show`, `/hide` - Show common log filter patterns
+  - `/proxy` - Show subcommands and URL suggestions
+  - `/ai` - Show configured AI providers
+  - `/help`, `/exit`, `/quit` - No additional arguments
+- **FR-039-CMD**: System MUST support keyboard navigation in autocomplete:
+  - Tab: Accept selected suggestion and add trailing space
+  - Up/Down arrows: Navigate through suggestions
+  - Enter: Execute complete command
+  - Esc: Cancel and close command palette
+- **FR-040-CMD**: System MUST validate commands before execution and show error messages for invalid input
+- **FR-041-CMD**: System MUST display suggestions in a dropdown with:
+  - Visual selection indicator (▶)
+  - Highlighted selected item
+  - Scrollable list for many suggestions (max 10 visible)
+  - Dynamic filtering as user types
 
 #### Automated Testing Requirements
 - **FR-038**: System MUST have automated service tests for all tab state management
@@ -240,5 +261,157 @@ As a developer using Brummer, I need all TUI tabs to be fully functional with re
 - **Architecture**: 100% compliance with lock-free immutable state pattern
 - **Testing**: 100% of tabs have automated service tests
 - **Deadlocks**: Zero deadlocks possible (no mutexes in state system)
+
+---
+
+## Appendix: Slash Command System Details
+
+### Available Slash Commands
+
+#### Process Management Commands
+
+1. **`/run <script-name>`**
+   - **Purpose**: Start a new process from package.json scripts
+   - **Autocomplete**: Shows available scripts excluding already running ones
+   - **Behavior**: Detects scripts from package.json, filters out running processes
+   - **Example**: `/run dev`, `/run test`, `/run build`
+
+2. **`/restart <process-name|all>`**
+   - **Purpose**: Restart one or all running processes
+   - **Autocomplete**: Shows "all" + list of currently running process names
+   - **Behavior**: Stops and starts the specified process(es)
+   - **Example**: `/restart dev`, `/restart all`
+
+3. **`/stop <process-name|all>`**
+   - **Purpose**: Stop one or all running processes
+   - **Autocomplete**: Shows "all" + list of currently running process names
+   - **Behavior**: Terminates the specified process(es)
+   - **Example**: `/stop dev`, `/stop all`
+
+#### Display Management Commands
+
+4. **`/clear <target>`**
+   - **Purpose**: Clear logs, errors, or web view data
+   - **Autocomplete**: Shows "all", "logs", "errors", "web", plus all script names
+   - **Behavior**: Clears specified data type
+   - **Example**: `/clear logs`, `/clear all`, `/clear dev`
+
+5. **`/show <pattern>`**
+   - **Purpose**: Show log lines matching a pattern (regex)
+   - **Autocomplete**: Common patterns: "error", "warn", "info", "debug", "^\\[", "\\]$", "|"
+   - **Behavior**: Filters log display to show matching lines
+   - **Example**: `/show error`, `/show "^\\[ERROR\\]"`
+
+6. **`/hide <pattern>`**
+   - **Purpose**: Hide log lines matching a pattern (regex)
+   - **Autocomplete**: Common patterns: "error", "warn", "info", "debug", "^\\[", "\\]$", "|"
+   - **Behavior**: Filters log display to hide matching lines
+   - **Example**: `/hide debug`, `/hide "\\[INFO\\]"`
+
+#### Proxy Commands
+
+7. **`/proxy <subcommand|url>`**
+   - **Purpose**: Manage proxy server
+   - **Autocomplete**: "list", "http://localhost:3000", "http://localhost:8080", "https://example.com"
+   - **Behavior**: Proxy configuration and URL forwarding
+   - **Example**: `/proxy list`, `/proxy http://localhost:3000`
+
+8. **`/toggle-proxy`**
+   - **Purpose**: Toggle proxy server on/off
+   - **Autocomplete**: None (no arguments)
+   - **Behavior**: Enables/disables proxy server
+   - **Example**: `/toggle-proxy`
+
+#### AI Coder Commands
+
+9. **`/ai <provider>`**
+   - **Purpose**: Open AI coder session with specified provider
+   - **Autocomplete**: "claude", "claude-3-7", "claude-o3" (from configuration)
+   - **Behavior**: Starts interactive AI coding session
+   - **Example**: `/ai claude`, `/ai claude-3-7`
+
+10. **`/term`**
+    - **Purpose**: Open terminal/PTY session
+    - **Autocomplete**: None (no arguments)
+    - **Behavior**: Opens interactive terminal
+    - **Example**: `/term`
+
+#### Utility Commands
+
+11. **`/help`**
+    - **Purpose**: Display help information
+    - **Autocomplete**: None (no arguments)
+    - **Behavior**: Shows command reference
+    - **Example**: `/help`
+
+12. **`/exit` or `/quit`**
+    - **Purpose**: Exit the application
+    - **Autocomplete**: None (no arguments)
+    - **Behavior**: Gracefully shuts down all processes and exits
+    - **Example**: `/exit`, `/quit`
+
+### Autocomplete Behavior Details
+
+#### Multi-Level Completion
+The autocomplete system supports multi-level completion where:
+1. **First segment (command)**: Matches against root commands
+2. **Subsequent segments (arguments)**: Context-aware based on the command
+
+#### Filtering Algorithm
+- **Prefix matching**: Case-insensitive prefix search
+- **Dynamic**: Updates as user types each character
+- **Smart**: Shows only relevant suggestions based on command context
+
+#### Visual Indicators
+- **Selected item**: Shows "▶" prefix and highlighted background
+- **Unselected items**: Shows "  " prefix and normal foreground
+- **Scroll indicator**: Shows limited suggestions (max 10) with implicit scrolling
+
+#### Keyboard Interaction
+- **Tab**: Autocompletes selected suggestion, adds trailing space for multi-arg commands
+- **Up/Down**: Navigate through suggestion list (wraps at boundaries)
+- **Enter**: Validates and executes the complete command
+- **Esc**: Cancels and closes the command palette
+- **Typing**: Filters suggestions in real-time
+
+#### Context-Aware Filtering
+
+**Example: `/run` command**
+```
+Input: "/run d"
+Autocomplete shows: ["dev", "debug", "deploy"] (only non-running scripts starting with 'd')
+```
+
+**Example: `/restart` command**
+```
+Input: "/restart "
+Autocomplete shows: ["all", "dev", "api", "worker"] (all + running processes)
+```
+
+**Example: `/clear` command**
+```
+Input: "/clear "
+Autocomplete shows: ["all", "logs", "errors", "web", "dev", "api"] (types + all scripts)
+```
+
+#### Process-Aware Suggestions
+The autocomplete integrates with the process manager to:
+- **Exclude running processes** from `/run` suggestions
+- **Include only running processes** in `/stop`, `/restart` suggestions
+- **Show all processes** regardless of state in `/clear` suggestions
+
+#### Error Handling
+- **Invalid command**: Shows error message "Unknown command: <name>"
+- **Missing arguments**: Shows error message "Command requires arguments"
+- **Validation failure**: Shows specific validation error message
+- **Empty input**: Shows all root commands as suggestions
+
+### Command Validation Rules
+
+1. **Command must start with '/'** - Enforced by prompt
+2. **Command name must be recognized** - Validated against root commands list
+3. **Arguments must match expected count** - Validated per command
+4. **Process names must exist** - Validated for process-specific commands
+5. **Regex patterns must be valid** - Validated for show/hide commands
 
 ---
