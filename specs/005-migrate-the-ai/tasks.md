@@ -62,11 +62,11 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `internal/tui/bridge/service_bridge.go`
 
 **Acceptance Criteria**:
-- [ ] Add AICoderService parameter to NewServiceBridge() constructor
-- [ ] Store AI coder service reference in ServiceBridge struct
-- [ ] Update all NewServiceBridge() call sites to pass AI coder service
-- [ ] Verify service reference is non-nil before event subscriptions
-- [ ] Build succeeds without errors
+- [X] Add AICoderService parameter to NewServiceBridge() constructor
+- [X] Store AI coder service reference in ServiceBridge struct
+- [X] Update all NewServiceBridge() call sites to pass AI coder service
+- [X] Verify service reference is non-nil before event subscriptions
+- [X] Build succeeds without errors
 
 **Implementation Notes**:
 - Check existing service parameters in NewServiceBridge constructor
@@ -85,14 +85,14 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `internal/tui/components/aicoders_view.go`
 
 **Acceptance Criteria**:
-- [ ] Implement actual terminal rendering in View() method when viewState.Mode = ViewModePTY
-- [ ] Use cached terminal.terminal state for rendering (no service calls in View())
-- [ ] Format terminal lines with proper ANSI escape code processing
-- [ ] Display cursor position indicator correctly
-- [ ] Apply viewport scrolling for terminal content
-- [ ] Show session header and help footer in PTY mode
-- [ ] Handle empty terminal state gracefully
-- [ ] Rendering completes <16ms for 60fps performance
+- [X] Implement actual terminal rendering in View() method when viewState.Mode = ViewModePTY
+- [X] Use cached terminal.terminal state for rendering (no service calls in View())
+- [X] Format terminal lines with proper ANSI escape code processing
+- [X] Display cursor position indicator correctly
+- [X] Apply viewport scrolling for terminal content
+- [X] Show session header and help footer in PTY mode
+- [X] Handle empty terminal state gracefully
+- [X] Rendering completes <16ms for 60fps performance
 
 **Implementation Notes**:
 - Reference existing PTY rendering patterns from deleted ai_coder_pty_view.go
@@ -112,12 +112,12 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `internal/tui/components/aicoders_view.go`
 
 **Acceptance Criteria**:
-- [ ] Handle tea.KeyMsg when viewState.Mode = ViewModePTY
-- [ ] Forward non-special keys to active session via SendInputCmd
-- [ ] Handle special keys: esc (return to list), pgup/pgdn (scroll)
-- [ ] Don't intercept "/" command palette (check ShouldInterceptSlashCommand)
-- [ ] Measure input forwarding latency (<50ms requirement)
-- [ ] Update LastActivity timestamp on input
+- [X] Handle tea.KeyMsg when viewState.Mode = ViewModePTY
+- [X] Forward non-special keys to active session via SendInputCmd
+- [X] Handle special keys: esc (return to list), pgup/pgdn (scroll)
+- [X] Don't intercept "/" command palette (check ShouldInterceptSlashCommand)
+- [X] Measure input forwarding latency (<50ms requirement)
+- [X] Update LastActivity timestamp on input
 
 **Implementation Notes**:
 - Check existing keyboard handling in Update() method
@@ -139,12 +139,12 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `internal/tui/model.go`
 
 **Acceptance Criteria**:
-- [ ] Create AICoderService instance in NewModelWithView() or similar
-- [ ] Pass AI coder service to NewServiceBridge() call
-- [ ] Add AI coder service to model shutdown sequence
-- [ ] ServiceBridge.Start() called with AI coder event subscriptions
-- [ ] AI coder service accessible via component routing
-- [ ] Build succeeds without errors
+- [X] Create AICoderService instance in NewModelWithView() or similar
+- [X] Pass AI coder service to NewServiceBridge() call
+- [X] Add AI coder service to model shutdown sequence
+- [X] ServiceBridge.Start() called with AI coder event subscriptions
+- [X] AI coder service accessible via component routing
+- [X] Build succeeds without errors
 
 **Implementation Notes**:
 - Find model initialization function (likely NewModelWithView)
@@ -164,10 +164,10 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `internal/tui/model.go` (or component initialization)
 
 **Acceptance Criteria**:
-- [ ] Pass AI coder service to AICodersViewComponent constructor
-- [ ] Component stores service reference for command creation
-- [ ] Service is non-nil when component initialized
-- [ ] Build succeeds without errors
+- [X] Pass AI coder service to AICodersViewComponent constructor
+- [X] Component stores service reference for command creation
+- [X] Service is non-nil when component initialized
+- [X] Build succeeds without errors
 
 **Implementation Notes**:
 - Find where AICodersViewComponent is instantiated
@@ -186,13 +186,13 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `test/integration/aicoder_component_test.go`
 
 **Acceptance Criteria**:
-- [ ] Remove t.Skip from TestAICoderComponentInit
-- [ ] Remove t.Skip from TestAICoderMessages
-- [ ] Remove t.Skip from TestAICoderKeyboard
-- [ ] Remove t.Skip from TestAICoderRendering
-- [ ] Remove t.Skip from TestAICoderResize
-- [ ] Tests run and validate integration functionality
-- [ ] Tests use TTY allocation (BRUMMER_BINARY environment)
+- [X] Remove t.Skip from TestAICoderComponentInit
+- [X] Remove t.Skip from TestAICoderMessages
+- [X] Remove t.Skip from TestAICoderKeyboard
+- [X] Remove t.Skip from TestAICoderRendering
+- [X] Remove t.Skip from TestAICoderResize
+- [X] Tests run and validate integration functionality
+- [X] Tests use TTY allocation (BRUMMER_BINARY environment)
 
 **Implementation Notes**:
 - Integration tests already exist but are skipped
@@ -213,14 +213,14 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `internal/tui/components/aicoders_view.go`
 
 **Acceptance Criteria**:
-- [ ] Implement StartAICoderSessionCmd command constructor
-- [ ] Implement StopAICoderSessionCmd command constructor
-- [ ] Implement SendInputCmd command constructor
-- [ ] Implement FetchSessionListCmd command constructor
-- [ ] Implement FetchTerminalStateCmd command constructor
-- [ ] Commands call appropriate service methods
-- [ ] Commands handle errors and return error messages
-- [ ] Commands are async (return tea.Cmd functions)
+- [X] Implement StartAICoderSessionCmd command constructor
+- [X] Implement StopAICoderSessionCmd command constructor
+- [X] Implement SendInputCmd command constructor
+- [X] Implement FetchSessionListCmd command constructor
+- [X] Implement FetchTerminalStateCmd command constructor
+- [X] Commands call appropriate service methods
+- [X] Commands handle errors and return error messages
+- [X] Commands are async (return tea.Cmd functions)
 
 **Implementation Notes**:
 - Follow command constructor patterns from aicoder_component.go contract
@@ -239,14 +239,14 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `internal/tui/components/aicoders_view.go`
 
 **Acceptance Criteria**:
-- [ ] Handle AICoderSessionCreatedMsg - add to sessions list
-- [ ] Handle AICoderSessionUpdatedMsg - update cached session
-- [ ] Handle AICoderSessionEndedMsg - remove from list
-- [ ] Handle AICoderPTYOutputMsg - trigger terminal state fetch
-- [ ] Handle AICoderErrorMsg - display error notification
-- [ ] Handle SessionListMsg - update cached sessions
-- [ ] Handle TerminalStateMsg - update terminal display
-- [ ] All state modifications in Update() method only
+- [X] Handle AICoderSessionCreatedMsg - add to sessions list
+- [X] Handle AICoderSessionUpdatedMsg - update cached session
+- [X] Handle AICoderSessionEndedMsg - remove from list
+- [X] Handle AICoderPTYOutputMsg - trigger terminal state fetch
+- [X] Handle AICoderErrorMsg - display error notification
+- [X] Handle SessionListMsg - update cached sessions
+- [X] Handle TerminalStateMsg - update terminal display
+- [X] All state modifications in Update() method only
 
 **Implementation Notes**:
 - Add type switches for AI coder message types
@@ -265,12 +265,12 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `internal/tui/components/aicoders_view.go`
 
 **Acceptance Criteria**:
-- [ ] Handle 'n' key in list mode to create new session
-- [ ] Prompt user for session name and command
-- [ ] Create session via StartAICoderSessionCmd
-- [ ] Switch to PTY mode on successful session creation
-- [ ] Handle session creation errors gracefully
-- [ ] Update session list immediately on creation
+- [X] Handle 'n' key in list mode to create new session
+- [X] Prompt user for session name and command
+- [X] Create session via StartAICoderSessionCmd
+- [X] Switch to PTY mode on successful session creation
+- [X] Handle session creation errors gracefully
+- [X] Update session list immediately on creation
 
 **Implementation Notes**:
 - Add keyboard handler for 'n' key in list mode
@@ -290,12 +290,12 @@ This task list completes the AI coder migration by addressing the critical integ
 - Modify: `internal/tui/components/aicoders_view.go`
 
 **Acceptance Criteria**:
-- [ ] Handle 'd' key in list mode to delete selected session
-- [ ] Confirm deletion before proceeding
-- [ ] Stop session via StopAICoderSessionCmd
-- [ ] Remove session from list on SessionEndedMsg
-- [ ] Handle deletion errors gracefully
-- [ ] Update selection after deletion
+- [X] Handle 'd' key in list mode to delete selected session
+- [X] Confirm deletion before proceeding
+- [X] Stop session via StopAICoderSessionCmd
+- [X] Remove session from list on SessionEndedMsg
+- [X] Handle deletion errors gracefully
+- [X] Update selection after deletion
 
 **Implementation Notes**:
 - Add keyboard handler for 'd' key with confirmation
@@ -316,11 +316,11 @@ This task list completes the AI coder migration by addressing the critical integ
 **Files**: Multiple (search and remove)
 
 **Acceptance Criteria**:
-- [ ] Search for remaining "AICoderController" references
-- [ ] Remove or replace any controller references found
-- [ ] Update imports if controller types referenced
-- [ ] Build succeeds without controller references
-- [ ] No "AICoderController" strings in codebase
+- [X] Search for remaining "AICoderController" references
+- [X] Remove or replace any controller references found
+- [X] Update imports if controller types referenced
+- [X] Build succeeds without controller references
+- [X] No "AICoderController" strings in codebase
 
 **Implementation Notes**:
 - Controller files already deleted in git status
@@ -338,11 +338,11 @@ This task list completes the AI coder migration by addressing the critical integ
 **Files**: N/A
 
 **Acceptance Criteria**:
-- [ ] All unit tests pass: `go test ./internal/tui/services`
-- [ ] All integration tests pass: `go test -tags=integration ./test/integration`
-- [ ] No race conditions: `make test-race`
-- [ ] Test coverage ≥87%: `go test -coverprofile=coverage.out ./internal/tui/...`
-- [ ] AI coder integration tests specifically pass
+- [X] All unit tests pass: `go test ./internal/tui/services`
+- [X] All integration tests pass: `go test -tags=integration ./test/integration`
+- [X] No race conditions: `make test-race`
+- [X] Test coverage ≥87%: `go test -coverprofile=coverage.out ./internal/tui/...`
+- [X] AI coder integration tests specifically pass
 
 **Implementation Notes**:
 - Run full test suite to validate integration
@@ -360,14 +360,14 @@ This task list completes the AI coder migration by addressing the critical integ
 **Files**: N/A
 
 **Acceptance Criteria**:
-- [ ] Build succeeds: `make build`
-- [ ] AI Coders view accessible via command palette
-- [ ] Session creation works (name, command, PTY start)
-- [ ] PTY view renders terminal output correctly
-- [ ] Keyboard input feels responsive (<50ms)
-- [ ] Session deletion cleans up resources
-- [ ] View switching (list ↔ PTY) works smoothly
-- [ ] Help overlay (?) shows key bindings
+- [X] Build succeeds: `make build`
+- [X] AI Coders view accessible via command palette
+- [X] Session creation works (name, command, PTY start)
+- [X] PTY view renders terminal output correctly
+- [X] Keyboard input feels responsive (<50ms)
+- [X] Session deletion cleans up resources
+- [X] View switching (list ↔ PTY) works smoothly
+- [X] Help overlay (?) shows key bindings
 
 **Implementation Notes**:
 - Build and run Brummer manually
@@ -386,11 +386,11 @@ This task list completes the AI coder migration by addressing the critical integ
 **Files**: N/A
 
 **Acceptance Criteria**:
-- [ ] SendInput() <50ms (p95) verified
-- [ ] GetTerminalState() <5ms (p95) verified
-- [ ] StopSession() <100ms (p95) verified
-- [ ] View() rendering <16ms (60fps) verified
-- [ ] No performance regression vs baseline
+- [X] SendInput() <50ms (p95) verified
+- [X] GetTerminalState() <5ms (p95) verified
+- [X] StopSession() <100ms (p95) verified
+- [X] View() rendering <16ms (60fps) verified
+- [X] No performance regression vs baseline
 
 **Implementation Notes**:
 - Run performance benchmarks if available
@@ -499,3 +499,13 @@ Task agent, implement ServiceBridge AI coder event subscriptions by modifying in
 - **Code Quality**: ✅ No race conditions, clean architecture
 
 **Next Step**: Feature ready for production use - migration complete
+---
+
+## ✅ COMPLETED - MERGED TO MAIN
+
+**Date**: 2025-10-19
+**Status**: All tasks completed and integrated into main branch
+**Architecture**: Lock-free Redux/Elm pattern with immutable states
+**Branch**: Merged via 009-make-the-application → main
+
+All work from this specification has been successfully integrated into the production-ready lock-free architecture now on the main branch.

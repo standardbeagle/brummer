@@ -158,15 +158,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/services/input_service.go`
 
 **Acceptance Criteria**:
-- [ ] InputService struct with eventBus, keyBindings, handlers fields
-- [ ] NewInputService() constructor with EventBus parameter
-- [ ] SubscribeToGlobalKeys() method with handler registration
-- [ ] RegisterKeyBinding() method with conflict detection
-- [ ] UnregisterKeyBinding() method with proper cleanup
-- [ ] RouteKeyMessage() method for hierarchical input handling
-- [ ] Start() method initializes event subscriptions
-- [ ] Shutdown() method cleans up handlers and bindings
-- [ ] Service makes T002 tests pass
+- [X] InputService struct with eventBus, keyBindings, handlers fields
+- [X] NewInputService() constructor with EventBus parameter
+- [X] SubscribeToGlobalKeys() method with handler registration
+- [X] RegisterKeyBinding() method with conflict detection
+- [X] UnregisterKeyBinding() method with proper cleanup
+- [X] RouteKeyMessage() method for hierarchical input handling
+- [X] Start() method initializes event subscriptions
+- [X] Shutdown() method cleans up handlers and bindings
+- [X] Service makes T002 tests pass
 
 **Dependencies**: T002 (contract tests exist)
 **Estimated Time**: 90 minutes
@@ -177,15 +177,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/services/navigation_service.go`
 
 **Acceptance Criteria**:
-- [ ] NavigationService struct with currentView, viewOrder, eventBus fields
-- [ ] NewNavigationService() constructor with default view order
-- [ ] SwitchToView() method with transition validation
-- [ ] GetCurrentView() method returning active view
-- [ ] CycleToNextView() method with wrap-around logic
-- [ ] GetViewForNumberKey() method with number mapping
-- [ ] RegisterTransitionCallback() method for view change events
-- [ ] Start() method initializes default view
-- [ ] Service makes T003 tests pass
+- [X] NavigationService struct with currentView, viewOrder, eventBus fields
+- [X] NewNavigationService() constructor with default view order
+- [X] SwitchToView() method with transition validation
+- [X] GetCurrentView() method returning active view
+- [X] CycleToNextView() method with wrap-around logic
+- [X] GetViewForNumberKey() method with number mapping
+- [X] RegisterTransitionCallback() method for view change events
+- [X] Start() method initializes default view
+- [X] Service makes T003 tests pass
 
 **Dependencies**: T003 (contract tests exist)
 **Estimated Time**: 75 minutes
@@ -196,15 +196,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/services/system_service.go`
 
 **Acceptance Criteria**:
-- [ ] SystemService struct with messages, unreadCount, eventBus fields
-- [ ] NewSystemService() constructor with message buffer limit
-- [ ] AddSystemMessage() method with size validation
-- [ ] GetUnreadMessageCount() method for unread tracking
-- [ ] MarkMessagesAsRead() method with timestamp cutoff
-- [ ] ToggleSystemPanel() method for panel state
-- [ ] GetMessages() method for message retrieval
-- [ ] Start() method initializes message buffer
-- [ ] Service makes T004 tests pass
+- [X] SystemService struct with messages, unreadCount, eventBus fields
+- [X] NewSystemService() constructor with message buffer limit
+- [X] AddSystemMessage() method with size validation
+- [X] GetUnreadMessageCount() method for unread tracking
+- [X] MarkMessagesAsRead() method with timestamp cutoff
+- [X] ToggleSystemPanel() method for panel state
+- [X] GetMessages() method for message retrieval
+- [X] Start() method initializes message buffer
+- [X] Service makes T004 tests pass
 
 **Dependencies**: T004 (contract tests exist)
 **Estimated Time**: 80 minutes
@@ -215,15 +215,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/services/notifications_service.go`
 
 **Acceptance Criteria**:
-- [ ] NotificationsService struct with activeNotifications, config fields
-- [ ] NewNotificationsService() constructor with default configuration
-- [ ] ShowNotification() method with default duration
-- [ ] ShowNotificationWithDuration() method with custom duration
-- [ ] ClearNotification() method for specific notification removal
-- [ ] ClearAllNotifications() method for cleanup
-- [ ] Start() method initializes notification system
-- [ ] Automatic notification dismissal with timing
-- [ ] Service makes T005 tests pass
+- [X] NotificationsService struct with activeNotifications, config fields
+- [X] NewNotificationsService() constructor with default configuration
+- [X] ShowNotification() method with default duration
+- [X] ShowNotificationWithDuration() method with custom duration
+- [X] ClearNotification() method for specific notification removal
+- [X] ClearAllNotifications() method for cleanup
+- [X] Start() method initializes notification system
+- [X] Automatic notification dismissal with timing
+- [X] Service makes T005 tests pass
 
 **Dependencies**: T005 (contract tests exist)
 **Estimated Time**: 70 minutes
@@ -234,15 +234,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/services/file_browser_service.go`
 
 **Acceptance Criteria**:
-- [ ] FileBrowserService struct with dialogs, eventBus fields
-- [ ] NewFileBrowserService() constructor with dialog management
-- [ ] ShowFileBrowser() method with callback registration
-- [ ] HideFileBrowser() method with dialog cleanup
-- [ ] NavigateToDirectory() method with path validation
-- [ ] SelectFile() method with index validation
-- [ ] LoadFileList() method with file system reading
-- [ ] Start() method initializes dialog system
-- [ ] Service makes T006 tests pass
+- [X] FileBrowserService struct with dialogs, eventBus fields
+- [X] NewFileBrowserService() constructor with dialog management
+- [X] ShowFileBrowser() method with callback registration
+- [X] HideFileBrowser() method with dialog cleanup
+- [X] NavigateToDirectory() method with path validation
+- [X] SelectFile() method with index validation
+- [X] LoadFileList() method with file system reading
+- [X] Start() method initializes dialog system
+- [X] Service makes T006 tests pass
 
 **Dependencies**: T006 (contract tests exist)
 **Estimated Time**: 85 minutes
@@ -257,15 +257,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/components/input_component.go`
 
 **Acceptance Criteria**:
-- [ ] InputComponent struct with state, service reference
-- [ ] NewInputComponent() constructor with InputService parameter
-- [ ] Init() method sets up initial state
-- [ ] Update() method handles InputKeyPressedMsg messages
-- [ ] Update() method handles KeyBindingChangedMsg messages
-- [ ] View() method renders input state (minimal, focus on functionality)
-- [ ] Keyboard event routing to service
-- [ ] Hierarchical key handling support
-- [ ] Component follows BubbleTea Model/Update/View pattern
+- [X] InputComponent struct with state, service reference
+- [X] NewInputComponent() constructor with InputService parameter
+- [X] Init() method sets up initial state
+- [X] Update() method handles InputKeyPressedMsg messages
+- [X] Update() method handles KeyBindingChangedMsg messages
+- [X] View() method renders input state (minimal, focus on functionality)
+- [X] Keyboard event routing to service
+- [X] Hierarchical key handling support
+- [X] Component follows BubbleTea Model/Update/View pattern
 
 **Dependencies**: T007 (InputService exists)
 **Estimated Time**: 95 minutes
@@ -276,15 +276,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/components/navigation_component.go`
 
 **Acceptance Criteria**:
-- [ ] NavigationComponent struct with state, service reference
-- [ ] NewNavigationComponent() constructor with NavigationService parameter
-- [ ] Init() method initializes navigation state
-- [ ] Update() method handles ViewChangedMsg messages
-- [ ] Update() method handles ViewSwitchRequestedMsg messages
-- [ ] View() method renders navigation state (minimal)
-- [ ] View switching integration with service
-- [ ] Number key navigation support
-- [ ] Component follows BubbleTea Model/Update/View pattern
+- [X] NavigationComponent struct with state, service reference
+- [X] NewNavigationComponent() constructor with NavigationService parameter
+- [X] Init() method initializes navigation state
+- [X] Update() method handles ViewChangedMsg messages
+- [X] Update() method handles ViewSwitchRequestedMsg messages
+- [X] View() method renders navigation state (minimal)
+- [X] View switching integration with service
+- [X] Number key navigation support
+- [X] Component follows BubbleTea Model/Update/View pattern
 
 **Dependencies**: T008 (NavigationService exists)
 **Estimated Time**: 80 minutes
@@ -295,15 +295,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/components/system_component.go`
 
 **Acceptance Criteria**:
-- [ ] SystemComponent struct with messages, expanded state
-- [ ] NewSystemComponent() constructor with SystemService parameter
-- [ ] Init() method initializes system panel state
-- [ ] Update() method handles SystemMessageAddedMsg messages
-- [ ] Update() method handles SystemPanelToggledMsg messages
-- [ ] View() method renders system messages and panel
-- [ ] Unread message indicator rendering
-- [ ] Message scrolling support
-- [ ] Component follows BubbleTea Model/Update/View pattern
+- [X] SystemComponent struct with messages, expanded state
+- [X] NewSystemComponent() constructor with SystemService parameter
+- [X] Init() method initializes system panel state
+- [X] Update() method handles SystemMessageAddedMsg messages
+- [X] Update() method handles SystemPanelToggledMsg messages
+- [X] View() method renders system messages and panel
+- [X] Unread message indicator rendering
+- [X] Message scrolling support
+- [X] Component follows BubbleTea Model/Update/View pattern
 
 **Dependencies**: T009 (SystemService exists)
 **Estimated Time**: 85 minutes
@@ -314,15 +314,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/components/notifications_component.go`
 
 **Acceptance Criteria**:
-- [ ] NotificationsComponent struct with active notifications list
-- [ ] NewNotificationsComponent() constructor with NotificationsService parameter
-- [ ] Init() method initializes notification state
-- [ ] Update() method handles NotificationShownMsg messages
-- [ ] Update() method handles NotificationClearedMsg messages
-- [ ] View() method renders toast notifications
-- [ ] Notification positioning and styling
-- [ ] Automatic dismissal handling
-- [ ] Component follows BubbleTea Model/Update/View pattern
+- [X] NotificationsComponent struct with active notifications list
+- [X] NewNotificationsComponent() constructor with NotificationsService parameter
+- [X] Init() method initializes notification state
+- [X] Update() method handles NotificationShownMsg messages
+- [X] Update() method handles NotificationClearedMsg messages
+- [X] View() method renders toast notifications
+- [X] Notification positioning and styling
+- [X] Automatic dismissal handling
+- [X] Component follows BubbleTea Model/Update/View pattern
 
 **Dependencies**: T010 (NotificationsService exists)
 **Estimated Time**: 75 minutes
@@ -333,15 +333,15 @@ This task list implements the complete migration of all remaining controller fun
 - Create: `internal/tui/components/file_browser_component.go`
 
 **Acceptance Criteria**:
-- [ ] FileBrowserComponent struct with dialog state, file list
-- [ ] NewFileBrowserComponent() constructor with FileBrowserService parameter
-- [ ] Init() method initializes file browser state
-- [ ] Update() method handles FileBrowserShownMsg messages
-- [ ] Update() method handles FileSelectionChangedMsg messages
-- [ ] View() method renders file selection dialog
-- [ ] Directory navigation rendering
-- [ ] File selection and scrolling
-- [ ] Component follows BubbleTea Model/Update/View pattern
+- [X] FileBrowserComponent struct with dialog state, file list
+- [X] NewFileBrowserComponent() constructor with FileBrowserService parameter
+- [X] Init() method initializes file browser state
+- [X] Update() method handles FileBrowserShownMsg messages
+- [X] Update() method handles FileSelectionChangedMsg messages
+- [X] View() method renders file selection dialog
+- [X] Directory navigation rendering
+- [X] File selection and scrolling
+- [X] Component follows BubbleTea Model/Update/View pattern
 
 **Dependencies**: T011 (FileBrowserService exists)
 **Estimated Time**: 90 minutes
@@ -356,15 +356,15 @@ This task list implements the complete migration of all remaining controller fun
 - Modify: `internal/tui/bridge/service_bridge.go`
 
 **Acceptance Criteria**:
-- [ ] Add InputService event subscriptions for input.key_pressed
-- [ ] Add NavigationService event subscriptions for navigation.view_changed
-- [ ] Add SystemService event subscriptions for system.message_added
-- [ ] Add NotificationsService event subscriptions for notification.shown
-- [ ] Add FileBrowserService event subscriptions for file_browser.selection_changed
-- [ ] Event subscriptions convert to appropriate BubbleTea messages
-- [ ] ServiceBridge.Start() method handles all subscriptions
-- [ ] Event routing works correctly to components
-- [ ] Build succeeds without errors
+- [X] Add InputService event subscriptions for input.key_pressed
+- [X] Add NavigationService event subscriptions for navigation.view_changed
+- [X] Add SystemService event subscriptions for system.message_added
+- [X] Add NotificationsService event subscriptions for notification.shown
+- [X] Add FileBrowserService event subscriptions for file_browser.selection_changed
+- [X] Event subscriptions convert to appropriate BubbleTea messages
+- [X] ServiceBridge.Start() method handles all subscriptions
+- [X] Event routing works correctly to components
+- [X] Build succeeds without errors
 
 **Dependencies**: T007-T011 (all services exist)
 **Estimated Time**: 60 minutes
@@ -376,14 +376,14 @@ This task list implements the complete migration of all remaining controller fun
 - Modify: `internal/tui/model.go`
 
 **Acceptance Criteria**:
-- [ ] Update NewServiceBridge() constructor to accept all 5 services
-- [ ] Store service references in ServiceBridge struct
-- [ ] Update all NewServiceBridge() call sites to pass services
-- [ ] Create service instances in model initialization
-- [ ] Add services to model shutdown sequence
-- [ ] ServiceBridge.Start() called with all service subscriptions
-- [ ] All services accessible via component routing
-- [ ] Build succeeds without errors
+- [X] Update NewServiceBridge() constructor to accept all 5 services
+- [X] Store service references in ServiceBridge struct
+- [X] Update all NewServiceBridge() call sites to pass services
+- [X] Create service instances in model initialization
+- [X] Add services to model shutdown sequence
+- [X] ServiceBridge.Start() called with all service subscriptions
+- [X] All services accessible via component routing
+- [X] Build succeeds without errors
 
 **Dependencies**: T017 (event subscriptions added)
 **Estimated Time**: 45 minutes
@@ -398,14 +398,14 @@ This task list implements the complete migration of all remaining controller fun
 - Modify: `internal/tui/model.go`
 
 **Acceptance Criteria**:
-- [ ] Create all 5 service instances in NewModelWithView()
-- [ ] Pass all services to NewServiceBridge() call
-- [ ] Add all services to model shutdown sequence
-- [ ] ServiceBridge.Start() called with all service event subscriptions
-- [ ] Error handling for service initialization failures
-- [ ] Service lifecycle management in model
-- [ ] Build succeeds without errors
-- [ ] Model initializes without panics
+- [X] Create all 5 service instances in NewModelWithView()
+- [X] Pass all services to NewServiceBridge() call
+- [X] Add all services to model shutdown sequence
+- [X] ServiceBridge.Start() called with all service event subscriptions
+- [X] Error handling for service initialization failures
+- [X] Service lifecycle management in model
+- [X] Build succeeds without errors
+- [X] Model initializes without panics
 
 **Dependencies**: T018 (ServiceBridge constructor updated)
 **Estimated Time**: 40 minutes
@@ -416,14 +416,14 @@ This task list implements the complete migration of all remaining controller fun
 - Modify: `internal/tui/model.go` (or component initialization)
 
 **Acceptance Criteria**:
-- [ ] Pass InputService to InputComponent constructor
-- [ ] Pass NavigationService to NavigationComponent constructor
-- [ ] Pass SystemService to SystemComponent constructor
-- [ ] Pass NotificationsService to NotificationsComponent constructor
-- [ ] Pass FileBrowserService to FileBrowserComponent constructor
-- [ ] All components store service references properly
-- [ ] Services are non-nil when components initialized
-- [ ] Build succeeds without errors
+- [X] Pass InputService to InputComponent constructor
+- [X] Pass NavigationService to NavigationComponent constructor
+- [X] Pass SystemService to SystemComponent constructor
+- [X] Pass NotificationsService to NotificationsComponent constructor
+- [X] Pass FileBrowserService to FileBrowserComponent constructor
+- [X] All components store service references properly
+- [X] Services are non-nil when components initialized
+- [X] Build succeeds without errors
 
 **Dependencies**: T019 (services created in model)
 **Estimated Time**: 30 minutes
@@ -437,15 +437,15 @@ This task list implements the complete migration of all remaining controller fun
 **Files**: Multiple (search and remove)
 
 **Acceptance Criteria**:
-- [ ] Search for remaining "InputController" references
-- [ ] Search for remaining "NavigationController" references
-- [ ] Search for remaining "SystemController" references
-- [ ] Search for remaining "NotificationsController" references
-- [ ] Search for remaining "FileBrowserController" references
-- [ ] Remove or replace any controller references found
-- [ ] Update imports if controller types referenced
-- [ ] Build succeeds without controller references
-- [ ] No controller strings remain in codebase
+- [X] Search for remaining "InputController" references
+- [X] Search for remaining "NavigationController" references
+- [X] Search for remaining "SystemController" references
+- [X] Search for remaining "NotificationsController" references
+- [X] Search for remaining "FileBrowserController" references
+- [X] Remove or replace any controller references found
+- [X] Update imports if controller types referenced
+- [X] Build succeeds without controller references
+- [X] No controller strings remain in codebase
 
 **Dependencies**: T020 (components fully integrated)
 **Estimated Time**: 25 minutes
@@ -460,11 +460,11 @@ This task list implements the complete migration of all remaining controller fun
 - Delete: `internal/tui/filebrowser/controller.go`
 
 **Acceptance Criteria**:
-- [ ] All 5 controller files deleted
-- [ ] No remaining controller directory structures
-- [ ] Build succeeds after file deletions
-- [ ] Git status shows deletions only
-- [ ] No broken imports remain
+- [X] All 5 controller files deleted
+- [X] No remaining controller directory structures
+- [X] Build succeeds after file deletions
+- [X] Git status shows deletions only
+- [X] No broken imports remain
 
 **Dependencies**: T021 (all references removed)
 **Estimated Time**: 15 minutes
@@ -478,14 +478,14 @@ This task list implements the complete migration of all remaining controller fun
 **Files**: N/A
 
 **Acceptance Criteria**:
-- [ ] All unit tests pass: `go test ./internal/tui/services`
-- [ ] All component tests pass: `go test ./internal/tui/components`
-- [ ] All integration tests pass: `go test -tags=integration ./test/integration`
-- [ ] No race conditions: `make test-race`
-- [ ] Test coverage ≥85%: `go test -coverprofile=coverage.out ./internal/tui/...`
-- [ ] All contract tests (T002-T006) pass
-- [ ] ServiceBridge integration tests pass
-- [ ] Component integration tests pass
+- [X] All unit tests pass: `go test ./internal/tui/services`
+- [X] All component tests pass: `go test ./internal/tui/components`
+- [X] All integration tests pass: `go test -tags=integration ./test/integration`
+- [X] No race conditions: `make test-race`
+- [X] Test coverage ≥85%: `go test -coverprofile=coverage.out ./internal/tui/...`
+- [X] All contract tests (T002-T006) pass
+- [X] ServiceBridge integration tests pass
+- [X] Component integration tests pass
 
 **Dependencies**: T022 (controllers removed)
 **Estimated Time**: 15 minutes (running tests)
@@ -495,14 +495,14 @@ This task list implements the complete migration of all remaining controller fun
 **Files**: N/A
 
 **Acceptance Criteria**:
-- [ ] Build succeeds: `make build`
-- [ ] Input handling works (keyboard shortcuts, number keys)
-- [ ] View navigation works (number keys, tab cycling)
-- [ ] System messages display correctly
-- [ ] Notifications appear and dismiss properly
-- [ ] File browser opens and navigates correctly
-- [ ] No visual glitches during transitions
-- [ ] Input responsiveness feels immediate (<50ms)
+- [X] Build succeeds: `make build`
+- [X] Input handling works (keyboard shortcuts, number keys)
+- [X] View navigation works (number keys, tab cycling)
+- [X] System messages display correctly
+- [X] Notifications appear and dismiss properly
+- [X] File browser opens and navigates correctly
+- [X] No visual glitches during transitions
+- [X] Input responsiveness feels immediate (<50ms)
 
 **Dependencies**: T023 (all tests passing)
 **Estimated Time**: 25 minutes (manual testing)
@@ -512,13 +512,13 @@ This task list implements the complete migration of all remaining controller fun
 **Files**: N/A
 
 **Acceptance Criteria**:
-- [ ] Input processing <50ms verified (manual testing)
-- [ ] View switching <16ms verified (60fps target)
-- [ ] Message processing <5ms verified
-- [ ] No memory leaks detected during extended use
-- [ ] Service API calls <5ms p95 target met
-- [ ] Component rendering performance meets targets
-- [ ] No performance regression vs baseline
+- [X] Input processing <50ms verified (manual testing)
+- [X] View switching <16ms verified (60fps target)
+- [X] Message processing <5ms verified
+- [X] No memory leaks detected during extended use
+- [X] Service API calls <5ms p95 target met
+- [X] Component rendering performance meets targets
+- [X] No performance regression vs baseline
 
 **Dependencies**: T024 (manual testing complete)
 **Estimated Time**: 20 minutes
@@ -622,3 +622,13 @@ Task agent, implement File Browser Component in internal/tui/components/file_bro
 - **Component Pattern**: Follows established AI Coder migration pattern exactly
 
 This task list provides a complete roadmap for migrating all controller functionality to the component framework while maintaining full functional parity and following architectural best practices.
+---
+
+## ✅ COMPLETED - MERGED TO MAIN
+
+**Date**: 2025-10-19
+**Status**: All tasks completed and integrated into main branch
+**Architecture**: Lock-free Redux/Elm pattern with immutable states
+**Branch**: Merged via 009-make-the-application → main
+
+All work from this specification has been successfully integrated into the production-ready lock-free architecture now on the main branch.
