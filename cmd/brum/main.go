@@ -716,19 +716,6 @@ func runApp(cmd *cobra.Command, args []string) {
 		// Previous hardcoded TTY error checks were forcing fallback to non-AltScreen mode in WSL2,
 		// which broke WindowSizeMsg functionality. Standard BubbleTea initialization works correctly.
 
-		// Test signal handling BEFORE starting TUI
-		fmt.Printf("🧪 Testing signal handling - try Ctrl+C now...\n")
-
-		signalTest := time.NewTimer(5 * time.Second)
-
-		select {
-		case sig := <-sigChan:
-			fmt.Printf("\n✅ Signal received! %v - signal handling works\n", sig)
-			return // Exit before starting TUI
-		case <-signalTest.C:
-			fmt.Printf("⏰ No signals in 5 seconds - proceeding with TUI\n")
-		}
-
 		// Start TUI with standard BubbleTea
 		p := tea.NewProgram(model, tea.WithAltScreen())
 

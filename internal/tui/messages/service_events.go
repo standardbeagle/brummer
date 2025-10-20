@@ -105,4 +105,12 @@ type ProxyRequestMsg struct {
 	Duration    time.Duration
 	ProcessName string
 	Timestamp   time.Time
+	Size        int64
+	Error       string
+	HasAuth     bool
+	AuthType    string
+	JWTError    string
+	JWTClaims   map[string]interface{}
+	HasTelemetry bool
+	SessionID    string
 }

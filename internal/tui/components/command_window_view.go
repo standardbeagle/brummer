@@ -29,6 +29,7 @@ var ErrTerminalTooSmall = "Terminal too small"
 // This avoids import cycle with internal/tui package
 type CommandAutocompleteInterface interface {
 	SetWidth(width int)
+	SetValue(value string)
 	Focus()
 	View() string
 	RenderDropdown(maxSuggestions int) string
@@ -38,6 +39,7 @@ type CommandAutocompleteInterface interface {
 	Update(msg tea.Msg) (CommandAutocompleteInterface, tea.Cmd)
 	ValidateInput() (bool, string)
 	SetError(errMsg string)
+	IsShowingDropdown() bool
 }
 
 // CommandWindowViewComponentNew is a stateless BubbleTea component for command windows
@@ -190,8 +192,41 @@ func (c *CommandWindowViewComponentNew) renderCommandWindow(cmdWindowState *stat
 	// Title
 	title := titleStyle.Render("Command Palette")
 
-	// Input - this would need to be handled by the autocomplete component
-	inputView := inputStyle.Render("> ") // Placeholder for autocomplete view
+	// Render the current command input text from state
+	// Note: The actual autocomplete logic is handled in DialogMessageHandler
+	// which updates both the autocomplete component AND the CommandInputText state
+	inputText := cmdWindowState.GetCommandInputText()
+	inputView := inputStyle.Render("> " + inputText)
+
+	// Render suggestions dropdown if available
+	suggestions := cmdWindowState.GetCommandSuggestions()
+	var dropdownView string
+	if len(suggestions) > 0 {
+		maxSuggestions := MaxDropdownSuggestions
+		if termHeight < 30 {
+			maxSuggestions = MaxDropdownSuggestionsSmall
+		}
+
+		// Limit suggestions to max
+		displaySuggestions := suggestions
+		if len(displaySuggestions) > maxSuggestions {
+			displaySuggestions = displaySuggestions[:maxSuggestions]
+		}
+
+		// Render each suggestion
+		var suggestionLines []string
+		for _, suggestion := range displaySuggestions {
+			suggestionLines = append(suggestionLines, "  "+suggestion)
+		}
+		dropdownView = lipgloss.JoinVertical(lipgloss.Left, suggestionLines...)
+
+		// Show more indicator if needed
+		if len(suggestions) > maxSuggestions {
+			moreStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("241")).Italic(true)
+			moreCount := len(suggestions) - maxSuggestions
+			dropdownView += "\n" + moreStyle.Render(fmt.Sprintf("  ... and %d more", moreCount))
+		}
+	}
 
 	// Help text
 	helpStyle := c.helpStyle
@@ -205,7 +240,12 @@ func (c *CommandWindowViewComponentNew) renderCommandWindow(cmdWindowState *stat
 	}
 
 	// Combine all parts
-	content := lipgloss.JoinVertical(lipgloss.Left, title, inputView, helpText)
+	var content string
+	if dropdownView != "" {
+		content = lipgloss.JoinVertical(lipgloss.Left, title, inputView, dropdownView, helpText)
+	} else {
+		content = lipgloss.JoinVertical(lipgloss.Left, title, inputView, helpText)
+	}
 	window := windowStyle.Render(content)
 
 	// Use Lipgloss to center the window in the terminal

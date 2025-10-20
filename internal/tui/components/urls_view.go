@@ -2,7 +2,6 @@ package components
 
 import (
 	"fmt"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -309,16 +308,9 @@ func (i URLInfoItemWrapper) FilterValue() string {
 }
 
 func (i URLInfoItemWrapper) Title() string {
-	// Extract domain for display
-	domain := "Unknown Domain"
-	if parsed, err := url.Parse(i.URL); err == nil {
-		domain = parsed.Host
-		if domain == "" {
-			domain = "Local"
-		}
-	}
-
-	return fmt.Sprintf("🌐 %s", domain)
+	// Display full URL with protocol
+	// Most modern terminals will automatically make this clickable
+	return fmt.Sprintf("🌐 %s", i.URL)
 }
 
 func (i URLInfoItemWrapper) Description() string {

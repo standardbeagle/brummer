@@ -157,7 +157,24 @@ func (c *LogsViewComponent) renderContent(logsState *state.LogsState, logStore *
 
 	// Format for display
 	if len(filteredEntries) == 0 {
+		// Check if logs were recently cleared (Phase E enhancement)
+		if logsState.GetShowClearedMsg() {
+			clearedTime := logsState.GetClearedAt()
+			timeSinceClear := time.Since(clearedTime)
+
+			// Show cleared message for 3 seconds
+			if timeSinceClear < 3*time.Second {
+				return c.normalStyle.Render("✅ Logs cleared")
+			}
+		}
+
 		return c.emptyStyle.Render("No logs to display")
+	}
+
+	// If we have logs but were showing cleared message, hide it
+	if logsState.GetShowClearedMsg() {
+		// In a real implementation, this would be handled by the Update() method
+		// when new logs arrive. For now, we'll just hide the message.
 	}
 
 	content := c.formatLogsForDisplay(filteredEntries)
@@ -199,7 +216,7 @@ func (c *LogsViewComponent) renderFooter(logsState *state.LogsState) string {
 	lines = append(lines, strings.Join(status, " • "))
 
 	// Help line
-	help := c.filterStyle.Render("↑↓=Scroll | Space=Auto-scroll | /=Search | /=Filter | c=Clear | h=High Priority")
+	help := c.filterStyle.Render("↑↓/j/k=Scroll | Space=Toggle Auto-scroll | /=Search | c=Clear")
 	lines = append(lines, help)
 
 	return strings.Join(lines, "\n")

@@ -10,6 +10,10 @@ import (
 
 // MasterData represents the single source of truth for all TUI state
 // This wraps existing state structures without redefining them
+//
+// MasterData is the single source of truth for ALL TUI state.
+// All state updates flow through Update() which modifies MasterData.
+// NO state should be stored elsewhere (Redux/Elm pattern).
 type MasterData struct {
 	// Version tracking for atomic updates
 	version atomic.Uint64

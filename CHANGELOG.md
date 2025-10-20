@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- TUI keyboard navigation and command improvements
+  - Context-aware slash command palette (opens on all screens except input fields and PTY)
+  - Docker and Compose command autocomplete (docker-up, docker-down, docker-build, compose-up, compose-down)
+  - Command palette now displays autocomplete suggestions with proper syncing to state
+  - Commands automatically clear from palette after execution
+  - Comprehensive command documentation for 18 slash commands
+- Logs view scrolling and navigation
+  - Arrow key (↑/↓) and vim-style (j/k) navigation for scrolling through logs
+  - Space key to toggle auto-scroll on/off
+  - Auto-scroll automatically pauses when user scrolls up to view history
+  - Visual indicator shows auto-scroll state (🔄 Auto-scroll / ⏸ Paused)
+  - Scrolling preserves view offset for manual navigation
+- Web view proxy integration
+  - Real-time HTTP request display from proxy server
+  - Event-driven architecture connecting proxy events to web view state
+  - Request tracking with full details (status, duration, size, authentication, telemetry)
+  - Request history (keeps last 1000 requests)
+  - Statistics tracking by status code and HTTP method
+  - Auto-scroll for newest requests with filtering support
 - Script library management system with MCP integration
   - New `repl_library` MCP tool for managing JavaScript/TypeScript debugging functions
   - Scripts stored as TypeScript files with JSON front matter in `.brum/scripts` directory
@@ -24,6 +43,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Global access via `window.brummerLibrary` and `window.lib` aliases
 
 ### Fixed
+- TUI responsiveness and usability improvements
+  - Removed double-press requirement for Ctrl+C and ESC (immediate quit)
+  - Removed 5-second startup signal handling test that caused delays
+  - Fixed 'c' key clear logs command to clear both state and log store
+  - Removed keyboard debug logging that cluttered logs screen
+  - Fixed URL display to show full URL with protocol (http:// or https://)
+  - Context-aware keyboard handlers with proper fallthrough pattern
+- Lock-free state management enhancements
+  - Added immutable scroll state methods (ScrollUp, ScrollDown, EnableAutoScroll, DisableAutoScroll)
+  - Enhanced LogsState with proper scroll offset management
+  - All state updates follow lock-free immutable pattern for 20-30x performance
 - PTY terminal responsiveness optimization with cross-platform support
   - Fixed 1-second input delay in AI coder PTY sessions using non-canonical terminal mode
   - Added platform-specific terminal configuration (Unix/Windows) with proper build constraints

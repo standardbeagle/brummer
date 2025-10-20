@@ -65,3 +65,32 @@ type ErrorMessage struct {
 	Message string    `json:"message"`
 	Time    time.Time `json:"time"`
 }
+
+// ErrorMsg represents a generic error message
+type ErrorMsg struct {
+	Error   error
+	Context string
+}
+
+// Clear command messages
+type ClearErrorsMsg struct{}
+
+type ClearLogsMsg struct{}
+
+type ClearWebMsg struct{}
+
+type ShowClearConfirmationMsg struct {
+	Tab string // "errors", "logs", "web"
+}
+
+type ClearConfirmationResultMsg struct {
+	Tab     string // "errors", "logs", "web"
+	Confirmed bool
+}
+
+// Scroll messages for logs view
+type ScrollLogsUpMsg struct{}
+
+type ScrollLogsDownMsg struct{}
+
+type ToggleAutoScrollMsg struct{}

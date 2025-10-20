@@ -1,0 +1,3775 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+		<title>config: Go Coverage Report</title>
+		<style>
+			body {
+				background: black;
+				color: rgb(80, 80, 80);
+			}
+			body, pre, #legend span {
+				font-family: Menlo, monospace;
+				font-weight: bold;
+			}
+			#topbar {
+				background: black;
+				position: fixed;
+				top: 0; left: 0; right: 0;
+				height: 42px;
+				border-bottom: 1px solid rgb(80, 80, 80);
+			}
+			#content {
+				margin-top: 50px;
+			}
+			#nav, #legend {
+				float: left;
+				margin-left: 10px;
+			}
+			#legend {
+				margin-top: 12px;
+			}
+			#nav {
+				margin-top: 10px;
+			}
+			#legend span {
+				margin: 0 5px;
+			}
+			.cov0 { color: rgb(192, 0, 0) }
+.cov1 { color: rgb(128, 128, 128) }
+.cov2 { color: rgb(116, 140, 131) }
+.cov3 { color: rgb(104, 152, 134) }
+.cov4 { color: rgb(92, 164, 137) }
+.cov5 { color: rgb(80, 176, 140) }
+.cov6 { color: rgb(68, 188, 143) }
+.cov7 { color: rgb(56, 200, 146) }
+.cov8 { color: rgb(44, 212, 149) }
+.cov9 { color: rgb(32, 224, 152) }
+.cov10 { color: rgb(20, 236, 155) }
+
+		</style>
+	</head>
+	<body>
+		<div id="topbar">
+			<div id="nav">
+				<select id="files">
+				
+				<option value="file0">github.com/standardbeagle/brummer/internal/config/ai_coder_config.go (26.2%)</option>
+				
+				<option value="file1">github.com/standardbeagle/brummer/internal/config/ai_coder_validation.go (0.0%)</option>
+				
+				<option value="file2">github.com/standardbeagle/brummer/internal/config/config.go (36.8%)</option>
+				
+				<option value="file3">github.com/standardbeagle/brummer/internal/discovery/atomic_ops.go (78.6%)</option>
+				
+				<option value="file4">github.com/standardbeagle/brummer/internal/discovery/diagnostics.go (68.3%)</option>
+				
+				<option value="file5">github.com/standardbeagle/brummer/internal/discovery/diagnostics_unix.go (0.0%)</option>
+				
+				<option value="file6">github.com/standardbeagle/brummer/internal/discovery/instance.go (88.7%)</option>
+				
+				<option value="file7">github.com/standardbeagle/brummer/internal/discovery/polling_watcher.go (0.0%)</option>
+				
+				<option value="file8">github.com/standardbeagle/brummer/internal/discovery/register.go (100.0%)</option>
+				
+				<option value="file9">github.com/standardbeagle/brummer/pkg/events/ai_coder_events.go (70.0%)</option>
+				
+				<option value="file10">github.com/standardbeagle/brummer/pkg/events/ai_coder_handlers.go (56.0%)</option>
+				
+				<option value="file11">github.com/standardbeagle/brummer/pkg/events/events.go (67.2%)</option>
+				
+				</select>
+			</div>
+			<div id="legend">
+				<span>not tracked</span>
+			
+				<span class="cov0">no coverage</span>
+				<span class="cov1">low coverage</span>
+				<span class="cov2">*</span>
+				<span class="cov3">*</span>
+				<span class="cov4">*</span>
+				<span class="cov5">*</span>
+				<span class="cov6">*</span>
+				<span class="cov7">*</span>
+				<span class="cov8">*</span>
+				<span class="cov9">*</span>
+				<span class="cov10">high coverage</span>
+			
+			</div>
+		</div>
+		<div id="content">
+		
+		<pre class="file" id="file0" style="display: none">package config
+
+// AICoderConfig holds all configuration for AI coder functionality
+type AICoderConfig struct {
+        Enabled           *bool                      `toml:"enabled,omitempty"`
+        MaxConcurrent     *int                       `toml:"max_concurrent,omitempty"`
+        WorkspaceBaseDir  *string                    `toml:"workspace_base_dir,omitempty"`
+        DefaultProvider   *string                    `toml:"default_provider,omitempty"`
+        TimeoutMinutes    *int                       `toml:"timeout_minutes,omitempty"`
+        AutoCleanup       *bool                      `toml:"auto_cleanup,omitempty"`
+        CleanupAfterHours *int                       `toml:"cleanup_after_hours,omitempty"`
+        Providers         map[string]*ProviderConfig `toml:"providers,omitempty"`
+        ResourceLimits    *ResourceLimits            `toml:"resource_limits,omitempty"`
+        WorkspaceSettings *WorkspaceSettings         `toml:"workspace,omitempty"`
+        LoggingConfig     *LoggingConfig             `toml:"logging,omitempty"`
+}
+
+// ProviderConfig holds configuration for a specific AI provider
+type ProviderConfig struct {
+        APIKeyEnv      *string           `toml:"api_key_env,omitempty"`
+        Model          *string           `toml:"model,omitempty"`
+        BaseURL        *string           `toml:"base_url,omitempty"`
+        MaxTokens      *int              `toml:"max_tokens,omitempty"`
+        Temperature    *float64          `toml:"temperature,omitempty"`
+        RequestTimeout *int              `toml:"request_timeout_seconds,omitempty"`
+        RateLimit      *RateLimitConfig  `toml:"rate_limit,omitempty"`
+        CustomHeaders  map[string]string `toml:"custom_headers,omitempty"`
+
+        // CLI Tool specific configuration
+        CLITool *CLIToolConfig `toml:"cli_tool,omitempty"`
+}
+
+// CLIToolConfig represents configuration for CLI-based AI tools
+type CLIToolConfig struct {
+        Command     *string           `toml:"command,omitempty"`      // e.g., "aider"
+        BaseArgs    []string          `toml:"base_args,omitempty"`    // e.g., ["--yes", "--no-auto-commits"]
+        FlagMapping map[string]string `toml:"flag_mapping,omitempty"` // e.g., {"model": "--model", "max_tokens": "--max-tokens"}
+        WorkingDir  *string           `toml:"working_dir,omitempty"`
+        Environment map[string]string `toml:"environment,omitempty"`
+}
+
+// RateLimitConfig holds rate limiting configuration
+type RateLimitConfig struct {
+        RequestsPerMinute *int `toml:"requests_per_minute,omitempty"`
+        TokensPerMinute   *int `toml:"tokens_per_minute,omitempty"`
+}
+
+// ResourceLimits holds resource limit configuration
+type ResourceLimits struct {
+        MaxMemoryMB      *int `toml:"max_memory_mb,omitempty"`
+        MaxDiskSpaceMB   *int `toml:"max_disk_space_mb,omitempty"`
+        MaxCPUPercent    *int `toml:"max_cpu_percent,omitempty"`
+        MaxProcesses     *int `toml:"max_processes,omitempty"`
+        MaxFilesPerCoder *int `toml:"max_files_per_coder,omitempty"`
+}
+
+// WorkspaceSettings holds workspace configuration
+type WorkspaceSettings struct {
+        Template          *string  `toml:"template,omitempty"`
+        GitIgnoreRules    []string `toml:"gitignore_rules,omitempty"`
+        AllowedExtensions []string `toml:"allowed_extensions,omitempty"`
+        ForbiddenPaths    []string `toml:"forbidden_paths,omitempty"`
+        MaxFileSize       *int     `toml:"max_file_size_mb,omitempty"`
+        BackupEnabled     *bool    `toml:"backup_enabled,omitempty"`
+}
+
+// LoggingConfig holds logging configuration for AI coders
+type LoggingConfig struct {
+        Level           *string `toml:"level,omitempty"`
+        OutputFile      *string `toml:"output_file,omitempty"`
+        RotateSize      *int    `toml:"rotate_size_mb,omitempty"`
+        KeepRotations   *int    `toml:"keep_rotations,omitempty"`
+        IncludeAIOutput *bool   `toml:"include_ai_output,omitempty"`
+}
+
+// Helper methods to get values with defaults
+
+func (c *AICoderConfig) GetEnabled() bool <span class="cov0" title="0">{
+        if c == nil || c.Enabled == nil </span><span class="cov0" title="0">{
+                return true // default enabled
+        }</span>
+        <span class="cov0" title="0">return *c.Enabled</span>
+}
+
+func (c *AICoderConfig) GetMaxConcurrent() int <span class="cov8" title="1">{
+        if c == nil || c.MaxConcurrent == nil </span><span class="cov8" title="1">{
+                return 3 // default
+        }</span>
+        <span class="cov0" title="0">return *c.MaxConcurrent</span>
+}
+
+func (c *AICoderConfig) GetWorkspaceBaseDir() string <span class="cov8" title="1">{
+        if c == nil || c.WorkspaceBaseDir == nil </span><span class="cov8" title="1">{
+                return "~/.brummer/ai-coders" // default
+        }</span>
+        <span class="cov0" title="0">return *c.WorkspaceBaseDir</span>
+}
+
+func (c *AICoderConfig) GetDefaultProvider() string <span class="cov8" title="1">{
+        if c == nil || c.DefaultProvider == nil </span><span class="cov8" title="1">{
+                return "claude" // default to claude
+        }</span>
+        <span class="cov0" title="0">return *c.DefaultProvider</span>
+}
+
+func (c *AICoderConfig) GetTimeoutMinutes() int <span class="cov8" title="1">{
+        if c == nil || c.TimeoutMinutes == nil </span><span class="cov8" title="1">{
+                return 30 // default
+        }</span>
+        <span class="cov0" title="0">return *c.TimeoutMinutes</span>
+}
+
+func (c *AICoderConfig) GetAutoCleanup() bool <span class="cov0" title="0">{
+        if c == nil || c.AutoCleanup == nil </span><span class="cov0" title="0">{
+                return true // default
+        }</span>
+        <span class="cov0" title="0">return *c.AutoCleanup</span>
+}
+
+func (c *AICoderConfig) GetCleanupAfterHours() int <span class="cov0" title="0">{
+        if c == nil || c.CleanupAfterHours == nil </span><span class="cov0" title="0">{
+                return 24 // default
+        }</span>
+        <span class="cov0" title="0">return *c.CleanupAfterHours</span>
+}
+
+func (c *AICoderConfig) GetResourceLimits() ResourceLimits <span class="cov0" title="0">{
+        if c == nil || c.ResourceLimits == nil </span><span class="cov0" title="0">{
+                return ResourceLimits{
+                        MaxMemoryMB:      intPtr(512),
+                        MaxDiskSpaceMB:   intPtr(1024),
+                        MaxCPUPercent:    intPtr(50),
+                        MaxProcesses:     intPtr(5),
+                        MaxFilesPerCoder: intPtr(100),
+                }
+        }</span>
+        <span class="cov0" title="0">return *c.ResourceLimits</span>
+}
+
+func (c *AICoderConfig) GetWorkspaceSettings() WorkspaceSettings <span class="cov0" title="0">{
+        if c == nil || c.WorkspaceSettings == nil </span><span class="cov0" title="0">{
+                return WorkspaceSettings{
+                        Template:          stringPtr("basic"),
+                        GitIgnoreRules:    []string{"node_modules/", ".env", "*.log"},
+                        AllowedExtensions: []string{".go", ".js", ".ts", ".py", ".md", ".json", ".yaml", ".toml"},
+                        ForbiddenPaths:    []string{"/etc", "/var", "/sys", "/proc"},
+                        MaxFileSize:       intPtr(10),
+                        BackupEnabled:     boolPtr(true),
+                }
+        }</span>
+        <span class="cov0" title="0">return *c.WorkspaceSettings</span>
+}
+
+func (c *AICoderConfig) GetLoggingConfig() LoggingConfig <span class="cov0" title="0">{
+        if c == nil || c.LoggingConfig == nil </span><span class="cov0" title="0">{
+                return LoggingConfig{
+                        Level:           stringPtr("info"),
+                        OutputFile:      stringPtr("ai-coders.log"),
+                        RotateSize:      intPtr(50),
+                        KeepRotations:   intPtr(5),
+                        IncludeAIOutput: boolPtr(false),
+                }
+        }</span>
+        <span class="cov0" title="0">return *c.LoggingConfig</span>
+}
+
+// Provider config helpers
+
+func (p *ProviderConfig) GetAPIKeyEnv() string <span class="cov8" title="1">{
+        if p == nil || p.APIKeyEnv == nil </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov8" title="1">return *p.APIKeyEnv</span>
+}
+
+func (p *ProviderConfig) GetModel() string <span class="cov8" title="1">{
+        if p == nil || p.Model == nil </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov8" title="1">return *p.Model</span>
+}
+
+func (p *ProviderConfig) GetBaseURL() string <span class="cov0" title="0">{
+        if p == nil || p.BaseURL == nil </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov0" title="0">return *p.BaseURL</span>
+}
+
+func (p *ProviderConfig) GetMaxTokens() int <span class="cov8" title="1">{
+        if p == nil || p.MaxTokens == nil </span><span class="cov0" title="0">{
+                return 4096 // default
+        }</span>
+        <span class="cov8" title="1">return *p.MaxTokens</span>
+}
+
+func (p *ProviderConfig) GetTemperature() float64 <span class="cov8" title="1">{
+        if p == nil || p.Temperature == nil </span><span class="cov0" title="0">{
+                return 0.7 // default
+        }</span>
+        <span class="cov8" title="1">return *p.Temperature</span>
+}
+
+func (p *ProviderConfig) GetRequestTimeout() int <span class="cov0" title="0">{
+        if p == nil || p.RequestTimeout == nil </span><span class="cov0" title="0">{
+                return 30 // default 30 seconds
+        }</span>
+        <span class="cov0" title="0">return *p.RequestTimeout</span>
+}
+
+func (p *ProviderConfig) GetRateLimit() RateLimitConfig <span class="cov0" title="0">{
+        if p == nil || p.RateLimit == nil </span><span class="cov0" title="0">{
+                return RateLimitConfig{
+                        RequestsPerMinute: intPtr(50),
+                        TokensPerMinute:   intPtr(150000),
+                }
+        }</span>
+        <span class="cov0" title="0">return *p.RateLimit</span>
+}
+
+// Resource limit helpers
+
+func (r *ResourceLimits) GetMaxMemoryMB() int <span class="cov8" title="1">{
+        if r == nil || r.MaxMemoryMB == nil </span><span class="cov0" title="0">{
+                return 512 // default
+        }</span>
+        <span class="cov8" title="1">return *r.MaxMemoryMB</span>
+}
+
+func (r *ResourceLimits) GetMaxDiskSpaceMB() int <span class="cov0" title="0">{
+        if r == nil || r.MaxDiskSpaceMB == nil </span><span class="cov0" title="0">{
+                return 1024 // default
+        }</span>
+        <span class="cov0" title="0">return *r.MaxDiskSpaceMB</span>
+}
+
+func (r *ResourceLimits) GetMaxCPUPercent() int <span class="cov8" title="1">{
+        if r == nil || r.MaxCPUPercent == nil </span><span class="cov0" title="0">{
+                return 50 // default
+        }</span>
+        <span class="cov8" title="1">return *r.MaxCPUPercent</span>
+}
+
+func (r *ResourceLimits) GetMaxProcesses() int <span class="cov0" title="0">{
+        if r == nil || r.MaxProcesses == nil </span><span class="cov0" title="0">{
+                return 5 // default
+        }</span>
+        <span class="cov0" title="0">return *r.MaxProcesses</span>
+}
+
+func (r *ResourceLimits) GetMaxFilesPerCoder() int <span class="cov0" title="0">{
+        if r == nil || r.MaxFilesPerCoder == nil </span><span class="cov0" title="0">{
+                return 100 // default
+        }</span>
+        <span class="cov0" title="0">return *r.MaxFilesPerCoder</span>
+}
+
+// Workspace settings helpers
+
+func (w *WorkspaceSettings) GetTemplate() string <span class="cov8" title="1">{
+        if w == nil || w.Template == nil </span><span class="cov0" title="0">{
+                return "basic" // default
+        }</span>
+        <span class="cov8" title="1">return *w.Template</span>
+}
+
+func (w *WorkspaceSettings) GetMaxFileSize() int <span class="cov0" title="0">{
+        if w == nil || w.MaxFileSize == nil </span><span class="cov0" title="0">{
+                return 10 // default 10MB
+        }</span>
+        <span class="cov0" title="0">return *w.MaxFileSize</span>
+}
+
+func (w *WorkspaceSettings) GetBackupEnabled() bool <span class="cov8" title="1">{
+        if w == nil || w.BackupEnabled == nil </span><span class="cov0" title="0">{
+                return true // default
+        }</span>
+        <span class="cov8" title="1">return *w.BackupEnabled</span>
+}
+
+// Logging config helpers
+
+func (l *LoggingConfig) GetLevel() string <span class="cov8" title="1">{
+        if l == nil || l.Level == nil </span><span class="cov0" title="0">{
+                return "info" // default
+        }</span>
+        <span class="cov8" title="1">return *l.Level</span>
+}
+
+func (l *LoggingConfig) GetOutputFile() string <span class="cov0" title="0">{
+        if l == nil || l.OutputFile == nil </span><span class="cov0" title="0">{
+                return "ai-coders.log" // default
+        }</span>
+        <span class="cov0" title="0">return *l.OutputFile</span>
+}
+
+func (l *LoggingConfig) GetRotateSize() int <span class="cov0" title="0">{
+        if l == nil || l.RotateSize == nil </span><span class="cov0" title="0">{
+                return 50 // default 50MB
+        }</span>
+        <span class="cov0" title="0">return *l.RotateSize</span>
+}
+
+func (l *LoggingConfig) GetKeepRotations() int <span class="cov0" title="0">{
+        if l == nil || l.KeepRotations == nil </span><span class="cov0" title="0">{
+                return 5 // default
+        }</span>
+        <span class="cov0" title="0">return *l.KeepRotations</span>
+}
+
+func (l *LoggingConfig) GetIncludeAIOutput() bool <span class="cov8" title="1">{
+        if l == nil || l.IncludeAIOutput == nil </span><span class="cov0" title="0">{
+                return false // default
+        }</span>
+        <span class="cov8" title="1">return *l.IncludeAIOutput</span>
+}
+
+// CLI tool helpers
+
+func (c *CLIToolConfig) GetCommand() string <span class="cov0" title="0">{
+        if c == nil || c.Command == nil </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov0" title="0">return *c.Command</span>
+}
+
+func (c *CLIToolConfig) GetWorkingDir() string <span class="cov0" title="0">{
+        if c == nil || c.WorkingDir == nil </span><span class="cov0" title="0">{
+                return "."
+        }</span>
+        <span class="cov0" title="0">return *c.WorkingDir</span>
+}
+
+// Rate limit helpers
+
+func (r *RateLimitConfig) GetRequestsPerMinute() int <span class="cov0" title="0">{
+        if r == nil || r.RequestsPerMinute == nil </span><span class="cov0" title="0">{
+                return 50 // default
+        }</span>
+        <span class="cov0" title="0">return *r.RequestsPerMinute</span>
+}
+
+func (r *RateLimitConfig) GetTokensPerMinute() int <span class="cov0" title="0">{
+        if r == nil || r.TokensPerMinute == nil </span><span class="cov0" title="0">{
+                return 150000 // default
+        }</span>
+        <span class="cov0" title="0">return *r.TokensPerMinute</span>
+}
+
+// Helper functions
+func intPtr(i int) *int <span class="cov0" title="0">{
+        return &amp;i
+}</span>
+
+func stringPtr(s string) *string <span class="cov0" title="0">{
+        return &amp;s
+}</span>
+
+func boolPtr(b bool) *bool <span class="cov0" title="0">{
+        return &amp;b
+}</span>
+
+func float64Ptr(f float64) *float64 <span class="cov0" title="0">{
+        return &amp;f
+}</span>
+
+// GetDefaultProviderConfigs returns default provider configurations
+func GetDefaultProviderConfigs() map[string]*ProviderConfig <span class="cov0" title="0">{
+        return map[string]*ProviderConfig{
+                "claude": {
+                        APIKeyEnv:      stringPtr("ANTHROPIC_API_KEY"),
+                        Model:          stringPtr("claude-3-5-sonnet-20241022"),
+                        MaxTokens:      intPtr(4096),
+                        Temperature:    float64Ptr(0.7),
+                        RequestTimeout: intPtr(30),
+                        RateLimit: &amp;RateLimitConfig{
+                                RequestsPerMinute: intPtr(50),
+                                TokensPerMinute:   intPtr(150000),
+                        },
+                },
+                "openai": {
+                        APIKeyEnv:      stringPtr("OPENAI_API_KEY"),
+                        Model:          stringPtr("gpt-4"),
+                        MaxTokens:      intPtr(4096),
+                        Temperature:    float64Ptr(0.7),
+                        RequestTimeout: intPtr(30),
+                        RateLimit: &amp;RateLimitConfig{
+                                RequestsPerMinute: intPtr(60),
+                                TokensPerMinute:   intPtr(200000),
+                        },
+                },
+                "gemini": {
+                        APIKeyEnv:      stringPtr("GEMINI_API_KEY"),
+                        Model:          stringPtr("gemini-1.5-pro"),
+                        MaxTokens:      intPtr(8192),
+                        Temperature:    float64Ptr(0.7),
+                        RequestTimeout: intPtr(30),
+                        RateLimit: &amp;RateLimitConfig{
+                                RequestsPerMinute: intPtr(15),
+                                TokensPerMinute:   intPtr(1000000),
+                        },
+                },
+                "terminal": {
+                        Model:          stringPtr("bash"),
+                        MaxTokens:      intPtr(1000000),
+                        Temperature:    float64Ptr(0.0),
+                        RequestTimeout: intPtr(300), // Longer timeout for shell commands
+                        RateLimit: &amp;RateLimitConfig{
+                                RequestsPerMinute: intPtr(30),
+                                TokensPerMinute:   intPtr(1000000),
+                        },
+                },
+                "local": {
+                        BaseURL:        stringPtr("http://localhost:11434"),
+                        Model:          stringPtr("codellama"),
+                        MaxTokens:      intPtr(2048),
+                        Temperature:    float64Ptr(0.7),
+                        RequestTimeout: intPtr(60),
+                },
+                "aider": {
+                        CLITool: &amp;CLIToolConfig{
+                                Command:  stringPtr("aider"),
+                                BaseArgs: []string{"--yes"},
+                                FlagMapping: map[string]string{
+                                        "model":   "--model",
+                                        "message": "--message",
+                                },
+                                WorkingDir: stringPtr("."),
+                        },
+                        MaxTokens:      intPtr(4096),
+                        Temperature:    float64Ptr(0.7),
+                        RequestTimeout: intPtr(300), // Longer timeout for interactive tools
+                },
+                "mock": {
+                        Model:          stringPtr("mock-model"),
+                        MaxTokens:      intPtr(1000),
+                        Temperature:    float64Ptr(0.5),
+                        RequestTimeout: intPtr(5),
+                },
+        }
+}</span>
+</pre>
+		
+		<pre class="file" id="file1" style="display: none">package config
+
+import (
+        "errors"
+        "fmt"
+        "os"
+        "path/filepath"
+        "strings"
+)
+
+// Validate validates the AI coder configuration
+func (c *AICoderConfig) Validate() error <span class="cov0" title="0">{
+        if c == nil </span><span class="cov0" title="0">{
+                return nil // nil config is valid, will use defaults
+        }</span>
+
+        <span class="cov0" title="0">var errs []string
+
+        // Validate basic settings
+        if c.MaxConcurrent != nil &amp;&amp; *c.MaxConcurrent &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "max_concurrent must be positive")
+        }</span>
+        <span class="cov0" title="0">if c.MaxConcurrent != nil &amp;&amp; *c.MaxConcurrent &gt; 10 </span><span class="cov0" title="0">{
+                errs = append(errs, "max_concurrent should not exceed 10 for system stability")
+        }</span>
+
+        <span class="cov0" title="0">if c.WorkspaceBaseDir != nil &amp;&amp; *c.WorkspaceBaseDir == "" </span><span class="cov0" title="0">{
+                errs = append(errs, "workspace_base_dir cannot be empty")
+        }</span>
+
+        <span class="cov0" title="0">if c.TimeoutMinutes != nil &amp;&amp; *c.TimeoutMinutes &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "timeout_minutes must be positive")
+        }</span>
+
+        <span class="cov0" title="0">if c.CleanupAfterHours != nil &amp;&amp; *c.CleanupAfterHours &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "cleanup_after_hours must be positive")
+        }</span>
+
+        // Validate default provider exists
+        <span class="cov0" title="0">if c.DefaultProvider != nil </span><span class="cov0" title="0">{
+                if c.Providers != nil </span><span class="cov0" title="0">{
+                        if _, exists := c.Providers[*c.DefaultProvider]; !exists </span><span class="cov0" title="0">{
+                                // Check if it's in default providers
+                                defaultProviders := GetDefaultProviderConfigs()
+                                if _, exists := defaultProviders[*c.DefaultProvider]; !exists </span><span class="cov0" title="0">{
+                                        errs = append(errs, fmt.Sprintf("default_provider '%s' not found in providers configuration", *c.DefaultProvider))
+                                }</span>
+                        }
+                }
+        }
+
+        // Validate providers
+        <span class="cov0" title="0">if c.Providers != nil </span><span class="cov0" title="0">{
+                for name, provider := range c.Providers </span><span class="cov0" title="0">{
+                        if err := provider.Validate(name); err != nil </span><span class="cov0" title="0">{
+                                errs = append(errs, fmt.Sprintf("provider '%s': %v", name, err))
+                        }</span>
+                }
+        }
+
+        // Validate resource limits
+        <span class="cov0" title="0">if c.ResourceLimits != nil </span><span class="cov0" title="0">{
+                if err := c.ResourceLimits.Validate(); err != nil </span><span class="cov0" title="0">{
+                        errs = append(errs, fmt.Sprintf("resource_limits: %v", err))
+                }</span>
+        }
+
+        // Validate workspace settings
+        <span class="cov0" title="0">if c.WorkspaceSettings != nil </span><span class="cov0" title="0">{
+                if err := c.WorkspaceSettings.Validate(); err != nil </span><span class="cov0" title="0">{
+                        errs = append(errs, fmt.Sprintf("workspace: %v", err))
+                }</span>
+        }
+
+        // Validate logging config
+        <span class="cov0" title="0">if c.LoggingConfig != nil </span><span class="cov0" title="0">{
+                if err := c.LoggingConfig.Validate(); err != nil </span><span class="cov0" title="0">{
+                        errs = append(errs, fmt.Sprintf("logging: %v", err))
+                }</span>
+        }
+
+        <span class="cov0" title="0">if len(errs) &gt; 0 </span><span class="cov0" title="0">{
+                return errors.New(strings.Join(errs, "; "))
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// Validate validates a provider configuration
+func (p *ProviderConfig) Validate(providerName string) error <span class="cov0" title="0">{
+        if p == nil </span><span class="cov0" title="0">{
+                return nil // nil provider config is valid, will use defaults
+        }</span>
+
+        <span class="cov0" title="0">var errs []string
+
+        // Validate API key configuration (except for local and mock providers)
+        if providerName != "local" &amp;&amp; providerName != "mock" </span><span class="cov0" title="0">{
+                if p.APIKeyEnv != nil &amp;&amp; *p.APIKeyEnv == "" </span><span class="cov0" title="0">{
+                        errs = append(errs, "api_key_env cannot be empty for non-local providers")
+                }</span>
+
+                // Check if environment variable is set
+                <span class="cov0" title="0">if p.APIKeyEnv != nil &amp;&amp; os.Getenv(*p.APIKeyEnv) == "" </span>{<span class="cov0" title="0">
+                        // This is a warning, not an error - the env var might be set later
+                        // errs = append(errs, fmt.Sprintf("environment variable %s is not set", *p.APIKeyEnv))
+                }</span>
+        }
+
+        // Validate model
+        <span class="cov0" title="0">if p.Model != nil &amp;&amp; *p.Model == "" </span><span class="cov0" title="0">{
+                errs = append(errs, "model cannot be empty")
+        }</span>
+
+        // Validate limits
+        <span class="cov0" title="0">if p.MaxTokens != nil </span><span class="cov0" title="0">{
+                if *p.MaxTokens &lt;= 0 </span><span class="cov0" title="0">{
+                        errs = append(errs, "max_tokens must be positive")
+                }</span>
+                <span class="cov0" title="0">if *p.MaxTokens &gt; 50000 </span><span class="cov0" title="0">{
+                        errs = append(errs, "max_tokens exceeds reasonable limit (50000)")
+                }</span>
+        }
+
+        <span class="cov0" title="0">if p.Temperature != nil </span><span class="cov0" title="0">{
+                if *p.Temperature &lt; 0 || *p.Temperature &gt; 2 </span><span class="cov0" title="0">{
+                        errs = append(errs, "temperature must be between 0 and 2")
+                }</span>
+        }
+
+        <span class="cov0" title="0">if p.RequestTimeout != nil &amp;&amp; *p.RequestTimeout &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "request_timeout_seconds must be positive")
+        }</span>
+
+        // Validate rate limits
+        <span class="cov0" title="0">if p.RateLimit != nil </span><span class="cov0" title="0">{
+                if err := p.RateLimit.Validate(); err != nil </span><span class="cov0" title="0">{
+                        errs = append(errs, fmt.Sprintf("rate_limit: %v", err))
+                }</span>
+        }
+
+        // Validate base URL for local providers
+        <span class="cov0" title="0">if providerName == "local" &amp;&amp; p.BaseURL != nil &amp;&amp; *p.BaseURL == "" </span><span class="cov0" title="0">{
+                errs = append(errs, "base_url is required for local providers")
+        }</span>
+
+        <span class="cov0" title="0">if len(errs) &gt; 0 </span><span class="cov0" title="0">{
+                return errors.New(strings.Join(errs, "; "))
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// Validate validates rate limit configuration
+func (r *RateLimitConfig) Validate() error <span class="cov0" title="0">{
+        if r == nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">var errs []string
+
+        if r.RequestsPerMinute != nil &amp;&amp; *r.RequestsPerMinute &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "requests_per_minute must be positive")
+        }</span>
+
+        <span class="cov0" title="0">if r.TokensPerMinute != nil &amp;&amp; *r.TokensPerMinute &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "tokens_per_minute must be positive")
+        }</span>
+
+        <span class="cov0" title="0">if len(errs) &gt; 0 </span><span class="cov0" title="0">{
+                return errors.New(strings.Join(errs, "; "))
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// Validate validates resource limits
+func (r *ResourceLimits) Validate() error <span class="cov0" title="0">{
+        if r == nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">var errs []string
+
+        if r.MaxMemoryMB != nil </span><span class="cov0" title="0">{
+                if *r.MaxMemoryMB &lt;= 0 </span><span class="cov0" title="0">{
+                        errs = append(errs, "max_memory_mb must be positive")
+                }</span>
+                <span class="cov0" title="0">if *r.MaxMemoryMB &gt; 8192 </span><span class="cov0" title="0">{
+                        errs = append(errs, "max_memory_mb exceeds reasonable limit (8GB)")
+                }</span>
+        }
+
+        <span class="cov0" title="0">if r.MaxDiskSpaceMB != nil &amp;&amp; *r.MaxDiskSpaceMB &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "max_disk_space_mb must be positive")
+        }</span>
+
+        <span class="cov0" title="0">if r.MaxCPUPercent != nil </span><span class="cov0" title="0">{
+                if *r.MaxCPUPercent &lt;= 0 || *r.MaxCPUPercent &gt; 100 </span><span class="cov0" title="0">{
+                        errs = append(errs, "max_cpu_percent must be between 1 and 100")
+                }</span>
+        }
+
+        <span class="cov0" title="0">if r.MaxProcesses != nil &amp;&amp; *r.MaxProcesses &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "max_processes must be positive")
+        }</span>
+
+        <span class="cov0" title="0">if r.MaxFilesPerCoder != nil &amp;&amp; *r.MaxFilesPerCoder &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "max_files_per_coder must be positive")
+        }</span>
+
+        <span class="cov0" title="0">if len(errs) &gt; 0 </span><span class="cov0" title="0">{
+                return errors.New(strings.Join(errs, "; "))
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// Validate validates workspace settings
+func (w *WorkspaceSettings) Validate() error <span class="cov0" title="0">{
+        if w == nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">var errs []string
+
+        // Validate allowed extensions format
+        for _, ext := range w.AllowedExtensions </span><span class="cov0" title="0">{
+                if !strings.HasPrefix(ext, ".") </span><span class="cov0" title="0">{
+                        errs = append(errs, fmt.Sprintf("allowed extension '%s' must start with '.'", ext))
+                }</span>
+        }
+
+        // Validate forbidden paths are absolute
+        <span class="cov0" title="0">for _, path := range w.ForbiddenPaths </span><span class="cov0" title="0">{
+                if !filepath.IsAbs(path) </span><span class="cov0" title="0">{
+                        errs = append(errs, fmt.Sprintf("forbidden path '%s' must be absolute", path))
+                }</span>
+        }
+
+        <span class="cov0" title="0">if w.MaxFileSize != nil </span><span class="cov0" title="0">{
+                if *w.MaxFileSize &lt;= 0 </span><span class="cov0" title="0">{
+                        errs = append(errs, "max_file_size_mb must be positive")
+                }</span>
+                <span class="cov0" title="0">if *w.MaxFileSize &gt; 100 </span><span class="cov0" title="0">{
+                        errs = append(errs, "max_file_size_mb should not exceed 100MB for performance")
+                }</span>
+        }
+
+        <span class="cov0" title="0">if len(errs) &gt; 0 </span><span class="cov0" title="0">{
+                return errors.New(strings.Join(errs, "; "))
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// Validate validates logging configuration
+func (l *LoggingConfig) Validate() error <span class="cov0" title="0">{
+        if l == nil </span><span class="cov0" title="0">{
+                return nil
+        }</span>
+
+        <span class="cov0" title="0">var errs []string
+
+        // Validate log level
+        if l.Level != nil </span><span class="cov0" title="0">{
+                validLevels := map[string]bool{
+                        "debug": true,
+                        "info":  true,
+                        "warn":  true,
+                        "error": true,
+                }
+                if !validLevels[*l.Level] </span><span class="cov0" title="0">{
+                        errs = append(errs, fmt.Sprintf("invalid log level '%s' (must be debug, info, warn, or error)", *l.Level))
+                }</span>
+        }
+
+        <span class="cov0" title="0">if l.RotateSize != nil &amp;&amp; *l.RotateSize &lt;= 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "rotate_size_mb must be positive")
+        }</span>
+
+        <span class="cov0" title="0">if l.KeepRotations != nil &amp;&amp; *l.KeepRotations &lt; 0 </span><span class="cov0" title="0">{
+                errs = append(errs, "keep_rotations must be non-negative")
+        }</span>
+
+        <span class="cov0" title="0">if len(errs) &gt; 0 </span><span class="cov0" title="0">{
+                return errors.New(strings.Join(errs, "; "))
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// ValidateWorkspaceDirectory validates and ensures the workspace directory exists
+func (c *AICoderConfig) ValidateWorkspaceDirectory() error <span class="cov0" title="0">{
+        workspaceDir := c.GetWorkspaceBaseDir()
+
+        // Expand tilde in path
+        if strings.HasPrefix(workspaceDir, "~/") </span><span class="cov0" title="0">{
+                homeDir, err := os.UserHomeDir()
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("cannot determine home directory: %w", err)
+                }</span>
+                <span class="cov0" title="0">workspaceDir = filepath.Join(homeDir, workspaceDir[2:])</span>
+        }
+
+        // Check if directory exists, create if it doesn't
+        <span class="cov0" title="0">if _, err := os.Stat(workspaceDir); os.IsNotExist(err) </span><span class="cov0" title="0">{
+                if err := os.MkdirAll(workspaceDir, 0755); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("cannot create workspace directory %s: %w", workspaceDir, err)
+                }</span>
+        }
+
+        // Test write permissions
+        <span class="cov0" title="0">testFile := filepath.Join(workspaceDir, ".brummer-test")
+        if err := os.WriteFile(testFile, []byte("test"), 0644); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("workspace directory %s is not writable: %w", workspaceDir, err)
+        }</span>
+        <span class="cov0" title="0">os.Remove(testFile)
+
+        return nil</span>
+}
+
+// GetExpandedWorkspaceDir returns the workspace directory with tilde expanded
+func (c *AICoderConfig) GetExpandedWorkspaceDir() (string, error) <span class="cov0" title="0">{
+        workspaceDir := c.GetWorkspaceBaseDir()
+
+        // Expand tilde in path
+        if strings.HasPrefix(workspaceDir, "~/") </span><span class="cov0" title="0">{
+                homeDir, err := os.UserHomeDir()
+                if err != nil </span><span class="cov0" title="0">{
+                        return "", fmt.Errorf("cannot determine home directory: %w", err)
+                }</span>
+                <span class="cov0" title="0">workspaceDir = filepath.Join(homeDir, workspaceDir[2:])</span>
+        }
+
+        <span class="cov0" title="0">return workspaceDir, nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file2" style="display: none">package config
+
+import (
+        "fmt"
+        "os"
+        "path/filepath"
+        "strings"
+
+        "github.com/BurntSushi/toml"
+        "github.com/standardbeagle/brummer/internal/aicoder"
+        "github.com/standardbeagle/brummer/internal/parser"
+)
+
+type Config struct {
+        PreferredPackageManager *parser.PackageManager `toml:"preferred_package_manager,omitempty"`
+
+        // MCP Settings
+        MCPPort *int  `toml:"mcp_port,omitempty"`
+        NoMCP   *bool `toml:"no_mcp,omitempty"`
+
+        // Network Robustness Settings
+        UseRobustNetworking *bool `toml:"use_robust_networking,omitempty"`
+
+        // Proxy Settings
+        ProxyPort     *int    `toml:"proxy_port,omitempty"`
+        ProxyMode     *string `toml:"proxy_mode,omitempty"`
+        ProxyURL      *string `toml:"proxy_url,omitempty"`
+        StandardProxy *bool   `toml:"standard_proxy,omitempty"`
+        NoProxy       *bool   `toml:"no_proxy,omitempty"`
+
+        // AI Coder Settings
+        AICoders *AICoderConfig `toml:"ai_coders,omitempty"`
+}
+
+// ConfigWithSources tracks where each config value comes from
+type ConfigWithSources struct {
+        Config
+        Sources map[string]string // field name -&gt; source file path
+}
+
+// getConfigPaths returns all potential config file paths in override order
+func getConfigPaths() ([]string, error) <span class="cov5" title="7">{
+        var paths []string
+
+        // Start from current directory and walk up to root
+        currentDir, err := os.Getwd()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+
+        // Walk up the directory tree
+        <span class="cov5" title="7">dir := currentDir
+        for </span><span class="cov9" title="33">{
+                configPath := filepath.Join(dir, ".brum.toml")
+                paths = append(paths, configPath)
+
+                parent := filepath.Dir(dir)
+                if parent == dir </span><span class="cov5" title="7">{
+                        // Reached root
+                        break</span>
+                }
+                <span class="cov9" title="26">dir = parent</span>
+        }
+
+        // Add home directory config as fallback
+        <span class="cov5" title="7">homeDir, err := os.UserHomeDir()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, err
+        }</span>
+        <span class="cov5" title="7">paths = append(paths, filepath.Join(homeDir, ".brum.toml"))
+
+        return paths, nil</span>
+}
+
+// Load loads the configuration from disk with override chain
+func Load() (*Config, error) <span class="cov5" title="6">{
+        paths, err := getConfigPaths()
+        if err != nil </span><span class="cov0" title="0">{
+                return &amp;Config{}, nil // Return empty config on error
+        }</span>
+
+        // Start with empty config
+        <span class="cov5" title="6">cfg := &amp;Config{}
+
+        // Load configs in reverse order (home -&gt; root -&gt; ... -&gt; current)
+        // so that more specific configs override general ones
+        for i := len(paths) - 1; i &gt;= 0; i-- </span><span class="cov10" title="34">{
+                path := paths[i]
+                if _, err := os.Stat(path); os.IsNotExist(err) </span><span class="cov9" title="27">{
+                        continue</span> // Skip non-existent files
+                }
+
+                <span class="cov5" title="7">var fileCfg Config
+                if _, err := toml.DecodeFile(path, &amp;fileCfg); err != nil </span><span class="cov1" title="1">{
+                        continue</span> // Skip invalid files
+                }
+
+                // Merge config - more specific values override general ones
+                <span class="cov5" title="6">if fileCfg.PreferredPackageManager != nil </span><span class="cov3" title="3">{
+                        cfg.PreferredPackageManager = fileCfg.PreferredPackageManager
+                }</span>
+                <span class="cov5" title="6">if fileCfg.MCPPort != nil </span><span class="cov2" title="2">{
+                        cfg.MCPPort = fileCfg.MCPPort
+                }</span>
+                <span class="cov5" title="6">if fileCfg.NoMCP != nil </span><span class="cov0" title="0">{
+                        cfg.NoMCP = fileCfg.NoMCP
+                }</span>
+                <span class="cov5" title="6">if fileCfg.UseRobustNetworking != nil </span><span class="cov0" title="0">{
+                        cfg.UseRobustNetworking = fileCfg.UseRobustNetworking
+                }</span>
+                <span class="cov5" title="6">if fileCfg.ProxyPort != nil </span><span class="cov1" title="1">{
+                        cfg.ProxyPort = fileCfg.ProxyPort
+                }</span>
+                <span class="cov5" title="6">if fileCfg.ProxyMode != nil </span><span class="cov1" title="1">{
+                        cfg.ProxyMode = fileCfg.ProxyMode
+                }</span>
+                <span class="cov5" title="6">if fileCfg.ProxyURL != nil </span><span class="cov0" title="0">{
+                        cfg.ProxyURL = fileCfg.ProxyURL
+                }</span>
+                <span class="cov5" title="6">if fileCfg.StandardProxy != nil </span><span class="cov0" title="0">{
+                        cfg.StandardProxy = fileCfg.StandardProxy
+                }</span>
+                <span class="cov5" title="6">if fileCfg.NoProxy != nil </span><span class="cov0" title="0">{
+                        cfg.NoProxy = fileCfg.NoProxy
+                }</span>
+                <span class="cov5" title="6">if fileCfg.AICoders != nil </span><span class="cov3" title="3">{
+                        if cfg.AICoders == nil </span><span class="cov2" title="2">{
+                                cfg.AICoders = fileCfg.AICoders
+                        }</span> else<span class="cov1" title="1"> {
+                                // Merge AI configurations
+                                mergeAIConfig(cfg.AICoders, fileCfg.AICoders)
+                        }</span>
+                }
+        }
+
+        <span class="cov5" title="6">return cfg, nil</span>
+}
+
+// mergeAIConfig merges file AI config into existing AI config
+func mergeAIConfig(existing, incoming *AICoderConfig) <span class="cov1" title="1">{
+        // Merge simple fields
+        if incoming.Enabled != nil </span><span class="cov0" title="0">{
+                existing.Enabled = incoming.Enabled
+        }</span>
+        <span class="cov1" title="1">if incoming.MaxConcurrent != nil </span><span class="cov1" title="1">{
+                existing.MaxConcurrent = incoming.MaxConcurrent
+        }</span>
+        <span class="cov1" title="1">if incoming.WorkspaceBaseDir != nil </span><span class="cov0" title="0">{
+                existing.WorkspaceBaseDir = incoming.WorkspaceBaseDir
+        }</span>
+        <span class="cov1" title="1">if incoming.DefaultProvider != nil </span><span class="cov0" title="0">{
+                existing.DefaultProvider = incoming.DefaultProvider
+        }</span>
+        <span class="cov1" title="1">if incoming.TimeoutMinutes != nil </span><span class="cov1" title="1">{
+                existing.TimeoutMinutes = incoming.TimeoutMinutes
+        }</span>
+        <span class="cov1" title="1">if incoming.AutoCleanup != nil </span><span class="cov0" title="0">{
+                existing.AutoCleanup = incoming.AutoCleanup
+        }</span>
+        <span class="cov1" title="1">if incoming.CleanupAfterHours != nil </span><span class="cov0" title="0">{
+                existing.CleanupAfterHours = incoming.CleanupAfterHours
+        }</span>
+
+        // Merge resource limits
+        <span class="cov1" title="1">if incoming.ResourceLimits != nil </span><span class="cov0" title="0">{
+                if existing.ResourceLimits == nil </span><span class="cov0" title="0">{
+                        existing.ResourceLimits = incoming.ResourceLimits
+                }</span> else<span class="cov0" title="0"> {
+                        mergeResourceLimits(existing.ResourceLimits, incoming.ResourceLimits)
+                }</span>
+        }
+
+        // Merge workspace settings
+        <span class="cov1" title="1">if incoming.WorkspaceSettings != nil </span><span class="cov0" title="0">{
+                if existing.WorkspaceSettings == nil </span><span class="cov0" title="0">{
+                        existing.WorkspaceSettings = incoming.WorkspaceSettings
+                }</span> else<span class="cov0" title="0"> {
+                        mergeWorkspaceSettings(existing.WorkspaceSettings, incoming.WorkspaceSettings)
+                }</span>
+        }
+
+        // Merge logging config
+        <span class="cov1" title="1">if incoming.LoggingConfig != nil </span><span class="cov0" title="0">{
+                if existing.LoggingConfig == nil </span><span class="cov0" title="0">{
+                        existing.LoggingConfig = incoming.LoggingConfig
+                }</span> else<span class="cov0" title="0"> {
+                        mergeLoggingConfig(existing.LoggingConfig, incoming.LoggingConfig)
+                }</span>
+        }
+
+        // Merge providers (this is additive)
+        <span class="cov1" title="1">if incoming.Providers != nil </span><span class="cov1" title="1">{
+                if existing.Providers == nil </span><span class="cov0" title="0">{
+                        existing.Providers = make(map[string]*ProviderConfig)
+                }</span>
+                <span class="cov1" title="1">for name, provider := range incoming.Providers </span><span class="cov1" title="1">{
+                        existing.Providers[name] = provider
+                }</span>
+        }
+}
+
+// Helper merge functions
+func mergeResourceLimits(existing, incoming *ResourceLimits) <span class="cov0" title="0">{
+        if incoming.MaxMemoryMB != nil </span><span class="cov0" title="0">{
+                existing.MaxMemoryMB = incoming.MaxMemoryMB
+        }</span>
+        <span class="cov0" title="0">if incoming.MaxDiskSpaceMB != nil </span><span class="cov0" title="0">{
+                existing.MaxDiskSpaceMB = incoming.MaxDiskSpaceMB
+        }</span>
+        <span class="cov0" title="0">if incoming.MaxCPUPercent != nil </span><span class="cov0" title="0">{
+                existing.MaxCPUPercent = incoming.MaxCPUPercent
+        }</span>
+        <span class="cov0" title="0">if incoming.MaxProcesses != nil </span><span class="cov0" title="0">{
+                existing.MaxProcesses = incoming.MaxProcesses
+        }</span>
+        <span class="cov0" title="0">if incoming.MaxFilesPerCoder != nil </span><span class="cov0" title="0">{
+                existing.MaxFilesPerCoder = incoming.MaxFilesPerCoder
+        }</span>
+}
+
+func mergeWorkspaceSettings(existing, incoming *WorkspaceSettings) <span class="cov0" title="0">{
+        if incoming.Template != nil </span><span class="cov0" title="0">{
+                existing.Template = incoming.Template
+        }</span>
+        <span class="cov0" title="0">if incoming.GitIgnoreRules != nil </span><span class="cov0" title="0">{
+                existing.GitIgnoreRules = incoming.GitIgnoreRules
+        }</span>
+        <span class="cov0" title="0">if incoming.AllowedExtensions != nil </span><span class="cov0" title="0">{
+                existing.AllowedExtensions = incoming.AllowedExtensions
+        }</span>
+        <span class="cov0" title="0">if incoming.ForbiddenPaths != nil </span><span class="cov0" title="0">{
+                existing.ForbiddenPaths = incoming.ForbiddenPaths
+        }</span>
+        <span class="cov0" title="0">if incoming.MaxFileSize != nil </span><span class="cov0" title="0">{
+                existing.MaxFileSize = incoming.MaxFileSize
+        }</span>
+        <span class="cov0" title="0">if incoming.BackupEnabled != nil </span><span class="cov0" title="0">{
+                existing.BackupEnabled = incoming.BackupEnabled
+        }</span>
+}
+
+func mergeLoggingConfig(existing, incoming *LoggingConfig) <span class="cov0" title="0">{
+        if incoming.Level != nil </span><span class="cov0" title="0">{
+                existing.Level = incoming.Level
+        }</span>
+        <span class="cov0" title="0">if incoming.OutputFile != nil </span><span class="cov0" title="0">{
+                existing.OutputFile = incoming.OutputFile
+        }</span>
+        <span class="cov0" title="0">if incoming.RotateSize != nil </span><span class="cov0" title="0">{
+                existing.RotateSize = incoming.RotateSize
+        }</span>
+        <span class="cov0" title="0">if incoming.KeepRotations != nil </span><span class="cov0" title="0">{
+                existing.KeepRotations = incoming.KeepRotations
+        }</span>
+        <span class="cov0" title="0">if incoming.IncludeAIOutput != nil </span><span class="cov0" title="0">{
+                existing.IncludeAIOutput = incoming.IncludeAIOutput
+        }</span>
+}
+
+// LoadWithSources loads the configuration with source tracking
+func LoadWithSources() (*ConfigWithSources, error) <span class="cov1" title="1">{
+        paths, err := getConfigPaths()
+        if err != nil </span><span class="cov0" title="0">{
+                return &amp;ConfigWithSources{Config: Config{}, Sources: make(map[string]string)}, nil
+        }</span>
+
+        <span class="cov1" title="1">cfg := &amp;ConfigWithSources{
+                Config:  Config{},
+                Sources: make(map[string]string),
+        }
+
+        // Load configs in reverse order (home -&gt; root -&gt; ... -&gt; current)
+        // so that more specific configs override general ones
+        for i := len(paths) - 1; i &gt;= 0; i-- </span><span class="cov5" title="6">{
+                path := paths[i]
+                if _, err := os.Stat(path); os.IsNotExist(err) </span><span class="cov4" title="4">{
+                        continue</span> // Skip non-existent files
+                }
+
+                <span class="cov2" title="2">var fileCfg Config
+                if _, err := toml.DecodeFile(path, &amp;fileCfg); err != nil </span><span class="cov0" title="0">{
+                        continue</span> // Skip invalid files
+                }
+
+                // Merge config and track sources - more specific values override general ones
+                <span class="cov2" title="2">if fileCfg.PreferredPackageManager != nil </span><span class="cov1" title="1">{
+                        cfg.PreferredPackageManager = fileCfg.PreferredPackageManager
+                        cfg.Sources["preferred_package_manager"] = path
+                }</span>
+                <span class="cov2" title="2">if fileCfg.MCPPort != nil </span><span class="cov2" title="2">{
+                        cfg.MCPPort = fileCfg.MCPPort
+                        cfg.Sources["mcp_port"] = path
+                }</span>
+                <span class="cov2" title="2">if fileCfg.NoMCP != nil </span><span class="cov0" title="0">{
+                        cfg.NoMCP = fileCfg.NoMCP
+                        cfg.Sources["no_mcp"] = path
+                }</span>
+                <span class="cov2" title="2">if fileCfg.UseRobustNetworking != nil </span><span class="cov0" title="0">{
+                        cfg.UseRobustNetworking = fileCfg.UseRobustNetworking
+                        cfg.Sources["use_robust_networking"] = path
+                }</span>
+                <span class="cov2" title="2">if fileCfg.ProxyPort != nil </span><span class="cov1" title="1">{
+                        cfg.ProxyPort = fileCfg.ProxyPort
+                        cfg.Sources["proxy_port"] = path
+                }</span>
+                <span class="cov2" title="2">if fileCfg.ProxyMode != nil </span><span class="cov0" title="0">{
+                        cfg.ProxyMode = fileCfg.ProxyMode
+                        cfg.Sources["proxy_mode"] = path
+                }</span>
+                <span class="cov2" title="2">if fileCfg.ProxyURL != nil </span><span class="cov0" title="0">{
+                        cfg.ProxyURL = fileCfg.ProxyURL
+                        cfg.Sources["proxy_url"] = path
+                }</span>
+                <span class="cov2" title="2">if fileCfg.StandardProxy != nil </span><span class="cov0" title="0">{
+                        cfg.StandardProxy = fileCfg.StandardProxy
+                        cfg.Sources["standard_proxy"] = path
+                }</span>
+                <span class="cov2" title="2">if fileCfg.NoProxy != nil </span><span class="cov0" title="0">{
+                        cfg.NoProxy = fileCfg.NoProxy
+                        cfg.Sources["no_proxy"] = path
+                }</span>
+                <span class="cov2" title="2">if fileCfg.AICoders != nil </span><span class="cov0" title="0">{
+                        if cfg.AICoders == nil </span><span class="cov0" title="0">{
+                                cfg.AICoders = fileCfg.AICoders
+                                cfg.Sources["ai_coders"] = path
+                        }</span> else<span class="cov0" title="0"> {
+                                // Merge AI configurations
+                                mergeAIConfig(cfg.AICoders, fileCfg.AICoders)
+                                // Track source for AI config (if not already tracked)
+                                if _, exists := cfg.Sources["ai_coders"]; !exists </span><span class="cov0" title="0">{
+                                        cfg.Sources["ai_coders"] = path
+                                }</span>
+                        }
+                }
+        }
+
+        <span class="cov1" title="1">return cfg, nil</span>
+}
+
+// Save saves the configuration to current directory .brum.toml
+func (c *Config) Save() error <span class="cov1" title="1">{
+        currentDir, err := os.Getwd()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov1" title="1">path := filepath.Join(currentDir, ".brum.toml")
+
+        file, err := os.Create(path)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov1" title="1">defer file.Close()
+
+        return toml.NewEncoder(file).Encode(c)</span>
+}
+
+// SaveToHome saves the configuration to home directory .brum.toml
+func (c *Config) SaveToHome() error <span class="cov0" title="0">{
+        homeDir, err := os.UserHomeDir()
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">path := filepath.Join(homeDir, ".brum.toml")
+
+        file, err := os.Create(path)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+        <span class="cov0" title="0">defer file.Close()
+
+        return toml.NewEncoder(file).Encode(c)</span>
+}
+
+// Helper functions to get config values with defaults
+
+func (c *Config) GetMCPPort() int <span class="cov3" title="3">{
+        if c.MCPPort != nil </span><span class="cov1" title="1">{
+                return *c.MCPPort
+        }</span>
+        <span class="cov2" title="2">return 7777</span> // default
+}
+
+func (c *Config) GetNoMCP() bool <span class="cov1" title="1">{
+        if c.NoMCP != nil </span><span class="cov0" title="0">{
+                return *c.NoMCP
+        }</span>
+        <span class="cov1" title="1">return false</span> // default
+}
+
+func (c *Config) GetUseRobustNetworking() bool <span class="cov0" title="0">{
+        if c.UseRobustNetworking != nil </span><span class="cov0" title="0">{
+                return *c.UseRobustNetworking
+        }</span>
+        <span class="cov0" title="0">return false</span> // default - disabled for safety
+}
+
+func (c *Config) GetProxyPort() int <span class="cov2" title="2">{
+        if c.ProxyPort != nil </span><span class="cov1" title="1">{
+                return *c.ProxyPort
+        }</span>
+        <span class="cov1" title="1">return 19888</span> // default
+}
+
+func (c *Config) GetProxyMode() string <span class="cov2" title="2">{
+        if c.ProxyMode != nil </span><span class="cov1" title="1">{
+                return *c.ProxyMode
+        }</span>
+        <span class="cov1" title="1">return "reverse"</span> // default
+}
+
+func (c *Config) GetProxyURL() string <span class="cov0" title="0">{
+        if c.ProxyURL != nil </span><span class="cov0" title="0">{
+                return *c.ProxyURL
+        }</span>
+        <span class="cov0" title="0">return ""</span> // default
+}
+
+func (c *Config) GetStandardProxy() bool <span class="cov0" title="0">{
+        if c.StandardProxy != nil </span><span class="cov0" title="0">{
+                return *c.StandardProxy
+        }</span>
+        <span class="cov0" title="0">return false</span> // default
+}
+
+func (c *Config) GetNoProxy() bool <span class="cov1" title="1">{
+        if c.NoProxy != nil </span><span class="cov0" title="0">{
+                return *c.NoProxy
+        }</span>
+        <span class="cov1" title="1">return false</span> // default
+}
+
+func (c *Config) GetAICoderConfig() aicoder.AICoderConfig <span class="cov1" title="1">{
+        aiConfig := c.AICoders
+        if aiConfig == nil </span><span class="cov1" title="1">{
+                aiConfig = &amp;AICoderConfig{}
+        }</span>
+
+        <span class="cov1" title="1">return aicoder.AICoderConfig{
+                MaxConcurrent:    aiConfig.GetMaxConcurrent(),
+                WorkspaceBaseDir: aiConfig.GetWorkspaceBaseDir(),
+                DefaultProvider:  aiConfig.GetDefaultProvider(),
+                TimeoutMinutes:   aiConfig.GetTimeoutMinutes(),
+        }</span>
+}
+
+func (c *Config) GetProviderConfigs() map[string]*aicoder.ProviderConfig <span class="cov0" title="0">{
+        aiConfig := c.AICoders
+        if aiConfig == nil || aiConfig.Providers == nil </span><span class="cov0" title="0">{
+                return make(map[string]*aicoder.ProviderConfig)
+        }</span>
+
+        <span class="cov0" title="0">providers := make(map[string]*aicoder.ProviderConfig)
+        for name, provider := range aiConfig.Providers </span><span class="cov0" title="0">{
+                providerConfig := &amp;aicoder.ProviderConfig{
+                        Model:       provider.GetModel(),
+                        APIKeyEnv:   provider.GetAPIKeyEnv(),
+                        MaxTokens:   provider.GetMaxTokens(),
+                        Temperature: provider.GetTemperature(),
+                }
+
+                // Add CLI tool configuration if present
+                if provider.CLITool != nil </span><span class="cov0" title="0">{
+                        providerConfig.CLITool = &amp;aicoder.CLIToolConfig{
+                                Command:     provider.CLITool.GetCommand(),
+                                BaseArgs:    provider.CLITool.BaseArgs,
+                                FlagMapping: provider.CLITool.FlagMapping,
+                                WorkingDir:  provider.CLITool.GetWorkingDir(),
+                                Environment: provider.CLITool.Environment,
+                        }
+                }</span>
+
+                <span class="cov0" title="0">providers[name] = providerConfig</span>
+        }
+
+        <span class="cov0" title="0">return providers</span>
+}
+
+// DisplaySettingsWithSources returns a TOML-formatted string with source comments
+func (c *ConfigWithSources) DisplaySettingsWithSources() string <span class="cov0" title="0">{
+        var lines []string
+
+        // Helper to shorten path for display
+        shortenPath := func(path string) string </span><span class="cov0" title="0">{
+                if strings.HasPrefix(path, os.Getenv("HOME")) </span><span class="cov0" title="0">{
+                        return strings.Replace(path, os.Getenv("HOME"), "~", 1)
+                }</span>
+                <span class="cov0" title="0">wd, _ := os.Getwd()
+                if strings.HasPrefix(path, wd) </span><span class="cov0" title="0">{
+                        rel, _ := filepath.Rel(wd, path)
+                        if !strings.HasPrefix(rel, "..") </span><span class="cov0" title="0">{
+                                return "./" + rel
+                        }</span>
+                }
+                <span class="cov0" title="0">return path</span>
+        }
+
+        <span class="cov0" title="0">lines = append(lines, "# Brummer Configuration")
+        lines = append(lines, "# Generated by: brum --settings")
+        lines = append(lines, "")
+
+        // Package Manager
+        if c.PreferredPackageManager != nil </span><span class="cov0" title="0">{
+                if source, ok := c.Sources["preferred_package_manager"]; ok </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+                }</span>
+                <span class="cov0" title="0">lines = append(lines, fmt.Sprintf("preferred_package_manager = \"%s\"", *c.PreferredPackageManager))
+                lines = append(lines, "")</span>
+        }
+
+        // MCP Settings
+        <span class="cov0" title="0">lines = append(lines, "# MCP (Model Context Protocol) Settings")
+        if c.MCPPort != nil </span><span class="cov0" title="0">{
+                if source, ok := c.Sources["mcp_port"]; ok </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+                }</span>
+                <span class="cov0" title="0">lines = append(lines, fmt.Sprintf("mcp_port = %d", *c.MCPPort))</span>
+        } else<span class="cov0" title="0"> {
+                lines = append(lines, "# mcp_port = 7777  # default")
+        }</span>
+
+        <span class="cov0" title="0">if c.NoMCP != nil </span><span class="cov0" title="0">{
+                if source, ok := c.Sources["no_mcp"]; ok </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+                }</span>
+                <span class="cov0" title="0">lines = append(lines, fmt.Sprintf("no_mcp = %t", *c.NoMCP))</span>
+        } else<span class="cov0" title="0"> {
+                lines = append(lines, "# no_mcp = false  # default")
+        }</span>
+        <span class="cov0" title="0">lines = append(lines, "")
+
+        // Proxy Settings
+        lines = append(lines, "# Proxy Server Settings")
+        if c.ProxyPort != nil </span><span class="cov0" title="0">{
+                if source, ok := c.Sources["proxy_port"]; ok </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+                }</span>
+                <span class="cov0" title="0">lines = append(lines, fmt.Sprintf("proxy_port = %d", *c.ProxyPort))</span>
+        } else<span class="cov0" title="0"> {
+                lines = append(lines, "# proxy_port = 19888  # default")
+        }</span>
+
+        <span class="cov0" title="0">if c.ProxyMode != nil </span><span class="cov0" title="0">{
+                if source, ok := c.Sources["proxy_mode"]; ok </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+                }</span>
+                <span class="cov0" title="0">lines = append(lines, fmt.Sprintf("proxy_mode = \"%s\"", *c.ProxyMode))</span>
+        } else<span class="cov0" title="0"> {
+                lines = append(lines, "# proxy_mode = \"reverse\"  # default")
+        }</span>
+
+        <span class="cov0" title="0">if c.ProxyURL != nil &amp;&amp; *c.ProxyURL != "" </span><span class="cov0" title="0">{
+                if source, ok := c.Sources["proxy_url"]; ok </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+                }</span>
+                <span class="cov0" title="0">lines = append(lines, fmt.Sprintf("proxy_url = \"%s\"", *c.ProxyURL))</span>
+        } else<span class="cov0" title="0"> {
+                lines = append(lines, "# proxy_url = \"\"  # default (auto-detect)")
+        }</span>
+
+        <span class="cov0" title="0">if c.StandardProxy != nil </span><span class="cov0" title="0">{
+                if source, ok := c.Sources["standard_proxy"]; ok </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+                }</span>
+                <span class="cov0" title="0">lines = append(lines, fmt.Sprintf("standard_proxy = %t", *c.StandardProxy))</span>
+        } else<span class="cov0" title="0"> {
+                lines = append(lines, "# standard_proxy = false  # default")
+        }</span>
+
+        <span class="cov0" title="0">if c.NoProxy != nil </span><span class="cov0" title="0">{
+                if source, ok := c.Sources["no_proxy"]; ok </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+                }</span>
+                <span class="cov0" title="0">lines = append(lines, fmt.Sprintf("no_proxy = %t", *c.NoProxy))</span>
+        } else<span class="cov0" title="0"> {
+                lines = append(lines, "# no_proxy = false  # default")
+        }</span>
+        <span class="cov0" title="0">lines = append(lines, "")
+
+        // AI Coder Settings
+        lines = append(lines, "# AI Coder Settings")
+        if c.AICoders != nil </span><span class="cov0" title="0">{
+                if source, ok := c.Sources["ai_coders"]; ok </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("# Source: %s", shortenPath(source)))
+                }</span>
+
+                <span class="cov0" title="0">if c.AICoders.Enabled != nil </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("enabled = %t", *c.AICoders.Enabled))
+                }</span>
+                <span class="cov0" title="0">if c.AICoders.MaxConcurrent != nil </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("max_concurrent = %d", *c.AICoders.MaxConcurrent))
+                }</span>
+                <span class="cov0" title="0">if c.AICoders.DefaultProvider != nil </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("default_provider = \"%s\"", *c.AICoders.DefaultProvider))
+                }</span>
+                <span class="cov0" title="0">if c.AICoders.TimeoutMinutes != nil </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("timeout_minutes = %d", *c.AICoders.TimeoutMinutes))
+                }</span>
+
+                // Show provider count
+                <span class="cov0" title="0">if c.AICoders.Providers != nil </span><span class="cov0" title="0">{
+                        lines = append(lines, fmt.Sprintf("providers_count = %d", len(c.AICoders.Providers)))
+                        providerNames := make([]string, 0, len(c.AICoders.Providers))
+                        for name := range c.AICoders.Providers </span><span class="cov0" title="0">{
+                                providerNames = append(providerNames, name)
+                        }</span>
+                        <span class="cov0" title="0">lines = append(lines, fmt.Sprintf("available_providers = [%s]", strings.Join(providerNames, ", ")))</span>
+                }
+        } else<span class="cov0" title="0"> {
+                lines = append(lines, "# enabled = true  # default")
+                lines = append(lines, "# max_concurrent = 3  # default")
+                lines = append(lines, "# default_provider = \"claude\"  # default")
+                lines = append(lines, "# timeout_minutes = 30  # default")
+        }</span>
+
+        <span class="cov0" title="0">return strings.Join(lines, "\n")</span>
+}
+</pre>
+		
+		<pre class="file" id="file3" style="display: none">package discovery
+
+import (
+        "context"
+        "encoding/json"
+        "fmt"
+        "os"
+        "path/filepath"
+        "time"
+
+        "github.com/gofrs/flock"
+)
+
+// AtomicFileOperations provides thread-safe file operations for instance management
+type AtomicFileOperations struct {
+        instancesDir string
+        lockTimeout  time.Duration
+}
+
+// NewAtomicFileOperations creates a new atomic file operations manager
+func NewAtomicFileOperations(instancesDir string) *AtomicFileOperations <span class="cov9" title="3516">{
+        return &amp;AtomicFileOperations{
+                instancesDir: instancesDir,
+                lockTimeout:  30 * time.Second, // Prevent deadlocks
+        }
+}</span>
+
+// SafeUpdateInstance atomically updates an instance with proper file locking
+func (afo *AtomicFileOperations) SafeUpdateInstance(instance *Instance) error <span class="cov0" title="0">{
+        return afo.withLock(func() error </span><span class="cov0" title="0">{
+                return afo.atomicWriteInstance(instance)
+        }</span>)
+}
+
+// SafeUpdateInstancePing atomically updates the last ping time for an instance
+func (afo *AtomicFileOperations) SafeUpdateInstancePing(instanceID string) error <span class="cov8" title="1038">{
+        return afo.withLock(func() error </span><span class="cov8" title="1038">{
+                // Read existing instance data
+                instance, err := afo.readInstanceLocked(instanceID)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to read instance: %w", err)
+                }</span>
+
+                // Update last ping time
+                <span class="cov8" title="1038">instance.LastPing = time.Now()
+
+                // Write back atomically
+                return afo.atomicWriteInstance(instance)</span>
+        })
+}
+
+// SafeRegisterInstance atomically registers a new instance
+func (afo *AtomicFileOperations) SafeRegisterInstance(instance *Instance) error <span class="cov8" title="1192">{
+        return afo.withLock(func() error </span><span class="cov8" title="1194">{
+                // Validate instance before writing
+                if err := validateInstance(instance); err != nil </span><span class="cov2" title="4">{
+                        return fmt.Errorf("invalid instance: %w", err)
+                }</span>
+
+                // Ensure instances directory exists with proper permissions
+                <span class="cov8" title="1190">if err := os.MkdirAll(afo.instancesDir, DefaultDirMode); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to create instances directory: %w", err)
+                }</span>
+
+                <span class="cov8" title="1190">return afo.atomicWriteInstance(instance)</span>
+        })
+}
+
+// SafeUnregisterInstance atomically removes an instance registration
+func (afo *AtomicFileOperations) SafeUnregisterInstance(instanceID string) error <span class="cov7" title="354">{
+        return afo.withLock(func() error </span><span class="cov7" title="354">{
+                filename := fmt.Sprintf("%s.json", instanceID)
+                path := filepath.Join(afo.instancesDir, filename)
+
+                if err := os.Remove(path); err != nil &amp;&amp; !os.IsNotExist(err) </span><span class="cov0" title="0">{
+                        return fmt.Errorf("failed to remove instance file: %w", err)
+                }</span>
+
+                <span class="cov7" title="354">return nil</span>
+        })
+}
+
+// SafeReadInstance atomically reads an instance with proper locking
+func (afo *AtomicFileOperations) SafeReadInstance(instanceID string) (*Instance, error) <span class="cov9" title="2065">{
+        var instance *Instance
+        var err error
+
+        lockErr := afo.withLock(func() error </span><span class="cov9" title="2065">{
+                instance, err = afo.readInstanceLocked(instanceID)
+                return err
+        }</span>)
+
+        <span class="cov9" title="2065">if lockErr != nil </span><span class="cov7" title="342">{
+                return nil, lockErr
+        }</span>
+
+        <span class="cov8" title="1723">return instance, nil</span>
+}
+
+// SafeListInstances atomically lists all instances with proper locking
+func (afo *AtomicFileOperations) SafeListInstances() (map[string]*Instance, error) <span class="cov4" title="18">{
+        var instances map[string]*Instance
+        var err error
+
+        lockErr := afo.withLock(func() error </span><span class="cov4" title="18">{
+                instances, err = afo.listInstancesLocked()
+                return err
+        }</span>)
+
+        <span class="cov4" title="18">if lockErr != nil </span><span class="cov0" title="0">{
+                return nil, lockErr
+        }</span>
+
+        <span class="cov4" title="18">return instances, nil</span>
+}
+
+// withLock executes a function while holding an exclusive file lock
+func (afo *AtomicFileOperations) withLock(fn func() error) error <span class="cov9" title="4669">{
+        // Create lock file path
+        lockFile := filepath.Join(afo.instancesDir, ".discovery.lock")
+
+        // Ensure the lock directory exists
+        if err := os.MkdirAll(afo.instancesDir, DefaultDirMode); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create lock directory: %w", err)
+        }</span>
+
+        // Create file lock
+        <span class="cov10" title="4670">fileLock := flock.New(lockFile)
+
+        // Set timeout to prevent indefinite blocking
+        ctx, cancel := context.WithTimeout(context.Background(), afo.lockTimeout)
+        defer cancel()
+
+        // Acquire lock with timeout
+        locked, err := fileLock.TryLockContext(ctx, 100*time.Millisecond) // Retry every 100ms
+        if err != nil </span><span class="cov1" title="1">{
+                return fmt.Errorf("failed to acquire lock: %w", err)
+        }</span>
+        <span class="cov10" title="4670">if !locked </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to acquire lock within timeout (%v)", afo.lockTimeout)
+        }</span>
+
+        // Ensure lock is released
+        <span class="cov10" title="4670">defer func() </span><span class="cov10" title="4670">{
+                if unlockErr := fileLock.Unlock(); unlockErr != nil </span><span class="cov0" title="0">{
+                        // Log error but don't override the main error
+                        // In production, this should be logged properly
+                        fmt.Printf("Warning: failed to release lock: %v\n", unlockErr)
+                }</span>
+        }()
+
+        // Execute the function while holding the lock
+        <span class="cov10" title="4670">return fn()</span>
+}
+
+// atomicWriteInstance writes an instance to disk atomically (must be called within a lock)
+func (afo *AtomicFileOperations) atomicWriteInstance(instance *Instance) error <span class="cov9" title="2228">{
+        // Marshal instance data
+        data, err := json.MarshalIndent(instance, "", "  ")
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to marshal instance data: %w", err)
+        }</span>
+
+        // Write atomically using temp file + rename
+        <span class="cov9" title="2228">filename := fmt.Sprintf("%s.json", instance.ID)
+        finalPath := filepath.Join(afo.instancesDir, filename)
+
+        // Use enhanced atomic write with proper error handling
+        if err := afo.atomicWriteFile(finalPath, data, DefaultFileMode); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write instance file: %w", err)
+        }</span>
+
+        <span class="cov9" title="2227">return nil</span>
+}
+
+// readInstanceLocked reads an instance from disk (must be called within a lock)
+func (afo *AtomicFileOperations) readInstanceLocked(instanceID string) (*Instance, error) <span class="cov9" title="3156">{
+        filename := fmt.Sprintf("%s.json", instanceID)
+        path := filepath.Join(afo.instancesDir, filename)
+
+        data, err := os.ReadFile(path)
+        if err != nil </span><span class="cov7" title="333">{
+                return nil, fmt.Errorf("failed to read instance file: %w", err)
+        }</span>
+
+        <span class="cov9" title="2823">var instance Instance
+        if err := json.Unmarshal(data, &amp;instance); err != nil </span><span class="cov3" title="7">{
+                return nil, fmt.Errorf("failed to unmarshal instance data: %w", err)
+        }</span>
+
+        // Validate instance data
+        <span class="cov9" title="2816">if err := validateInstance(&amp;instance); err != nil </span><span class="cov1" title="2">{
+                return nil, fmt.Errorf("invalid instance data: %w", err)
+        }</span>
+
+        <span class="cov9" title="2814">return &amp;instance, nil</span>
+}
+
+// listInstancesLocked lists all instances from disk (must be called within a lock)
+func (afo *AtomicFileOperations) listInstancesLocked() (map[string]*Instance, error) <span class="cov4" title="18">{
+        instances := make(map[string]*Instance)
+
+        // Check if directory exists
+        if _, err := os.Stat(afo.instancesDir); os.IsNotExist(err) </span><span class="cov0" title="0">{
+                return instances, nil // Return empty map if directory doesn't exist
+        }</span>
+
+        // Read directory entries
+        <span class="cov4" title="18">entries, err := os.ReadDir(afo.instancesDir)
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to read instances directory: %w", err)
+        }</span>
+
+        // Process each .json file
+        <span class="cov4" title="18">for _, entry := range entries </span><span class="cov5" title="71">{
+                if entry.IsDir() || !entry.Type().IsRegular() </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov5" title="71">name := entry.Name()
+                if filepath.Ext(name) != ".json" || name == ".discovery.lock" </span><span class="cov4" title="18">{
+                        continue</span>
+                }
+
+                // Extract instance ID from filename
+                <span class="cov5" title="53">instanceID := name[:len(name)-5] // Remove .json extension
+
+                // Read instance
+                instance, err := afo.readInstanceLocked(instanceID)
+                if err != nil </span><span class="cov0" title="0">{
+                        // Log error but continue processing other instances
+                        fmt.Printf("Warning: failed to read instance %s: %v\n", instanceID, err)
+                        continue</span>
+                }
+
+                <span class="cov5" title="53">instances[instanceID] = instance</span>
+        }
+
+        <span class="cov4" title="18">return instances, nil</span>
+}
+
+// atomicWriteFile writes data to a file atomically using temp file + rename
+func (afo *AtomicFileOperations) atomicWriteFile(path string, data []byte, perm os.FileMode) error <span class="cov9" title="2230">{
+        // Create directory if needed
+        dir := filepath.Dir(path)
+        if err := os.MkdirAll(dir, DefaultDirMode); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create directory: %w", err)
+        }</span>
+
+        // Create temp file in same directory (for atomic rename)
+        <span class="cov9" title="2230">tempFile, err := os.CreateTemp(dir, ".tmp-instance-")
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to create temp file: %w", err)
+        }</span>
+        <span class="cov9" title="2230">tempPath := tempFile.Name()
+
+        // Clean up temp file on error
+        defer func() </span><span class="cov9" title="2230">{
+                if tempFile != nil </span><span class="cov0" title="0">{
+                        tempFile.Close()
+                        os.Remove(tempPath)
+                }</span>
+        }()
+
+        // Write data
+        <span class="cov9" title="2230">if _, err := tempFile.Write(data); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to write data: %w", err)
+        }</span>
+
+        // Sync to disk to ensure data is written
+        <span class="cov9" title="2230">if err := tempFile.Sync(); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to sync file: %w", err)
+        }</span>
+
+        // Close before rename
+        <span class="cov9" title="2230">if err := tempFile.Close(); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to close temp file: %w", err)
+        }</span>
+        <span class="cov9" title="2230">tempFile = nil // Prevent defer cleanup
+
+        // Set permissions
+        if err := os.Chmod(tempPath, perm); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to set permissions: %w", err)
+        }</span>
+
+        // Atomic rename (this is the atomic operation)
+        <span class="cov9" title="2229">if err := os.Rename(tempPath, path); err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to rename file: %w", err)
+        }</span>
+
+        <span class="cov9" title="2229">return nil</span>
+}
+
+// GetLockTimeout returns the current lock timeout
+func (afo *AtomicFileOperations) GetLockTimeout() time.Duration <span class="cov1" title="2">{
+        return afo.lockTimeout
+}</span>
+
+// SetLockTimeout sets the lock timeout (useful for testing)
+func (afo *AtomicFileOperations) SetLockTimeout(timeout time.Duration) <span class="cov2" title="3">{
+        afo.lockTimeout = timeout
+}</span>
+
+// IsInstanceFileCorrupted checks if an instance file is corrupted
+func (afo *AtomicFileOperations) IsInstanceFileCorrupted(instanceID string) bool <span class="cov2" title="3">{
+        _, err := afo.SafeReadInstance(instanceID)
+        return err != nil
+}</span>
+</pre>
+		
+		<pre class="file" id="file4" style="display: none">package discovery
+
+import (
+        "encoding/json"
+        "fmt"
+        "io"
+        "os"
+        "path/filepath"
+        "runtime"
+        "strings"
+        "time"
+)
+
+// DiagnosticReport contains detailed information about discovery state
+type DiagnosticReport struct {
+        Timestamp       time.Time                `json:"timestamp"`
+        InstancesDir    string                   `json:"instances_dir"`
+        DirPermissions  string                   `json:"dir_permissions"`
+        DirExists       bool                     `json:"dir_exists"`
+        FileCount       int                      `json:"file_count"`
+        ValidInstances  map[string]*Instance     `json:"valid_instances"`
+        InvalidFiles    map[string]string        `json:"invalid_files"`
+        FilePermissions map[string]string        `json:"file_permissions"`
+        ProcessStatus   map[string]ProcessStatus `json:"process_status"`
+        LockFileInfo    *LockFileInfo            `json:"lock_file_info"`
+        SystemInfo      SystemInfo               `json:"system_info"`
+        Errors          []string                 `json:"errors"`
+}
+
+// ProcessStatus contains information about a process
+type ProcessStatus struct {
+        PID     int    `json:"pid"`
+        Running bool   `json:"running"`
+        Error   string `json:"error,omitempty"`
+}
+
+// LockFileInfo contains information about the discovery lock file
+type LockFileInfo struct {
+        Exists    bool      `json:"exists"`
+        Path      string    `json:"path"`
+        Size      int64     `json:"size"`
+        ModTime   time.Time `json:"mod_time"`
+        Locked    bool      `json:"locked"`
+        LockError string    `json:"lock_error,omitempty"`
+}
+
+// SystemInfo contains system-level information
+type SystemInfo struct {
+        TempDir        string `json:"temp_dir"`
+        XDGRuntimeDir  string `json:"xdg_runtime_dir"`
+        DefaultDir     string `json:"default_instances_dir"`
+        CurrentUser    string `json:"current_user"`
+        FileSystemType string `json:"file_system_type,omitempty"`
+}
+
+// GenerateDiagnosticReport creates a comprehensive diagnostic report
+func GenerateDiagnosticReport(instancesDir string) (*DiagnosticReport, error) <span class="cov6" title="16">{
+        report := &amp;DiagnosticReport{
+                Timestamp:       time.Now(),
+                InstancesDir:    instancesDir,
+                ValidInstances:  make(map[string]*Instance),
+                InvalidFiles:    make(map[string]string),
+                FilePermissions: make(map[string]string),
+                ProcessStatus:   make(map[string]ProcessStatus),
+                Errors:          []string{},
+                SystemInfo: SystemInfo{
+                        TempDir:       os.TempDir(),
+                        XDGRuntimeDir: os.Getenv("XDG_RUNTIME_DIR"),
+                        DefaultDir:    GetDefaultInstancesDir(),
+                        CurrentUser:   getCurrentUser(),
+                },
+        }
+
+        // Check directory existence and permissions
+        if info, err := os.Stat(instancesDir); err != nil </span><span class="cov3" title="3">{
+                if os.IsNotExist(err) </span><span class="cov3" title="3">{
+                        report.DirExists = false
+                        report.Errors = append(report.Errors, fmt.Sprintf("Directory does not exist: %s", instancesDir))
+                }</span> else<span class="cov0" title="0"> {
+                        report.Errors = append(report.Errors, fmt.Sprintf("Cannot stat directory: %v", err))
+                }</span>
+        } else<span class="cov5" title="13"> {
+                report.DirExists = true
+                report.DirPermissions = info.Mode().String()
+
+                // Check if we can read the directory
+                if entries, err := os.ReadDir(instancesDir); err != nil </span><span class="cov0" title="0">{
+                        report.Errors = append(report.Errors, fmt.Sprintf("Cannot read directory: %v", err))
+                }</span> else<span class="cov5" title="13"> {
+                        report.FileCount = len(entries)
+
+                        // Process each file
+                        for _, entry := range entries </span><span class="cov10" title="123">{
+                                if entry.IsDir() </span><span class="cov0" title="0">{
+                                        continue</span>
+                                }
+
+                                <span class="cov10" title="123">filename := entry.Name()
+                                fullPath := filepath.Join(instancesDir, filename)
+
+                                // Get file permissions
+                                if info, err := os.Stat(fullPath); err == nil </span><span class="cov10" title="123">{
+                                        report.FilePermissions[filename] = info.Mode().String()
+                                }</span>
+
+                                // Skip non-JSON files
+                                <span class="cov10" title="123">if filepath.Ext(filename) != ".json" </span><span class="cov4" title="8">{
+                                        continue</span>
+                                }
+
+                                // Skip lock file
+                                <span class="cov9" title="115">if filename == ".discovery.lock" </span><span class="cov0" title="0">{
+                                        report.LockFileInfo = getLockFileInfo(fullPath)
+                                        continue</span>
+                                }
+
+                                // Try to read and parse the file
+                                <span class="cov9" title="115">instanceID := extractInstanceID(filename)
+                                if instanceID == "" </span><span class="cov0" title="0">{
+                                        report.InvalidFiles[filename] = "Invalid filename format"
+                                        continue</span>
+                                }
+
+                                <span class="cov9" title="115">data, err := os.ReadFile(fullPath)
+                                if err != nil </span><span class="cov0" title="0">{
+                                        report.InvalidFiles[filename] = fmt.Sprintf("Read error: %v", err)
+                                        continue</span>
+                                }
+
+                                <span class="cov9" title="115">var instance Instance
+                                if err := json.Unmarshal(data, &amp;instance); err != nil </span><span class="cov1" title="1">{
+                                        report.InvalidFiles[filename] = fmt.Sprintf("JSON parse error: %v", err)
+                                        continue</span>
+                                }
+
+                                // Validate instance
+                                <span class="cov9" title="114">if err := validateInstance(&amp;instance); err != nil </span><span class="cov1" title="1">{
+                                        report.InvalidFiles[filename] = fmt.Sprintf("Validation error: %v", err)
+                                        continue</span>
+                                }
+
+                                // Check process status
+                                <span class="cov9" title="113">report.ProcessStatus[instanceID] = checkProcessStatus(instance.ProcessInfo.PID)
+
+                                // Add to valid instances
+                                report.ValidInstances[instanceID] = &amp;instance</span>
+                        }
+                }
+        }
+
+        <span class="cov6" title="16">return report, nil</span>
+}
+
+// PrintDiagnosticReport writes a human-readable diagnostic report
+func PrintDiagnosticReport(w io.Writer, report *DiagnosticReport) <span class="cov1" title="1">{
+        fmt.Fprintf(w, "Discovery Diagnostic Report\n")
+        fmt.Fprintf(w, "==========================\n\n")
+
+        fmt.Fprintf(w, "Timestamp: %s\n", report.Timestamp.Format(time.RFC3339))
+        fmt.Fprintf(w, "Instances Directory: %s\n", report.InstancesDir)
+        fmt.Fprintf(w, "Directory Exists: %v\n", report.DirExists)
+        fmt.Fprintf(w, "Directory Permissions: %s\n", report.DirPermissions)
+        fmt.Fprintf(w, "File Count: %d\n\n", report.FileCount)
+
+        fmt.Fprintf(w, "System Information:\n")
+        fmt.Fprintf(w, "  Current User: %s\n", report.SystemInfo.CurrentUser)
+        fmt.Fprintf(w, "  Temp Dir: %s\n", report.SystemInfo.TempDir)
+        fmt.Fprintf(w, "  XDG_RUNTIME_DIR: %s\n", report.SystemInfo.XDGRuntimeDir)
+        fmt.Fprintf(w, "  Default Instances Dir: %s\n\n", report.SystemInfo.DefaultDir)
+
+        if len(report.Errors) &gt; 0 </span><span class="cov1" title="1">{
+                fmt.Fprintf(w, "ERRORS:\n")
+                for _, err := range report.Errors </span><span class="cov1" title="1">{
+                        fmt.Fprintf(w, "  - %s\n", err)
+                }</span>
+                <span class="cov1" title="1">fmt.Fprintf(w, "\n")</span>
+        }
+
+        <span class="cov1" title="1">if report.LockFileInfo != nil </span><span class="cov0" title="0">{
+                fmt.Fprintf(w, "Lock File:\n")
+                fmt.Fprintf(w, "  Path: %s\n", report.LockFileInfo.Path)
+                fmt.Fprintf(w, "  Exists: %v\n", report.LockFileInfo.Exists)
+                if report.LockFileInfo.Exists </span><span class="cov0" title="0">{
+                        fmt.Fprintf(w, "  Size: %d bytes\n", report.LockFileInfo.Size)
+                        fmt.Fprintf(w, "  Modified: %s\n", report.LockFileInfo.ModTime.Format(time.RFC3339))
+                        fmt.Fprintf(w, "  Locked: %v\n", report.LockFileInfo.Locked)
+                }</span>
+                <span class="cov0" title="0">if report.LockFileInfo.LockError != "" </span><span class="cov0" title="0">{
+                        fmt.Fprintf(w, "  Lock Error: %s\n", report.LockFileInfo.LockError)
+                }</span>
+                <span class="cov0" title="0">fmt.Fprintf(w, "\n")</span>
+        }
+
+        <span class="cov1" title="1">if len(report.ValidInstances) &gt; 0 </span><span class="cov1" title="1">{
+                fmt.Fprintf(w, "Valid Instances (%d):\n", len(report.ValidInstances))
+                for id, inst := range report.ValidInstances </span><span class="cov1" title="1">{
+                        status := report.ProcessStatus[id]
+                        fmt.Fprintf(w, "  %s:\n", id)
+                        fmt.Fprintf(w, "    Name: %s\n", inst.Name)
+                        fmt.Fprintf(w, "    Port: %d\n", inst.Port)
+                        fmt.Fprintf(w, "    PID: %d (Running: %v)\n", inst.ProcessInfo.PID, status.Running)
+                        fmt.Fprintf(w, "    Started: %s\n", inst.StartedAt.Format(time.RFC3339))
+                        fmt.Fprintf(w, "    Last Ping: %s (%.1f minutes ago)\n",
+                                inst.LastPing.Format(time.RFC3339),
+                                time.Since(inst.LastPing).Minutes())
+                        if status.Error != "" </span><span class="cov0" title="0">{
+                                fmt.Fprintf(w, "    Process Error: %s\n", status.Error)
+                        }</span>
+                }
+                <span class="cov1" title="1">fmt.Fprintf(w, "\n")</span>
+        }
+
+        <span class="cov1" title="1">if len(report.InvalidFiles) &gt; 0 </span><span class="cov1" title="1">{
+                fmt.Fprintf(w, "Invalid Files (%d):\n", len(report.InvalidFiles))
+                for filename, reason := range report.InvalidFiles </span><span class="cov1" title="1">{
+                        fmt.Fprintf(w, "  %s: %s\n", filename, reason)
+                }</span>
+                <span class="cov1" title="1">fmt.Fprintf(w, "\n")</span>
+        }
+
+        <span class="cov1" title="1">if len(report.FilePermissions) &gt; 0 </span><span class="cov0" title="0">{
+                fmt.Fprintf(w, "File Permissions:\n")
+                for filename, perms := range report.FilePermissions </span><span class="cov0" title="0">{
+                        fmt.Fprintf(w, "  %s: %s\n", filename, perms)
+                }</span>
+                <span class="cov0" title="0">fmt.Fprintf(w, "\n")</span>
+        }
+}
+
+// VerifyDiscoverySetup performs comprehensive verification of discovery setup
+func VerifyDiscoverySetup(instancesDir string) error <span class="cov4" title="6">{
+        report, err := GenerateDiagnosticReport(instancesDir)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to generate diagnostic report: %w", err)
+        }</span>
+
+        // Check for critical issues
+        <span class="cov4" title="6">var issues []string
+
+        if !report.DirExists </span><span class="cov2" title="2">{
+                issues = append(issues, "instances directory does not exist")
+        }</span>
+
+        <span class="cov4" title="6">if report.DirExists &amp;&amp; !canWriteToDirectory(instancesDir) </span><span class="cov0" title="0">{
+                issues = append(issues, "cannot write to instances directory")
+        }</span>
+
+        <span class="cov4" title="6">if report.LockFileInfo != nil &amp;&amp; report.LockFileInfo.Locked </span><span class="cov0" title="0">{
+                issues = append(issues, "discovery lock file is currently locked")
+        }</span>
+
+        // Check for stale instances
+        <span class="cov4" title="6">now := time.Now()
+        for id, inst := range report.ValidInstances </span><span class="cov4" title="5">{
+                if now.Sub(inst.LastPing) &gt; StaleInstanceTimeout </span><span class="cov4" title="5">{
+                        status := report.ProcessStatus[id]
+                        if !status.Running </span><span class="cov4" title="5">{
+                                issues = append(issues, fmt.Sprintf("instance %s has stale ping and dead process", id))
+                        }</span>
+                }
+        }
+
+        <span class="cov4" title="6">if len(issues) &gt; 0 </span><span class="cov4" title="5">{
+                return fmt.Errorf("discovery setup issues: %s", strings.Join(issues, "; "))
+        }</span>
+
+        <span class="cov1" title="1">return nil</span>
+}
+
+// Helper functions
+
+func getLockFileInfo(lockPath string) *LockFileInfo <span class="cov0" title="0">{
+        info := &amp;LockFileInfo{
+                Path: lockPath,
+        }
+
+        if stat, err := os.Stat(lockPath); err == nil </span><span class="cov0" title="0">{
+                info.Exists = true
+                info.Size = stat.Size()
+                info.ModTime = stat.ModTime()
+
+                // Try to determine if file is locked (platform-specific)
+                if file, err := os.OpenFile(lockPath, os.O_RDWR, 0); err == nil </span><span class="cov0" title="0">{
+                        defer file.Close()
+                        info.Locked = isFileLocked(file)
+                }</span>
+        }
+
+        <span class="cov0" title="0">return info</span>
+}
+
+func checkProcessStatus(pid int) ProcessStatus <span class="cov9" title="113">{
+        status := ProcessStatus{PID: pid}
+
+        if pid &lt;= 0 </span><span class="cov0" title="0">{
+                status.Error = "Invalid PID"
+                return status
+        }</span>
+
+        // Check using /proc filesystem (Linux)
+        <span class="cov9" title="113">procPath := fmt.Sprintf("/proc/%d", pid)
+        if _, err := os.Stat(procPath); err != nil </span><span class="cov4" title="7">{
+                if os.IsNotExist(err) </span><span class="cov4" title="7">{
+                        status.Running = false
+                }</span> else<span class="cov0" title="0"> {
+                        status.Error = err.Error()
+                }</span>
+        } else<span class="cov9" title="106"> {
+                status.Running = true
+        }</span>
+
+        <span class="cov9" title="113">return status</span>
+}
+
+func getCurrentUser() string <span class="cov6" title="16">{
+        if user := os.Getenv("USER"); user != "" </span><span class="cov6" title="16">{
+                return user
+        }</span>
+        <span class="cov0" title="0">if user := os.Getenv("USERNAME"); user != "" </span><span class="cov0" title="0">{
+                return user
+        }</span>
+        <span class="cov0" title="0">return "unknown"</span>
+}
+
+func canWriteToDirectory(dir string) bool <span class="cov3" title="4">{
+        // Try to create a temp file
+        tempFile := filepath.Join(dir, ".write-test-"+fmt.Sprintf("%d", time.Now().UnixNano()))
+
+        file, err := os.Create(tempFile)
+        if err != nil </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        <span class="cov3" title="4">file.Close()
+        os.Remove(tempFile)
+        return true</span>
+}
+
+// DiagnoseDiscoveryIssue provides specific diagnosis for common issues
+func DiagnoseDiscoveryIssue(instancesDir string) (string, error) <span class="cov3" title="3">{
+        report, err := GenerateDiagnosticReport(instancesDir)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+
+        <span class="cov3" title="3">var diagnosis strings.Builder
+
+        // No instances found
+        if len(report.ValidInstances) == 0 &amp;&amp; len(report.InvalidFiles) == 0 </span><span class="cov1" title="1">{
+                if !report.DirExists </span><span class="cov0" title="0">{
+                        diagnosis.WriteString("The instances directory does not exist.\n")
+                        diagnosis.WriteString("This is normal if no instances have been started yet.\n")
+                        diagnosis.WriteString(fmt.Sprintf("Directory path: %s\n", instancesDir))
+                }</span> else<span class="cov1" title="1"> if report.FileCount == 0 </span><span class="cov1" title="1">{
+                        diagnosis.WriteString("The instances directory exists but contains no instance files.\n")
+                        diagnosis.WriteString("Instances should automatically register when started with 'brum' command.\n")
+                }</span> else<span class="cov0" title="0"> {
+                        diagnosis.WriteString("Files found in directory but none are valid instance files.\n")
+                        diagnosis.WriteString("Instance files should have .json extension and valid JSON content.\n")
+                }</span>
+                <span class="cov1" title="1">return diagnosis.String(), nil</span>
+        }
+
+        // Some instances found but with issues
+        <span class="cov2" title="2">staleCount := 0
+        deadCount := 0
+
+        for id, inst := range report.ValidInstances </span><span class="cov3" title="3">{
+                status := report.ProcessStatus[id]
+                if !status.Running </span><span class="cov2" title="2">{
+                        deadCount++
+                }</span>
+                <span class="cov3" title="3">if time.Since(inst.LastPing) &gt; StaleInstanceTimeout </span><span class="cov1" title="1">{
+                        staleCount++
+                }</span>
+        }
+
+        <span class="cov2" title="2">if deadCount &gt; 0 </span><span class="cov2" title="2">{
+                diagnosis.WriteString(fmt.Sprintf("%d instance(s) have dead processes.\n", deadCount))
+                diagnosis.WriteString("These instances may have crashed or been terminated.\n")
+                diagnosis.WriteString("Run cleanup to remove stale instance files.\n\n")
+        }</span>
+
+        <span class="cov2" title="2">if staleCount &gt; 0 </span><span class="cov1" title="1">{
+                diagnosis.WriteString(fmt.Sprintf("%d instance(s) have not updated their ping recently.\n", staleCount))
+                diagnosis.WriteString("These instances may be hung or not running properly.\n\n")
+        }</span>
+
+        <span class="cov2" title="2">if len(report.InvalidFiles) &gt; 0 </span><span class="cov0" title="0">{
+                diagnosis.WriteString(fmt.Sprintf("%d invalid file(s) found in instances directory.\n", len(report.InvalidFiles)))
+                diagnosis.WriteString("These files may be corrupted or have invalid format.\n")
+                for file, reason := range report.InvalidFiles </span><span class="cov0" title="0">{
+                        diagnosis.WriteString(fmt.Sprintf("  - %s: %s\n", file, reason))
+                }</span>
+                <span class="cov0" title="0">diagnosis.WriteString("\n")</span>
+        }
+
+        <span class="cov2" title="2">if diagnosis.Len() == 0 </span><span class="cov0" title="0">{
+                diagnosis.WriteString("No obvious issues found with discovery setup.\n")
+                diagnosis.WriteString(fmt.Sprintf("Found %d valid instance(s).\n", len(report.ValidInstances)))
+        }</span>
+
+        <span class="cov2" title="2">return diagnosis.String(), nil</span>
+}
+
+// isFileLocked checks if a file is locked in a cross-platform way
+// On Unix systems, uses flock; on Windows, returns false (best effort)
+func isFileLocked(file *os.File) bool <span class="cov0" title="0">{
+        if runtime.GOOS == "windows" </span><span class="cov0" title="0">{
+                // On Windows, file locking detection is more complex
+                // For now, assume files are not locked (best effort)
+                return false
+        }</span>
+
+        // Unix systems: use flock
+        <span class="cov0" title="0">return isFileLockedUnix(file)</span>
+}
+</pre>
+		
+		<pre class="file" id="file5" style="display: none">//go:build unix
+
+package discovery
+
+import (
+        "os"
+        "syscall"
+)
+
+// isFileLockedUnix checks if a file is locked on Unix systems using flock
+func isFileLockedUnix(file *os.File) bool <span class="cov0" title="0">{
+        // Try to get an exclusive lock (non-blocking)
+        err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+        if err == nil </span><span class="cov0" title="0">{
+                // We got the lock, so it wasn't locked
+                syscall.Flock(int(file.Fd()), syscall.LOCK_UN)
+                return false
+        }</span>
+
+        // Lock acquisition failed, file is locked
+        <span class="cov0" title="0">return true</span>
+}
+</pre>
+		
+		<pre class="file" id="file6" style="display: none">// @lci:labels[discovery,instance-registry,file-watching,metadata,thread-safe]
+// @lci:category[discovery]
+// @lci:deps[fsnotify:watcher:read]
+// @lci:tags[component=discovery,pattern=registry,storage=file-based,safety=thread-safe]
+// @lci:metrics[performance=watch-based,concurrency=safe]
+// @lci:propagate[attr=instance-discovery,dir=downstream,decay=0.9]
+//
+// Package discovery provides file-based instance discovery for brummer.
+// It watches a directory for JSON files containing instance metadata and
+// maintains an in-memory registry of running instances.
+//
+// The discovery system is thread-safe and supports concurrent access.
+// Callbacks are notified of changes but must not call back into the
+// discovery system to avoid deadlocks.
+package discovery
+
+import (
+        "fmt"
+        "os"
+        "path/filepath"
+        "sync"
+        "time"
+
+        "github.com/fsnotify/fsnotify"
+)
+
+const (
+        // DefaultFileMode is the default permission for instance files (owner read/write only)
+        DefaultFileMode = 0600
+        // DefaultDirMode is the default permission for the instances directory
+        DefaultDirMode = 0700
+        // StaleInstanceTimeout is the duration after which an instance is considered stale
+        StaleInstanceTimeout = 5 * time.Minute
+)
+
+// Instance represents a running brummer instance.
+// All fields are required unless otherwise noted.
+type Instance struct {
+        ID          string    `json:"id"`
+        Name        string    `json:"name"`
+        Directory   string    `json:"directory"`
+        Port        int       `json:"port"`
+        StartedAt   time.Time `json:"started_at"`
+        LastPing    time.Time `json:"last_ping"`
+        ProcessInfo struct {
+                PID        int    `json:"pid"`
+                Executable string `json:"executable"`
+        } `json:"process_info"`
+}
+
+// Discovery manages instance discovery via file watching.
+// It is thread-safe and can be safely accessed concurrently.
+type Discovery struct {
+        mu              sync.RWMutex
+        instances       map[string]*Instance
+        instancesDir    string
+        watcher         *fsnotify.Watcher
+        updateCallbacks []func(instances map[string]*Instance)
+        stopCh          chan struct{}
+        stoppedCh       chan struct{}
+        atomicOps       *AtomicFileOperations
+}
+
+// New creates a new instance discovery system.
+// The instancesDir will be created if it doesn't exist.
+func New(instancesDir string) (*Discovery, error) <span class="cov3" title="16">{
+        // Create instances directory if it doesn't exist
+        if err := os.MkdirAll(instancesDir, DefaultDirMode); err != nil </span><span class="cov1" title="1">{
+                return nil, fmt.Errorf("failed to create instances directory: %w", err)
+        }</span>
+
+        <span class="cov3" title="15">watcher, err := fsnotify.NewWatcher()
+        if err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to create file watcher: %w", err)
+        }</span>
+
+        // Ensure watcher is cleaned up on any error
+        <span class="cov3" title="15">var watcherClosed bool
+        defer func() </span><span class="cov3" title="15">{
+                if !watcherClosed &amp;&amp; err != nil </span><span class="cov0" title="0">{
+                        watcher.Close()
+                }</span>
+        }()
+
+        <span class="cov3" title="15">d := &amp;Discovery{
+                instances:    make(map[string]*Instance),
+                instancesDir: instancesDir,
+                watcher:      watcher,
+                stopCh:       make(chan struct{}),
+                stoppedCh:    make(chan struct{}),
+                atomicOps:    NewAtomicFileOperations(instancesDir),
+        }
+
+        // Add the instances directory to the watcher
+        if err = watcher.Add(instancesDir); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("failed to watch instances directory: %w", err)
+        }</span>
+
+        // Initial scan of existing files
+        <span class="cov3" title="15">if err = d.scanDirectory(); err != nil </span><span class="cov0" title="0">{
+                return nil, fmt.Errorf("initial directory scan failed: %w", err)
+        }</span>
+
+        <span class="cov3" title="15">watcherClosed = true // Prevent deferred cleanup
+        return d, nil</span>
+}
+
+// Start begins watching for instance changes.
+// This method returns immediately and watches in the background.
+func (d *Discovery) Start() <span class="cov3" title="14">{
+        go d.watch()
+}</span>
+
+// Stop stops the discovery system and waits for the watch goroutine to exit.
+func (d *Discovery) Stop() error <span class="cov3" title="14">{
+        // Signal stop
+        close(d.stopCh)
+
+        // Close watcher to trigger event loop exit
+        err := d.watcher.Close()
+
+        // Wait for watch goroutine to complete
+        &lt;-d.stoppedCh
+
+        return err
+}</span>
+
+// GetInstances returns a copy of the current instances
+func (d *Discovery) GetInstances() map[string]*Instance <span class="cov3" title="24">{
+        d.mu.RLock()
+        defer d.mu.RUnlock()
+
+        // Return a copy to prevent concurrent modification
+        result := make(map[string]*Instance)
+        for k, v := range d.instances </span><span class="cov5" title="374">{
+                result[k] = v
+        }</span>
+        <span class="cov3" title="24">return result</span>
+}
+
+// OnUpdate registers a callback for instance updates
+func (d *Discovery) OnUpdate(callback func(instances map[string]*Instance)) <span class="cov2" title="5">{
+        d.mu.Lock()
+        defer d.mu.Unlock()
+        d.updateCallbacks = append(d.updateCallbacks, callback)
+}</span>
+
+// scanDirectory scans the instances directory for existing instance files
+func (d *Discovery) scanDirectory() error <span class="cov3" title="15">{
+        // Use atomic operations to safely list all instances
+        instances, err := d.atomicOps.SafeListInstances()
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("failed to list instances: %w", err)
+        }</span>
+
+        // Update in-memory cache with discovered instances
+        <span class="cov3" title="15">d.mu.Lock()
+        for id, instance := range instances </span><span class="cov0" title="0">{
+                d.instances[id] = instance
+        }</span>
+        <span class="cov3" title="15">d.mu.Unlock()
+
+        return nil</span>
+}
+
+// watch monitors the instances directory for changes
+func (d *Discovery) watch() <span class="cov3" title="14">{
+        defer close(d.stoppedCh)
+
+        for </span><span class="cov7" title="5363">{
+                select </span>{
+                case &lt;-d.stopCh:<span class="cov2" title="11">
+                        return</span>
+
+                case event, ok := &lt;-d.watcher.Events:<span class="cov7" title="5351">
+                        if !ok </span><span class="cov1" title="1">{
+                                return
+                        }</span>
+
+                        <span class="cov7" title="5350">if !isInstanceFile(filepath.Base(event.Name)) </span><span class="cov7" title="4133">{
+                                continue</span>
+                        }
+
+                        <span class="cov6" title="1216">switch </span>{
+                        case event.Has(fsnotify.Write) || event.Has(fsnotify.Create):<span class="cov6" title="1038">
+                                if err := d.loadInstance(event.Name); err != nil </span><span class="cov5" title="339">{
+                                        // TODO: Add proper logging
+                                        fmt.Fprintf(os.Stderr, "Failed to load instance %s: %v\n", event.Name, err)
+                                }</span>
+                        case event.Has(fsnotify.Remove):<span class="cov5" title="178">
+                                d.removeInstance(event.Name)</span>
+                        }
+
+                case err, ok := &lt;-d.watcher.Errors:<span class="cov1" title="2">
+                        if !ok </span><span class="cov1" title="2">{
+                                return
+                        }</span>
+                        // TODO: Add proper logging
+                        <span class="cov0" title="0">fmt.Fprintf(os.Stderr, "Watcher error: %v\n", err)</span>
+                }
+        }
+}
+
+// loadInstance loads an instance from a file
+func (d *Discovery) loadInstance(path string) error <span class="cov6" title="1038">{
+        // Extract instance ID from the filename
+        filename := filepath.Base(path)
+        instanceID := extractInstanceID(filename)
+        if instanceID == "" </span><span class="cov0" title="0">{
+                return fmt.Errorf("invalid instance filename: %s", filename)
+        }</span>
+
+        // Use atomic operations to safely read the instance
+        <span class="cov6" title="1038">instance, err := d.atomicOps.SafeReadInstance(instanceID)
+        if err != nil </span><span class="cov5" title="339">{
+                return fmt.Errorf("failed to read instance %s: %w", instanceID, err)
+        }</span>
+
+        // Get callbacks while holding lock to ensure consistency
+        <span class="cov6" title="699">d.mu.Lock()
+        d.instances[instance.ID] = instance
+        // Create a copy of callbacks to avoid holding lock during callback execution
+        callbacks := make([]func(map[string]*Instance), len(d.updateCallbacks))
+        copy(callbacks, d.updateCallbacks)
+        // Get instances snapshot while still holding the lock
+        instancesCopy := d.getInstancesLocked()
+        d.mu.Unlock()
+
+        // Notify callbacks without holding lock
+        for _, callback := range callbacks </span><span class="cov3" title="22">{
+                callback(instancesCopy)
+        }</span>
+
+        <span class="cov6" title="699">return nil</span>
+}
+
+// validateInstance validates that an instance has all required fields
+func validateInstance(inst *Instance) error <span class="cov7" title="4455">{
+        if inst.ID == "" </span><span class="cov1" title="1">{
+                return fmt.Errorf("missing ID")
+        }</span>
+        <span class="cov7" title="4454">if inst.Name == "" </span><span class="cov1" title="2">{
+                return fmt.Errorf("missing Name")
+        }</span>
+        <span class="cov7" title="4452">if inst.Directory == "" </span><span class="cov1" title="1">{
+                return fmt.Errorf("missing Directory")
+        }</span>
+        <span class="cov7" title="4451">if inst.Port &lt;= 0 || inst.Port &gt; 65535 </span><span class="cov1" title="2">{
+                return fmt.Errorf("invalid Port: %d", inst.Port)
+        }</span>
+        <span class="cov7" title="4449">if inst.StartedAt.IsZero() </span><span class="cov0" title="0">{
+                return fmt.Errorf("missing StartedAt")
+        }</span>
+        <span class="cov7" title="4449">if inst.LastPing.IsZero() </span><span class="cov0" title="0">{
+                return fmt.Errorf("missing LastPing")
+        }</span>
+        // Check if timestamps are reasonable (not in the future)
+        <span class="cov7" title="4449">now := time.Now()
+        if inst.StartedAt.After(now.Add(time.Minute)) </span><span class="cov1" title="1">{
+                return fmt.Errorf("StartedAt is in the future")
+        }</span>
+        <span class="cov7" title="4448">if inst.LastPing.After(now.Add(time.Minute)) </span><span class="cov0" title="0">{
+                return fmt.Errorf("LastPing is in the future")
+        }</span>
+        <span class="cov7" title="4448">return nil</span>
+}
+
+// getInstancesLocked returns a copy of instances while holding the read lock
+// Caller must hold at least a read lock
+func (d *Discovery) getInstancesLocked() map[string]*Instance <span class="cov6" title="714">{
+        result := make(map[string]*Instance, len(d.instances))
+        for k, v := range d.instances </span><span class="cov10" title="110652">{
+                // Create a copy of the instance to prevent external modification
+                instCopy := *v
+                result[k] = &amp;instCopy
+        }</span>
+        <span class="cov6" title="714">return result</span>
+}
+
+// removeInstance removes an instance when its file is deleted
+func (d *Discovery) removeInstance(path string) <span class="cov5" title="178">{
+        // Extract instance ID from filename
+        filename := filepath.Base(path)
+        instanceID := extractInstanceID(filename)
+        if instanceID == "" </span><span class="cov0" title="0">{
+                return
+        }</span>
+
+        <span class="cov5" title="178">d.mu.Lock()
+        // Check if instance exists
+        if _, exists := d.instances[instanceID]; !exists </span><span class="cov4" title="168">{
+                d.mu.Unlock()
+                return
+        }</span>
+
+        <span class="cov2" title="10">delete(d.instances, instanceID)
+        // Create a copy of callbacks to avoid holding lock during callback execution
+        callbacks := make([]func(map[string]*Instance), len(d.updateCallbacks))
+        copy(callbacks, d.updateCallbacks)
+        // Get instances snapshot while still holding the lock
+        instancesCopy := d.getInstancesLocked()
+        d.mu.Unlock()
+
+        // Notify callbacks without holding lock
+        for _, callback := range callbacks </span><span class="cov2" title="6">{
+                callback(instancesCopy)
+        }</span>
+}
+
+// isInstanceFile checks if a filename is an instance file
+func isInstanceFile(name string) bool <span class="cov7" title="6681">{
+        return filepath.Ext(name) == ".json" &amp;&amp; len(name) &gt; 5
+}</span>
+
+// extractInstanceID extracts the instance ID from a filename
+func extractInstanceID(filename string) string <span class="cov6" title="1331">{
+        if !isInstanceFile(filename) </span><span class="cov0" title="0">{
+                return ""
+        }</span>
+        <span class="cov6" title="1331">return filename[:len(filename)-5]</span> // Remove .json extension
+}
+
+// CleanupStaleInstances removes instances that haven't been updated recently.
+// This should be called periodically to clean up after crashed instances.
+func (d *Discovery) CleanupStaleInstances() error <span class="cov2" title="5">{
+        d.mu.Lock()
+        defer d.mu.Unlock()
+
+        now := time.Now()
+        staleIDs := []string{}
+
+        // Find stale instances
+        for id, inst := range d.instances </span><span class="cov2" title="10">{
+                isStale := now.Sub(inst.LastPing) &gt; StaleInstanceTimeout
+
+                // Also check if the process is actually running
+                if isStale || !d.isProcessRunning(inst.ProcessInfo.PID) </span><span class="cov2" title="5">{
+                        staleIDs = append(staleIDs, id)
+                }</span>
+        }
+
+        // Remove stale instances using atomic operations
+        <span class="cov2" title="5">for _, id := range staleIDs </span><span class="cov2" title="5">{
+                // Remove from memory
+                delete(d.instances, id)
+
+                // Remove file atomically
+                if err := d.atomicOps.SafeUnregisterInstance(id); err != nil </span><span class="cov0" title="0">{
+                        // Log error but continue cleanup
+                        fmt.Fprintf(os.Stderr, "Failed to remove stale instance file %s: %v\n", id, err)
+                }</span>
+        }
+
+        // Notify callbacks if any instances were removed
+        <span class="cov2" title="5">if len(staleIDs) &gt; 0 </span><span class="cov2" title="5">{
+                callbacks := make([]func(map[string]*Instance), len(d.updateCallbacks))
+                copy(callbacks, d.updateCallbacks)
+                instancesCopy := d.getInstancesLocked()
+
+                // Release lock before callbacks
+                d.mu.Unlock()
+                for _, callback := range callbacks </span><span class="cov0" title="0">{
+                        callback(instancesCopy)
+                }</span>
+                <span class="cov2" title="5">d.mu.Lock()</span> // Re-acquire for defer
+        }
+
+        <span class="cov2" title="5">return nil</span>
+}
+
+// isProcessRunning checks if a process with the given PID is currently running
+func (d *Discovery) isProcessRunning(pid int) bool <span class="cov2" title="10">{
+        if pid &lt;= 0 </span><span class="cov1" title="2">{
+                return false
+        }</span>
+
+        // Use Linux /proc filesystem approach which is more reliable
+        <span class="cov2" title="8">procPath := fmt.Sprintf("/proc/%d", pid)
+        if _, err := os.Stat(procPath); os.IsNotExist(err) </span><span class="cov1" title="2">{
+                return false
+        }</span>
+
+        // Check if the process is actually running by reading its status
+        <span class="cov2" title="6">statusPath := filepath.Join(procPath, "stat")
+        if _, err := os.Stat(statusPath); os.IsNotExist(err) </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        // If /proc/PID/stat exists, the process is running
+        <span class="cov2" title="6">return true</span>
+}
+</pre>
+		
+		<pre class="file" id="file7" style="display: none">package discovery
+
+import (
+        "crypto/md5"
+        "encoding/hex"
+        "fmt"
+        "io"
+        "os"
+        "path/filepath"
+        "sync"
+        "time"
+)
+
+// PollingWatcher provides file watching through periodic polling
+// This is more reliable than fsnotify for network filesystems
+type PollingWatcher struct {
+        mu         sync.RWMutex
+        interval   time.Duration
+        paths      map[string]bool
+        fileStates map[string]fileState
+        events     chan FileEvent
+        errors     chan error
+        stop       chan struct{}
+        wg         sync.WaitGroup
+}
+
+type fileState struct {
+        modTime time.Time
+        size    int64
+        hash    string
+}
+
+type FileEvent struct {
+        Path string
+        Op   FileOp
+}
+
+type FileOp int
+
+const (
+        Create FileOp = iota
+        Write
+        Remove
+)
+
+func (op FileOp) String() string <span class="cov0" title="0">{
+        switch op </span>{
+        case Create:<span class="cov0" title="0">
+                return "CREATE"</span>
+        case Write:<span class="cov0" title="0">
+                return "WRITE"</span>
+        case Remove:<span class="cov0" title="0">
+                return "REMOVE"</span>
+        default:<span class="cov0" title="0">
+                return "UNKNOWN"</span>
+        }
+}
+
+// NewPollingWatcher creates a new polling-based file watcher
+func NewPollingWatcher(interval time.Duration) *PollingWatcher <span class="cov0" title="0">{
+        if interval &lt; 100*time.Millisecond </span><span class="cov0" title="0">{
+                interval = 100 * time.Millisecond // Minimum interval
+        }</span>
+
+        <span class="cov0" title="0">return &amp;PollingWatcher{
+                interval:   interval,
+                paths:      make(map[string]bool),
+                fileStates: make(map[string]fileState),
+                events:     make(chan FileEvent, 100),
+                errors:     make(chan error, 10),
+                stop:       make(chan struct{}),
+        }</span>
+}
+
+// Add adds a path to watch (can be file or directory)
+func (pw *PollingWatcher) Add(path string) error <span class="cov0" title="0">{
+        pw.mu.Lock()
+        defer pw.mu.Unlock()
+
+        // Verify path exists
+        info, err := os.Stat(path)
+        if err != nil </span><span class="cov0" title="0">{
+                return fmt.Errorf("stat path: %w", err)
+        }</span>
+
+        <span class="cov0" title="0">pw.paths[path] = info.IsDir()
+
+        // If it's a directory, scan existing files
+        if info.IsDir() </span><span class="cov0" title="0">{
+                if err := pw.scanDirectoryLocked(path); err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("initial scan: %w", err)
+                }</span>
+        } else<span class="cov0" title="0"> {
+                // It's a file, record its state
+                state, err := pw.getFileState(path)
+                if err != nil </span><span class="cov0" title="0">{
+                        return fmt.Errorf("get file state: %w", err)
+                }</span>
+                <span class="cov0" title="0">pw.fileStates[path] = state</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// Remove removes a path from watching
+func (pw *PollingWatcher) Remove(path string) error <span class="cov0" title="0">{
+        pw.mu.Lock()
+        defer pw.mu.Unlock()
+
+        delete(pw.paths, path)
+
+        // Remove file states for this path
+        if pw.paths[path] </span><span class="cov0" title="0">{ // It was a directory
+                prefix := path + string(filepath.Separator)
+                for filePath := range pw.fileStates </span><span class="cov0" title="0">{
+                        if filepath.HasPrefix(filePath, prefix) || filePath == path </span><span class="cov0" title="0">{
+                                delete(pw.fileStates, filePath)
+                        }</span>
+                }
+        } else<span class="cov0" title="0"> {
+                delete(pw.fileStates, path)
+        }</span>
+
+        <span class="cov0" title="0">return nil</span>
+}
+
+// Start begins watching
+func (pw *PollingWatcher) Start() <span class="cov0" title="0">{
+        pw.wg.Add(1)
+        go pw.pollLoop()
+}</span>
+
+// Stop stops the watcher and closes channels
+func (pw *PollingWatcher) Stop() error <span class="cov0" title="0">{
+        close(pw.stop)
+        pw.wg.Wait()
+        close(pw.events)
+        close(pw.errors)
+        return nil
+}</span>
+
+// Events returns the events channel
+func (pw *PollingWatcher) Events() &lt;-chan FileEvent <span class="cov0" title="0">{
+        return pw.events
+}</span>
+
+// Errors returns the errors channel
+func (pw *PollingWatcher) Errors() &lt;-chan error <span class="cov0" title="0">{
+        return pw.errors
+}</span>
+
+func (pw *PollingWatcher) pollLoop() <span class="cov0" title="0">{
+        defer pw.wg.Done()
+
+        ticker := time.NewTicker(pw.interval)
+        defer ticker.Stop()
+
+        for </span><span class="cov0" title="0">{
+                select </span>{
+                case &lt;-pw.stop:<span class="cov0" title="0">
+                        return</span>
+                case &lt;-ticker.C:<span class="cov0" title="0">
+                        pw.poll()</span>
+                }
+        }
+}
+
+func (pw *PollingWatcher) poll() <span class="cov0" title="0">{
+        pw.mu.Lock()
+        defer pw.mu.Unlock()
+
+        // Track seen files in this poll
+        seenFiles := make(map[string]bool)
+
+        // Check each watched path
+        for path, isDir := range pw.paths </span><span class="cov0" title="0">{
+                if isDir </span><span class="cov0" title="0">{
+                        // Scan directory
+                        entries, err := os.ReadDir(path)
+                        if err != nil </span><span class="cov0" title="0">{
+                                select </span>{
+                                case pw.errors &lt;- fmt.Errorf("read dir %s: %w", path, err):<span class="cov0" title="0"></span>
+                                default:<span class="cov0" title="0"></span>
+                                }
+                                <span class="cov0" title="0">continue</span>
+                        }
+
+                        <span class="cov0" title="0">for _, entry := range entries </span><span class="cov0" title="0">{
+                                if entry.IsDir() </span><span class="cov0" title="0">{
+                                        continue</span> // Skip subdirectories
+                                }
+
+                                <span class="cov0" title="0">filePath := filepath.Join(path, entry.Name())
+                                seenFiles[filePath] = true
+
+                                pw.checkFile(filePath)</span>
+                        }
+                } else<span class="cov0" title="0"> {
+                        // Check single file
+                        seenFiles[path] = true
+                        pw.checkFile(path)
+                }</span>
+        }
+
+        // Check for removed files
+        <span class="cov0" title="0">for filePath := range pw.fileStates </span><span class="cov0" title="0">{
+                if !seenFiles[filePath] </span><span class="cov0" title="0">{
+                        // File was removed
+                        delete(pw.fileStates, filePath)
+                        select </span>{
+                        case pw.events &lt;- FileEvent{Path: filePath, Op: Remove}:<span class="cov0" title="0"></span>
+                        default:<span class="cov0" title="0"></span>
+                        }
+                }
+        }
+}
+
+func (pw *PollingWatcher) checkFile(path string) <span class="cov0" title="0">{
+        newState, err := pw.getFileState(path)
+        if err != nil </span><span class="cov0" title="0">{
+                if os.IsNotExist(err) </span><span class="cov0" title="0">{
+                        // File was removed
+                        if _, exists := pw.fileStates[path]; exists </span><span class="cov0" title="0">{
+                                delete(pw.fileStates, path)
+                                select </span>{
+                                case pw.events &lt;- FileEvent{Path: path, Op: Remove}:<span class="cov0" title="0"></span>
+                                default:<span class="cov0" title="0"></span>
+                                }
+                        }
+                }
+                <span class="cov0" title="0">return</span>
+        }
+
+        <span class="cov0" title="0">oldState, exists := pw.fileStates[path]
+        if !exists </span><span class="cov0" title="0">{
+                // New file
+                pw.fileStates[path] = newState
+                select </span>{
+                case pw.events &lt;- FileEvent{Path: path, Op: Create}:<span class="cov0" title="0"></span>
+                default:<span class="cov0" title="0"></span>
+                }
+                <span class="cov0" title="0">return</span>
+        }
+
+        // Check for modifications
+        <span class="cov0" title="0">if oldState.modTime != newState.modTime ||
+                oldState.size != newState.size ||
+                oldState.hash != newState.hash </span><span class="cov0" title="0">{
+                pw.fileStates[path] = newState
+                select </span>{
+                case pw.events &lt;- FileEvent{Path: path, Op: Write}:<span class="cov0" title="0"></span>
+                default:<span class="cov0" title="0"></span>
+                }
+        }
+}
+
+func (pw *PollingWatcher) getFileState(path string) (fileState, error) <span class="cov0" title="0">{
+        info, err := os.Stat(path)
+        if err != nil </span><span class="cov0" title="0">{
+                return fileState{}, err
+        }</span>
+
+        <span class="cov0" title="0">state := fileState{
+                modTime: info.ModTime(),
+                size:    info.Size(),
+        }
+
+        // For small files, compute hash for better change detection
+        if info.Size() &lt; 1024*1024 </span><span class="cov0" title="0">{ // 1MB
+                hash, err := pw.hashFile(path)
+                if err == nil </span><span class="cov0" title="0">{
+                        state.hash = hash
+                }</span>
+        }
+
+        <span class="cov0" title="0">return state, nil</span>
+}
+
+func (pw *PollingWatcher) hashFile(path string) (string, error) <span class="cov0" title="0">{
+        file, err := os.Open(path)
+        if err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+        <span class="cov0" title="0">defer file.Close()
+
+        hash := md5.New()
+        if _, err := io.Copy(hash, file); err != nil </span><span class="cov0" title="0">{
+                return "", err
+        }</span>
+
+        <span class="cov0" title="0">return hex.EncodeToString(hash.Sum(nil)), nil</span>
+}
+
+func (pw *PollingWatcher) scanDirectoryLocked(dir string) error <span class="cov0" title="0">{
+        entries, err := os.ReadDir(dir)
+        if err != nil </span><span class="cov0" title="0">{
+                return err
+        }</span>
+
+        <span class="cov0" title="0">for _, entry := range entries </span><span class="cov0" title="0">{
+                if entry.IsDir() </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+
+                <span class="cov0" title="0">filePath := filepath.Join(dir, entry.Name())
+                state, err := pw.getFileState(filePath)
+                if err != nil </span><span class="cov0" title="0">{
+                        continue</span>
+                }
+                <span class="cov0" title="0">pw.fileStates[filePath] = state</span>
+        }
+
+        <span class="cov0" title="0">return nil</span>
+}
+</pre>
+		
+		<pre class="file" id="file8" style="display: none">package discovery
+
+import (
+        "os"
+        "path/filepath"
+)
+
+// RegisterInstance registers a brummer instance atomically.
+// The instance data is validated before writing.
+func RegisterInstance(instancesDir string, instance *Instance) error <span class="cov10" title="1132">{
+        afo := NewAtomicFileOperations(instancesDir)
+        return afo.SafeRegisterInstance(instance)
+}</span>
+
+// UnregisterInstance removes an instance registration
+func UnregisterInstance(instancesDir string, instanceID string) error <span class="cov8" title="347">{
+        afo := NewAtomicFileOperations(instancesDir)
+        return afo.SafeUnregisterInstance(instanceID)
+}</span>
+
+// UpdateInstancePing updates the last ping time for an instance
+func UpdateInstancePing(instancesDir string, instanceID string) error <span class="cov9" title="1007">{
+        afo := NewAtomicFileOperations(instancesDir)
+        return afo.SafeUpdateInstancePing(instanceID)
+}</span>
+
+// GetDefaultInstancesDir returns the default instances directory
+func GetDefaultInstancesDir() string <span class="cov4" title="19">{
+        // Try to use XDG_RUNTIME_DIR first (Linux standard)
+        if runtime := os.Getenv("XDG_RUNTIME_DIR"); runtime != "" </span><span class="cov4" title="18">{
+                return filepath.Join(runtime, "brummer", "instances")
+        }</span>
+
+        // Fall back to temp directory
+        <span class="cov1" title="1">return filepath.Join(os.TempDir(), "brummer", "instances")</span>
+}
+</pre>
+		
+		<pre class="file" id="file9" style="display: none">package events
+
+import (
+        "time"
+)
+
+// AI Coder Event Types
+const (
+        // Lifecycle events
+        EventAICoderCreated   EventType = "ai_coder_created"
+        EventAICoderStarted   EventType = "ai_coder_started"
+        EventAICoderPaused    EventType = "ai_coder_paused"
+        EventAICoderResumed   EventType = "ai_coder_resumed"
+        EventAICoderCompleted EventType = "ai_coder_completed"
+        EventAICoderFailed    EventType = "ai_coder_failed"
+        EventAICoderStopped   EventType = "ai_coder_stopped"
+        EventAICoderDeleted   EventType = "ai_coder_deleted"
+
+        // Progress events
+        EventAICoderProgress  EventType = "ai_coder_progress"
+        EventAICoderMilestone EventType = "ai_coder_milestone"
+        EventAICoderOutput    EventType = "ai_coder_output"
+
+        // Workspace events
+        EventAICoderFileCreated   EventType = "ai_coder_file_created"
+        EventAICoderFileModified  EventType = "ai_coder_file_modified"
+        EventAICoderFileDeleted   EventType = "ai_coder_file_deleted"
+        EventAICoderWorkspaceSync EventType = "ai_coder_workspace_sync"
+
+        // Provider events
+        EventAICoderAPICall   EventType = "ai_coder_api_call"
+        EventAICoderAPIError  EventType = "ai_coder_api_error"
+        EventAICoderRateLimit EventType = "ai_coder_rate_limit"
+
+        // Resource events
+        EventAICoderResourceUsage EventType = "ai_coder_resource_usage"
+        EventAICoderResourceLimit EventType = "ai_coder_resource_limit"
+)
+
+// Core AI Coder Event Structure
+type AICoderEvent struct {
+        Type      string                 `json:"type"`
+        CoderID   string                 `json:"coder_id"`
+        CoderName string                 `json:"coder_name"`
+        Timestamp time.Time              `json:"timestamp"`
+        Data      map[string]interface{} `json:"data"`
+}
+
+// Lifecycle Event Data
+type AICoderLifecycleEvent struct {
+        AICoderEvent
+        PreviousStatus string `json:"previous_status"`
+        CurrentStatus  string `json:"current_status"`
+        Reason         string `json:"reason,omitempty"`
+        ErrorMessage   string `json:"error_message,omitempty"`
+}
+
+// Progress Event Data
+type AICoderProgressEvent struct {
+        AICoderEvent
+        Progress    float64 `json:"progress"`
+        Stage       string  `json:"stage"`
+        Description string  `json:"description"`
+        Milestone   string  `json:"milestone,omitempty"`
+}
+
+// Workspace Event Data
+type AICoderWorkspaceEvent struct {
+        AICoderEvent
+        Operation   string `json:"operation"`
+        FilePath    string `json:"file_path"`
+        FileSize    int64  `json:"file_size,omitempty"`
+        ContentHash string `json:"content_hash,omitempty"`
+}
+
+// Provider Event Data
+type AICoderProviderEvent struct {
+        AICoderEvent
+        Provider     string        `json:"provider"`
+        Model        string        `json:"model"`
+        TokensUsed   int           `json:"tokens_used,omitempty"`
+        Duration     time.Duration `json:"duration,omitempty"`
+        ErrorCode    string        `json:"error_code,omitempty"`
+        ErrorMessage string        `json:"error_message,omitempty"`
+}
+
+// Resource Event Data
+type AICoderResourceEvent struct {
+        AICoderEvent
+        MemoryMB     int64   `json:"memory_mb"`
+        CPUPercent   float64 `json:"cpu_percent"`
+        DiskUsageMB  int64   `json:"disk_usage_mb"`
+        NetworkBytes int64   `json:"network_bytes"`
+        FileCount    int     `json:"file_count"`
+}
+
+// Event Factory Functions
+func NewAICoderLifecycleEvent(coderID, coderName, eventType, prevStatus, currStatus, reason string) *AICoderLifecycleEvent <span class="cov1" title="1">{
+        return &amp;AICoderLifecycleEvent{
+                AICoderEvent: AICoderEvent{
+                        Type:      eventType,
+                        CoderID:   coderID,
+                        CoderName: coderName,
+                        Timestamp: time.Now(),
+                        Data:      make(map[string]interface{}),
+                },
+                PreviousStatus: prevStatus,
+                CurrentStatus:  currStatus,
+                Reason:         reason,
+        }
+}</span>
+
+func NewAICoderProgressEvent(coderID, coderName string, progress float64, stage, description string) *AICoderProgressEvent <span class="cov1" title="1">{
+        return &amp;AICoderProgressEvent{
+                AICoderEvent: AICoderEvent{
+                        Type:      string(EventAICoderProgress),
+                        CoderID:   coderID,
+                        CoderName: coderName,
+                        Timestamp: time.Now(),
+                        Data:      make(map[string]interface{}),
+                },
+                Progress:    progress,
+                Stage:       stage,
+                Description: description,
+        }
+}</span>
+
+func NewAICoderWorkspaceEvent(coderID, coderName, operation, filePath string) *AICoderWorkspaceEvent <span class="cov0" title="0">{
+        return &amp;AICoderWorkspaceEvent{
+                AICoderEvent: AICoderEvent{
+                        Type:      string(getWorkspaceEventType(operation)),
+                        CoderID:   coderID,
+                        CoderName: coderName,
+                        Timestamp: time.Now(),
+                        Data:      make(map[string]interface{}),
+                },
+                Operation: operation,
+                FilePath:  filePath,
+        }
+}</span>
+
+func NewAICoderProviderEvent(coderID, coderName, provider, model string) *AICoderProviderEvent <span class="cov0" title="0">{
+        return &amp;AICoderProviderEvent{
+                AICoderEvent: AICoderEvent{
+                        Type:      string(EventAICoderAPICall),
+                        CoderID:   coderID,
+                        CoderName: coderName,
+                        Timestamp: time.Now(),
+                        Data:      make(map[string]interface{}),
+                },
+                Provider: provider,
+                Model:    model,
+        }
+}</span>
+
+func NewAICoderResourceEvent(coderID, coderName string, memMB int64, cpuPercent float64, diskMB int64) *AICoderResourceEvent <span class="cov0" title="0">{
+        return &amp;AICoderResourceEvent{
+                AICoderEvent: AICoderEvent{
+                        Type:      string(EventAICoderResourceUsage),
+                        CoderID:   coderID,
+                        CoderName: coderName,
+                        Timestamp: time.Now(),
+                        Data:      make(map[string]interface{}),
+                },
+                MemoryMB:    memMB,
+                CPUPercent:  cpuPercent,
+                DiskUsageMB: diskMB,
+        }
+}</span>
+
+// Helper functions
+func getWorkspaceEventType(operation string) EventType <span class="cov10" title="4">{
+        switch operation </span>{
+        case "create":<span class="cov1" title="1">
+                return EventAICoderFileCreated</span>
+        case "modify":<span class="cov1" title="1">
+                return EventAICoderFileModified</span>
+        case "delete":<span class="cov1" title="1">
+                return EventAICoderFileDeleted</span>
+        default:<span class="cov1" title="1">
+                return EventAICoderWorkspaceSync</span>
+        }
+}
+</pre>
+		
+		<pre class="file" id="file10" style="display: none">package events
+
+import (
+        "fmt"
+        "log"
+        "sync"
+        "time"
+)
+
+// AI Coder Event Aggregator
+type AICoderEventAggregator struct {
+        events    []AICoderEvent
+        mu        sync.RWMutex
+        maxEvents int
+        eventBus  *EventBus
+
+        // Event statistics
+        stats   AICoderEventStats
+        statsMu sync.RWMutex
+}
+
+type AICoderEventStats struct {
+        TotalEvents     int64            `json:"total_events"`
+        EventsByType    map[string]int64 `json:"events_by_type"`
+        EventsByCoder   map[string]int64 `json:"events_by_coder"`
+        LastEvent       time.Time        `json:"last_event"`
+        EventsPerMinute float64          `json:"events_per_minute"`
+}
+
+func NewAICoderEventAggregator(eventBus *EventBus, maxEvents int) *AICoderEventAggregator <span class="cov1" title="1">{
+        aggregator := &amp;AICoderEventAggregator{
+                events:    make([]AICoderEvent, 0, maxEvents),
+                maxEvents: maxEvents,
+                eventBus:  eventBus,
+                stats: AICoderEventStats{
+                        EventsByType:  make(map[string]int64),
+                        EventsByCoder: make(map[string]int64),
+                },
+        }
+
+        // Register handlers for all AI coder event types
+        aggregator.registerHandlers()
+
+        return aggregator
+}</span>
+
+// Register event handlers
+func (a *AICoderEventAggregator) registerHandlers() <span class="cov1" title="1">{
+        eventTypes := []EventType{
+                EventAICoderCreated, EventAICoderStarted, EventAICoderPaused,
+                EventAICoderResumed, EventAICoderCompleted, EventAICoderFailed,
+                EventAICoderStopped, EventAICoderDeleted, EventAICoderProgress,
+                EventAICoderMilestone, EventAICoderOutput, EventAICoderFileCreated,
+                EventAICoderFileModified, EventAICoderFileDeleted, EventAICoderWorkspaceSync,
+                EventAICoderAPICall, EventAICoderAPIError, EventAICoderRateLimit,
+                EventAICoderResourceUsage, EventAICoderResourceLimit,
+        }
+
+        for _, eventType := range eventTypes </span><span class="cov10" title="20">{
+                a.eventBus.Subscribe(eventType, a.handleAICoderEvent)
+        }</span>
+}
+
+// Handle AI coder events
+func (a *AICoderEventAggregator) handleAICoderEvent(event Event) <span class="cov1" title="1">{
+        // Convert Event to AICoderEvent
+        aiEvent := a.eventToAICoderEvent(event)
+        if aiEvent.CoderID == "" </span><span class="cov0" title="0">{
+                log.Printf("Warning: AI coder event missing coder ID")
+                return
+        }</span>
+
+        // Add to event history
+        <span class="cov1" title="1">a.addEvent(aiEvent)
+
+        // Update statistics
+        a.updateStats(aiEvent)
+
+        // Handle specialized processing
+        a.processSpecializedEvent(aiEvent)</span>
+}
+
+// Convert Event to AICoderEvent
+func (a *AICoderEventAggregator) eventToAICoderEvent(event Event) AICoderEvent <span class="cov1" title="1">{
+        aiEvent := AICoderEvent{
+                Type:      string(event.Type),
+                Timestamp: event.Timestamp,
+                Data:      event.Data,
+        }
+
+        // Extract coder ID and name from event data
+        if coderID, ok := event.Data["coder_id"].(string); ok </span><span class="cov1" title="1">{
+                aiEvent.CoderID = coderID
+        }</span>
+
+        <span class="cov1" title="1">if coderName, ok := event.Data["coder_name"].(string); ok </span><span class="cov1" title="1">{
+                aiEvent.CoderName = coderName
+        }</span> else<span class="cov0" title="0"> if name, ok := event.Data["name"].(string); ok </span><span class="cov0" title="0">{
+                aiEvent.CoderName = name
+        }</span>
+
+        <span class="cov1" title="1">return aiEvent</span>
+}
+
+// Add event to history with size limit
+func (a *AICoderEventAggregator) addEvent(event AICoderEvent) <span class="cov1" title="1">{
+        a.mu.Lock()
+        defer a.mu.Unlock()
+
+        // Add new event
+        a.events = append(a.events, event)
+
+        // Trim if over limit
+        if len(a.events) &gt; a.maxEvents </span><span class="cov0" title="0">{
+                // Remove oldest events
+                a.events = a.events[len(a.events)-a.maxEvents:]
+        }</span>
+}
+
+// Update event statistics
+func (a *AICoderEventAggregator) updateStats(event AICoderEvent) <span class="cov1" title="1">{
+        a.statsMu.Lock()
+        defer a.statsMu.Unlock()
+
+        a.stats.TotalEvents++
+        a.stats.EventsByType[event.Type]++
+        a.stats.EventsByCoder[event.CoderID]++
+        a.stats.LastEvent = event.Timestamp
+
+        // Calculate events per minute (simple moving average)
+        if a.stats.TotalEvents &gt; 1 </span><span class="cov0" title="0">{
+                duration := event.Timestamp.Sub(time.Now().Add(-time.Minute))
+                if duration &gt; 0 </span><span class="cov0" title="0">{
+                        a.stats.EventsPerMinute = float64(a.stats.TotalEvents) / duration.Minutes()
+                }</span>
+        }
+}
+
+// Process specialized event handling
+func (a *AICoderEventAggregator) processSpecializedEvent(event AICoderEvent) <span class="cov1" title="1">{
+        switch EventType(event.Type) </span>{
+        case EventAICoderFailed:<span class="cov0" title="0">
+                a.handleFailureEvent(event)</span>
+        case EventAICoderCompleted:<span class="cov0" title="0">
+                a.handleCompletionEvent(event)</span>
+        case EventAICoderRateLimit:<span class="cov0" title="0">
+                a.handleRateLimitEvent(event)</span>
+        case EventAICoderResourceLimit:<span class="cov0" title="0">
+                a.handleResourceLimitEvent(event)</span>
+        }
+}
+
+// Handle failure events
+func (a *AICoderEventAggregator) handleFailureEvent(event AICoderEvent) <span class="cov0" title="0">{
+        // Log failure for debugging
+        log.Printf("AI Coder %s failed: %v", event.CoderID, event.Data)
+
+        // Emit aggregated failure alert if multiple failures
+        failureCount := a.getRecentFailureCount(event.CoderID)
+        if failureCount &gt;= 3 </span><span class="cov0" title="0">{
+                a.eventBus.Publish(Event{
+                        Type:      "ai_coder_failure_alert",
+                        ProcessID: fmt.Sprintf("ai-coder-%s", event.CoderID),
+                        Timestamp: event.Timestamp,
+                        Data: map[string]interface{}{
+                                "coder_id":      event.CoderID,
+                                "failure_count": failureCount,
+                                "time":          event.Timestamp,
+                        },
+                })
+        }</span>
+}
+
+// Handle completion events
+func (a *AICoderEventAggregator) handleCompletionEvent(event AICoderEvent) <span class="cov0" title="0">{
+        // Calculate completion time from creation
+        creationTime := a.getCreationTime(event.CoderID)
+        if !creationTime.IsZero() </span><span class="cov0" title="0">{
+                duration := event.Timestamp.Sub(creationTime)
+
+                // Emit completion metrics
+                a.eventBus.Publish(Event{
+                        Type:      "ai_coder_completion_metrics",
+                        ProcessID: fmt.Sprintf("ai-coder-%s", event.CoderID),
+                        Timestamp: event.Timestamp,
+                        Data: map[string]interface{}{
+                                "coder_id": event.CoderID,
+                                "duration": duration,
+                                "time":     event.Timestamp,
+                        },
+                })
+        }</span>
+}
+
+// Handle rate limit events
+func (a *AICoderEventAggregator) handleRateLimitEvent(event AICoderEvent) <span class="cov0" title="0">{
+        // Emit system-wide rate limit warning
+        a.eventBus.Publish(Event{
+                Type:      "ai_coder_system_warning",
+                ProcessID: fmt.Sprintf("ai-coder-%s", event.CoderID),
+                Timestamp: event.Timestamp,
+                Data: map[string]interface{}{
+                        "type":     "rate_limit",
+                        "coder_id": event.CoderID,
+                        "message":  "AI provider rate limit reached",
+                        "time":     event.Timestamp,
+                },
+        })
+}</span>
+
+// Handle resource limit events
+func (a *AICoderEventAggregator) handleResourceLimitEvent(event AICoderEvent) <span class="cov0" title="0">{
+        // Emit resource warning
+        a.eventBus.Publish(Event{
+                Type:      "ai_coder_system_warning",
+                ProcessID: fmt.Sprintf("ai-coder-%s", event.CoderID),
+                Timestamp: event.Timestamp,
+                Data: map[string]interface{}{
+                        "type":     "resource_limit",
+                        "coder_id": event.CoderID,
+                        "message":  "AI coder resource limit exceeded",
+                        "time":     event.Timestamp,
+                },
+        })
+}</span>
+
+// Query methods for event history
+func (a *AICoderEventAggregator) GetEvents(filter AICoderEventFilter) []AICoderEvent <span class="cov1" title="1">{
+        a.mu.RLock()
+        defer a.mu.RUnlock()
+
+        var filtered []AICoderEvent
+        for _, event := range a.events </span><span class="cov1" title="1">{
+                if filter.matches(event) </span><span class="cov1" title="1">{
+                        filtered = append(filtered, event)
+                }</span>
+        }
+
+        <span class="cov1" title="1">return filtered</span>
+}
+
+func (a *AICoderEventAggregator) GetStats() AICoderEventStats <span class="cov1" title="1">{
+        a.statsMu.RLock()
+        defer a.statsMu.RUnlock()
+
+        return a.stats
+}</span>
+
+// Event Filter
+type AICoderEventFilter struct {
+        CoderID   string
+        EventType string
+        Since     time.Time
+        Until     time.Time
+}
+
+func (f AICoderEventFilter) matches(event AICoderEvent) bool <span class="cov6" title="7">{
+        if f.CoderID != "" &amp;&amp; event.CoderID != f.CoderID </span><span class="cov1" title="1">{
+                return false
+        }</span>
+
+        <span class="cov6" title="6">if f.EventType != "" &amp;&amp; event.Type != f.EventType </span><span class="cov1" title="1">{
+                return false
+        }</span>
+
+        <span class="cov5" title="5">if !f.Since.IsZero() &amp;&amp; event.Timestamp.Before(f.Since) </span><span class="cov1" title="1">{
+                return false
+        }</span>
+
+        <span class="cov5" title="4">if !f.Until.IsZero() &amp;&amp; event.Timestamp.After(f.Until) </span><span class="cov0" title="0">{
+                return false
+        }</span>
+
+        <span class="cov5" title="4">return true</span>
+}
+
+// Helper methods
+func (a *AICoderEventAggregator) getRecentFailureCount(coderID string) int <span class="cov0" title="0">{
+        a.mu.RLock()
+        defer a.mu.RUnlock()
+
+        count := 0
+        cutoff := time.Now().Add(-10 * time.Minute) // Recent = last 10 minutes
+
+        for _, event := range a.events </span><span class="cov0" title="0">{
+                if event.CoderID == coderID &amp;&amp;
+                        event.Type == string(EventAICoderFailed) &amp;&amp;
+                        event.Timestamp.After(cutoff) </span><span class="cov0" title="0">{
+                        count++
+                }</span>
+        }
+
+        <span class="cov0" title="0">return count</span>
+}
+
+func (a *AICoderEventAggregator) getCreationTime(coderID string) time.Time <span class="cov0" title="0">{
+        a.mu.RLock()
+        defer a.mu.RUnlock()
+
+        for _, event := range a.events </span><span class="cov0" title="0">{
+                if event.CoderID == coderID &amp;&amp; event.Type == string(EventAICoderCreated) </span><span class="cov0" title="0">{
+                        return event.Timestamp
+                }</span>
+        }
+
+        <span class="cov0" title="0">return time.Time{}</span>
+}
+</pre>
+		
+		<pre class="file" id="file11" style="display: none">// @lci:labels[core,event-system,event-bus,message-passing,observer-pattern]
+// @lci:category[system]
+// @lci:tags[component=event-bus,pattern=observer,concurrency=worker-pool,distribution=lock-free]
+// @lci:metrics[throughput=high,latency=low,concurrency=bounded-workers]
+// @lci:propagate[attr=event-communication,dir=bidirectional,decay=1.0]
+package events
+
+import (
+        "context"
+        "fmt"
+        "log"
+        "runtime"
+        "sync"
+        "time"
+)
+
+type EventType string
+
+const (
+        ProcessStarted     EventType = "processes.started"
+        ProcessExited      EventType = "processes.exited"
+        LogLine            EventType = "log.line"
+        ErrorDetected      EventType = "error.detected"
+        BuildEvent         EventType = "build.event"
+        TestFailed         EventType = "test.failed"
+        TestPassed         EventType = "test.passed"
+        MCPActivity        EventType = "mcp.activity"
+        MCPConnected       EventType = "mcp.connected"
+        MCPDisconnected    EventType = "mcp.disconnected"
+        URLDetected        EventType = "url.detected"
+        DockerPortDetected EventType = "docker.port.detected"
+        SystemMessage      EventType = "system.message"
+        ProxyRequest       EventType = "proxy.request"
+        ProxyModeSwitched  EventType = "proxy.mode_switched"
+        TelemetryReceived  EventType = "telemetry.received"
+        QueueMessage       EventType = "queue.message"
+        REPLResponse       EventType = "repl.response"
+)
+
+type Event struct {
+        ID        string
+        Type      EventType
+        ProcessID string
+        Timestamp time.Time
+        Data      map[string]interface{}
+}
+
+type Handler func(event Event)
+
+// WorkerPoolConfig holds configuration for the event bus worker pool
+type WorkerPoolConfig struct {
+        WorkerCount int // Number of worker goroutines (default: CPU cores * 2.5)
+        BufferSize  int // Channel buffer size (default: 1000)
+}
+
+// DefaultWorkerPoolConfig returns the default configuration
+func DefaultWorkerPoolConfig() WorkerPoolConfig <span class="cov4" title="22">{
+        return WorkerPoolConfig{
+                WorkerCount: int(float64(runtime.NumCPU()) * 2.5),
+                BufferSize:  1000,
+        }
+}</span>
+
+type eventTask struct {
+        event   Event
+        handler Handler
+}
+
+type EventBus struct {
+        handlers   map[EventType][]Handler
+        mu         sync.RWMutex
+        workerPool chan eventTask
+        ctx        context.Context
+        cancel     context.CancelFunc
+        wg         sync.WaitGroup
+        config     WorkerPoolConfig
+}
+
+
+func NewEventBus() *EventBus <span class="cov3" title="21">{
+        return NewEventBusWithConfig(DefaultWorkerPoolConfig())
+}</span>
+
+func NewEventBusWithConfig(config WorkerPoolConfig) *EventBus <span class="cov4" title="22">{
+        ctx, cancel := context.WithCancel(context.Background())
+
+        eb := &amp;EventBus{
+                handlers:   make(map[EventType][]Handler),
+                workerPool: make(chan eventTask, config.BufferSize),
+                ctx:        ctx,
+                cancel:     cancel,
+                config:     config,
+        }
+
+        // Start worker goroutines
+        for i := 0; i &lt; config.WorkerCount; i++ </span><span class="cov6" title="317">{
+                eb.wg.Add(1)
+                go eb.worker()
+        }</span>
+
+        <span class="cov4" title="22">return eb</span>
+}
+
+// worker processes events from the worker pool
+func (eb *EventBus) worker() <span class="cov6" title="313">{
+        defer eb.wg.Done()
+
+        for </span><span class="cov9" title="10173">{
+                select </span>{
+                case task := &lt;-eb.workerPool:<span class="cov9" title="9912">
+                        // Execute handler with panic recovery
+                        func() </span><span class="cov9" title="9911">{
+                                defer func() </span><span class="cov9" title="9825">{
+                                        if r := recover(); r != nil </span><span class="cov0" title="0">{
+                                                // Log panic but continue processing (could add logging here)
+                                                fmt.Printf("EventBus handler panic: %v\n", r)
+                                        }</span>
+                                }()
+                                <span class="cov9" title="9912">task.handler(task.event)</span>
+                        }()
+                case &lt;-eb.ctx.Done():<span class="cov6" title="181">
+                        return</span>
+                }
+        }
+}
+
+func (eb *EventBus) Subscribe(eventType EventType, handler Handler) func() <span class="cov4" title="47">{
+        eb.mu.Lock()
+        defer eb.mu.Unlock()
+
+        eb.handlers[eventType] = append(eb.handlers[eventType], handler)
+
+        // Return unsubscribe function - simple approach
+        return func() </span><span class="cov0" title="0">{
+                eb.mu.Lock()
+                defer eb.mu.Unlock()
+
+                // Remove from handlers list by comparing function identity
+                handlers := eb.handlers[eventType]
+                for i, h := range handlers </span><span class="cov0" title="0">{
+                        // Use uintptr to compare function identity
+                        if &amp;h == &amp;handler </span><span class="cov0" title="0">{
+                                eb.handlers[eventType] = append(handlers[:i], handlers[i+1:]...)
+                                break</span>
+                        }
+                }
+        }
+}
+
+func (eb *EventBus) Publish(event Event) <span class="cov9" title="10504">{
+        event.Timestamp = time.Now()
+        event.ID = generateEventID()
+
+        eb.mu.RLock()
+        handlers := eb.handlers[event.Type]
+        eb.mu.RUnlock()
+
+        for _, handler := range handlers </span><span class="cov9" title="10081">{
+                task := eventTask{
+                        event:   event,
+                        handler: handler,
+                }
+
+                // Non-blocking send to worker pool
+                select </span>{
+                case eb.workerPool &lt;- task:<span class="cov9" title="9912"></span>
+                        // Task queued successfully
+                default:<span class="cov6" title="189">
+                        // Worker pool full - execute synchronously as fallback
+                        func() </span><span class="cov6" title="189">{
+                                defer func() </span><span class="cov6" title="189">{
+                                        if r := recover(); r != nil </span><span class="cov0" title="0">{
+                                                fmt.Printf("EventBus fallback handler panic: %v\n", r)
+                                        }</span>
+                                }()
+                                <span class="cov6" title="189">handler(event)</span>
+                        }()
+                }
+        }
+}
+
+// Shutdown gracefully shuts down the EventBus worker pool
+func (eb *EventBus) Shutdown() <span class="cov3" title="13">{
+        eb.cancel()
+        eb.wg.Wait()
+}</span>
+
+func generateEventID() string <span class="cov10" title="10518">{
+        return fmt.Sprintf("%d", time.Now().UnixNano())
+}</span>
+
+// AI Coder Event Integration
+
+// RegisterAICoderAggregator creates and registers an AI coder event aggregator
+func (eb *EventBus) RegisterAICoderAggregator(maxEvents int) *AICoderEventAggregator <span class="cov0" title="0">{
+        return NewAICoderEventAggregator(eb, maxEvents)
+}</span>
+
+// SubscribeAICoderEvents subscribes to all AI coder events for a specific coder
+func (eb *EventBus) SubscribeAICoderEvents(coderID string, handler Handler) <span class="cov0" title="0">{
+        // Subscribe to all AI coder events for specific coder
+        eventTypes := []EventType{
+                EventAICoderCreated, EventAICoderStarted, EventAICoderPaused,
+                EventAICoderResumed, EventAICoderCompleted, EventAICoderFailed,
+                EventAICoderStopped, EventAICoderDeleted, EventAICoderProgress,
+        }
+
+        for _, eventType := range eventTypes </span><span class="cov0" title="0">{
+                eb.Subscribe(eventType, func(event Event) </span><span class="cov0" title="0">{
+                        // Check if event is for the specific coder
+                        if eventCoderID, ok := event.Data["coder_id"].(string); ok &amp;&amp; eventCoderID == coderID </span><span class="cov0" title="0">{
+                                handler(event)
+                        }</span>
+                })
+        }
+}
+
+// EmitAICoderEvent emits an AI coder event with validation
+func (eb *EventBus) EmitAICoderEvent(eventType EventType, coderID, coderName string, data map[string]interface{}) <span class="cov1" title="1">{
+        if string(eventType) == "" </span><span class="cov0" title="0">{
+                log.Printf("Warning: AI coder event missing type")
+                return
+        }</span>
+
+        <span class="cov1" title="1">if coderID == "" </span><span class="cov0" title="0">{
+                log.Printf("Warning: AI coder event missing coder ID")
+                return
+        }</span>
+
+        // Ensure data map exists
+        <span class="cov1" title="1">if data == nil </span><span class="cov0" title="0">{
+                data = make(map[string]interface{})
+        }</span>
+
+        // Add coder information to data
+        <span class="cov1" title="1">data["coder_id"] = coderID
+        data["coder_name"] = coderName
+
+        eb.Publish(Event{
+                Type:      eventType,
+                ProcessID: fmt.Sprintf("ai-coder-%s", coderID),
+                Timestamp: time.Now(),
+                Data:      data,
+        })</span>
+}
+</pre>
+		
+		</div>
+	</body>
+	<script>
+	(function() {
+		var files = document.getElementById('files');
+		var visible;
+		files.addEventListener('change', onChange, false);
+		function select(part) {
+			if (visible)
+				visible.style.display = 'none';
+			visible = document.getElementById(part);
+			if (!visible)
+				return;
+			files.value = part;
+			visible.style.display = 'block';
+			location.hash = part;
+		}
+		function onChange() {
+			select(files.value);
+			window.scrollTo(0, 0);
+		}
+		if (location.hash != "") {
+			select(location.hash.substr(1));
+		}
+		if (!visible) {
+			select("file0");
+		}
+	})();
+	</script>
+</html>

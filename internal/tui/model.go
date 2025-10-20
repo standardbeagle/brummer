@@ -85,6 +85,7 @@ type Model struct {
 	urlsView          *components.URLsViewComponentNew // URLs view component (stateless)
 	webView           *components.WebViewComponentNew      // Web view component (stateless) (T056-T061)
 	commandWindowView *components.CommandWindowViewComponentNew     // Command window component (stateless)
+	commandAutocomplete components.CommandAutocompleteInterface // Command autocomplete instance (persistent)
 	settingsView      *components.SettingsViewComponentNew // Settings view component (stateless)
 	aicodersView      *components.AICodersViewComponent // AI Coders view component (Feature 005)
 	// New component fields (replacing controllers)
@@ -125,6 +126,13 @@ type Model struct {
 	// SIMPLIFIED KEYBOARD HANDLING
 	keyRegistry *KeyHandlerRegistry // Single registry for all keyboard handlers
 
+	// CLEAR CONFIRMATION STATE (T026)
+	awaitingClearConfirmation bool
+	confirmationTab           string
+
+	// ERROR GROUPING SERVICE (T027)
+	errorGroupingService *services.ErrorGroupingService
+
 	// STATE MANAGEMENT - Master data with sub-models for Elm/Redux compliance
 	masterData   *state.MasterData   // Single source of truth with AICoderState sub-model
 	stateManager *state.StateManager // Legacy StateManager (to be deprecated)
@@ -153,7 +161,8 @@ type keyMap struct {
 	RunDialog     key.Binding
 	AutoScroll    key.Binding
 	ToggleError   key.Binding
-	ClearMessages key.Binding
+	ClearMessages    key.Binding
+	ClearConfirmation key.Binding
 }
 
 var keys = keyMap{
@@ -248,6 +257,10 @@ var keys = keyMap{
 	ClearMessages: key.NewBinding(
 		key.WithKeys("m"),
 		key.WithHelp("m", "clear system messages"),
+	),
+	ClearConfirmation: key.NewBinding(
+		key.WithKeys("C"),
+		key.WithHelp("C", "clear with confirmation"),
 	),
 }
 
@@ -565,6 +578,7 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 		}
 		return nil
 	}),
+		commandAutocomplete: NewCommandAutocompleteFactory()(processMgr.GetScripts(), processMgr),
 		keys:              keys,
 		updateChan:        make(chan tea.Msg, UpdateChannelBufferSize),
 		viewManager:       viewManager, // Add the simple view manager
@@ -594,6 +608,10 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 	// 1. Create ONLY InputService (essential for keyboard handling)
 	inputService := services.NewInputService()
 	logStore.Add("system", "Model", "✅ InputService created", false)
+
+	// T027: Create ErrorGroupingService for error parsing
+	m.errorGroupingService = services.NewErrorGroupingService()
+	logStore.Add("system", "Model", "✅ ErrorGroupingService created", false)
 
 	// Skip other services that might have blocking goroutines
 	// var navigationService *services.NavigationService
@@ -803,7 +821,70 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 	//     - Dependencies: aiCoderService must be created
 	m.aicodersView = components.NewAICodersViewComponent(m.aiCoderService)
 
-	// 13.8. Connect AI coder service to ServiceBridge (Task 3 - ServiceBridge integration)
+	// 13.8. Subscribe to proxy events for web view
+	//     - Required by: Web view proxy request display
+	//     - Dependencies: eventBus available
+	if m.eventBus != nil {
+		m.eventBus.Subscribe(events.ProxyRequest, func(event events.Event) {
+			// Extract request data from event
+			method := ""
+			url := ""
+			statusCode := 0
+			duration := time.Duration(0)
+			size := int64(0)
+			processName := ""
+
+			if val, ok := event.Data["method"]; ok {
+				if s, ok := val.(string); ok {
+					method = s
+				}
+			}
+			if val, ok := event.Data["url"]; ok {
+				if s, ok := val.(string); ok {
+					url = s
+				}
+			}
+			if val, ok := event.Data["status"]; ok {
+				if i, ok := val.(int); ok {
+					statusCode = i
+				}
+			}
+			if val, ok := event.Data["duration"]; ok {
+				if ms, ok := val.(int64); ok {
+					duration = time.Duration(ms) * time.Millisecond
+				}
+			}
+			if val, ok := event.Data["size"]; ok {
+				if s, ok := val.(int64); ok {
+					size = s
+				}
+			}
+			if val, ok := event.Data["processName"]; ok {
+				if s, ok := val.(string); ok {
+					processName = s
+				}
+			}
+
+			// Generate ID from timestamp and URL
+			timestamp := time.Now()
+			id := fmt.Sprintf("%d-%s", timestamp.UnixNano(), method)
+
+			// Send as message to update loop
+			m.updateChan <- messages.ProxyRequestMsg{
+				RequestID:   id,
+				Method:      method,
+				URL:         url,
+				Path:        url, // Will be same for now
+				StatusCode:  statusCode,
+				Duration:    duration,
+				ProcessName: processName,
+				Timestamp:   timestamp,
+				Size:        size,
+			}
+		})
+	}
+
+	// 13.9. Connect AI coder service to ServiceBridge (Task 3 - ServiceBridge integration)
 	//     - Required by: Service event routing to UI components
 	//     - Dependencies: aiCoderService created, shell exists with ServiceBridge
 	// Note: This happens after shell creation, so we need to get the ServiceBridge from the shell
@@ -942,19 +1023,37 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	//   3. System/Process/Log/MCP/AI handlers
 	//   4. KeyboardMessageHandler (integrated key registry)
 	//   5. ViewMessageHandler (window size, mouse, etc.)
-	// Handle keyboard messages DIRECTLY (like the old working version)
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		// Build rich context for key handlers
-		ctx := m.buildKeyContext()
 
-		// Route through the simplified key handler registry
-		if m.keyRegistry != nil {
-			return m, m.keyRegistry.HandleKey(msg, ctx, m)
+	// T026: Handle confirmation keys with highest priority (before MessageRouter)
+	if keyMsg, ok := msg.(tea.KeyMsg); ok && m.awaitingClearConfirmation {
+		switch keyMsg.String() {
+		case "y", "Y":
+			// Execute clear command based on confirmation tab
+			m.awaitingClearConfirmation = false
+			switch m.confirmationTab {
+			case "errors":
+				cmds = append(cmds, func() tea.Msg { return messages.ClearErrorsMsg{} })
+			case "logs":
+				cmds = append(cmds, func() tea.Msg { return messages.ClearLogsMsg{} })
+			case "web":
+				cmds = append(cmds, func() tea.Msg { return messages.ClearWebMsg{} })
+			}
+			m.confirmationTab = ""
+			return m, tea.Batch(cmds...)
+
+		case "n", "N", "esc":
+			// Cancel confirmation
+			m.awaitingClearConfirmation = false
+			m.confirmationTab = ""
+			return m, tea.Batch(cmds...)
+
+		default:
+			// Ignore other keys while confirmation is active
+			return m, nil
 		}
 	}
 
-	// Route non-keyboard messages through MessageRouter
+	// Route all messages (keyboard and non-keyboard) through MessageRouter
 	if m.messageRouter != nil {
 		func() {
 			defer func() {
@@ -1004,6 +1103,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Continue ticking for periodic updates
 		cmds = append(cmds, m.tickCmd())
 
+		// Sync URLs from log store to URLsState (non-blocking)
+		if m.masterData != nil && m.masterData.URLsState != nil {
+			urls := m.logStore.GetURLs()
+			urlInfos := make([]state.URLInfo, len(urls))
+			for i, url := range urls {
+				urlInfos[i] = state.URLInfo{
+					URL:         url.URL,
+					Label:       url.URL,
+					ProcessName: url.ProcessID,
+					Timestamp:   url.Timestamp,
+					VisitCount:  0,
+				}
+			}
+			m.masterData.URLsState = m.masterData.URLsState.UpdateURLs(urlInfos)
+		}
+
 		// Update views based on current view to ensure real-time updates
 		// ⚠️ IMPORTANT: Only call non-blocking update methods from tick handler
 		switch m.currentView() {
@@ -1011,10 +1126,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateProcessList() // Safe: updates list model without blocking
 		case ViewLogs:
 			m.updateLogsView() // Safe: updates viewport without blocking
-		// ⚠️ ViewURLs MUST NOT call updateLogsView() here!
-		// The tick fires every second and updateLogsView() can block on channels,
-		// causing the UI to freeze exactly 1 second after switching to tab 4.
-		// ViewURLs gets its updates through the normal message flow instead.
+		// ⚠️ ViewURLs gets its updates through URLsState sync above
 		}
 
 	case MCPActivityMsg:
@@ -1143,6 +1255,132 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.switchToView(messages.ViewType(msg.View))
 		}
 
+	// ===== GET ALL THE: NEW MESSAGE HANDLERS =====
+	case state.ErrorGroupedMsg:
+		// Handle new grouped error ready for display
+		if m.masterData != nil && m.masterData.ErrorsState != nil {
+			m.masterData.ErrorsState = m.masterData.ErrorsState.AddGroupedError(msg.Error)
+			// Update parser state
+			m.masterData.ErrorsState = m.masterData.ErrorsState.SetParserState(msg.NewState)
+			// Switch to errors tab to show new grouped error
+			if m.tabsComponent != nil {
+				m.tabsComponent.SetActiveView(ViewErrors)
+			}
+		}
+
+	case state.ErrorGroupedBatchMsg:
+		// Handle batch error grouping (completed old group, started new group)
+		if m.masterData != nil && m.masterData.ErrorsState != nil {
+			// Add completed error
+			m.masterData.ErrorsState = m.masterData.ErrorsState.AddGroupedError(msg.CompletedError)
+			// Add new error
+			m.masterData.ErrorsState = m.masterData.ErrorsState.AddGroupedError(msg.NewError)
+			// Update parser state
+			m.masterData.ErrorsState = m.masterData.ErrorsState.SetParserState(msg.NewState)
+			// Switch to errors tab to show new grouped errors
+			if m.tabsComponent != nil {
+				m.tabsComponent.SetActiveView(ViewErrors)
+			}
+		}
+
+	case messages.ClearErrorsMsg:
+		// Handle clear errors command
+		if m.masterData != nil && m.masterData.ErrorsState != nil {
+			m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
+		}
+
+	case messages.ClearLogsMsg:
+		// Handle clear logs command
+		if m.masterData != nil && m.masterData.LogsState != nil {
+			m.masterData.LogsState = m.masterData.LogsState.ClearLogs()
+		}
+		// Also clear from log store
+		m.logStore.ClearLogs()
+		m.logStore.Add("system", "System", "📝 Logs cleared", false)
+		m.updateLogsView()
+
+	case messages.ClearWebMsg:
+		// Handle clear web cache command
+		if m.masterData != nil && m.masterData.WebViewState != nil {
+			m.masterData.WebViewState = m.masterData.WebViewState.ClearRequests()
+		}
+
+	case messages.ProxyRequestMsg:
+		// Handle proxy request - add to web view state
+		if m.masterData != nil && m.masterData.WebViewState != nil {
+			requestInfo := state.RequestInfo{
+				ID:           msg.RequestID,
+				Method:       msg.Method,
+				URL:          msg.URL,
+				Path:         msg.Path,
+				StatusCode:   msg.StatusCode,
+				Duration:     msg.Duration,
+				ProcessName:  msg.ProcessName,
+				Timestamp:    msg.Timestamp,
+				Size:         msg.Size,
+				Error:        msg.Error,
+				HasAuth:      msg.HasAuth,
+				AuthType:     msg.AuthType,
+				JWTError:     msg.JWTError,
+				JWTClaims:    msg.JWTClaims,
+				HasTelemetry: msg.HasTelemetry,
+				SessionID:    msg.SessionID,
+			}
+			m.masterData.WebViewState = m.masterData.WebViewState.AddRequest(requestInfo)
+		}
+
+	case messages.ScrollLogsUpMsg:
+		// Handle scroll up - disables auto-scroll
+		if m.masterData != nil && m.masterData.LogsState != nil {
+			m.masterData.LogsState = m.masterData.LogsState.ScrollUp(1)
+			m.updateLogsView()
+		}
+
+	case messages.ScrollLogsDownMsg:
+		// Handle scroll down
+		if m.masterData != nil && m.masterData.LogsState != nil {
+			m.masterData.LogsState = m.masterData.LogsState.ScrollDown(1)
+			m.updateLogsView()
+		}
+
+	case messages.ToggleAutoScrollMsg:
+		// Handle toggle auto-scroll (Space key)
+		if m.masterData != nil && m.masterData.LogsState != nil {
+			if m.masterData.LogsState.GetAutoScroll() {
+				m.masterData.LogsState = m.masterData.LogsState.DisableAutoScroll()
+			} else {
+				m.masterData.LogsState = m.masterData.LogsState.EnableAutoScroll()
+			}
+			m.updateLogsView()
+		}
+
+	case messages.ShowClearConfirmationMsg:
+		// Handle show clear confirmation dialog (T026)
+		m.awaitingClearConfirmation = true
+		m.confirmationTab = msg.Tab
+
+	case messages.LogAddedMsg:
+		// T027: Handle new log entries - process for error grouping
+		if msg.Entry != nil && m.errorGroupingService != nil {
+			// Get current parser state from ErrorsState
+			var parserState *state.ErrorParserState
+			if m.masterData != nil && m.masterData.ErrorsState != nil {
+				// Get state and take address for pointer
+				ps := m.masterData.ErrorsState.GetParserState()
+				parserState = &ps
+			} else {
+				// Create new state and take address for pointer
+				ps := state.NewErrorParserState()
+				parserState = &ps
+			}
+
+			// Process the log line for error grouping
+			cmd := m.errorGroupingService.ParseAndGroupError(msg.Entry.Content, parserState)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+		}
+
 	default:
 		// Handle generic update messages (including nil messages from script selector)
 		if msg == nil {
@@ -1235,7 +1473,105 @@ func (m *Model) renderLayout(content string) string {
 		}
 	}
 
+	// T026: Show clear confirmation dialog if active
+	if m.awaitingClearConfirmation {
+		return m.renderClearConfirmationDialog(mainLayout)
+	}
+
 	return mainLayout
+}
+
+// renderClearConfirmationDialog renders the confirmation dialog overlay (T026)
+func (m *Model) renderClearConfirmationDialog(backgroundContent string) string {
+	// Define styles for the dialog
+	dialogStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("196")). // Red border for warning
+		Padding(1, 2).
+		Background(lipgloss.Color("235")).
+		Foreground(lipgloss.Color("255")).
+		Width(60).
+		Align(lipgloss.Center, lipgloss.Center)
+
+	titleStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("196")). // Red for warning
+		MarginBottom(1)
+
+	textStyle := lipgloss.NewStyle().
+		Foreground(lipgloss.Color("255")).
+		MarginBottom(1)
+
+	promptStyle := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(lipgloss.Color("226")). // Yellow for prompt
+		MarginTop(1)
+
+	// Build dialog content
+	var tabName string
+	switch m.confirmationTab {
+	case "errors":
+		tabName = "Errors"
+	case "logs":
+		tabName = "Logs"
+	case "web":
+		tabName = "Web"
+	default:
+		tabName = "Data"
+	}
+
+	title := titleStyle.Render("⚠️  Clear Confirmation")
+	text := textStyle.Render(fmt.Sprintf("This will permanently clear all %s.", tabName))
+	prompt := promptStyle.Render("Clear all %s? (y/n)", tabName)
+
+	// Combine dialog content
+	dialogContent := lipgloss.JoinVertical(lipgloss.Center, title, text, prompt)
+	dialog := dialogStyle.Render(dialogContent)
+
+	// Create a semi-transparent overlay
+	overlayStyle := lipgloss.NewStyle().
+		Background(lipgloss.Color("0")).
+		Foreground(lipgloss.Color("255"))
+
+	// Calculate overlay size
+	overlayHeight := m.height
+	overlayWidth := m.width
+
+	// Create overlay with background blurred
+	overlay := overlayStyle.
+		Width(overlayWidth).
+		Height(overlayHeight).
+		Render(strings.Repeat(" ", overlayWidth*overlayHeight))
+
+	// Position dialog in center
+	dialogX := (m.width - 60) / 2
+	dialogY := (m.height - 7) / 2 // Approximate dialog height
+
+	// Build final view with dialog overlay
+	var lines []string
+	overlayLines := strings.Split(overlay, "\n")
+	dialogLines := strings.Split(dialog, "\n")
+
+	for i := 0; i < len(overlayLines); i++ {
+		if i >= dialogY && i < dialogY+len(dialogLines) {
+			// Replace this line with dialog content
+			dialogLine := dialogLines[i-dialogY]
+			if i == dialogY {
+				// First line - add padding to center dialog
+				padding := strings.Repeat(" ", dialogX)
+				lines = append(lines, padding+dialogLine)
+			} else {
+				// Subsequent lines - add padding to align with dialog
+				padding := strings.Repeat(" ", dialogX)
+				lines = append(lines, padding+dialogLine)
+			}
+		} else {
+			// Keep overlay line
+			lines = append(lines, overlayLines[i])
+		}
+	}
+
+	return strings.Join(lines, "\n")
 }
 
 // renderContent renders the main content area based on current view

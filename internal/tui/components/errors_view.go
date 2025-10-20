@@ -86,6 +86,13 @@ func (c *ErrorsViewComponent) ViewWithState(masterData *state.MasterData, logSto
 
 	errorsState := masterData.ErrorsState
 
+	// PRIORITY: Show grouped errors if available (Phase E enhancement)
+	groupedErrors := errorsState.GetGroupedErrors()
+	if len(groupedErrors) > 0 {
+		return c.renderGroupedErrorsView(groupedErrors, errorsState)
+	}
+
+	// FALLBACK: Use existing ErrorContext system
 	// Get errors from cache or log store
 	var errorContexts []logs.ErrorContext
 	if errorsState.IsCacheValid(5*time.Second) {
@@ -291,4 +298,82 @@ func (i ErrorItemStateless) FilterValue() string {
 		return ""
 	}
 	return i.ErrorContext.Message
+}
+
+// renderGroupedErrorsView renders the grouped errors view (Phase E enhancement)
+func (c *ErrorsViewComponent) renderGroupedErrorsView(groupedErrors []state.GroupedError, errorsState *state.ErrorsState) string {
+	if len(groupedErrors) == 0 {
+		return c.renderEmptyState()
+	}
+
+	var content strings.Builder
+
+	// Header with error count
+	header := fmt.Sprintf("📋 Recent Errors (%d)", len(groupedErrors))
+	content.WriteString(c.headerStyle.Render(header) + "\n\n")
+
+	// Render each grouped error
+	for i, error := range groupedErrors {
+		// Error type indicator
+		typeIndicator := c.getErrorTypeIndicator(error.ErrorType)
+
+		// Format timestamp
+		timestamp := error.Timestamp.Format("15:04:05")
+
+		// Build error entry
+		errorEntry := fmt.Sprintf("%s %s [%s] %s",
+			typeIndicator,
+			timestamp,
+			error.ProcessName,
+			error.FirstLine)
+
+		// Highlight selected error
+		if i == errorsState.GetSelectedIndex() {
+			content.WriteString(c.selectedStyle.Render(errorEntry))
+		} else {
+			content.WriteString(c.errorStyle.Render(errorEntry))
+		}
+
+		content.WriteString("\n")
+
+		// Show context lines (truncated if too many)
+		maxContextLines := 3
+		if len(error.FullContent) > 1 {
+			contextStart := 1
+			if len(error.FullContent) <= maxContextLines+1 {
+				contextStart = 1
+			}
+
+			for j := contextStart; j < len(error.FullContent) && j < contextStart+maxContextLines; j++ {
+				contextLine := strings.TrimSpace(error.FullContent[j])
+				if contextLine != "" {
+					content.WriteString(c.descriptionStyle.Render("  " + contextLine) + "\n")
+				}
+			}
+
+			if len(error.FullContent) > maxContextLines+1 {
+				content.WriteString(c.descriptionStyle.Render("  ... (truncated)") + "\n")
+			}
+		}
+
+		content.WriteString("\n")
+	}
+
+	return content.String()
+}
+
+// getErrorTypeIndicator returns a visual indicator for error type
+func (c *ErrorsViewComponent) getErrorTypeIndicator(errorType state.ErrorType) string {
+	switch errorType {
+	case state.ErrorTypeStackTrace:
+		return "🔥" // Stack trace
+	case state.ErrorTypeCompilationError:
+		return "🔧" // Compilation error
+	case state.ErrorTypeTestFailure:
+		return "❌" // Test failure
+	case state.ErrorTypeGeneric:
+		return "⚠️" // Generic error
+	default:
+		return "❓" // Unknown
+	}
 }

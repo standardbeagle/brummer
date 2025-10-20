@@ -72,11 +72,6 @@ func (r *MessageRouter) RegisterHandler(handler MessageHandler) {
 func (r *MessageRouter) Route(msg tea.Msg, model *Model) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
-	// Quick keyboard diagnostic
-	if _, isKeyMsg := msg.(tea.KeyMsg); isKeyMsg && model.logStore != nil {
-		model.logStore.Add("router", "MessageRouter", "📬 Router received keyboard message", false)
-	}
-
 	// Try each handler that can handle the message
 	// Multiple handlers may process the same message (e.g., for cross-cutting concerns)
 	for _, handler := range r.handlers {

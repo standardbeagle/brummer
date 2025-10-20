@@ -55,6 +55,14 @@ func (a *CommandAutocompleteAdapter) SetError(errMsg string) {
 	a.inner.SetError(errMsg)
 }
 
+func (a *CommandAutocompleteAdapter) SetValue(value string) {
+	a.inner.SetValue(value)
+}
+
+func (a *CommandAutocompleteAdapter) IsShowingDropdown() bool {
+	return a.inner.IsShowingDropdown()
+}
+
 // NewCommandAutocompleteFactory creates a factory for command autocomplete instances
 func NewCommandAutocompleteFactory() func(scripts map[string]string, pm *processes.Manager) components.CommandAutocompleteInterface {
 	return func(scripts map[string]string, pm *processes.Manager) components.CommandAutocompleteInterface {

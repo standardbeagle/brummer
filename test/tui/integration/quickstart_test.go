@@ -3,8 +3,6 @@ package integration
 import (
 	"testing"
 	"time"
-
-	tea "github.com/charmbracelet/bubbletea"
 )
 
 // TestQuickstartScenarios implements the integration scenarios from quickstart.md

@@ -20,9 +20,15 @@ func NewDialogMessageHandler() MessageHandler {
 
 // CanHandle checks if this handler can process the message
 func (h *DialogMessageHandler) CanHandle(msg tea.Msg) bool {
-	// This handler has special logic - it checks dialog state in HandleMessage
-	// and only processes when dialogs are active
-	return true
+	// Handle CommandExecuteMsg and all keyboard messages
+	// (we'll check dialog state in HandleMessage)
+	if _, ok := msg.(messages.CommandExecuteMsg); ok {
+		return true
+	}
+	if _, ok := msg.(tea.KeyMsg); ok {
+		return true
+	}
+	return false
 }
 
 // HandleMessage processes dialog-related messages
@@ -34,6 +40,15 @@ func (h *DialogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 		// Close command window if open
 		if model.masterData.CommandWindowState.IsShowingCommandWindow() {
 			model.masterData.CommandWindowState = model.masterData.CommandWindowState.HideCommandWindow()
+		}
+
+		// Clear the command input and suggestions
+		model.masterData.CommandWindowState = model.masterData.CommandWindowState.SetCommandInputText("")
+		model.masterData.CommandWindowState = model.masterData.CommandWindowState.SetCommandSuggestions([]string{})
+
+		// Reset the autocomplete component
+		if model.commandAutocomplete != nil {
+			model.commandAutocomplete.SetValue("")
 		}
 
 		// Execute the command using the model's command handling
@@ -54,15 +69,28 @@ func (h *DialogMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mod
 		// Handle escape key to close command window
 		if msg, ok := msg.(tea.KeyMsg); ok && key.Matches(msg, model.keys.Back) {
 			model.masterData.CommandWindowState = model.masterData.CommandWindowState.HideCommandWindow()
+
+			// Clear the command input and suggestions
+			model.masterData.CommandWindowState = model.masterData.CommandWindowState.SetCommandInputText("")
+			model.masterData.CommandWindowState = model.masterData.CommandWindowState.SetCommandSuggestions([]string{})
+
+			// Reset the autocomplete component
+			if model.commandAutocomplete != nil {
+				model.commandAutocomplete.SetValue("")
+			}
+
 			return model, nil
 		}
 
-		// Update the command autocomplete component through the view
-		if model.commandWindowView != nil {
-			newModel, cmd := model.commandWindowView.Update(msg)
-			if newCmdModel, ok := newModel.(*components.CommandWindowViewComponentNew); ok {
-				model.commandWindowView = newCmdModel
-			}
+		// Update the command autocomplete with keyboard input
+		if model.commandAutocomplete != nil {
+			updatedAutocomplete, cmd := model.commandAutocomplete.Update(msg)
+			model.commandAutocomplete = updatedAutocomplete
+
+			// Sync the autocomplete text and suggestions to state
+			model.masterData.CommandWindowState = model.masterData.CommandWindowState.SetCommandInputText(updatedAutocomplete.Value())
+			model.masterData.CommandWindowState = model.masterData.CommandWindowState.SetCommandSuggestions(updatedAutocomplete.GetSuggestions())
+
 			if cmd != nil {
 				cmds = append(cmds, cmd)
 			}

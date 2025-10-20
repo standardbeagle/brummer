@@ -2,6 +2,7 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
 // Example: How to properly register view-specific key handlers
@@ -15,8 +16,7 @@ func RegisterViewSpecificHandlers(registry *KeyHandlerRegistry) {
 		switch msg.String() {
 		case "c":
 			return func() tea.Msg {
-				model.logStore.ClearLogs()
-				return StatusMsg{Message: "Logs cleared"}
+				return messages.ClearLogsMsg{}
 			}
 		case "f":
 			return func() tea.Msg {
@@ -28,17 +28,28 @@ func RegisterViewSpecificHandlers(registry *KeyHandlerRegistry) {
 				// Export logs
 				return StatusMsg{Message: "Exporting logs..."}
 			}
+		case "up", "k":
+			return func() tea.Msg {
+				return messages.ScrollLogsUpMsg{}
+			}
+		case "down", "j":
+			return func() tea.Msg {
+				return messages.ScrollLogsDownMsg{}
+			}
+		case " ", "space":
+			return func() tea.Msg {
+				return messages.ToggleAutoScrollMsg{}
+			}
 		}
 		return nil
 	}))
 
-	// ERRORS VIEW: 'c' = copy error, 'd' = dismiss error, 'x' = clear all
+	// ERRORS VIEW: 'c' = clear errors, 'd' = dismiss error, 'x' = clear all (alternative)
 	registry.Register(NewViewSpecificKeyHandler(ViewErrors, func(msg tea.KeyMsg, model *Model) tea.Cmd {
 		switch msg.String() {
 		case "c":
 			return func() tea.Msg {
-				// Copy error to clipboard
-				return StatusMsg{Message: "Error copied to clipboard"}
+				return messages.ClearErrorsMsg{}
 			}
 		case "d":
 			return func() tea.Msg {
@@ -87,13 +98,43 @@ func RegisterViewSpecificHandlers(registry *KeyHandlerRegistry) {
 			}
 		case "c":
 			return func() tea.Msg {
-				// Clear captured requests
-				return StatusMsg{Message: "Web requests cleared"}
+				return messages.ClearWebMsg{}
 			}
 		case "i":
 			return func() tea.Msg {
 				// Inspect selected request
 				return StatusMsg{Message: "Inspecting request details"}
+			}
+		}
+		return nil
+	}))
+
+	// CLEAR CONFIRMATION HANDLER (T026) - Works in Errors/Logs/Web views
+	registry.Register(NewViewSpecificKeyHandler(ViewErrors, func(msg tea.KeyMsg, model *Model) tea.Cmd {
+		switch msg.String() {
+		case "C":
+			return func() tea.Msg {
+				return messages.ShowClearConfirmationMsg{Tab: "errors"}
+			}
+		}
+		return nil
+	}))
+
+	registry.Register(NewViewSpecificKeyHandler(ViewLogs, func(msg tea.KeyMsg, model *Model) tea.Cmd {
+		switch msg.String() {
+		case "C":
+			return func() tea.Msg {
+				return messages.ShowClearConfirmationMsg{Tab: "logs"}
+			}
+		}
+		return nil
+	}))
+
+	registry.Register(NewViewSpecificKeyHandler(ViewWeb, func(msg tea.KeyMsg, model *Model) tea.Cmd {
+		switch msg.String() {
+		case "C":
+			return func() tea.Msg {
+				return messages.ShowClearConfirmationMsg{Tab: "web"}
 			}
 		}
 		return nil

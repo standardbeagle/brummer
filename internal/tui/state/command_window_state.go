@@ -12,6 +12,8 @@ type CommandWindowState struct {
 	// Command window state
 	ShowingCommandWindow bool
 	CommandWindowWidth   int
+	CommandInputText     string   // Text being typed in command palette
+	CommandSuggestions   []string // Autocomplete suggestions
 
 	// Run dialog state
 	ShowingRunDialog     bool
@@ -41,6 +43,7 @@ func NewCommandWindowState() *CommandWindowState {
 	return &CommandWindowState{
 		ShowingCommandWindow: false,
 		CommandWindowWidth:   60, // DefaultCommandWindowWidth
+		CommandInputText:     "",
 		ShowingRunDialog:     false,
 		DetectedCommands:     []parser.ExecutableCommand{},
 		MonorepoInfo:         nil,
@@ -301,6 +304,33 @@ func (s *CommandWindowState) GetMonorepoInfo() *parser.MonorepoInfo {
 
 func (s *CommandWindowState) GetCustomCommandText() string {
 	return s.CustomCommandText
+}
+
+func (s *CommandWindowState) GetCommandInputText() string {
+	return s.CommandInputText
+}
+
+// SetCommandInputText updates the command input text (immutable)
+func (s *CommandWindowState) SetCommandInputText(text string) *CommandWindowState {
+	newState := s.copy()
+	newState.CommandInputText = text
+	newState.incrementVersion()
+	return newState
+}
+
+func (s *CommandWindowState) GetCommandSuggestions() []string {
+	suggestions := make([]string, len(s.CommandSuggestions))
+	copy(suggestions, s.CommandSuggestions)
+	return suggestions
+}
+
+// SetCommandSuggestions updates the command suggestions (immutable)
+func (s *CommandWindowState) SetCommandSuggestions(suggestions []string) *CommandWindowState {
+	newState := s.copy()
+	newState.CommandSuggestions = make([]string, len(suggestions))
+	copy(newState.CommandSuggestions, suggestions)
+	newState.incrementVersion()
+	return newState
 }
 
 func (s *CommandWindowState) GetTerminalSize() (int, int) {

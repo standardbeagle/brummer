@@ -41,6 +41,10 @@ type LogsState struct {
 
 	// Version for state tracking
 	version uint64
+
+	// Clear tracking for Phase E enhancement
+	ClearedAt       time.Time
+	ShowClearedMsg  bool
 }
 
 // NewLogsState creates a new logs sub-model with initial state
@@ -109,6 +113,56 @@ func (s *LogsState) ToggleAutoScroll() *LogsState {
 
 	newState := s.copy()
 	newState.AutoScroll = !newState.AutoScroll
+	newState.incrementVersion()
+	return newState
+}
+
+// EnableAutoScroll enables auto-scroll (immutable)
+func (s *LogsState) EnableAutoScroll() *LogsState {
+
+	newState := s.copy()
+	newState.AutoScroll = true
+	newState.AtBottom = true
+	newState.ScrollOffset = 0
+	newState.incrementVersion()
+	return newState
+}
+
+// DisableAutoScroll disables auto-scroll (immutable)
+func (s *LogsState) DisableAutoScroll() *LogsState {
+
+	newState := s.copy()
+	newState.AutoScroll = false
+	newState.incrementVersion()
+	return newState
+}
+
+// ScrollUp scrolls up (toward older logs) and disables auto-scroll (immutable)
+func (s *LogsState) ScrollUp(lines int) *LogsState {
+
+	newState := s.copy()
+	// Scrolling up means viewing older content, so we DECREASE the offset
+	// (offset 0 = top of logs, higher offset = scrolled down toward newer logs)
+	newState.ScrollOffset -= lines
+	if newState.ScrollOffset < 0 {
+		newState.ScrollOffset = 0
+	}
+	// Scrolling up disables auto-scroll (user wants to view history)
+	newState.AutoScroll = false
+	newState.AtBottom = false
+	newState.incrementVersion()
+	return newState
+}
+
+// ScrollDown scrolls down (toward newer logs) (immutable)
+func (s *LogsState) ScrollDown(lines int) *LogsState {
+
+	newState := s.copy()
+	// Scrolling down means viewing newer content, so we INCREASE the offset
+	newState.ScrollOffset += lines
+	// Note: We don't set AutoScroll=true here - user must explicitly enable it
+	// by pressing Space or scrolling all the way to bottom
+	newState.AtBottom = false
 	newState.incrementVersion()
 	return newState
 }
@@ -301,6 +355,22 @@ func (s *LogsState) GetVersion() uint64 {
 	return s.version
 }
 
+func (s *LogsState) GetClearedAt() time.Time {
+	return s.ClearedAt
+}
+
+func (s *LogsState) GetShowClearedMsg() bool {
+	return s.ShowClearedMsg
+}
+
+// HideClearedMsg hides the cleared message (called when new logs arrive)
+func (s *LogsState) HideClearedMsg() *LogsState {
+	newState := s.copy()
+	newState.ShowClearedMsg = false
+	newState.incrementVersion()
+	return newState
+}
+
 // Helper methods
 func (s *LogsState) copy() *LogsState {
 	newState := *s
@@ -314,4 +384,34 @@ func (s *LogsState) incrementVersion() {
 func (s *LogsState) invalidateCache() {
 	s.CacheTimestamp = time.Time{}
 	s.CacheProcess = ""
+}
+
+// ClearLogs clears all cached logs while preserving filters and settings (immutable)
+func (s *LogsState) ClearLogs() *LogsState {
+	newState := s.copy()
+
+	// Clear the cached logs
+	newState.CachedLogs = []logs.CollapsedLogEntry{}
+	newState.CacheTimestamp = time.Time{}
+	newState.CacheProcess = ""
+
+	// Clear search results
+	newState.SearchResults = []logs.LogEntry{}
+	newState.SearchQuery = ""
+
+	// Reset scroll position
+	newState.ScrollOffset = 0
+	newState.AtBottom = true
+
+	// Clear any error state
+	newState.LastError = ""
+
+	// Set clear tracking fields for Phase E enhancement
+	newState.ClearedAt = time.Now()
+	newState.ShowClearedMsg = true
+
+	// Increment version
+	newState.incrementVersion()
+
+	return newState
 }

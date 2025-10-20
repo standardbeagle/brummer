@@ -6,11 +6,13 @@
 
 ## Overview
 
-This task list implements complete TUI tab functionality with error grouping intelligence and comprehensive automated testing following TDD principles. All 52 tasks (45 implementation + 7 build checkpoints) are organized into 8 phases (A-H) with clear dependencies and parallel execution opportunities.
+This task list implements complete TUI tab functionality with error grouping intelligence and comprehensive automated testing following TDD principles. All 59 tasks (50 implementation + 9 build checkpoints) are organized into 8 phases (A-H) with clear dependencies and parallel execution opportunities.
 
 **Strategy**: Test-First Development (TDD) - Write failing tests, then implement to make tests pass
 
-**Build-First Approach**: The application MUST build successfully after every task. 7 mandatory build checkpoints ensure continuous integration throughout development.
+**Build-First Approach**: The application MUST build successfully after every task. 9 mandatory build checkpoints ensure continuous integration throughout development.
+
+**Architecture Compliance**: All tasks enforce lock-free immutable state pattern, Redux/Elm architecture, and View() deadlock prevention as documented in CLAUDE.md.
 
 ## Task Categories
 
@@ -141,6 +143,21 @@ mkdir -p test/tui/fixtures
 **Expected**: All tests FAIL (service not implemented yet)
 **Dependencies**: T002, T003
 
+### T007b: [P] [TEST] Write Update() separation contract tests
+**File**: `test/tui/contracts/update_separation_test.go`
+**Action**: Implement tests verifying Update() is the ONLY mutation point (Redux/Elm pattern):
+1. `TestViewNeverCallsUpdate` - View() doesn't trigger state mutations
+2. `TestAllMutationsInUpdate` - All state changes flow through Update()
+3. `TestNoDirectStateModification` - Services don't modify state directly
+4. `TestCommandPattern` - All async operations use tea.Cmd pattern (no direct goroutines)
+5. `TestViewReadOnly` - View() only reads state, never writes
+6. `TestServiceReturnsCmdOnly` - Services return Commands, never mutate Model
+
+**Test For**: ErrorsView, LogsView, WebView, ErrorGroupingService, ClearService
+**Expected**: All tests FAIL initially (pattern not enforced yet)
+**Dependencies**: T003, T006, T007
+**Note**: Critical for Redux/Elm architecture compliance
+
 ### T008: [P] [TEST] Write error grouping unit tests
 **File**: `test/tui/unit/error_grouping_test.go`
 **Action**: Create table-driven tests for error grouping patterns:
@@ -159,7 +176,7 @@ mkdir -p test/tui/fixtures
 **Expected**: Clean build (tests may fail, but code compiles)
 **Test Verification**: `go test ./test/tui/contracts/... -v` - should compile but tests FAIL (expected)
 **If Failed**: Fix all compilation errors before proceeding to Phase C
-**Dependencies**: T005, T006, T007, T008
+**Dependencies**: T005, T006, T007, T007b, T008
 **Note**: MANDATORY - Tests should fail (no implementation), but code must compile
 
 ---
@@ -171,7 +188,13 @@ mkdir -p test/tui/fixtures
 **Action**: Create GroupedError struct with all fields from data-model.md:
 - ID, ProcessName, ProcessPID, FirstLine, FullContent, ErrorType
 - Timestamp, Source, LineNumber, Version
+- **MANDATORY**: Add immutability documentation comment:
+  ```go
+  // IMMUTABLE: This struct is immutable. All update methods return a NEW instance.
+  // NO MUTEXES: Thread-safety is achieved through immutability and atomic operations.
+  ```
 - Add validation method
+- Ensure NO mutex fields (verified by TestNoMutexes contract test)
 
 **Expected**: Contract tests for immutability pass
 **Dependencies**: T005 (tests written)
@@ -218,8 +241,14 @@ mkdir -p test/tui/fixtures
 - EndpointFilter, StatusCodeFilter, MethodFilter
 - SelectedIndex, ShowDetails, MaxRetention
 - LastUpdated, Version
+- **MANDATORY**: Add immutability documentation comment:
+  ```go
+  // IMMUTABLE: This struct is immutable. All update methods return a NEW instance.
+  // NO MUTEXES: Thread-safety is achieved through immutability and atomic operations.
+  ```
 - Implement all immutable update methods
 - Implement `Validate()` method
+- Ensure NO mutex fields (verified by TestNoMutexes contract test)
 
 **Expected**: State contract tests for WebState pass
 **Dependencies**: T005
@@ -230,6 +259,12 @@ mkdir -p test/tui/fixtures
 - ID, Timestamp, Method, URL, StatusCode
 - RequestHeaders, ResponseHeaders
 - RequestBody, ResponseBody, Duration, Size
+- **MANDATORY**: Add immutability documentation comment:
+  ```go
+  // IMMUTABLE: This struct is immutable. All update methods return a NEW instance.
+  // NO MUTEXES: Thread-safety is achieved through immutability and atomic operations.
+  ```
+- Ensure NO mutex fields (verified by TestNoMutexes contract test)
 
 **Dependencies**: None
 
@@ -260,7 +295,16 @@ mkdir -p test/tui/fixtures
 WebState *WebState
 ```
 - Initialize in `NewMasterData()` constructor
+- **NEW**: Add `Validate()` method to MasterData that calls Validate() on all child states
+- **NEW**: Verify no duplicate state storage (single source of truth pattern)
+- **NEW**: Add documentation comment:
+  ```go
+  // MasterData is the single source of truth for ALL TUI state.
+  // All state updates flow through Update() which modifies MasterData.
+  // NO state should be stored elsewhere (Redux/Elm pattern).
+  ```
 
+**Expected**: MasterData serves as single source of truth for all TUI state
 **Dependencies**: T013
 **Note**: Not parallel - modifies existing file
 
@@ -270,15 +314,35 @@ WebState *WebState
 **Expected**: Clean build with no compilation errors
 **Test Verification**:
 ```bash
+# Verify state contract tests pass
 go test ./test/tui/contracts/... -v -run TestState
 # State contract tests should now PASS
+
+# NEW: Verify lock-free compliance (CRITICAL)
+go test ./test/tui/contracts/... -v -run TestNoMutexes
+# MUST PASS - No mutexes allowed in state objects
+
+# NEW: Verify concurrent safety with race detector
+go test ./test/tui/contracts/... -v -run TestConcurrentReads -race
+# MUST PASS with -race flag (no race conditions)
+
+# NEW: Verify immutability contract
+go test ./test/tui/contracts/... -v -run TestStateImmutability
+# MUST PASS - Original state unchanged after mutations
+
+# NEW: Verify Update() separation contract
+go test ./test/tui/contracts/... -v -run TestUpdate
+# Should PASS for implemented components
 ```
 **If Failed**:
 1. Fix compilation errors first
 2. If state contract tests fail, fix state implementations
-3. Do not proceed until state tests pass
+3. **NEW**: If TestNoMutexes fails, remove ALL mutexes from state objects immediately
+4. **NEW**: If race detector fails, ensure proper defensive copying in getters
+5. **NEW**: If immutability tests fail, verify all update methods return *State
+6. Do not proceed until ALL state tests pass
 **Dependencies**: T009-T017
-**Note**: MANDATORY - State contract tests MUST pass before Phase D
+**Note**: MANDATORY - State contract tests MUST pass before Phase D. Lock-free compliance is NON-NEGOTIABLE.
 
 ---
 
@@ -430,13 +494,22 @@ type ShowClearConfirmationMsg struct {
 
 ### T026: [IMPL] Add 'C' key handler for confirmation
 **File**: `internal/tui/handlers/key_handler.go`
-**Action**: Update key handler to support 'C' (shift+c):
+**Action**: Update key handler to support 'C' (shift+c) with complete confirmation workflow:
 - Return `ShowClearConfirmationMsg` with current tab
-- Prompt user to confirm (y/n)
-- Execute clear on 'y', cancel on 'n' or Esc
+- **NEW**: Set confirmation state in Model (e.g., `awaitingClearConfirmation bool`, `confirmationTab string`)
+- **NEW**: While confirmation active (in Update() handler):
+  - 'y' or 'Y': Execute clear command, return appropriate ClearMsg (ClearErrorsMsg/ClearLogsMsg/ClearWebMsg)
+  - 'n' or 'N': Cancel, clear confirmation state, return to normal mode
+  - Esc: Cancel, clear confirmation state, return to normal mode
+  - Other keys: Ignore (confirmation takes precedence over normal key handling)
+- **NEW**: Display confirmation prompt in View() when `awaitingClearConfirmation == true`:
+  - Format: "Clear all [errors/logs/web events]? (y/n)" in status bar or modal
+  - Highlight the prompt to draw user attention
+- **NEW**: Prevent accidental data loss by requiring explicit confirmation
 
+**Expected**: Confirmation workflow prevents accidental clearing of important data
 **Dependencies**: T023, T025
-**Note**: Not parallel - modifies existing file
+**Note**: Not parallel - modifies existing file. Critical UX safety feature.
 
 ### T027: [IMPL] Wire error grouping service to Update()
 **File**: `internal/tui/model.go`
@@ -475,16 +548,22 @@ timeout 5s ./brum --no-tui || true
 
 ### T028: [P] [TEST] Tab navigation integration test
 **File**: `test/tui/integration/tab_navigation_test.go`
-**Action**: Create integration test for tab switching:
+**Action**: Create integration test for tab switching with deadlock prevention:
 - Start TUI with TTY allocation
 - Simulate number key presses (1-7)
+- **NEW**: Verify View() never blocks during tab switches (wrap View() calls with 10ms timeout)
+- **NEW**: Test rapid tab switching (mash number keys 1-7 repeatedly for 5 seconds)
+- **NEW**: Monitor for UI freezes during rapid switching (should never freeze)
+- **NEW**: Specifically test tabs 3 (Errors) and 4 (URLs) - historical deadlock locations
 - Verify tab switches occur
 - Verify state preservation across switches
 - Test Tab/Shift+Tab cycling
+- **NEW**: Verify tick handlers (1 second interval) don't cause freezes in any tab
 
-**Test Scenario**: Quickstart Scenario 4
+**Test Scenario**: Quickstart Scenario 4 + Deadlock Prevention (tab 3/4 lockup issue)
 **Dependencies**: T004
 **Build Tags**: `// +build integration`
+**Note**: Critical for preventing the tab 3/4 deadlock issue documented in tui-deadlock-prevention.md
 
 ### T029: [P] [TEST] Error grouping integration test
 **File**: `test/tui/integration/error_grouping_test.go`
@@ -613,6 +692,34 @@ go tool cover -html=coverage.out -o coverage.html
 
 **Dependencies**: T006, T007
 
+### T038b: [S] Benchmark lock-free state operations
+**Command**: `go test -bench=BenchmarkState ./test/tui/contracts/... -benchmem`
+**Action**: Validate lock-free architecture performance claims
+**Expected Performance Targets**:
+```bash
+BenchmarkStateRead-8         20000000    50 ns/op     0 B/op   0 allocs/op
+BenchmarkStateWrite-8         5000000   300 ns/op   128 B/op   1 allocs/op
+```
+**Verification Criteria**:
+- Read operations: <100ns per operation (no mutex contention)
+- Write operations: <1μs per operation (copy-on-write overhead acceptable)
+- Memory: Zero allocations for reads, minimal allocations for writes
+- Zero mutex operations (verify with pprof if available)
+- **Performance Claim**: Should demonstrate 20-30x improvement over mutex-based state management
+  - Mutex-based baseline: ~2-3μs per read (with contention)
+  - Lock-free target: <100ns per read
+  - Improvement ratio: 20-30x
+
+**Action Steps**:
+1. Run state benchmarks with `-benchmem` flag
+2. Analyze ns/op and allocs/op metrics
+3. Compare against baseline (if mutex-based implementation exists for comparison)
+4. Verify no blocking/contention in concurrent scenarios
+5. Document performance results in benchmark output
+
+**Dependencies**: T034, T038
+**Note**: This validates the core architectural claim from CLAUDE.md about lock-free performance
+
 ### T039: [S] Execute manual quickstart tests
 **File**: `specs/010-get-all-the/quickstart.md`
 **Action**: Manually execute all 10 test scenarios
@@ -683,6 +790,7 @@ go tool cover -html=coverage.out -o coverage.html
 - [ ] All 7 tabs fully functional
 - [ ] Error grouping working (stack traces, compilation, tests)
 - [ ] Clear commands working ('c' and 'C')
+- [ ] Clear confirmation workflow working (prevents accidental data loss)
 - [ ] Tab navigation responsive (<50ms)
 
 **Test Verification**:
@@ -693,6 +801,16 @@ go tool cover -html=coverage.out -o coverage.html
 - [ ] Zero race conditions detected
 - [ ] <5ms View() rendering verified
 - [ ] <50ms keyboard response verified
+
+**Architecture Compliance Verification** (NEW):
+- [ ] **Lock-Free State**: All state objects have NO mutexes (TestNoMutexes passes)
+- [ ] **Immutability**: All state objects have mandatory documentation comments
+- [ ] **Redux/Elm Pattern**: Update() is only mutation point (TestUpdate passes)
+- [ ] **View() Purity**: No blocking operations in View() (TestViewDoesNotBlock passes)
+- [ ] **Service Statelessness**: All services return tea.Cmd (TestServiceStatelessness passes)
+- [ ] **Single Source of Truth**: MasterData is only state storage
+- [ ] **Performance**: Lock-free operations achieve <100ns reads (T038b benchmarks)
+- [ ] **Deadlock Prevention**: Rapid tab switching doesn't freeze (T028 integration test)
 
 **Production Readiness**:
 - [ ] Application builds on all platforms (Linux, macOS, Windows)
@@ -774,10 +892,15 @@ Task agent6: "Execute T033 - Performance integration test"
 
 - **Coverage**: >80% code coverage for all tab-related code (T037)
 - **Performance**: <5ms View() rendering, <50ms keyboard response (T038)
+- **Lock-Free Performance**: <100ns state reads, 20-30x faster than mutex-based (T038b)
 - **Reliability**: Zero race conditions detected (T036)
-- **Architecture**: 100% compliance with lock-free immutable state pattern (T005)
+- **Architecture**: 100% compliance with lock-free immutable state pattern (T005, T017a)
+- **Redux/Elm Compliance**: Update() is only mutation point, services stateless (T007b)
+- **Deadlock Prevention**: View() never blocks, rapid tab switching works (T028)
 - **Testing**: All contract tests, integration tests, and manual tests pass (T034, T035, T039)
 - **Functionality**: All 7 tabs functional with error grouping and clear commands (T045)
+- **Immutability**: All state objects have mandatory documentation comments (T009, T013, T014)
+- **Single Source of Truth**: MasterData validated as only state storage (T017)
 
 ---
 
@@ -787,41 +910,64 @@ Task agent6: "Execute T033 - Performance integration test"
 Phase A (T001-T004) - All parallel
     ↓
 Phase B (T005-T008) - All parallel (depends on Phase A)
+    + T007b (NEW) - Update() separation tests (parallel with others)
     ↓
 Phase C (T009-T017) - Mixed (some parallel, some sequential)
+    + Enhanced with mandatory lock-free documentation (T009, T013, T014)
+    + Enhanced MasterData validation (T017)
     ↓
 Phase D (T018-T019) - All parallel (depends on Phase C)
     ↓
 Phase E (T020-T022) - Sequential (modifies existing files)
     ↓
 Phase F (T023-T027) - Sequential (modifies existing files)
+    + Enhanced confirmation workflow (T026)
     ↓
 Phase G (T028-T033) - All parallel (integration tests)
+    + Enhanced deadlock prevention testing (T028)
     ↓
 Phase H (T034-T045) - Sequential (validation pipeline)
+    + T038b (NEW) - Lock-free performance benchmarks
+    + Enhanced architecture compliance verification (T045)
 ```
+
+**New Tasks Added**:
+- **T007b**: Update() separation contract tests (Phase B)
+- **T038b**: Lock-free state performance benchmarks (Phase H)
+
+**Enhanced Tasks**:
+- **T009, T013, T014**: Added mandatory immutability documentation
+- **T017**: Added MasterData validation and single source of truth verification
+- **T017a**: Added lock-free compliance verification with race detector
+- **T026**: Added detailed confirmation workflow implementation
+- **T028**: Added View() blocking prevention and deadlock testing
+- **T045**: Added comprehensive architecture compliance checklist
 
 ---
 
 ## Build Checkpoint Summary
 
-**7 Mandatory Build Checkpoints** ensure the application builds throughout development:
+**9 Mandatory Build Checkpoints** ensure the application builds throughout development:
 
 1. **T004a**: After Phase A (Test Infrastructure) - Verify fixtures compile
 2. **T008a**: After Phase B (Contract Tests) - Verify tests compile (may fail, but compile)
-3. **T017a**: After Phase C (State Implementation) - Verify states build, state tests pass
+3. **T017a**: After Phase C (State Implementation) - Verify states build, state tests pass, lock-free compliance verified
 4. **T019a**: After Phase D (Service Implementation) - Verify services build, service tests pass
 5. **T022a**: After Phase E (View Implementation) - Verify views build, view tests pass
 6. **T027a**: After Phase F (Integration) - Verify application runs without crashes
 7. **T033a**: After Phase G (Integration Tests) - Verify integration tests compile
-8. **T045**: Final Build Verification - Cross-platform builds, all tests pass
+8. **T038b**: After Performance Testing - Verify lock-free performance benchmarks (20-30x improvement)
+9. **T045**: Final Build Verification - Cross-platform builds, all tests pass, architecture compliance verified
 
 **Critical Rule**: If any build checkpoint fails, STOP and fix before proceeding.
 
+**Architecture Enforcement**: Build checkpoints verify lock-free state compliance, Redux/Elm pattern adherence, and View() deadlock prevention.
+
 ---
 
-*Total Tasks: 52 (45 implementation + 7 build checkpoints)*
+*Total Tasks: 59 (50 implementation + 9 build checkpoints)*
 *Estimated Duration: 3-4 sprints*
-*Parallel Execution Opportunities: 25 tasks*
-*Build Checkpoints: 7 mandatory gates*
+*Parallel Execution Opportunities: 27 tasks*
+*Build Checkpoints: 9 mandatory gates*
+*Architecture Compliance: Lock-free immutable state, Redux/Elm pattern, View() deadlock prevention*
 *Implementation Status: Ready for execution*

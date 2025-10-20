@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/standardbeagle/brummer/internal/logs"
@@ -12,14 +13,22 @@ import (
 // IMMUTABLE: This struct is immutable. All update methods return a NEW instance.
 // NO MUTEXES: Thread-safety is achieved through immutability and atomic operations.
 type ErrorsState struct {
-	// Error data cache
+	// Error data cache (existing system)
 	ErrorContexts    []logs.ErrorContext
 	CacheTimestamp   time.Time
 	NeedsRefresh     bool
 
-	// Selection state
+	// Selection state (existing system)
 	SelectedError    *logs.ErrorContext
 	SelectedErrorID  string
+
+	// NEW: Grouped error support (for future extensibility)
+	GroupedErrors    []GroupedError
+	ParserState      ErrorParserState
+	MaxRetention     int
+
+	// Filter settings (NEW)
+	FilterProcess    string
 
 	// Display settings
 	ShowDetailView   bool
@@ -43,6 +52,10 @@ func NewErrorsState() *ErrorsState {
 		NeedsRefresh:    true,
 		SelectedError:   nil,
 		SelectedErrorID: "",
+		GroupedErrors:   []GroupedError{},
+		ParserState:     NewErrorParserState(),
+		MaxRetention:    1000, // Default retention limit
+		FilterProcess:   "",
 		ShowDetailView:  false,
 		ShowList:        true,
 		AutoRefresh:     true,
@@ -276,4 +289,117 @@ func (s *ErrorsState) copy() *ErrorsState {
 
 func (s *ErrorsState) incrementVersion() {
 	s.version++
+}
+
+// NEW METHODS FOR GROUPED ERRORS
+
+// AddGroupedError adds a new grouped error (immutable)
+func (s *ErrorsState) AddGroupedError(error GroupedError) *ErrorsState {
+	newState := s.copy()
+
+	// Apply retention limit if needed
+	if len(newState.GroupedErrors) >= newState.MaxRetention {
+		// Remove oldest error (FIFO)
+		newState.GroupedErrors = newState.GroupedErrors[1:]
+	}
+
+	// Add new error with incremented version
+	error.Version = newState.version + 1
+	newState.GroupedErrors = append(newState.GroupedErrors, error)
+	newState.incrementVersion()
+
+	return newState
+}
+
+// SetFilterProcess sets the process filter (immutable)
+func (s *ErrorsState) SetFilterProcess(process string) *ErrorsState {
+	newState := s.copy()
+	newState.FilterProcess = process
+	newState.incrementVersion()
+	return newState
+}
+
+// SetMaxRetention sets the maximum number of errors to retain (immutable)
+func (s *ErrorsState) SetMaxRetention(maxRetention int) *ErrorsState {
+	newState := s.copy()
+	newState.MaxRetention = maxRetention
+
+	// Apply new retention limit immediately if needed
+	if len(newState.GroupedErrors) > maxRetention {
+		newState.GroupedErrors = newState.GroupedErrors[:maxRetention]
+	}
+
+	newState.incrementVersion()
+	return newState
+}
+
+// GetGroupedErrors returns a copy of the grouped errors
+func (s *ErrorsState) GetGroupedErrors() []GroupedError {
+	errors := make([]GroupedError, len(s.GroupedErrors))
+	copy(errors, s.GroupedErrors)
+	return errors
+}
+
+// GetFilterProcess returns the current process filter
+func (s *ErrorsState) GetFilterProcess() string {
+	return s.FilterProcess
+}
+
+// GetMaxRetention returns the current max retention limit
+func (s *ErrorsState) GetMaxRetention() int {
+	return s.MaxRetention
+}
+
+// GetParserState returns the current parser state
+func (s *ErrorsState) GetParserState() ErrorParserState {
+	return s.ParserState
+}
+
+// SetParserState updates the parser state (immutable)
+func (s *ErrorsState) SetParserState(parserState ErrorParserState) *ErrorsState {
+	newState := s.copy()
+	newState.ParserState = parserState
+	newState.incrementVersion()
+	return newState
+}
+
+// GetSelectedIndex returns the selected error index (for grouped errors)
+func (s *ErrorsState) GetSelectedIndex() int {
+	// This is a simple implementation - in a full implementation,
+	// this would be tracked as a separate field
+	return 0 // Always return 0 for now
+}
+
+// Validate validates the ErrorsState
+func (s *ErrorsState) Validate() []string {
+	var issues []string
+
+	// Validate selected index bounds
+	if s.SelectedErrorID != "" {
+		found := false
+		for _, ec := range s.ErrorContexts {
+			if ec.ID == s.SelectedErrorID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			issues = append(issues, "SelectedErrorID not found in ErrorContexts")
+		}
+	}
+
+	// Validate retention limit
+	if s.MaxRetention <= 0 {
+		issues = append(issues, "MaxRetention must be positive")
+	}
+
+	// Validate grouped errors
+	for i, ge := range s.GroupedErrors {
+		geIssues := ge.Validate()
+		for _, issue := range geIssues {
+			issues = append(issues, fmt.Sprintf("GroupedError[%d]: %s", i, issue))
+		}
+	}
+
+	return issues
 }

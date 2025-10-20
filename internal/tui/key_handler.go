@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -62,9 +61,15 @@ func (r *KeyHandlerRegistry) Register(handler KeyHandler) {
 func (r *KeyHandlerRegistry) HandleKey(key tea.KeyMsg, ctx KeyContext, model *Model) tea.Cmd {
 	for _, handler := range r.handlers {
 		if handler.CanHandle(key, ctx) {
-						return handler.Handle(key, model)
+			cmd := handler.Handle(key, model)
+			if cmd != nil {
+				// Handler actually handled the key, return its command
+				return cmd
+			}
+			// Handler matched but returned nil - continue to next handler
 		}
 	}
+
 	return nil
 }
 
@@ -167,10 +172,9 @@ func (h *ViewSpecificKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 	return h.handler(key, model)
 }
 
-// QuitHandler handles quit commands with double-press protection
-type QuitHandler struct {
-	lastPress int64 // Unix nano timestamp
-}
+// QuitHandler handles quit commands
+// Both Ctrl+C and ESC quit immediately for better UX
+type QuitHandler struct{}
 
 func NewQuitHandler() KeyHandler {
 	return &QuitHandler{}
@@ -189,22 +193,9 @@ func (h *QuitHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 }
 
 func (h *QuitHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
-	switch key.Type {
-	case tea.KeyCtrlC:
-		// Implement double-press protection for Ctrl+C
-		now := time.Now().UnixNano()
-		if h.lastPress > 0 && (now-h.lastPress) < int64(500*time.Millisecond) {
-			return tea.Quit
-		}
-		h.lastPress = now
-		return func() tea.Msg {
-			return StatusMsg{Message: "Press Ctrl+C again to quit"}
-		}
-	case tea.KeyEsc:
-		// ESC key should quit immediately (single press)
-		return tea.Quit
-	}
-	return nil
+	// Both Ctrl+C and ESC quit immediately
+	// No double-press protection needed - users expect immediate quit
+	return tea.Quit
 }
 
 // SlashCommandHandler handles the "/" key with context awareness
@@ -230,25 +221,30 @@ func (h *SlashCommandHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 		return false
 	}
 
-	// Context-aware behavior based on CLAUDE.md requirements:
-	// When AI coder session is active, slash commands are context-aware:
-	// - "/" at start of line: Opens Brummer command palette
-	// - "/" mid-line: Sent to AI coder as regular input
-	// - When terminal not focused: Always opens Brummer command palette
-
-	// Check if we're in AI Coders view
-	if ctx.View == ViewAICoders {
-		// Check if we're in PTY mode (terminal focused)
-		if ctx.Context == "pty" {
-			// If cursor is at start of line (position 0), open command palette
-			// Otherwise, let it pass through to the terminal
-			return ctx.CursorPosition == 0
-		}
-		// Terminal not focused - always handle
-		return true
+	// Don't handle "/" when in input field contexts:
+	// - command_window: Command palette itself
+	// - pty: AI coder terminal (except at start of line)
+	// - modal: Any modal dialog with input
+	// - script_selector: Script selection input
+	switch ctx.Context {
+	case "command_window":
+		// Don't intercept "/" in command palette - let user type it
+		return false
+	case "modal":
+		// Don't intercept "/" in modal dialogs
+		return false
+	case "script_selector":
+		// Don't intercept "/" in script selector
+		return false
+	case "pty":
+		// Context-aware behavior for AI coder terminal:
+		// - "/" at start of line: Opens Brummer command palette
+		// - "/" mid-line: Sent to AI coder as regular input
+		return ctx.CursorPosition == 0
 	}
 
-	// In all other views, always handle "/" key for command palette
+	// In all other contexts (normal, file_browser, system_panel, etc),
+	// always handle "/" key for command palette
 	return true
 }
 
@@ -380,12 +376,6 @@ func (h *GeneralKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 }
 
 func (h *GeneralKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
-	// Log the unhandled key for debugging
-	if model.logStore != nil {
-		model.logStore.Add("keyboard", "GeneralKeyHandler",
-			fmt.Sprintf("🎹 Unhandled key: %s (%s) - no specific handler", keyToString(key), key.Type.String()), false)
-	}
-
 	// Return a helpful message for common keys
 	switch key.Type {
 	case tea.KeyEnter:

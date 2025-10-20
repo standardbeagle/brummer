@@ -181,7 +181,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 	// Always show dropdown if we have suggestions or if we're at the beginning
 	if len(c.suggestions) == 0 && c.currentIndex == 0 && (value == "" || value == "/") {
 		// Show initial commands when empty
-		c.suggestions = []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "help", "exit", "quit"}
+		c.suggestions = []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "docker-up", "docker-down", "docker-build", "compose-up", "compose-down", "help", "exit", "quit"}
 		c.showDropdown = true
 	}
 
@@ -194,7 +194,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 	if c.currentIndex == 0 {
 		// First segment - show root commands
-		rootCommands := []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "help", "exit", "quit"}
+		rootCommands := []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "docker-up", "docker-down", "docker-build", "compose-up", "compose-down", "help", "exit", "quit"}
 		currentText := ""
 		if len(c.segments) > 0 {
 			currentText = c.segments[0]
@@ -312,6 +312,35 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 				return c.filterSuggestions(providers, currentText)
 			}
 			return []string{}
+
+		case "/docker-up", "/docker-down":
+			// Suggest common container names or "all"
+			options := []string{"all"}
+			// TODO: Could be enhanced to list actual running containers from docker ps
+			currentText := ""
+			if c.currentIndex < len(c.segments) {
+				currentText = c.segments[c.currentIndex]
+			}
+			return c.filterSuggestions(options, currentText)
+
+		case "/docker-build":
+			// Suggest common tag patterns
+			tags := []string{"latest", "dev", "prod", "v1.0.0"}
+			currentText := ""
+			if c.currentIndex < len(c.segments) {
+				currentText = c.segments[c.currentIndex]
+			}
+			return c.filterSuggestions(tags, currentText)
+
+		case "/compose-up", "/compose-down":
+			// Suggest service names or empty for all services
+			// TODO: Could be enhanced to parse docker-compose.yml for actual service names
+			options := []string{"all", "web", "api", "db", "redis", "worker"}
+			currentText := ""
+			if c.currentIndex < len(c.segments) {
+				currentText = c.segments[c.currentIndex]
+			}
+			return c.filterSuggestions(options, currentText)
 		}
 	}
 
@@ -567,18 +596,38 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		// No additional parameters needed
 		return true, ""
 
+	case "/docker-up":
+		// Optional container name parameter
+		return true, ""
+
+	case "/docker-down":
+		// Optional container name parameter
+		return true, ""
+
+	case "/docker-build":
+		// Optional tag parameter (defaults to "latest")
+		return true, ""
+
+	case "/compose-up":
+		// Optional service name parameter
+		return true, ""
+
+	case "/compose-down":
+		// Optional service name parameter
+		return true, ""
+
 	case "/exit", "/quit":
 		// No additional parameters needed
 		return true, ""
 
 	default:
 		// Check if it's a partial command
-		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "help", "exit", "quit"} {
+		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "docker-up", "docker-down", "docker-build", "compose-up", "compose-down", "help", "exit", "quit"} {
 			if strings.HasPrefix(cmd, strings.TrimPrefix(command, "/")) {
 				return false, fmt.Sprintf("Incomplete command. Did you mean /%s?", cmd)
 			}
 		}
-		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /help, /exit, /quit", command)
+		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help, /exit, /quit", command)
 	}
 }
 
