@@ -1141,18 +1141,20 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 			s.addRequest(reqRecord)
 
 			// Publish event
-			s.eventBus.Publish(events.Event{
-				Type:      events.ProxyRequest,
-				ProcessID: reqRecord.ProcessName,
-				Data: map[string]interface{}{
-					"method":      reqRecord.Method,
-					"url":         reqRecord.URL,
-					"status":      reqRecord.StatusCode,
-					"duration":    reqRecord.Duration.Milliseconds(),
-					"size":        reqRecord.Size,
-					"processName": reqRecord.ProcessName,
-				},
-			})
+			if s.eventBus != nil {
+				s.eventBus.Publish(events.Event{
+					Type:      events.ProxyRequest,
+					ProcessID: reqRecord.ProcessName,
+					Data: map[string]interface{}{
+						"method":      reqRecord.Method,
+						"url":         reqRecord.URL,
+						"status":      reqRecord.StatusCode,
+						"duration":    reqRecord.Duration.Milliseconds(),
+						"size":        reqRecord.Size,
+						"processName": reqRecord.ProcessName,
+					},
+				})
+			}
 
 			// Inject monitoring script and rewrite URLs for HTML responses
 			if resp.StatusCode == 200 {

@@ -139,8 +139,12 @@ func (v *ViewStatusProvider) GetStatus() string {
 		return fmt.Sprintf("%d processes, %d running", len(allProcesses), running)
 
 	case ViewLogs:
-		if v.model.selectedProcess != "" {
-			return fmt.Sprintf("Process: %s", v.model.selectedProcess)
+		// Use LogsState as single source of truth
+		if v.model.masterData != nil && v.model.masterData.LogsState != nil {
+			selectedProcess := v.model.masterData.LogsState.GetSelectedProcess()
+			if selectedProcess != "" {
+				return fmt.Sprintf("Process: %s", selectedProcess)
+			}
 		}
 		return "All processes"
 

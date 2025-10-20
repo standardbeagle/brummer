@@ -345,6 +345,12 @@ func runApp(cmd *cobra.Command, args []string) {
 							// URL not yet proxied, register it with context from the log line
 							label := extractURLLabel(line, proc.Name)
 							proxyURL := proxyServer.RegisterURLWithLabel(url, proc.Name, label)
+							// Log the proxy creation
+							if noTUI {
+								fmt.Printf("✅ Proxy created: %s → %s\n", url, proxyURL)
+							} else {
+								logStore.Add("system", "proxy", fmt.Sprintf("🔗 Proxy: %s → %s", url, proxyURL), false)
+							}
 							// Store the proxy URL if different
 							if proxyURL != url {
 								logStore.UpdateProxyURL(url, proxyURL)

@@ -41,11 +41,18 @@ func (ma *ModelAdapter) GetProcessManager() ProcessManagerInterface {
 }
 
 func (ma *ModelAdapter) GetSelectedProcess() string {
-	return ma.model.selectedProcess
+	// Use LogsState as single source of truth
+	if ma.model.masterData != nil && ma.model.masterData.LogsState != nil {
+		return ma.model.masterData.LogsState.GetSelectedProcess()
+	}
+	return ""
 }
 
 func (ma *ModelAdapter) SetSelectedProcess(id string) {
-	ma.model.selectedProcess = id
+	// Update LogsState as single source of truth
+	if ma.model.masterData != nil && ma.model.masterData.LogsState != nil {
+		ma.model.masterData.LogsState = ma.model.masterData.LogsState.SetSelectedProcess(id)
+	}
 }
 
 func (ma *ModelAdapter) UpdateProcessList() {

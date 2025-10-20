@@ -8,6 +8,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Defensive update listener pattern for automatic TUI updates
+  - Persistent listener ensures all updateChan events trigger UI updates immediately
+  - Eliminates need for manual `waitForUpdates()` calls in message handlers
+  - Self-healing design with timeout protection prevents UI freezes
+  - Real-time event processing without requiring user input to "pump" updates
+- Proxy creation logging for better visibility
+  - Headless mode displays proxy creation in stdout
+  - TUI mode logs proxy creation to system logs
+  - Shows mapping between detected URLs and proxy URLs
+
+### Fixed
+- Web view not updating in real-time when proxy requests arrive
+  - Events were queued but only processed on keypresses
+  - Now updates immediately as HTTP requests occur
+- EventBus worker deadlock when updateChan is full
+  - Changed to non-blocking send with select statement
+  - Prevents worker goroutines from blocking indefinitely
+
+### Changed
+- Simplified message handler code by removing 13+ manual update scheduling calls
+- Data source consistency: all view badges now use masterData states as single source of truth
+- Removed redundant `selectedProcess` field from Model struct (now uses LogsState)
+
+### Added
 - TUI keyboard navigation and command improvements
   - Context-aware slash command palette (opens on all screens except input fields and PTY)
   - Docker and Compose command autocomplete (docker-up, docker-down, docker-build, compose-up, compose-down)

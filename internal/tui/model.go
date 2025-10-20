@@ -98,8 +98,6 @@ type Model struct {
 	// SIMPLIFIED VIEW MANAGEMENT - replaces NavigationComponent
 	viewManager *SimpleViewManager
 
-	selectedProcess string // Shared state - used by multiple views
-
 	// Script selector component (T068-T073)
 	scriptSelector *components.ScriptSelector
 
@@ -869,8 +867,8 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 			timestamp := time.Now()
 			id := fmt.Sprintf("%d-%s", timestamp.UnixNano(), method)
 
-			// Send as message to update loop
-			m.updateChan <- messages.ProxyRequestMsg{
+			// Send as message to update loop (non-blocking to avoid deadlocking the event bus)
+			msg := messages.ProxyRequestMsg{
 				RequestID:   id,
 				Method:      method,
 				URL:         url,
@@ -880,6 +878,14 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 				ProcessName: processName,
 				Timestamp:   timestamp,
 				Size:        size,
+			}
+
+			// Non-blocking send to avoid deadlocking the event bus worker
+			select {
+			case m.updateChan <- msg:
+				// Message sent successfully
+			default:
+				// Channel full - drop the message (should be rare with buffered channel)
 			}
 		})
 	}
@@ -973,6 +979,7 @@ func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{
 		textinput.Blink,
 		m.tickCmd(),
+		m.startUpdateListener(), // Start persistent listener for updateChan events
 	}
 
 	return tea.Batch(cmds...)
@@ -1053,6 +1060,32 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// ============================================================================
+	// DEFENSIVE UPDATE LISTENER - Handle updateChan messages automatically
+	// ============================================================================
+	// This handler processes all messages from updateChan and re-schedules the listener.
+	// No need to call waitForUpdates() in individual handlers - it's automatic!
+	if updateMsg, ok := msg.(UpdateChanMsg); ok {
+		// Re-schedule listener FIRST to ensure continuous listening
+		cmds = append(cmds, m.startUpdateListener())
+
+		// If we got a real message (not just timeout), process it
+		if updateMsg.Inner != nil {
+			// Recursively call Update with the unwrapped message
+			newModel, cmd := m.Update(updateMsg.Inner)
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
+			// Type assertion to get the updated model
+			if updatedModel, ok := newModel.(*Model); ok {
+				return updatedModel, tea.Batch(cmds...)
+			}
+			return newModel, tea.Batch(cmds...)
+		}
+		// Just a timeout - keep listening, no other processing needed
+		return m, tea.Batch(cmds...)
+	}
+
 	// Route all messages (keyboard and non-keyboard) through MessageRouter
 	if m.messageRouter != nil {
 		func() {
@@ -1083,7 +1116,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logStore.Add("system", "System", msg.message, msg.isError)
 		m.updateProcessList()
 		m.updateLogsView()
-		cmds = append(cmds, m.waitForUpdates())
 
 	case RestartAllMsg:
 		if msg.clearLogs {
@@ -1093,11 +1125,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logStore.Add("system", "System", msg.message, msg.isError)
 		m.updateProcessList()
 		m.updateLogsView()
-		cmds = append(cmds, m.waitForUpdates())
 
 	case ErrorUpdateMsg:
 		m.updateErrorsList()
-		cmds = append(cmds, m.waitForUpdates())
 
 	case TickMsg:
 		// Continue ticking for periodic updates
@@ -1126,14 +1156,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateProcessList() // Safe: updates list model without blocking
 		case ViewLogs:
 			m.updateLogsView() // Safe: updates viewport without blocking
+		case ViewErrors:
+			m.updateErrorsList() // Safe: syncs ErrorsState from logStore
 		// ⚠️ ViewURLs gets its updates through URLsState sync above
+		// ⚠️ ViewWeb gets its updates through ProxyRequestMsg handler (event-driven)
+		//    WebViewState is updated via events, no periodic sync needed
 		}
 
 	case MCPActivityMsg:
 		// TODO: Fix MCPActivityMsg handling - needs proper sessionId and activity data
 		// For now, skip handling to allow build to pass
 		// Legacy HandleActivity and UpdateConnectionsList calls removed - new component is stateless
-		cmds = append(cmds, m.waitForUpdates())
 
 	case ViewSwitchedMsg:
 		// View has been switched by SimpleViewManager
@@ -1142,7 +1175,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case SwitchToAICodersMsg:
 		// Switch to AI Coders view
 		m.switchToView(ViewAICoders)
-		cmds = append(cmds, m.waitForUpdates())
 
 	case CommandStartedMsg:
 		// Handle command completion - switch to logs view and update
@@ -1152,7 +1184,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.switchToView(ViewLogs)
 		m.updateProcessList()
 		m.updateLogsView()
-		cmds = append(cmds, m.waitForUpdates())
 
 	case messages.AICoderPTYOutputMsg:
 		// Handle PTY output using sub-model pattern (Elm/Redux compliant)
@@ -1165,7 +1196,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.masterData.AICoderState = newAICoderState
 		}
 		// Always trigger a view update when PTY output arrives
-		cmds = append(cmds, m.waitForUpdates())
 
 	case messages.TerminalStateMsg:
 		// Handle VT10x terminal state updates using sub-model pattern
@@ -1177,23 +1207,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			)
 			m.masterData.AICoderState = newAICoderState
 		}
-		cmds = append(cmds, m.waitForUpdates())
 
 	case messages.AICoderSessionCreatedMsg:
 		// Handle AI Coder session created events
 		// Log session creation
 		m.logStore.Add("system", "AI Coder", fmt.Sprintf("🤖 Session created: %s", msg.Name), false)
-		cmds = append(cmds, m.waitForUpdates())
 
 	case messages.AICoderSessionUpdatedMsg:
 		// Handle AI Coder session updated events
-		cmds = append(cmds, m.waitForUpdates())
 
 	case messages.AICoderSessionEndedMsg:
 		// Handle AI Coder session ended events
 		// Log session end
 		m.logStore.Add("system", "AI Coder", fmt.Sprintf("🔚 Session ended: %s (%s)", msg.SessionID, msg.Reason), false)
-		cmds = append(cmds, m.waitForUpdates())
 
 	// Note: aiCoderOutputMsg has been replaced with messages.AICoderPTYOutputMsg
 	// This case is kept for compatibility with any remaining legacy code
@@ -1204,7 +1230,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Error != nil {
 			m.logStore.Add("system", "AI Coder", fmt.Sprintf("❌ AI Error: %v", msg.Error), true)
 		}
-		cmds = append(cmds, m.waitForUpdates())
 
 	case messages.CommandExecuteMsg:
 		// Handle command execution from command window
@@ -1328,6 +1353,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.masterData.WebViewState = m.masterData.WebViewState.AddRequest(requestInfo)
 		}
+		// Continue listening for more proxy requests
 
 	case messages.ScrollLogsUpMsg:
 		// Handle scroll up - disables auto-scroll
@@ -1387,7 +1413,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// This is a generic update request - refresh views
 			m.updateProcessList()
 			m.updateLogsView()
-			cmds = append(cmds, m.waitForUpdates())
 		}
 	}
 
@@ -1591,15 +1616,10 @@ func (m *Model) renderContent() string {
 	case ViewProcesses:
 		// Update processes state and render statelessly
 		m.processesView.SetSize(m.width, contentHeight)
-		return m.processesView.ViewWithState(m.masterData, m.processMgr)
+		return m.processesView.ViewWithState(m.masterData)
 	case ViewLogs:
 		// Update logs state and render statelessly
-		if m.masterData != nil && m.masterData.LogsState != nil {
-			// Update selected process if different
-			if m.masterData.LogsState.GetSelectedProcess() != m.selectedProcess {
-				m.masterData.LogsState = m.masterData.LogsState.SetSelectedProcess(m.selectedProcess)
-			}
-		}
+		// Note: Selected process is managed entirely by LogsState
 		m.logsView.SetSize(m.width, contentHeight)
 		return m.logsView.ViewWithState(m.masterData, m.logStore)
 	case ViewErrors:
@@ -1676,40 +1696,52 @@ func (m *Model) renderContent() string {
 func (m *Model) getViewStatus() string {
 	switch m.currentView() {
 	case ViewProcesses:
-		allProcesses := m.processMgr.GetAllProcesses()
-		running := 0
-		for _, p := range allProcesses {
-			if p.GetStatus() == processes.StatusRunning {
-				running++
-			}
+		// Use ProcessesState as single source of truth (matches view rendering)
+		if m.masterData != nil && m.masterData.ProcessesState != nil {
+			totalCount := m.masterData.ProcessesState.GetProcessCount()
+			runningCount := m.masterData.ProcessesState.GetRunningCount()
+			return fmt.Sprintf("%d processes, %d running", totalCount, runningCount)
 		}
-		return fmt.Sprintf("%d processes, %d running", len(allProcesses), running)
+		return "0 processes"
 
 	case ViewLogs:
-		if m.selectedProcess != "" {
-			return fmt.Sprintf("Process: %s", m.selectedProcess)
+		// Use LogsState as single source of truth (matches view rendering)
+		if m.masterData != nil && m.masterData.LogsState != nil {
+			selectedProcess := m.masterData.LogsState.GetSelectedProcess()
+			if selectedProcess != "" {
+				return fmt.Sprintf("Process: %s", selectedProcess)
+			}
 		}
 		return "All processes"
 
 	case ViewErrors:
-		errors := m.logStore.GetErrors()
-		errorCount := len(errors)
-		return fmt.Sprintf("%d errors", errorCount)
+		// Use ErrorsState as single source of truth (matches view rendering)
+		if m.masterData != nil && m.masterData.ErrorsState != nil {
+			errorCount := m.masterData.ErrorsState.GetErrorCount()
+			return fmt.Sprintf("%d errors", errorCount)
+		}
+		return "0 errors"
 
 	case ViewURLs:
-		urls := m.logStore.GetURLs()
-		return fmt.Sprintf("%d URLs detected", len(urls))
+		// Use URLsState as single source of truth (matches view rendering)
+		if m.masterData != nil && m.masterData.URLsState != nil {
+			urlCount := m.masterData.URLsState.GetTotalURLs()
+			return fmt.Sprintf("%d URLs detected", urlCount)
+		}
+		return "0 URLs detected"
 
 	case ViewWeb:
-		requests := m.proxyServer.GetRequests()
-		return fmt.Sprintf("%d requests", len(requests))
+		// Use WebViewState as single source of truth (matches view rendering)
+		if m.masterData != nil && m.masterData.WebViewState != nil {
+			return fmt.Sprintf("%d requests", m.masterData.WebViewState.GetTotalRequests())
+		}
+		return "0 requests"
 
 	case ViewAICoders:
-		// TODO(Feature 005): Get session count from service
-		if m.aiCoderService != nil {
-			svc := m.aiCoderService.(*services.AICoderService)
-			sessions := svc.ListSessions()
-			return fmt.Sprintf("%d AI coder sessions", len(sessions))
+		// Use AICoderState as single source of truth (matches view rendering)
+		if m.masterData != nil && m.masterData.AICoderState != nil {
+			sessionCount := len(m.masterData.AICoderState.GetActiveSessionIDs())
+			return fmt.Sprintf("%d AI coder sessions", sessionCount)
 		}
 		return "0 AI coder sessions"
 
@@ -1806,23 +1838,20 @@ func (m *Model) updateProcessList() {
 
 func (m *Model) updateLogsView() {
 	// Update logs state using Redux/Elm pattern
-	if m.masterData != nil && m.masterData.LogsState != nil {
-		// Update selected process if different
-		if m.masterData.LogsState.GetSelectedProcess() != m.selectedProcess {
-			m.masterData.LogsState = m.masterData.LogsState.SetSelectedProcess(m.selectedProcess)
+	if m.masterData != nil && m.masterData.LogsState != nil && m.logStore != nil {
+		// Get current selected process from state (single source of truth)
+		selectedProcess := m.masterData.LogsState.GetSelectedProcess()
+
+		// Fetch logs from store based on selected process
+		var logEntries []logs.CollapsedLogEntry
+		if selectedProcess != "" {
+			logEntries = m.logStore.GetByProcessCollapsed(selectedProcess)
+		} else {
+			logEntries = m.logStore.GetAllCollapsed()
 		}
 
-		// Invalidate cache to force refresh
-		// This will trigger a refresh on next render
-		if m.logStore != nil {
-			var logEntries []logs.CollapsedLogEntry
-			if m.selectedProcess != "" {
-				logEntries = m.logStore.GetByProcessCollapsed(m.selectedProcess)
-			} else {
-				logEntries = m.logStore.GetAllCollapsed()
-			}
-			m.masterData.LogsState = m.masterData.LogsState.UpdateCachedLogs(logEntries, m.selectedProcess)
-		}
+		// Update cache with fresh logs
+		m.masterData.LogsState = m.masterData.LogsState.UpdateCachedLogs(logEntries, selectedProcess)
 	}
 }
 
@@ -2071,6 +2100,56 @@ func (m *Model) waitForUpdatesSafe(timeout time.Duration) tea.Cmd {
 // any immediate updates from background operations.
 func (m *Model) waitForUpdatesQuick() tea.Cmd {
 	return m.waitForUpdatesSafe(10 * time.Millisecond)
+}
+
+// ============================================================================
+// DEFENSIVE UPDATE LISTENER PATTERN
+// ============================================================================
+// This pattern solves the fragile "remember to add waitForUpdates()" problem.
+//
+// Problem: Previously, each message handler had to remember to call:
+//   cmds = append(cmds, m.waitForUpdates())
+// If forgotten, events would queue but UI wouldn't update until next keypress.
+//
+// Solution: A persistent listener that automatically re-schedules itself:
+//   1. Init() starts the listener once
+//   2. Listener waits for updateChan with timeout
+//   3. When message arrives, wraps it in UpdateChanMsg and sends to Update()
+//   4. Update() processes the wrapped message AND re-schedules the listener
+//   5. Loop continues indefinitely - no need to remember in individual handlers
+//
+// This is DEFENSIVE because:
+//   - ✅ Start listener once in Init(), forget about it everywhere else
+//   - ✅ All updateChan messages automatically trigger UI updates
+//   - ✅ Timeout prevents blocking if no messages (continues listening)
+//   - ✅ Can't forget to add waitForUpdates() - it's automatic
+// ============================================================================
+
+// UpdateChanMsg wraps messages from updateChan for defensive handling
+type UpdateChanMsg struct {
+	Inner tea.Msg
+}
+
+// startUpdateListener creates a persistent listener for updateChan events
+// ✅ DEFENSIVE: Call once in Init(), handles all future updateChan messages automatically
+//
+// This listener:
+//   - Waits for messages on updateChan with timeout
+//   - Wraps received messages in UpdateChanMsg
+//   - Automatically re-schedules itself in Update() handler
+//   - Never needs to be called again from individual message handlers
+func (m *Model) startUpdateListener() tea.Cmd {
+	return func() tea.Msg {
+		select {
+		case msg := <-m.updateChan:
+			// Wrap the message so Update() knows to re-schedule the listener
+			return UpdateChanMsg{Inner: msg}
+		case <-time.After(100 * time.Millisecond):
+			// Timeout - no message available, but keep listening
+			// Return the wrapper with nil to signal "keep listening"
+			return UpdateChanMsg{Inner: nil}
+		}
+	}
 }
 
 func (m *Model) tickCmd() tea.Cmd {

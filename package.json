@@ -8,7 +8,7 @@
   },
   "scripts": {
     "postinstall": "node install.js",
-    "server": "npx -y http-server",
+    "server": "npx -y http-server -a localhost",
     "test": "node sample.test.js",
     "test1": "node test-server.js server1",
     "test2": "PORT=3002 node test-server.js server2"

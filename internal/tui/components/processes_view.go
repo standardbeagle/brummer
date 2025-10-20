@@ -86,14 +86,14 @@ func (c *ProcessesViewComponent) Init() tea.Cmd {
 // ✅ CORRECT: Return a string based ONLY on the data in masterData.
 //
 // See: /docs/architecture/tui-deadlock-prevention.md for detailed explanation
-func (c *ProcessesViewComponent) ViewWithState(masterData *state.MasterData, processMgr *processes.Manager) string {
+func (c *ProcessesViewComponent) ViewWithState(masterData *state.MasterData) string {
 	if !c.IsVisible() || masterData == nil || masterData.ProcessesState == nil {
 		return ""
 	}
 
 	processesState := masterData.ProcessesState
 
-	// CRITICAL: ALWAYS use cached data from state - NEVER call processMgr directly!
+	// CRITICAL: ALWAYS use cached data from state - NEVER call services directly!
 	// The cache is updated by refreshProcessesCmd() in Update() via TickMsg handler (every second).
 	// View() must be a pure function that only renders from state.
 	processes := processesState.GetProcesses()
