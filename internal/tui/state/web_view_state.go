@@ -26,6 +26,7 @@ type RequestInfo struct {
 	// Telemetry
 	HasTelemetry bool
 	SessionID    string
+	PerformanceMetrics map[string]interface{} // Browser performance metrics (TTFB, DOM, etc.)
 	// Note: Full telemetry data would require more complex types for this component
 }
 
@@ -106,13 +107,13 @@ func (s *WebViewState) AddRequest(request RequestInfo) *WebViewState {
 	newState.RequestsByStatus[statusCode]++
 	newState.RequestsByMethod[request.Method]++
 
-	// Update selection if auto-scroll is enabled
-	if newState.AutoScroll {
-		filteredRequests := newState.getFilteredRequests()
-		newState.SelectedIndex = 0 // Newest request
-		if len(filteredRequests) > 0 {
-			newState.SelectedRequest = &filteredRequests[0]
-		}
+	// Always update selection to first request when new requests are added
+	// This ensures there's always a visible selection for navigation
+	filteredRequests := newState.getFilteredRequests()
+	if len(filteredRequests) > 0 {
+		// Select the newest request (index 0 since requests are added to beginning)
+		newState.SelectedIndex = 0
+		newState.SelectedRequest = &filteredRequests[0]
 	}
 
 	newState.LastUpdated = time.Now()

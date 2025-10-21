@@ -94,3 +94,10 @@ type ScrollLogsUpMsg struct{}
 type ScrollLogsDownMsg struct{}
 
 type ToggleAutoScrollMsg struct{}
+
+// Web view navigation messages
+type NavigateWebUpMsg struct{}
+
+type NavigateWebDownMsg struct{}
+
+type ToggleWebDetailMsg struct{}

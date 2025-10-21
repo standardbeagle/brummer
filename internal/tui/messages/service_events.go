@@ -113,4 +113,7 @@ type ProxyRequestMsg struct {
 	JWTClaims   map[string]interface{}
 	HasTelemetry bool
 	SessionID    string
+
+	// Performance metrics from browser telemetry
+	PerformanceMetrics map[string]interface{}
 }

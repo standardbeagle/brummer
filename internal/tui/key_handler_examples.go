@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
@@ -88,22 +89,56 @@ func RegisterViewSpecificHandlers(registry *KeyHandlerRegistry) {
 		return nil
 	}))
 
-	// WEB VIEW: 'f' = filter requests, 'c' = clear, 'i' = inspect
+	// WEB VIEW: 'f' = filter requests, 'c' = clear, arrow keys = navigate, Enter = details
 	registry.Register(NewViewSpecificKeyHandler(ViewWeb, func(msg tea.KeyMsg, model *Model) tea.Cmd {
 		switch msg.String() {
 		case "f":
 			return func() tea.Msg {
-				// Cycle through filters
+				// Cycle through filters - implement proper filter cycling
+				if model.masterData != nil && model.masterData.WebViewState != nil {
+					currentFilter := model.masterData.WebViewState.GetFilter()
+					var nextFilter string
+					switch currentFilter {
+					case "all":
+						nextFilter = "2xx"
+					case "2xx":
+						nextFilter = "3xx"
+					case "3xx":
+						nextFilter = "4xx"
+					case "4xx":
+						nextFilter = "5xx"
+					case "5xx":
+						nextFilter = "error"
+					case "error":
+						nextFilter = "all"
+					default:
+						nextFilter = "all"
+					}
+					model.masterData.WebViewState = model.masterData.WebViewState.SetFilter(nextFilter)
+					return StatusMsg{Message: fmt.Sprintf("Filter: %s", nextFilter)}
+				}
 				return StatusMsg{Message: "Cycling web request filters"}
 			}
 		case "c":
 			return func() tea.Msg {
 				return messages.ClearWebMsg{}
 			}
+		case "up", "k":
+			return func() tea.Msg {
+				return messages.NavigateWebUpMsg{}
+			}
+		case "down", "j":
+			return func() tea.Msg {
+				return messages.NavigateWebDownMsg{}
+			}
+		case "enter", " ":
+			return func() tea.Msg {
+				return messages.ToggleWebDetailMsg{}
+			}
 		case "i":
 			return func() tea.Msg {
-				// Inspect selected request
-				return StatusMsg{Message: "Inspecting request details"}
+				// Inspect selected request - same as Enter
+				return messages.ToggleWebDetailMsg{}
 			}
 		}
 		return nil

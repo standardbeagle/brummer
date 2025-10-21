@@ -19,11 +19,10 @@ func createTestRegistry() *components.CommandRegistry {
 			Description: "Clear logs, errors, or web requests",
 			Arguments: []messages.CommandArgument{
 				{
-					Name:         "target",
-					Description:  "What to clear",
-					Required:     false,
-					Suggestions:  []string{"all", "logs", "errors", "web"},
-					DefaultValue: "all",
+					Name:        "target",
+					Description: "What to clear",
+					Required:    false,
+					Suggestions: []string{"all", "logs", "errors", "web"},
 				},
 			},
 		},
@@ -203,8 +202,8 @@ func testKeyMsg(char string) interface{} {
 	return struct{ string }{char}
 }
 
-// BenchmarkMemoryUsage tests memory usage patterns
-func BenchmarkMemoryUsage(b *testing.B) {
+// BenchmarkCommandInputMemoryUsage tests memory usage patterns for command input
+func BenchmarkCommandInputMemoryUsage(b *testing.B) {
 	registry := createTestRegistry()
 
 	b.Run("Original", func(b *testing.B) {

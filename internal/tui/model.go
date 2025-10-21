@@ -83,7 +83,7 @@ type Model struct {
 	logsView          *components.LogsViewComponent     // Logs view component (stateless)
 	errorsView        *components.ErrorsViewComponent   // Errors view component (stateless)
 	urlsView          *components.URLsViewComponentNew // URLs view component (stateless)
-	webView           *components.WebViewComponentNew      // Web view component (stateless) (T056-T061)
+	webView           *components.WebViewComponentRefactored // Web view component (refactored with lipgloss/list)
 	commandWindowView *components.CommandWindowViewComponentNew     // Command window component (stateless)
 	commandAutocomplete components.CommandAutocompleteInterface // Command autocomplete instance (persistent)
 	settingsView      *components.SettingsViewComponentNew // Settings view component (stateless)
@@ -569,7 +569,7 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 		logsView:          components.NewLogsViewComponent(),
 		errorsView:        components.NewErrorsViewComponent(),
 		urlsView:          components.NewURLsView(),
-		webView:           components.NewWebViewComponentNew(),
+		webView:           components.NewWebViewComponentRefactored(),
 		commandWindowView: components.NewCommandWindowViewNew(func(scripts map[string]string, processMgr interface{}) components.CommandAutocompleteInterface {
 		if pm, ok := processMgr.(*processes.Manager); ok {
 			return NewCommandAutocompleteFactory()(scripts, pm)
@@ -878,14 +878,25 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 				ProcessName: processName,
 				Timestamp:   timestamp,
 				Size:        size,
+				HasTelemetry: false, // Will be true if telemetry is available
+				SessionID:    "",       // Will be populated if telemetry is available
+				PerformanceMetrics: make(map[string]interface{}), // Will be populated with telemetry data
 			}
 
 			// Non-blocking send to avoid deadlocking the event bus worker
 			select {
 			case m.updateChan <- msg:
 				// Message sent successfully
+				if m.logStore != nil {
+					m.logStore.Add("system", "Proxy",
+						fmt.Sprintf("✅ Proxy event queued: %s %s -> %d", method, url, statusCode), false)
+				}
 			default:
 				// Channel full - drop the message (should be rare with buffered channel)
+				if m.logStore != nil {
+					m.logStore.Add("system", "Proxy",
+						fmt.Sprintf("❌ Proxy event dropped (channel full): %s %s -> %d", method, url, statusCode), true)
+				}
 			}
 		})
 	}
@@ -1332,6 +1343,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case messages.ProxyRequestMsg:
 		// Handle proxy request - add to web view state
+		if m.logStore != nil {
+			m.logStore.Add("system", "Proxy",
+				fmt.Sprintf("🔄 Processing proxy request: %s %s -> %d (duration: %v)",
+					msg.Method, msg.URL, msg.StatusCode, msg.Duration), false)
+		}
+
 		if m.masterData != nil && m.masterData.WebViewState != nil {
 			requestInfo := state.RequestInfo{
 				ID:           msg.RequestID,
@@ -1350,8 +1367,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				JWTClaims:    msg.JWTClaims,
 				HasTelemetry: msg.HasTelemetry,
 				SessionID:    msg.SessionID,
+				PerformanceMetrics: msg.PerformanceMetrics,
 			}
+			beforeCount := m.masterData.WebViewState.GetTotalRequests()
 			m.masterData.WebViewState = m.masterData.WebViewState.AddRequest(requestInfo)
+			afterCount := m.masterData.WebViewState.GetTotalRequests()
+
+			if m.logStore != nil {
+				m.logStore.Add("system", "Proxy",
+					fmt.Sprintf("✅ Added to web view: %d -> %d requests", beforeCount, afterCount), false)
+			}
+		} else {
+			if m.logStore != nil {
+				m.logStore.Add("system", "Proxy",
+					fmt.Sprintf("❌ Cannot add to web view - masterData or WebViewState is nil"), true)
+			}
 		}
 		// Continue listening for more proxy requests
 
@@ -1378,6 +1408,49 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.masterData.LogsState = m.masterData.LogsState.EnableAutoScroll()
 			}
 			m.updateLogsView()
+		}
+
+	case messages.NavigateWebUpMsg:
+		// Handle web view navigation up (up arrow or k key)
+		if m.masterData != nil && m.masterData.WebViewState != nil {
+			currentIndex := m.masterData.WebViewState.GetSelectedIndex()
+			filteredRequests := m.masterData.WebViewState.GetFilteredRequests()
+
+			// Move selection up (decrement index, but not below 0)
+			newIndex := currentIndex - 1
+			if currentIndex <= 0 {
+				// Wrap to bottom or stay at top - let's wrap for better UX
+				newIndex = len(filteredRequests) - 1
+			}
+			if newIndex >= 0 && newIndex < len(filteredRequests) {
+				m.masterData.WebViewState = m.masterData.WebViewState.SetSelectedIndex(newIndex)
+			}
+		}
+
+	case messages.NavigateWebDownMsg:
+		// Handle web view navigation down (down arrow or j key)
+		if m.masterData != nil && m.masterData.WebViewState != nil {
+			currentIndex := m.masterData.WebViewState.GetSelectedIndex()
+			filteredRequests := m.masterData.WebViewState.GetFilteredRequests()
+
+			// Move selection down (increment index, but not past list)
+			newIndex := currentIndex + 1
+			if newIndex >= len(filteredRequests) {
+				// Wrap to top or stay at bottom - let's wrap for better UX
+				newIndex = 0
+			}
+			if newIndex >= 0 && newIndex < len(filteredRequests) {
+				m.masterData.WebViewState = m.masterData.WebViewState.SetSelectedIndex(newIndex)
+			}
+		}
+
+	case messages.ToggleWebDetailMsg:
+		// Handle toggle web detail view (Enter key)
+		if m.masterData != nil && m.masterData.WebViewState != nil {
+			// Only allow detail view if there's a selected request
+			if m.masterData.WebViewState.GetSelectedRequest() != nil {
+				m.masterData.WebViewState = m.masterData.WebViewState.ToggleDetailView()
+			}
 		}
 
 	case messages.ShowClearConfirmationMsg:

@@ -74,6 +74,9 @@ func HandleSlashCommand(ctx *SlashCommandContext, input string) tea.Cmd {
 	case "/term":
 		return handleTerm(ctx)
 
+	case "/screenshot":
+		return handleScreenshot(ctx, parts)
+
 	case "/docker-up":
 		return handleDockerUp(ctx, parts)
 
@@ -493,8 +496,25 @@ func handleComposeDown(ctx *SlashCommandContext, parts []string) tea.Cmd {
 func handleUnknown(ctx *SlashCommandContext, command string) tea.Cmd {
 	return func() tea.Msg {
 		ctx.LogStore.Add("system", "System", fmt.Sprintf("❌ Unknown command: %s", command), true)
-		ctx.LogStore.Add("system", "System", "Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help, /exit", false)
+		ctx.LogStore.Add("system", "System", "Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /screenshot, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help, /exit", false)
 		return nil
+	}
+}
+
+// handleScreenshot captures a screenshot using the MCP browser_screenshot tool
+func handleScreenshot(ctx *SlashCommandContext, parts []string) tea.Cmd {
+	return func() tea.Msg {
+		// This is a placeholder - in a real implementation, this would
+		// need to interact with the MCP server to call the browser_screenshot tool
+		// For now, we'll just log a message about the screenshot functionality
+		ctx.LogStore.Add("system", "Screenshot",
+			"📸 Screenshot functionality is available through MCP tools. Use browser_screenshot via AI assistant or MCP client.", false)
+
+		return CommandResultMsg{
+			Command: "screenshot",
+			Success: true,
+			Message: "Screenshot command noted. Use MCP browser_screenshot tool for actual capture.",
+		}
 	}
 }
 
