@@ -1,5 +1,6 @@
 # Compiled binaries
 /brum
+/brum-linux
 
 # Go build artifacts
 *.exe
