@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -52,6 +53,13 @@ type AICoderService struct {
 	// Session Registry (sync.Map for lock-free reads)
 	sessions sync.Map // map[string]*AICoderSession
 
+	// NEW: PTY output debouncing
+	debouncer       *PTYDebouncer
+	activeSessionID atomic.Value // string - currently active session
+
+	// NEW: Single shared vt10x terminal for active session
+	activeTerminal *sync.Map // sessionID -> *vt10x.Terminal (reused instance)
+
 	// Lifecycle
 	eventBus *events.EventBus
 	shutdown atomic.Bool
@@ -67,12 +75,27 @@ type AICoderService struct {
 // NewAICoderService creates a new AI coder service
 func NewAICoderService(ctx context.Context, logStore *logs.Store) *AICoderService {
 	service := &AICoderService{
+		activeTerminal:        &sync.Map{},
 		eventBus:              events.NewEventBus(),
 		logStore:              logStore,
 		maxConcurrentSessions: 0, // 0 = unlimited
 		ptyCleanupTimeout:     5 * time.Second,
 	}
+
+	// Initialize debouncer with callback - will be connected later
+	service.debouncer = nil // Will be set by SetDebounceCallback
+
+	// Initialize active session ID as empty
+	service.activeSessionID.Store("")
+
 	return service
+}
+
+// SetDebounceCallback sets the callback for batched PTY output
+// This should be called by the TUI to connect the debouncer
+func (s *AICoderService) SetDebounceCallback(callback func(sessionID string, data []byte)) {
+	// Create debouncer with 16ms interval for 60 FPS
+	s.debouncer = NewPTYDebouncer(16*time.Millisecond, callback)
 }
 
 // CreateSession creates a new AI coding session
@@ -187,8 +210,11 @@ func (s *AICoderService) StartSession(ctx context.Context, sessionID string, wid
 	// Store PTY session
 	session.PTYSession = ptySession
 
-	// PTY output monitoring is handled through Bubble Tea message pattern
-	// No goroutines - the AI Coders view component will poll for PTY output
+	// NEW: Start monitoring PTY output and send to debouncer
+	// This replaces the old polling pattern with proactive debounced updates
+	if s.debouncer != nil {
+		go s.monitorPTYOutput(sessionID, ptySession)
+	}
 
 	// Update status
 	session.Status = messages.SessionActive
@@ -422,7 +448,307 @@ func (s *AICoderService) GetTerminalState(sessionID string) (*messages.TerminalS
 	}, nil
 }
 
+// === NEW BATCH PROCESSING METHODS ===
+
+// ProcessBatchedOutput processes debounced PTY output through vt10x
+// This is called by the debouncer callback after batching updates
+func (s *AICoderService) ProcessBatchedOutput(sessionID string, data []byte) ([][]rune, error) {
+	// Only process if this is the active session
+	activeID, _ := s.activeSessionID.Load().(string)
+	if activeID != sessionID {
+		// Store in raw buffer but don't process
+		return nil, nil
+	}
+
+	session, err := s.GetSession(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if session.PTYSession == nil {
+		return nil, ErrSessionNotStarted
+	}
+
+	// Process through vt10x terminal
+	// Process the output data (already written in PTYSession.readLoop)
+	// Just get the rendered screen - pass PTYSession for raw mode support
+	screen := s.getTerminalScreen(session.PTYSession)
+
+	// Update activity
+	session.LastActivity = time.Now()
+	session.BytesRead.Add(uint64(len(data)))
+
+	return screen, nil
+}
+
+// SwitchActiveSession switches which session is actively being processed
+func (s *AICoderService) SwitchActiveSession(newSessionID string) error {
+	oldID, _ := s.activeSessionID.Load().(string)
+
+	// Update active session ID
+	s.activeSessionID.Store(newSessionID)
+
+	// Update debouncer smart mode
+	if s.debouncer != nil {
+		// Mark old session as inactive
+		if oldID != "" {
+			s.debouncer.SetSessionActive(oldID, false)
+		}
+
+		// Mark new session as active
+		if newSessionID != "" {
+			s.debouncer.SetSessionActive(newSessionID, true)
+		}
+	}
+
+	// Log the switch
+	s.logSystemEvent(fmt.Sprintf("Switched active session: %s -> %s", oldID, newSessionID))
+
+	return nil
+}
+
+// GetScreenBuffer returns the rendered terminal screen for the active session
+func (s *AICoderService) GetScreenBuffer(sessionID string) ([][]rune, error) {
+	session, err := s.GetSession(sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	if session.PTYSession == nil {
+		return nil, ErrSessionNotStarted
+	}
+
+	// Pass the PTYSession itself for raw mode support
+	return s.getTerminalScreen(session.PTYSession), nil
+}
+
+// getTerminalScreen gets the terminal screen content
+func (s *AICoderService) getTerminalScreen(terminal interface{}) [][]rune {
+	// Check if this is a PTYSession with GetScreenContent method (raw mode support)
+	if ptySession, ok := terminal.(interface{ GetScreenContent() string }); ok {
+		// Get raw ANSI content directly
+		content := ptySession.GetScreenContent()
+		if content == "" {
+			return make([][]rune, 0)
+		}
+
+		// Split into lines and convert to rune arrays
+		// Keep ANSI codes intact for Bubble Tea to render
+		lines := strings.Split(content, "\n")
+		screen := make([][]rune, len(lines))
+		for i, line := range lines {
+			screen[i] = []rune(line)
+		}
+		return screen
+	}
+
+	// Try to get the View interface for viewport rendering
+	view, hasView := terminal.(interface {
+		Size() (cols, rows int)
+		Cell(x, y int) interface{} // Returns Glyph with Char, FG, BG
+	})
+
+	// If we can't get the View interface, fall back to String()
+	if !hasView {
+		if term, ok := terminal.(interface{ String() string }); ok {
+			visibleContent := term.String()
+			if visibleContent == "" {
+				return make([][]rune, 0)
+			}
+			lines := strings.Split(visibleContent, "\n")
+			screenBuffer := make([][]rune, len(lines))
+			for i, line := range lines {
+				screenBuffer[i] = []rune(line)
+			}
+			return screenBuffer
+		}
+		return make([][]rune, 0)
+	}
+
+	// Get terminal dimensions
+	cols, rows := view.Size()
+	if cols == 0 {
+		cols = 80 // Default width
+	}
+	if rows == 0 {
+		rows = 24 // Default height
+	}
+
+	// Build screen buffer ONLY from viewport (Cell positions)
+	// This avoids the scrollback accumulation issue
+	screen := make([][]rune, 0, rows)
+
+	// Process each row in the viewport
+	for y := 0; y < rows; y++ {
+		var outputLine []rune
+		lastFG := -1
+		lastBG := -1
+		hasContent := false
+
+		// Process each column position
+		for x := 0; x < cols; x++ {
+			// Get the cell from vt10x at this position
+			cell := view.Cell(x, y)
+
+			// Extract cell properties using reflection
+			char := s.getRuneField(cell, "Char")
+			fg := s.getColorField(cell, "FG")
+			bg := s.getColorField(cell, "BG")
+
+			// Skip trailing spaces on empty lines
+			if char == 0 || char == ' ' {
+				if !hasContent {
+					continue
+				}
+			} else {
+				hasContent = true
+			}
+
+			// Add ANSI color codes if colors changed
+			if fg != lastFG || bg != lastBG {
+				if colorCode := s.buildANSIColorCode(fg, bg); len(colorCode) > 0 {
+					outputLine = append(outputLine, colorCode...)
+					lastFG = fg
+					lastBG = bg
+				}
+			}
+
+			// Add the character (use space if null)
+			if char == 0 {
+				outputLine = append(outputLine, ' ')
+			} else {
+				outputLine = append(outputLine, char)
+			}
+		}
+
+		// Reset colors at end of line if any were set
+		if lastFG != -1 || lastBG != -1 {
+			outputLine = append(outputLine, []rune("\x1b[0m")...)
+		}
+
+		// Add the processed line to screen (even if empty, to preserve line structure)
+		screen = append(screen, outputLine)
+	}
+
+	// Remove trailing empty lines (but keep internal empty lines)
+	for len(screen) > 0 && len(screen[len(screen)-1]) == 0 {
+		screen = screen[:len(screen)-1]
+	}
+
+	if len(screen) == 0 {
+		return make([][]rune, 0)
+	}
+
+	return screen
+}
+
+// getRuneField extracts a rune field from a struct using reflection
+func (s *AICoderService) getRuneField(obj interface{}, fieldName string) rune {
+	v := reflect.ValueOf(obj)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return 0
+	}
+
+	field := v.FieldByName(fieldName)
+	if !field.IsValid() {
+		return 0
+	}
+
+	if r, ok := field.Interface().(rune); ok {
+		return r
+	}
+	return 0
+}
+
+// getColorField extracts a Color field (uint32) from a struct using reflection
+func (s *AICoderService) getColorField(obj interface{}, fieldName string) int {
+	v := reflect.ValueOf(obj)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return -1
+	}
+
+	field := v.FieldByName(fieldName)
+	if !field.IsValid() {
+		return -1
+	}
+
+	// vt10x.Color is a uint32
+	switch field.Kind() {
+	case reflect.Uint32, reflect.Uint, reflect.Uint64:
+		return int(field.Uint())
+	case reflect.Int32, reflect.Int, reflect.Int64:
+		return int(field.Int())
+	default:
+		return -1
+	}
+}
+
+// buildANSIColorCode creates ANSI escape sequence for foreground and background colors
+func (s *AICoderService) buildANSIColorCode(fg, bg int) []rune {
+	const DefaultFG = 1<<24 + 0 // vt10x default foreground color flag
+	const DefaultBG = 1<<24 + 1 // vt10x default background color flag
+
+	var codes []string
+
+	// Handle foreground color
+	if fg >= 0 && fg != int(DefaultFG) {
+		if fg < 16 {
+			// Standard ANSI colors (0-15)
+			if fg < 8 {
+				codes = append(codes, fmt.Sprintf("%d", 30+fg))
+			} else {
+				codes = append(codes, fmt.Sprintf("%d", 82+fg)) // Bright colors: 90-97
+			}
+		} else if fg < 256 {
+			// 256-color mode
+			codes = append(codes, fmt.Sprintf("38;5;%d", fg))
+		} else if fg < (1 << 24) {
+			// Possible 24-bit color (RGB in lower 24 bits)
+			r := (fg >> 16) & 0xFF
+			g := (fg >> 8) & 0xFF
+			b := fg & 0xFF
+			codes = append(codes, fmt.Sprintf("38;2;%d;%d;%d", r, g, b))
+		}
+	}
+
+	// Handle background color
+	if bg >= 0 && bg != int(DefaultBG) {
+		if bg < 16 {
+			// Standard ANSI colors (0-15)
+			if bg < 8 {
+				codes = append(codes, fmt.Sprintf("%d", 40+bg))
+			} else {
+				codes = append(codes, fmt.Sprintf("%d", 92+bg)) // Bright colors: 100-107
+			}
+		} else if bg < 256 {
+			// 256-color mode
+			codes = append(codes, fmt.Sprintf("48;5;%d", bg))
+		} else if bg < (1 << 24) {
+			// Possible 24-bit color (RGB in lower 24 bits)
+			r := (bg >> 16) & 0xFF
+			g := (bg >> 8) & 0xFF
+			b := bg & 0xFF
+			codes = append(codes, fmt.Sprintf("48;2;%d;%d;%d", r, g, b))
+		}
+	}
+
+	if len(codes) == 0 {
+		return []rune{}
+	}
+
+	return []rune(fmt.Sprintf("\x1b[%sm", strings.Join(codes, ";")))
+}
+
+// === DEPRECATED METHODS ===
+
 // CheckPTYOutput returns any pending PTY output for a session
+// DEPRECATED: Use ProcessBatchedOutput with debouncer instead
 // This is the Bubble Tea-compliant way to get PTY data without goroutines
 func (s *AICoderService) CheckPTYOutput(sessionID string) ([]byte, error) {
 	session, err := s.GetSession(sessionID)
@@ -478,6 +804,35 @@ func (s *AICoderService) CheckSessionStatus(sessionID string) (messages.SessionS
 	}
 
 	return session.Status, nil
+}
+
+// monitorPTYOutput reads from PTY output channel and sends to debouncer
+func (s *AICoderService) monitorPTYOutput(sessionID string, ptySession *aicoder.PTYSession) {
+	for {
+		select {
+		case output, ok := <-ptySession.OutputChan:
+			if !ok {
+				// Channel closed, session ended
+				s.logSystemEvent(fmt.Sprintf("PTY output channel closed for session: %s", sessionID))
+				return
+			}
+
+			// Send to debouncer for batching
+			if s.debouncer != nil {
+				s.debouncer.Add(sessionID, output)
+			}
+
+		case event, ok := <-ptySession.EventChan:
+			if !ok {
+				return
+			}
+
+			// Handle PTY events
+			if event.Type == "error" {
+				s.publishError(sessionID, fmt.Errorf("PTY error: %v", event.Data))
+			}
+		}
+	}
 }
 
 // SendInput sends keyboard input to the PTY
