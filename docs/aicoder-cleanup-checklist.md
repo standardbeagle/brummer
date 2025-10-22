@@ -18,15 +18,15 @@ This document lists all the deprecated code and infrastructure that should be re
 - [x] Channel buffer sizes reduced from 1000 to 100 - DONE
 
 ### `internal/tui/state/aicoder_state.go`
-- [ ] `PTYOutputBuffers` field - Currently marked as DEPRECATED
-- [ ] `TerminalStates` field - Currently marked as DEPRECATED
-- [ ] `LastPollTime` field - Currently marked as DEPRECATED
-- [ ] `PollingInterval` field - Currently marked as DEPRECATED
-- [ ] `AddPTYOutput()` method - Currently marked as DEPRECATED
-- [ ] `UpdateTerminalState()` method - Currently marked as DEPRECATED
-- [ ] `GetPTYOutput()` method - Currently marked as DEPRECATED
-- [ ] `GetTerminalState()` method - Currently marked as DEPRECATED
-- [ ] `UpdatePollingTime()` method - Currently marked as DEPRECATED
+- [x] `PTYOutputBuffers` field - REMOVED (fallback rendering eliminated)
+- [x] `TerminalStates` field - REMOVED (fallback rendering eliminated)
+- [x] `LastPollTime` field - REMOVED (no longer needed)
+- [x] `PollingInterval` field - REMOVED (no longer needed)
+- [x] `AddPTYOutput()` method - REMOVED (migrated to AddRawOutput())
+- [x] `UpdateTerminalState()` method - REMOVED (migrated to UpdateScreenBuffer())
+- [x] `GetPTYOutput()` method - REMOVED (no longer called anywhere)
+- [x] `GetTerminalState()` method - REMOVED (no longer called anywhere)
+- [x] `UpdatePollingTime()` method - REMOVED (was never called)
 
 ### `internal/tui/services/aicoder_service.go`
 - [ ] `CheckPTYOutput()` method - Currently marked as DEPRECATED
@@ -34,18 +34,19 @@ This document lists all the deprecated code and infrastructure that should be re
 - [ ] Complex channel monitoring logic - REMOVED via debouncer
 
 ### `internal/tui/messages/aicoder_messages.go`
-- [ ] `AICoderPTYOutputMsg` - Currently marked as DEPRECATED
-- [ ] `AICoderPollPTYMsg` - Currently marked as DEPRECATED
-- [ ] `TerminalStateMsg` - May be deprecated depending on usage
+- [ ] `AICoderPTYOutputMsg` - Currently marked as DEPRECATED (handlers still use it)
+- [x] `AICoderPollPTYMsg` - REMOVED (no longer needed with debounced updates)
+- [x] `TerminalStateMsg` - DEPRECATED and handler removed (message was never emitted, replaced by AICoderScreenSyncMsg)
 - [ ] `AICoderTerminalUpdateMsg` (if exists) - Replaced by AICoderScreenSyncMsg
 
 ### `internal/tui/ai_coder_message_handler.go`
-- [ ] Handler for `AICoderPTYOutputMsg` - Currently kept for migration
-- [ ] Handler for `AICoderPollPTYMsg` - Can be removed
+- [x] Handler for `AICoderPTYOutputMsg` - MIGRATED to use AddRawOutput() instead of AddPTYOutput()
+- [x] Handler for `AICoderPollPTYMsg` - Message type removed, no handler needed
 
 ### `internal/tui/components/aicoders_view.go`
-- [ ] Fallback rendering code using `GetPTYOutput()` - Currently kept for migration
-- [ ] Fallback rendering code using `GetTerminalState()` - Currently kept for migration
+- [x] Fallback rendering code using `GetPTYOutput()` - REMOVED (replaced with simple waiting message)
+- [x] Fallback rendering code using `GetTerminalState()` - REMOVED (replaced with simple waiting message)
+- [x] Deprecated width/height fields - REMOVED (using layoutRegions exclusively)
 
 ## Migration Path
 

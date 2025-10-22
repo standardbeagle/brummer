@@ -20,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/proxy list` now displays registered proxy URL mappings
   - `/toggle-proxy` now switches between full and reverse proxy modes
 
+### Changed
+- Updated AI Coder cleanup checklist documentation
+  - Marked completed state cleanup items as done
+  - Marked completed message handler migrations as done
+  - Marked completed fallback rendering removal as done
+  - Updated command autocomplete documentation
+
 ### Removed
 - Commented-out TODO code in command handler
   - Removed message type mismatch workarounds

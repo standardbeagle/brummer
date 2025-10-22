@@ -192,10 +192,6 @@ Brummer provides **two ways** to work with Docker Compose:
 
 ### Other Commands
 
-#### `/term`
-- **No arguments**: Opens terminal view
-- **Example**: `/term`
-
 #### `/help`
 - **No arguments**: Shows help information
 - **Example**: `/help`
