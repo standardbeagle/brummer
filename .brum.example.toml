@@ -19,7 +19,7 @@
 # no_proxy = false
 
 # AI Coder Configuration
-# 
+#
 # Variable Replacement in CLI Arguments:
 # You can use ${VAR_NAME} syntax in base_args to inject dynamic values.
 # Brummer automatically provides these variables:
@@ -31,28 +31,148 @@
 enabled = true
 max_concurrent = 3
 workspace_base_dir = "~/.brummer/ai-coders"
-default_provider = "claude"  # Available: claude, bash (configure more providers as needed)
+default_provider = "claude"  # Available: claude, gemini, copilot, opencode, bash
 timeout_minutes = 30
 auto_cleanup = true
 cleanup_after_hours = 24
 
-# Claude Provider Configuration
+# ============================================================================
+# Claude CLI Tool Configuration
+# ============================================================================
+# Anthropic's Claude Code CLI with Brummer MCP integration
+# Install: npm install -g @anthropic-ai/claude-code
+# Usage: /ai claude  (default provider)
+#        /ai opus    (use Opus model)
+#        /ai sonnet  (use Sonnet model)
+#        /ai claude-secure (with permission prompts)
+
 [ai_coders.providers.claude]
-api_key_env = "ANTHROPIC_API_KEY"
-model = "claude-3-5-sonnet-20241022"
-max_tokens = 4096
-temperature = 0.7
-request_timeout_seconds = 30
+[ai_coders.providers.claude.cli_tool]
+command = "claude"
+base_args = [
+    "--mcp-config",
+    "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}",
+    "--dangerously-skip-permissions"  # Auto-approve MCP actions for rapid development
+]
+model = "sonnet"  # Default: sonnet, opus, haiku
 
-[ai_coders.providers.claude.rate_limit]
-requests_per_minute = 50
-tokens_per_minute = 150000
+[ai_coders.providers.claude.cli_tool.flag_mapping]
+model = "--model"
+output_format = "--output-format"
+debug = "--debug"
 
+# Claude Secure - Prompts for each MCP action
+[ai_coders.providers.claude-secure]
+[ai_coders.providers.claude-secure.cli_tool]
+command = "claude"
+base_args = [
+    "--mcp-config",
+    "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}"
+    # No --dangerously-skip-permissions - will prompt for each action
+]
+model = "sonnet"
+
+[ai_coders.providers.claude-secure.cli_tool.flag_mapping]
+model = "--model"
+output_format = "--output-format"
+debug = "--debug"
+
+# Claude Opus - Most capable model
+[ai_coders.providers.opus]
+[ai_coders.providers.opus.cli_tool]
+command = "claude"
+base_args = [
+    "--mcp-config",
+    "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}",
+    "--model", "opus",
+    "--dangerously-skip-permissions"
+]
+model = "opus"
+
+[ai_coders.providers.opus.cli_tool.flag_mapping]
+model = "--model"
+output_format = "--output-format"
+debug = "--debug"
+
+# Claude Sonnet - Fast and smart
+[ai_coders.providers.sonnet]
+[ai_coders.providers.sonnet.cli_tool]
+command = "claude"
+base_args = [
+    "--mcp-config",
+    "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}",
+    "--model", "sonnet",
+    "--dangerously-skip-permissions"
+]
+model = "sonnet"
+
+[ai_coders.providers.sonnet.cli_tool.flag_mapping]
+model = "--model"
+output_format = "--output-format"
+debug = "--debug"
+
+# ============================================================================
+# Gemini CLI Tool Configuration
+# ============================================================================
+# Google's Gemini with Brummer MCP integration (if CLI supports MCP)
+# Install: Follow Google AI Studio instructions
+# Usage: /ai gemini
+
+[ai_coders.providers.gemini]
+[ai_coders.providers.gemini.cli_tool]
+command = "gemini"
+base_args = [
+    # NOTE: Update these args if Gemini CLI adds MCP support
+    # "--mcp-server", "${BRUMMER_MCP_URL}"
+]
+
+[ai_coders.providers.gemini.cli_tool.flag_mapping]
+model = "--model"
+prompt = "--prompt"
+debug = "--debug"
+
+[ai_coders.providers.gemini.cli_tool.environment]
+# Gemini uses GEMINI_API_KEY from environment
+
+# ============================================================================
+# GitHub Copilot CLI Configuration
+# ============================================================================
+# GitHub Copilot in the CLI with Brummer MCP integration
+# Install: gh extension install github/gh-copilot
+# Usage: /ai copilot
+
+[ai_coders.providers.copilot]
+[ai_coders.providers.copilot.cli_tool]
+command = "gh"
+base_args = [
+    "copilot",
+    "chat"
+    # NOTE: Add MCP config when Copilot CLI supports it
+    # Current Copilot CLI may not support MCP servers yet
+]
+
+[ai_coders.providers.copilot.cli_tool.flag_mapping]
+# Copilot CLI uses different flag patterns
+# Update as Copilot CLI evolves
+
+[ai_coders.providers.copilot.cli_tool.environment]
+# GitHub Copilot uses gh CLI authentication
+
+# ============================================================================
 # OpenCode CLI Tool Configuration
+# ============================================================================
+# OpenCode with Brummer MCP integration
+# Install: npm install -g opencode-cli (or appropriate install method)
+# Usage: /ai opencode
+
 [ai_coders.providers.opencode]
 [ai_coders.providers.opencode.cli_tool]
 command = "opencode"
-base_args = ["run"]  # Use 'run' subcommand
+base_args = [
+    "run"
+    # NOTE: Add MCP config args if OpenCode supports MCP
+    # "--mcp-url", "${BRUMMER_MCP_URL}"
+]
 
 [ai_coders.providers.opencode.cli_tool.flag_mapping]
 model = "--model"
@@ -62,38 +182,38 @@ debug = "--log-level"
 [ai_coders.providers.opencode.cli_tool.environment]
 # OpenCode uses API keys from its own config
 
-# Gemini Provider Configuration
-[ai_coders.providers.gemini]
-api_key_env = "GEMINI_API_KEY"
-model = "gemini-1.5-pro"
-max_tokens = 8192
-temperature = 0.7
-request_timeout_seconds = 30
+# ============================================================================
+# Bash Shell Provider
+# ============================================================================
+# Direct bash shell for manual command execution and scripting
+# Usage: /ai bash
 
-[ai_coders.providers.gemini.rate_limit]
-requests_per_minute = 15
-tokens_per_minute = 1000000
+[ai_coders.providers.bash]
+[ai_coders.providers.bash.cli_tool]
+command = "bash"
+base_args = [
+    "-i"  # Interactive mode
+]
+working_dir = "."
 
-# Terminal Provider Configuration (Local Shell Execution)
-[ai_coders.providers.terminal]
-model = "bash"  # Available: bash, sh, zsh, fish, python, node, ruby
-max_tokens = 1000000
-temperature = 0.0
-request_timeout_seconds = 300
+# Alternative shells available
+[ai_coders.providers.zsh]
+[ai_coders.providers.zsh.cli_tool]
+command = "zsh"
+base_args = ["-i"]
+working_dir = "."
 
-[ai_coders.providers.terminal.rate_limit]
-requests_per_minute = 30
-tokens_per_minute = 1000000
+[ai_coders.providers.fish]
+[ai_coders.providers.fish.cli_tool]
+command = "fish"
+base_args = ["-i"]
+working_dir = "."
 
-# Local Model Provider (e.g., Ollama)
-[ai_coders.providers.local]
-base_url = "http://localhost:11434"
-model = "codellama"
-max_tokens = 2048
-temperature = 0.7
-request_timeout_seconds = 60
+# ============================================================================
+# Additional Providers
+# ============================================================================
 
-# Aider CLI Tool Configuration
+# Aider - AI pair programming tool
 [ai_coders.providers.aider]
 [ai_coders.providers.aider.cli_tool]
 command = "aider"
@@ -105,84 +225,15 @@ model = "--model"
 message = "--message"
 
 [ai_coders.providers.aider.cli_tool.environment]
-# Add any environment variables Aider needs
-# OPENAI_API_KEY = "your-key-here"  # Will use existing env var
+# OPENAI_API_KEY from environment
 
-# Claude CLI Tool Configuration (multiple configs possible)
-# Variable Replacement: Use ${VAR_NAME} in base_args for dynamic values
-# BRUMMER_MCP_URL and BRUMMER_MCP_PORT are automatically set by Brummer
-[ai_coders.providers.claude]
-[ai_coders.providers.claude.cli_tool]
-command = "claude"
-# The ${BRUMMER_MCP_URL} will be replaced with the actual MCP server URL at runtime
-base_args = ["--mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}", "--dangerously-skip-permissions"]  # For rapid development
-model = "sonnet"  # Default model
-
-[ai_coders.providers.claude.cli_tool.flag_mapping]
-model = "--model"
-output_format = "--output-format"
-debug = "--debug"
-
-[ai_coders.providers.claude.cli_tool.environment]
-# BRUMMER_MCP_URL and BRUMMER_MCP_PORT are automatically set by Brummer
-
-# Claude Secure (without dangerous permissions)
-[ai_coders.providers.claude-secure]
-[ai_coders.providers.claude-secure.cli_tool]
-command = "claude"
-base_args = ["--mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}"]  # No dangerous permissions - will prompt for each action
-model = "sonnet"  # Default model
-
-[ai_coders.providers.claude-secure.cli_tool.flag_mapping]
-model = "--model"
-output_format = "--output-format"
-debug = "--debug"
-
-# Claude with Opus model
-[ai_coders.providers.opus]
-[ai_coders.providers.opus.cli_tool]
-command = "claude"
-base_args = ["--mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}", "--model", "opus", "--dangerously-skip-permissions"]
-model = "opus"
-
-[ai_coders.providers.opus.cli_tool.flag_mapping]
-model = "--model"
-output_format = "--output-format"
-debug = "--debug"
-
-# Claude with Sonnet model  
-[ai_coders.providers.sonnet]
-[ai_coders.providers.sonnet.cli_tool]
-command = "claude"
-base_args = ["--mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}", "--model", "sonnet", "--dangerously-skip-permissions"]
-model = "sonnet"
-
-[ai_coders.providers.sonnet.cli_tool.flag_mapping]
-model = "--model"
-output_format = "--output-format"
-debug = "--debug"
-
-
-# Gemini CLI Tool Configuration (if available)
-[ai_coders.providers.gemini-cli]
-[ai_coders.providers.gemini-cli.cli_tool]
-command = "gemini"
-base_args = []
-
-[ai_coders.providers.gemini-cli.cli_tool.flag_mapping]
-model = "--model"
-prompt = "--prompt"
-debug = "--debug"
-
-[ai_coders.providers.gemini-cli.cli_tool.environment]
-# Gemini uses API keys from its own config
-
-# Bash Provider (formerly Terminal)
-[ai_coders.providers.bash]
-model = "bash"
-max_tokens = 1000
-temperature = 0.0
-request_timeout_seconds = 10
+# Local Model Provider (Ollama)
+[ai_coders.providers.local]
+base_url = "http://localhost:11434"
+model = "codellama"
+max_tokens = 2048
+temperature = 0.7
+request_timeout_seconds = 60
 
 # Resource Limits
 [ai_coders.resource_limits]
