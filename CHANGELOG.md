@@ -15,6 +15,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/proxy list` now displays registered proxy URL mappings
   - `/toggle-proxy` now switches between full and reverse proxy modes
 
+### Removed
+- Commented-out TODO code in command handler
+  - Removed message type mismatch workarounds
+  - Removed placeholder message sending code
+  - Cleaned up 115 lines of dead code from command handler
+
 ### Changed
 - AI Coder state architecture simplified and modernized
   - Removed deprecated PTYOutputBuffers field (use RawBuffers instead)

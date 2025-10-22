@@ -80,13 +80,6 @@ func (h *CommandHandler) ExecuteCommand(cmd commands.Command) tea.Cmd {
 		h.runningCommands[cmd.ID()] = runningCmd
 		h.mu.Unlock()
 
-		// Send started message (TODO: Fix type mismatch in messages package)
-		// _ = messages.NewCommandStartedMessage(
-		//	cmd.ID(),
-		//	cmd.Type(),
-		//	cmd.Context(),
-		// )
-
 		// Execute the command
 		resultMsg := cmd.Run()
 		duration := time.Since(startTime)
@@ -122,28 +115,8 @@ func (h *CommandHandler) ExecuteCommand(cmd commands.Command) tea.Cmd {
 // ExecuteBatchCommand executes a batch command
 func (h *CommandHandler) ExecuteBatchCommand(batch *commands.BatchCommand) tea.Cmd {
 	return func() tea.Msg {
-		// Send batch started message (TODO: Fix type mismatch in messages package)
-		// _ = messages.NewBatchCommandStartedMessage(
-		//	batch.ID(),
-		//	len(batch.Commands()),
-		//	batch.ExecutionMode(),
-		//	batch.Context(),
-		// )
-
 		// Execute the batch command
 		resultMsg := batch.Run()
-
-		// Convert batch result to message (TODO: Fix type mismatch in messages package)
-		if _, ok := resultMsg.(commands.BatchResultMsg); ok {
-			// return messages.NewBatchCommandCompletedMessage(
-			//	batchResult.ID,
-			//	batchResult.Results,
-			//	batchResult.Duration,
-			//	batchResult.Context,
-			// )
-			return resultMsg
-		}
-
 		return resultMsg
 	}
 }
@@ -152,27 +125,11 @@ func (h *CommandHandler) ExecuteBatchCommand(batch *commands.BatchCommand) tea.C
 func (h *CommandHandler) processCommandResult(cmd commands.Command, resultMsg tea.Msg, duration time.Duration, runningCmd *RunningCommand) tea.Msg {
 	// Check if the command was cancelled
 	if runningCmd.Cancelled {
-		// TODO: Fix type mismatch in messages package
-		// return messages.NewCommandCancelledMessage(
-		//	cmd.ID(),
-		//	cmd.Type(),
-		//	"command was cancelled",
-		//	duration,
-		//	cmd.Context(),
-		// )
 		return tea.Msg(nil)
 	}
 
 	// Check for timeout
 	if time.Now().After(runningCmd.Timeout) {
-		// TODO: Fix type mismatch in messages package
-		// return messages.NewOperationTimeoutMessage(
-		//	cmd.ID(),
-		//	cmd.Type(),
-		//	cmd.Context().Timeout,
-		//	duration,
-		//	cmd.Context(),
-		// )
 		return tea.Msg(nil)
 	}
 
@@ -180,14 +137,6 @@ func (h *CommandHandler) processCommandResult(cmd commands.Command, resultMsg te
 	switch msg := resultMsg.(type) {
 	case commands.IOResultMsg:
 		if msg.IsSuccess() {
-			// TODO: Fix type mismatch in messages package
-			// return messages.NewCommandCompletedMessage(
-			//	msg.ID,
-			//	msg.Type,
-			//	msg.Result,
-			//	msg.Duration,
-			//	msg.Context,
-			// )
 			return resultMsg
 		} else {
 			return h.handleCommandFailure(cmd, msg.Error, duration, runningCmd)
@@ -195,14 +144,6 @@ func (h *CommandHandler) processCommandResult(cmd commands.Command, resultMsg te
 
 	case commands.ProcessResultMsg:
 		if msg.IsSuccess() {
-			// TODO: Fix type mismatch in messages package
-			// return messages.NewCommandCompletedMessage(
-			//	msg.ID,
-			//	msg.Type,
-			//	msg.Result,
-			//	msg.Duration,
-			//	msg.Context,
-			// )
 			return resultMsg
 		} else {
 			return h.handleCommandFailure(cmd, msg.Error, duration, runningCmd)
@@ -210,14 +151,6 @@ func (h *CommandHandler) processCommandResult(cmd commands.Command, resultMsg te
 
 	case commands.NetworkResultMsg:
 		if msg.IsSuccess() {
-			// TODO: Fix type mismatch in messages package
-			// return messages.NewCommandCompletedMessage(
-			//	msg.ID,
-			//	msg.Type,
-			//	msg.Result,
-			//	msg.Duration,
-			//	msg.Context,
-			// )
 			return resultMsg
 		} else {
 			return h.handleCommandFailure(cmd, msg.Error, duration, runningCmd)
@@ -225,14 +158,6 @@ func (h *CommandHandler) processCommandResult(cmd commands.Command, resultMsg te
 
 	case commands.SystemResultMsg:
 		if msg.IsSuccess() {
-			// TODO: Fix type mismatch in messages package
-			// return messages.NewCommandCompletedMessage(
-			//	msg.ID,
-			//	msg.Type,
-			//	msg.Result,
-			//	msg.Duration,
-			//	msg.Context,
-			// )
 			return resultMsg
 		} else {
 			return h.handleCommandFailure(cmd, msg.Error, duration, runningCmd)
@@ -240,39 +165,16 @@ func (h *CommandHandler) processCommandResult(cmd commands.Command, resultMsg te
 
 	case commands.RetryResultMsg:
 		if msg.IsSuccess() {
-			// TODO: Fix type mismatch in messages package
-			// return messages.NewCommandCompletedMessage(
-			//	msg.ID,
-			//	msg.Type,
-			//	msg.Result,
-			//	msg.Duration,
-			//	msg.Context,
-			// )
 			return resultMsg
 		} else {
 			return h.handleCommandFailure(cmd, msg.Error, duration, runningCmd)
 		}
 
 	case commands.BatchResultMsg:
-		// TODO: Fix type mismatch in messages package
-		// return messages.NewBatchCommandCompletedMessage(
-		//	msg.ID,
-		//	msg.Results,
-		//	msg.Duration,
-		//	msg.Context,
-		// )
 		return resultMsg
 
 	default:
 		// Unknown message type, treat as success
-		// TODO: Fix type mismatch in messages package
-		// return messages.NewCommandCompletedMessage(
-		//	cmd.ID(),
-		//	cmd.Type(),
-		//	resultMsg,
-		//	duration,
-		//	cmd.Context(),
-		// )
 		return resultMsg
 	}
 }
@@ -284,31 +186,10 @@ func (h *CommandHandler) handleCommandFailure(cmd commands.Command, err error, d
 		// Schedule retry
 		runningCmd.RetryCount++
 		_ = h.calculateBackoff(runningCmd.RetryCount, runningCmd.RetryPolicy)
-
-		// TODO: Fix type mismatch in messages package
-		// return messages.NewRetryAttemptMessage(
-		//	fmt.Sprintf("retry-%s-%d", cmd.ID(), runningCmd.RetryCount),
-		//	cmd.ID(),
-		//	runningCmd.RetryCount,
-		//	runningCmd.RetryPolicy.MaxAttempts,
-		//	err,
-		//	backoffDelay,
-		//	cmd.Context(),
-		// )
 		return tea.Msg(nil)
 	}
 
-	// No more retries, send failure message
-	_ = runningCmd.RetryCount < runningCmd.RetryPolicy.MaxAttempts
-	// TODO: Fix type mismatch in messages package
-	// return messages.NewCommandFailedMessage(
-	//	cmd.ID(),
-	//	cmd.Type(),
-	//	err,
-	//	duration,
-	//	cmd.Context(),
-	//	retryable,
-	// )
+	// No more retries
 	return tea.Msg(nil)
 }
 

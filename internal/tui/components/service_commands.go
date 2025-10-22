@@ -166,13 +166,6 @@ func GetAICommands(aiProviders []string) []messages.Command {
 				},
 			},
 		},
-		{
-			Name:        "term",
-			Description: "Show integrated terminal",
-			Usage:       "/term",
-			Category:    "AI",
-			Arguments:   nil,
-		},
 	}
 }
 
