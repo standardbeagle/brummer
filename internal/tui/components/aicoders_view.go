@@ -118,7 +118,8 @@ func (c *AICodersViewComponent) renderPTYViewWithState(aiState *state.AICoderSta
 		// Direct rendering from screen buffer - already processed by vt10x
 		for _, runeSlice := range aiState.ScreenBuffer {
 			line := string(runeSlice)
-			lines = append(lines, line)
+			// Add left padding for better readability
+			lines = append(lines, "  "+line)
 		}
 
 		// Show cursor position if dirty (needs redraw)
@@ -185,7 +186,13 @@ func (c *AICodersViewComponent) renderPTYViewWithState(aiState *state.AICoderSta
 
 	// Footer
 	lines = append(lines, strings.Repeat("─", c.width))
-	lines = append(lines, c.normalStyle.Render("ESC=List | ?=Help | ↑↓=Scroll | Type to send input"))
+
+	// Show different footer based on terminal focus mode
+	if aiState.TerminalFocused {
+		lines = append(lines, c.activeStyle.Render("🔒 TERMINAL FOCUS MODE - Ctrl+T or ESC to release"))
+	} else {
+		lines = append(lines, c.normalStyle.Render("Enter or Ctrl+T=Focus | ESC=List | ?=Help"))
+	}
 
 	return strings.Join(lines, "\n")
 }

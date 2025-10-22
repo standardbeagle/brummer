@@ -21,6 +21,9 @@ type AICoderState struct {
 	// Flag indicating screen needs redraw
 	ScreenDirty bool
 
+	// Terminal focus mode - when true, all keys go to terminal (ESC to release)
+	TerminalFocused bool
+
 	// Lightweight raw buffers for all sessions (100K lines max each)
 	RawBuffers map[string]*RingBuffer
 
@@ -329,12 +332,13 @@ func (s *AICoderState) GetVersion() uint64 {
 func (s *AICoderState) copy() *AICoderState {
 	newState := &AICoderState{
 		// New fields
-		ScreenDirty:     s.ScreenDirty,
-		ScreenCursor:    s.ScreenCursor,
-		RawBuffers:      make(map[string]*RingBuffer, len(s.RawBuffers)),
-		ProcessedOffset: make(map[string]int64, len(s.ProcessedOffset)),
-		LastUpdateTime:  make(map[string]time.Time, len(s.LastUpdateTime)),
-		UpdatePending:   make(map[string]bool, len(s.UpdatePending)),
+		ScreenDirty:      s.ScreenDirty,
+		ScreenCursor:     s.ScreenCursor,
+		TerminalFocused:  s.TerminalFocused,
+		RawBuffers:       make(map[string]*RingBuffer, len(s.RawBuffers)),
+		ProcessedOffset:  make(map[string]int64, len(s.ProcessedOffset)),
+		LastUpdateTime:   make(map[string]time.Time, len(s.LastUpdateTime)),
+		UpdatePending:    make(map[string]bool, len(s.UpdatePending)),
 
 		// Existing fields
 		ActiveSessions: make(map[string]SessionInfo, len(s.ActiveSessions)),
@@ -442,10 +446,19 @@ func (s *AICoderState) GetStateSummary() map[string]interface{} {
 	return map[string]interface{}{
 		"active_sessions":    len(s.ActiveSessions),
 		"focused_session":    s.FocusedSession,
+		"terminal_focused":   s.TerminalFocused,
 		"pty_buffers":        len(s.PTYOutputBuffers),
 		"terminal_states":    len(s.TerminalStates),
 		"version":            s.version,
 		"last_poll_time":     s.LastPollTime,
 		"polling_interval":   s.PollingInterval.String(),
 	}
+}
+
+// SetTerminalFocus enables terminal focus mode (all keys go to terminal)
+func (s *AICoderState) SetTerminalFocus(focused bool) *AICoderState {
+	newState := s.copy()
+	newState.TerminalFocused = focused
+	newState.version++
+	return newState
 }

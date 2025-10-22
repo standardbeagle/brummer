@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/services"
@@ -113,13 +114,14 @@ func (h *GlobalNavigationHandler) Name() string {
 }
 
 func (h *GlobalNavigationHandler) Priority() int {
-	return 100 // High priority for global navigation
+	return 900 // LOWEST priority - navigation is fallback after all other handlers
 }
 
 func (h *GlobalNavigationHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
-	// Handle number keys 1-7 and Tab globally
+	// Handle number keys 1-7 and left/right arrow keys globally
+	// NOTE: Tab key is NOT handled here - reserved for input element navigation
 	switch key.Type {
-	case tea.KeyTab:
+	case tea.KeyLeft, tea.KeyRight:
 		return true
 	case tea.KeyRunes:
 		if len(key.Runes) == 1 {
@@ -132,8 +134,12 @@ func (h *GlobalNavigationHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool
 
 func (h *GlobalNavigationHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 	switch key.Type {
-	case tea.KeyTab:
-		// Cycle to next view
+	case tea.KeyLeft:
+		// Go to previous view
+		prevView := CycleToPrevView(h.viewManager.GetCurrentView(), h.debugMode)
+		return h.viewManager.SwitchToView(prevView)
+	case tea.KeyRight:
+		// Go to next view
 		nextView := CycleToNextView(h.viewManager.GetCurrentView(), h.debugMode)
 		return h.viewManager.SwitchToView(nextView)
 	case tea.KeyRunes:
@@ -162,7 +168,7 @@ func (h *ViewSpecificKeyHandler) Name() string {
 }
 
 func (h *ViewSpecificKeyHandler) Priority() int {
-	return 200 // Lower priority than global navigation
+	return 200 // After panels, before global navigation
 }
 
 func (h *ViewSpecificKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
@@ -173,8 +179,8 @@ func (h *ViewSpecificKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 	return h.handler(key, model)
 }
 
-// QuitHandler handles quit commands
-// Both Ctrl+C and ESC quit immediately for better UX
+// QuitHandler handles quit commands with double-press protection
+// Prevents accidental exits by requiring confirmation
 type QuitHandler struct{}
 
 func NewQuitHandler() KeyHandler {
@@ -186,17 +192,43 @@ func (h *QuitHandler) Name() string {
 }
 
 func (h *QuitHandler) Priority() int {
-	return 1000 // Lowest priority
+	return 50 // High priority - after terminal input, before panels/navigation
 }
 
 func (h *QuitHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
+	// Don't handle quit keys when in AI Coder terminal focus mode
+	// In that mode, Ctrl+C should go to the terminal
+	if ctx.Context == "terminal_focused" {
+		return false
+	}
 	return key.Type == tea.KeyCtrlC || key.Type == tea.KeyEsc
 }
 
 func (h *QuitHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
-	// Both Ctrl+C and ESC quit immediately
-	// No double-press protection needed - users expect immediate quit
-	return tea.Quit
+	// Double-press protection: require second press within 2 seconds
+	now := time.Now()
+
+	if model.awaitingQuitConfirmation {
+		// Second press within timeout - actually quit
+		timeSinceFirst := now.Sub(model.lastQuitAttemptTime)
+		if timeSinceFirst < 2*time.Second {
+			return tea.Quit
+		}
+		// Timeout expired, treat as first press again
+		model.awaitingQuitConfirmation = true
+		model.lastQuitAttemptTime = now
+		return func() tea.Msg {
+			return StatusMsg{Message: "Press ESC or Ctrl+C again to quit"}
+		}
+	}
+
+	// First press - show warning
+	model.awaitingQuitConfirmation = true
+	model.lastQuitAttemptTime = now
+
+	return func() tea.Msg {
+		return StatusMsg{Message: "Press ESC or Ctrl+C again to quit"}
+	}
 }
 
 // SlashCommandHandler handles the "/" key with context awareness
@@ -213,7 +245,7 @@ func (h *SlashCommandHandler) Name() string {
 }
 
 func (h *SlashCommandHandler) Priority() int {
-	return 300 // Between view-specific and quit
+	return 100 // After exit keys, before view-specific
 }
 
 func (h *SlashCommandHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
@@ -278,7 +310,7 @@ func (h *AICoderKeyHandler) Name() string {
 }
 
 func (h *AICoderKeyHandler) Priority() int {
-	return 250 // Higher priority than general view-specific handlers
+	return 10 // HIGHEST priority - terminal input must be captured first
 }
 
 func (h *AICoderKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
@@ -287,12 +319,17 @@ func (h *AICoderKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 		return false
 	}
 
-	// In PTY mode, handle ALL keys to send to terminal
-	if ctx.Context == "pty" {
-		return true // Handle all keys in PTY mode
+	// Ctrl+T is ALWAYS handled in AI Coders view (toggle terminal focus)
+	if key.Type == tea.KeyCtrlT {
+		return true
 	}
 
-	// In list mode, handle navigation keys
+	// In PTY mode OR terminal focus mode, handle ALL keys
+	if ctx.Context == "pty" || ctx.Context == "terminal_focused" {
+		return true // Handle all keys in these modes
+	}
+
+	// In list mode, handle navigation keys + Enter to focus terminal
 	switch key.String() {
 	case "j", "k", "up", "down", "enter", "a", "d", "q":
 		return true
@@ -309,11 +346,48 @@ func (h *AICoderKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 
 		// If we have a focused session and we're viewing it, send input to PTY
 		if focusedSession != "" && model.currentView() == ViewAICoders {
-			// Special handling for escape key to exit PTY mode
+			// Special handling for Ctrl+T to toggle terminal focus
+			if key.Type == tea.KeyCtrlT {
+				newFocusState := !aiState.TerminalFocused
+				model.masterData.AICoderState = aiState.SetTerminalFocus(newFocusState)
+
+				// Show status message
+				statusMsg := "Terminal focus: OFF (ESC to exit, Enter to focus)"
+				if newFocusState {
+					statusMsg = "Terminal focus: ON (all keys go to terminal, Ctrl+T or ESC to release)"
+				}
+				return func() tea.Msg {
+					return StatusMsg{Message: statusMsg}
+				}
+			}
+
+			// Special handling for escape key
 			if key.Type == tea.KeyEsc {
-				// Clear the focused session to return to list view
+				// If in terminal focus mode, release focus
+				if aiState.TerminalFocused {
+					model.masterData.AICoderState = aiState.SetTerminalFocus(false)
+					return func() tea.Msg {
+						return StatusMsg{Message: "Terminal focus released"}
+					}
+				}
+				// Otherwise, exit to list view
 				model.masterData.AICoderState = aiState.SetFocusedSession("")
 				return nil
+			}
+
+			// Special handling for Enter key to toggle terminal focus
+			if key.Type == tea.KeyEnter && !aiState.TerminalFocused {
+				model.masterData.AICoderState = aiState.SetTerminalFocus(true)
+				// Also send the Enter to the terminal
+				if model.aiCoderService != nil {
+					svc := model.aiCoderService.(interface {
+						WriteInput(sessionID string, data []byte) error
+					})
+					svc.WriteInput(focusedSession, []byte("\r"))
+				}
+				return func() tea.Msg {
+					return StatusMsg{Message: "Terminal focus enabled (Ctrl+T or ESC to release)"}
+				}
 			}
 
 			// Convert key to bytes for PTY input

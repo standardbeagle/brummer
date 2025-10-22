@@ -128,6 +128,10 @@ type Model struct {
 	awaitingClearConfirmation bool
 	confirmationTab           string
 
+	// QUIT CONFIRMATION STATE
+	lastQuitAttemptTime time.Time
+	awaitingQuitConfirmation bool
+
 	// ERROR GROUPING SERVICE (T027)
 	errorGroupingService *services.ErrorGroupingService
 
@@ -2923,11 +2927,16 @@ func (m *Model) buildKeyContext() KeyContext {
 		if m.masterData != nil && m.masterData.AICoderState != nil {
 			focusedSessionID := m.masterData.AICoderState.FocusedSession
 			if focusedSessionID != "" && m.masterData.AICoderState.HasActiveSessions() {
-				ctx.Context = "pty"
+				// Set context based on terminal focus mode
+				if m.masterData.AICoderState.TerminalFocused {
+					ctx.Context = "terminal_focused"
+				} else {
+					ctx.Context = "pty"
+				}
 				// TODO: Get cursor position and input content from PTY
 				// For now, assume cursor is at position 0 for slash command logic
 				ctx.CursorPosition = 0
-			ctx.InputContent = ""
+				ctx.InputContent = ""
 			}
 		}
 	}
