@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated command autocomplete documentation
 
 ### Removed
+- Outdated documentation file COMPONENT_VS_ORIGINAL_UI.md
+  - 368 lines of obsolete component comparison
+  - Content outdated after Redux/Elm migration
+  - Replaced by current architecture documentation
 - Deprecated `/term` command
   - Functionality fully replaced by `/ai` command
   - Removed from slash commands handler
