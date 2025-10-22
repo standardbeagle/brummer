@@ -2750,6 +2750,16 @@ func (m *Model) handleToggleProxy() {
 func (m *Model) showCommandWindow() {
 	// Update state directly
 	m.masterData.CommandWindowState = m.masterData.CommandWindowState.ShowCommandWindow()
+
+	// Initialize autocomplete with "/" to show initial suggestions
+	if m.commandAutocomplete != nil {
+		m.commandAutocomplete.SetValue("/")
+
+		// Get initial suggestions and update state
+		suggestions := m.commandAutocomplete.GetSuggestions()
+		m.masterData.CommandWindowState = m.masterData.CommandWindowState.SetCommandInputText("/")
+		m.masterData.CommandWindowState = m.masterData.CommandWindowState.SetCommandSuggestions(suggestions)
+	}
 }
 
 // System message methods have been moved to systemController

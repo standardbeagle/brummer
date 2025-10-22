@@ -594,14 +594,32 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 			return false, "Please specify an AI provider (e.g., /ai claude)"
 		}
 		providerName := parts[1]
-		// Validate against available providers
-		validProviders := map[string]bool{
-			"claude":      true,
-			"claude-3-7":  true,
-			"claude-o3":   true,
+		// Validate against available providers from config
+		validProviders := make(map[string]bool)
+
+		// Try to get providers from config
+		if c.cfg != nil && c.cfg.AICoders != nil && c.cfg.AICoders.Providers != nil && len(c.cfg.AICoders.Providers) > 0 {
+			for name := range c.cfg.AICoders.Providers {
+				validProviders[name] = true
+			}
+		} else {
+			// Comprehensive fallback list matching .brum.example.toml
+			fallbackProviders := []string{
+				"aider", "bash", "claude", "claude-secure", "copilot", "copilot-secure",
+				"fish", "gemini", "gemini-secure", "local", "opencode", "opus", "sonnet", "zsh",
+			}
+			for _, name := range fallbackProviders {
+				validProviders[name] = true
+			}
 		}
+
 		if !validProviders[providerName] {
-			return false, fmt.Sprintf("Invalid AI provider '%s'. Available: claude, claude-3-7, claude-o3", providerName)
+			// Build available providers list for error message
+			availableList := make([]string, 0, len(validProviders))
+			for name := range validProviders {
+				availableList = append(availableList, name)
+			}
+			return false, fmt.Sprintf("Invalid AI provider '%s'. Available: %s", providerName, strings.Join(availableList, ", "))
 		}
 		return true, ""
 

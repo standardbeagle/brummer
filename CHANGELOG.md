@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Comprehensive test suite for slash command autocomplete (46 test cases)
+  - Tests for AI provider validation with config and fallback
+  - Tests for run, clear, proxy, and arbitrary command validation
+  - Tests for suggestion filtering and initialization
+
+### Fixed
+- Command palette autocomplete dropdown now shows immediately when typing "/"
+  - Previously required pressing backspace or another key to display suggestions
+  - Autocomplete now initializes with "/" on command palette open
+- AI provider validation now accepts all configured providers
+  - `/ai bash` and `/ai gemini` commands now execute correctly
+  - Dynamic validation reads from config instead of hardcoded list
+  - Supports custom providers defined in .brum.toml configuration
+
+### Added
 - Defensive update listener pattern for automatic TUI updates
   - Persistent listener ensures all updateChan events trigger UI updates immediately
   - Eliminates need for manual `waitForUpdates()` calls in message handlers
