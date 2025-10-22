@@ -114,73 +114,98 @@ debug = "--debug"
 # ============================================================================
 # Gemini CLI Tool Configuration
 # ============================================================================
-# Google's Gemini with Brummer MCP integration (if CLI supports MCP)
-# Install: Follow Google AI Studio instructions
+# Google's Gemini CLI with Brummer MCP integration
+# Install: npm install -g @google/generative-ai-cli
 # Usage: /ai gemini
+# MCP: Gemini CLI uses `gemini mcp` command to manage MCP servers
+#      Configure MCP servers via: gemini mcp add brummer http ${BRUMMER_MCP_URL}
 
 [ai_coders.providers.gemini]
 [ai_coders.providers.gemini.cli_tool]
 command = "gemini"
 base_args = [
-    # NOTE: Update these args if Gemini CLI adds MCP support
-    # "--mcp-server", "${BRUMMER_MCP_URL}"
+    "--yolo",  # Auto-approve all tools (like --dangerously-skip-permissions)
+    "--allowed-mcp-server-names", "brummer"
+    # MCP servers are configured separately via: gemini mcp add brummer http ${BRUMMER_MCP_URL}
 ]
 
 [ai_coders.providers.gemini.cli_tool.flag_mapping]
 model = "--model"
-prompt = "--prompt"
 debug = "--debug"
 
 [ai_coders.providers.gemini.cli_tool.environment]
-# Gemini uses GEMINI_API_KEY from environment
+# Gemini CLI uses authentication from setup
+
+# Gemini Secure - Prompts for each action
+[ai_coders.providers.gemini-secure]
+[ai_coders.providers.gemini-secure.cli_tool]
+command = "gemini"
+base_args = [
+    "--approval-mode", "default",  # Prompt for approval
+    "--allowed-mcp-server-names", "brummer"
+]
+
+[ai_coders.providers.gemini-secure.cli_tool.flag_mapping]
+model = "--model"
+debug = "--debug"
 
 # ============================================================================
 # GitHub Copilot CLI Configuration
 # ============================================================================
 # GitHub Copilot in the CLI with Brummer MCP integration
-# Install: gh extension install github/gh-copilot
+# Install: npm install -g @githubnext/github-copilot-cli
 # Usage: /ai copilot
+# Note: Copilot uses --additional-mcp-config for MCP server configuration
 
 [ai_coders.providers.copilot]
 [ai_coders.providers.copilot.cli_tool]
-command = "gh"
+command = "copilot"
 base_args = [
-    "copilot",
-    "chat"
-    # NOTE: Add MCP config when Copilot CLI supports it
-    # Current Copilot CLI may not support MCP servers yet
+    "--allow-all-tools",  # Auto-approve all tools
+    "--additional-mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}"
 ]
 
 [ai_coders.providers.copilot.cli_tool.flag_mapping]
-# Copilot CLI uses different flag patterns
-# Update as Copilot CLI evolves
+model = "--model"
 
 [ai_coders.providers.copilot.cli_tool.environment]
-# GitHub Copilot uses gh CLI authentication
+# Copilot uses GitHub authentication
+
+# Copilot Secure - Prompts for each action
+[ai_coders.providers.copilot-secure]
+[ai_coders.providers.copilot-secure.cli_tool]
+command = "copilot"
+base_args = [
+    # No --allow-all-tools, will prompt for each action
+    "--additional-mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}"
+]
+
+[ai_coders.providers.copilot-secure.cli_tool.flag_mapping]
+model = "--model"
 
 # ============================================================================
 # OpenCode CLI Tool Configuration
 # ============================================================================
-# OpenCode with Brummer MCP integration
-# Install: npm install -g opencode-cli (or appropriate install method)
+# OpenCode CLI - currently investigating MCP support
+# Install: npm install -g opencode
 # Usage: /ai opencode
+# Note: OpenCode may not yet support MCP - configuration ready for when it does
 
 [ai_coders.providers.opencode]
 [ai_coders.providers.opencode.cli_tool]
 command = "opencode"
 base_args = [
     "run"
-    # NOTE: Add MCP config args if OpenCode supports MCP
-    # "--mcp-url", "${BRUMMER_MCP_URL}"
+    # TODO: Add MCP config when OpenCode adds support
+    # Check: opencode --help for latest MCP options
 ]
 
 [ai_coders.providers.opencode.cli_tool.flag_mapping]
 model = "--model"
 prompt = "--prompt"
-debug = "--log-level"
 
 [ai_coders.providers.opencode.cli_tool.environment]
-# OpenCode uses API keys from its own config
+# OpenCode uses its own authentication
 
 # ============================================================================
 # Bash Shell Provider
