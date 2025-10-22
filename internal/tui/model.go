@@ -742,6 +742,40 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 	ctx := context.Background() // TODO: Use proper context from application lifecycle
 	m.aiCoderService = services.NewAICoderService(ctx, m.logStore)
 
+	// 13.5. Wire up the debouncer callback for batched PTY output processing
+	//     - Required by: New screen buffer architecture for 60 FPS rendering
+	//     - Dependencies: aiCoderService created
+	if m.aiCoderService != nil {
+		svc := m.aiCoderService.(*services.AICoderService)
+
+		// Set up debouncer callback to process batched PTY output
+		svc.SetDebounceCallback(func(sessionID string, data []byte) {
+			// Send batched data to message handler via update channel
+			if m.updateChan != nil {
+				// First send the batch update message
+				m.updateChan <- messages.AICoderBatchUpdateMsg{
+					SessionID: sessionID,
+					Data:      data,
+					Timestamp: time.Now(),
+				}
+
+				// Process through vt10x and sync screen buffer
+				screen, err := svc.ProcessBatchedOutput(sessionID, data)
+				if err == nil && screen != nil {
+					// Get cursor position from terminal
+					cursor := messages.CursorPosition{X: 0, Y: 0} // TODO: Get actual cursor from vt10x
+
+					// Send screen sync message
+					m.updateChan <- messages.AICoderScreenSyncMsg{
+						SessionID:    sessionID,
+						ScreenBuffer: screen,
+						CursorPos:    cursor,
+					}
+				}
+			}
+		})
+	}
+
 	// 13.6. Subscribe to AI Coder service events (T028 - event routing)
 	//     - Required by: Service-to-component communication
 	//     - Dependencies: aiCoderService created, updateChan available
@@ -2620,27 +2654,55 @@ func (m *Model) handleAICommand(providerName string) {
 	if m.aiCoderService != nil {
 		// Use the AI coder service to create a PTY session
 		svc := m.aiCoderService.(*services.AICoderService)
-		sessionID, err := svc.CreateSession(
-			context.Background(),
-			fmt.Sprintf("AI: %s", providerName),
-			fullCommand,
-			m.workingDir,
-		)
-		if err != nil {
-			m.logStore.Add("system", "System", fmt.Sprintf("Error creating AI session: %v", err), true)
-			return
+
+		// Check if a session already exists for this provider
+		sessionName := fmt.Sprintf("AI: %s", providerName)
+		existingSessionID := ""
+		for _, session := range svc.ListSessions() {
+			if session.Name == sessionName {
+				existingSessionID = session.ID
+				break
+			}
 		}
 
-		// Start the session with default terminal dimensions
-		err = svc.StartSession(context.Background(), sessionID, 80, 24)
-		if err != nil {
-			m.logStore.Add("system", "System", fmt.Sprintf("Error starting AI session: %v", err), true)
-			return
+		var sessionID string
+		if existingSessionID != "" {
+			// Use existing session
+			sessionID = existingSessionID
+			m.logStore.Add("system", "System", fmt.Sprintf("Switching to existing AI session: %s", providerName), false)
+		} else {
+			// Create new session
+			sessionID, err = svc.CreateSession(
+				context.Background(),
+				sessionName,
+				fullCommand,
+				m.workingDir,
+			)
+			if err != nil {
+				m.logStore.Add("system", "System", fmt.Sprintf("Error creating AI session: %v", err), true)
+				return
+			}
+
+			// Start the session with default terminal dimensions
+			err = svc.StartSession(context.Background(), sessionID, 80, 24)
+			if err != nil {
+				m.logStore.Add("system", "System", fmt.Sprintf("Error starting AI session: %v", err), true)
+				return
+			}
+
+			m.logStore.Add("system", "System", fmt.Sprintf("Started new AI coder session: %s", providerName), false)
+		}
+
+		// IMPORTANT: Set the focused session in AICoderState so PTY view shows
+		if m.masterData != nil && m.masterData.AICoderState != nil {
+			m.masterData.AICoderState = m.masterData.AICoderState.SetFocusedSession(sessionID)
+
+			// Also switch the active session in the service for smart debouncing
+			svc.SwitchActiveSession(sessionID)
 		}
 
 		// Switch to AI Coders view to show the session
 		m.switchToView(ViewAICoders)
-		m.logStore.Add("system", "System", fmt.Sprintf("Started AI coder session: %s", providerName), false)
 	} else {
 		m.logStore.Add("system", "System", "Error: AI Coder service is not initialized", true)
 	}

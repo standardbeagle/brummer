@@ -10,11 +10,28 @@ import (
 // AICoderState manages all AI coder terminal state
 // This is a sub-model that encapsulates PTY/VT10x state according to Elm/Redux patterns
 type AICoderState struct {
-	// PTY output buffers (session ID → lines of raw output)
-	PTYOutputBuffers map[string][]string
+	// === NEW SCREEN BUFFER FIELDS ===
 
-	// VT10x terminal states (session ID → processed terminal state)
-	TerminalStates map[string]*messages.TerminalState
+	// Screen buffer for active session only (rendered terminal screen)
+	ScreenBuffer [][]rune
+
+	// Cursor position in the screen buffer
+	ScreenCursor Position
+
+	// Flag indicating screen needs redraw
+	ScreenDirty bool
+
+	// Lightweight raw buffers for all sessions (100K lines max each)
+	RawBuffers map[string]*RingBuffer
+
+	// Track where we left off processing for each session
+	ProcessedOffset map[string]int64
+
+	// Debouncing state for smart mode
+	LastUpdateTime map[string]time.Time
+	UpdatePending  map[string]bool
+
+	// === EXISTING FIELDS TO KEEP ===
 
 	// Session metadata for tracking active sessions
 	ActiveSessions map[string]SessionInfo
@@ -22,12 +39,26 @@ type AICoderState struct {
 	// Current focused session for UI
 	FocusedSession string
 
-	// Polling state management
+	// === FIELDS TO REMOVE (kept temporarily for migration) ===
+
+	// PTY output buffers (session ID → lines of raw output) - DEPRECATED: use RawBuffers
+	PTYOutputBuffers map[string][]string
+
+	// VT10x terminal states (session ID → processed terminal state) - DEPRECATED: use ScreenBuffer
+	TerminalStates map[string]*messages.TerminalState
+
+	// Polling state management - DEPRECATED: use LastUpdateTime
 	LastPollTime    time.Time
 	PollingInterval time.Duration
 
 	// Version for atomic updates and state tracking
 	version uint64
+}
+
+// Position represents cursor position in the terminal screen
+type Position struct {
+	X int // Column (0-based)
+	Y int // Row (0-based)
 }
 
 // SessionInfo contains metadata about an AI coder session
@@ -42,18 +73,108 @@ type SessionInfo struct {
 // NewAICoderState creates a new AI coder sub-model with initial state
 func NewAICoderState() *AICoderState {
 	return &AICoderState{
+		// New fields
+		ScreenBuffer:    make([][]rune, 0),
+		ScreenCursor:    Position{X: 0, Y: 0},
+		ScreenDirty:     false,
+		RawBuffers:      make(map[string]*RingBuffer),
+		ProcessedOffset: make(map[string]int64),
+		LastUpdateTime:  make(map[string]time.Time),
+		UpdatePending:   make(map[string]bool),
+
+		// Existing fields
+		ActiveSessions: make(map[string]SessionInfo),
+		FocusedSession: "",
+
+		// Deprecated fields (kept for migration)
 		PTYOutputBuffers: make(map[string][]string),
 		TerminalStates:   make(map[string]*messages.TerminalState),
-		ActiveSessions:   make(map[string]SessionInfo),
-		FocusedSession:   "",
 		PollingInterval:  100 * time.Millisecond,
-		version:          0,
+
+		version: 0,
 	}
 }
 
 // === Pure State Transformations (Elm/Redux Pattern) ===
 
+// === NEW SCREEN BUFFER METHODS ===
+
+// UpdateScreenBuffer updates the rendered terminal screen for the active session
+func (s *AICoderState) UpdateScreenBuffer(buffer [][]rune, cursor Position) *AICoderState {
+	newState := s.copy()
+	newState.ScreenBuffer = buffer
+	newState.ScreenCursor = cursor
+	newState.ScreenDirty = true
+	newState.incrementVersion()
+	return newState
+}
+
+// MarkScreenClean marks the screen as rendered (no longer dirty)
+func (s *AICoderState) MarkScreenClean() *AICoderState {
+	newState := s.copy()
+	newState.ScreenDirty = false
+	newState.incrementVersion()
+	return newState
+}
+
+// AddRawOutput adds raw PTY output to a session's ring buffer
+func (s *AICoderState) AddRawOutput(sessionID string, data []byte) *AICoderState {
+	newState := s.copy()
+
+	// Get or create ring buffer for session
+	buffer, exists := newState.RawBuffers[sessionID]
+	if !exists {
+		// Create new ring buffer with 8MB capacity (100K lines * ~80 bytes/line)
+		buffer = NewRingBuffer(8 * 1024 * 1024)
+		newState.RawBuffers[sessionID] = buffer
+		newState.ProcessedOffset[sessionID] = 0
+	}
+
+	// Append data to ring buffer
+	buffer.Write(data)
+
+	// Mark as having pending updates
+	newState.UpdatePending[sessionID] = true
+	newState.LastUpdateTime[sessionID] = time.Now()
+
+	newState.incrementVersion()
+	return newState
+}
+
+// SetProcessedOffset updates where we've processed up to for a session
+func (s *AICoderState) SetProcessedOffset(sessionID string, offset int64) *AICoderState {
+	newState := s.copy()
+	newState.ProcessedOffset[sessionID] = offset
+	newState.UpdatePending[sessionID] = false
+	newState.incrementVersion()
+	return newState
+}
+
+// SwitchActiveSession handles switching the active session
+func (s *AICoderState) SwitchActiveSession(newSessionID string) *AICoderState {
+	newState := s.copy()
+
+	// Clear current screen buffer (will be repopulated from new session)
+	newState.ScreenBuffer = make([][]rune, 0)
+	newState.ScreenCursor = Position{X: 0, Y: 0}
+	newState.ScreenDirty = true
+
+	// Update focused session
+	newState.FocusedSession = newSessionID
+
+	// Mark that we need to process this session's buffer
+	if _, exists := newState.RawBuffers[newSessionID]; exists {
+		newState.UpdatePending[newSessionID] = true
+	}
+
+	newState.incrementVersion()
+	return newState
+}
+
+// === DEPRECATED METHODS (kept for migration) ===
+
 // AddPTYOutput adds PTY output for a session (pure function)
+// DEPRECATED: Use AddRawOutput instead
 // Returns new state without modifying original (immutable update)
 func (s *AICoderState) AddPTYOutput(sessionID string, output string) *AICoderState {
 	// Copy on write for immutability
@@ -207,28 +328,68 @@ func (s *AICoderState) GetVersion() uint64 {
 // copy creates a deep copy of the state for immutability
 func (s *AICoderState) copy() *AICoderState {
 	newState := &AICoderState{
+		// New fields
+		ScreenDirty:     s.ScreenDirty,
+		ScreenCursor:    s.ScreenCursor,
+		RawBuffers:      make(map[string]*RingBuffer, len(s.RawBuffers)),
+		ProcessedOffset: make(map[string]int64, len(s.ProcessedOffset)),
+		LastUpdateTime:  make(map[string]time.Time, len(s.LastUpdateTime)),
+		UpdatePending:   make(map[string]bool, len(s.UpdatePending)),
+
+		// Existing fields
+		ActiveSessions: make(map[string]SessionInfo, len(s.ActiveSessions)),
+		FocusedSession: s.FocusedSession,
+
+		// Deprecated fields
 		PTYOutputBuffers: make(map[string][]string, len(s.PTYOutputBuffers)),
 		TerminalStates:   make(map[string]*messages.TerminalState, len(s.TerminalStates)),
-		ActiveSessions:   make(map[string]SessionInfo, len(s.ActiveSessions)),
-		FocusedSession:   s.FocusedSession,
 		LastPollTime:     s.LastPollTime,
 		PollingInterval:  s.PollingInterval,
-		version:          s.version,
+
+		version: s.version,
 	}
 
-	// Copy PTY output buffers
-	for k, v := range s.PTYOutputBuffers {
-		newState.PTYOutputBuffers[k] = append([]string{}, v...)
+	// Copy screen buffer (2D array of runes)
+	if len(s.ScreenBuffer) > 0 {
+		newState.ScreenBuffer = make([][]rune, len(s.ScreenBuffer))
+		for i, line := range s.ScreenBuffer {
+			newState.ScreenBuffer[i] = append([]rune{}, line...)
+		}
 	}
 
-	// Copy terminal states (they are immutable already)
-	for k, v := range s.TerminalStates {
-		newState.TerminalStates[k] = v
+	// Copy ring buffers (they are immutable, so just copy references)
+	for k, v := range s.RawBuffers {
+		newState.RawBuffers[k] = v
+	}
+
+	// Copy processed offsets
+	for k, v := range s.ProcessedOffset {
+		newState.ProcessedOffset[k] = v
+	}
+
+	// Copy update times
+	for k, v := range s.LastUpdateTime {
+		newState.LastUpdateTime[k] = v
+	}
+
+	// Copy pending flags
+	for k, v := range s.UpdatePending {
+		newState.UpdatePending[k] = v
 	}
 
 	// Copy session info
 	for k, v := range s.ActiveSessions {
 		newState.ActiveSessions[k] = v
+	}
+
+	// Copy deprecated PTY output buffers (for migration)
+	for k, v := range s.PTYOutputBuffers {
+		newState.PTYOutputBuffers[k] = append([]string{}, v...)
+	}
+
+	// Copy deprecated terminal states (they are immutable already)
+	for k, v := range s.TerminalStates {
+		newState.TerminalStates[k] = v
 	}
 
 	return newState

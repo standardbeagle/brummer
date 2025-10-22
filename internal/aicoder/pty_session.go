@@ -16,13 +16,88 @@ import (
 	"github.com/hinshun/vt10x"
 )
 
+var (
+	// Debug logging for PTY output - set to true to enable
+	debugPTYOutput = os.Getenv("DEBUG_PTY_OUTPUT") == "true"
+	debugFile      *os.File
+	debugMutex     sync.Mutex
+)
+
+// initDebugLogging initializes the debug log file if enabled
+func initDebugLogging() {
+	if debugPTYOutput && debugFile == nil {
+		debugMutex.Lock()
+		defer debugMutex.Unlock()
+
+		if debugFile == nil {
+			filename := fmt.Sprintf("pty-debug-%s.log", time.Now().Format("20060102-150405"))
+			file, err := os.Create(filename)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to create debug log: %v\n", err)
+				return
+			}
+			debugFile = file
+			fmt.Fprintf(os.Stderr, "PTY debug logging enabled: %s\n", filename)
+
+			// Write header
+			debugFile.WriteString("=== PTY Debug Log ===\n")
+			debugFile.WriteString(fmt.Sprintf("Started: %s\n", time.Now().Format(time.RFC3339)))
+			debugFile.WriteString("Format: [timestamp] [hex] raw_bytes\n")
+			debugFile.WriteString("==================\n\n")
+		}
+	}
+}
+
+// logPTYData logs raw PTY data to debug file
+func logPTYData(data []byte, source string) {
+	if debugPTYOutput && debugFile != nil {
+		debugMutex.Lock()
+		defer debugMutex.Unlock()
+
+		timestamp := time.Now().Format("15:04:05.000")
+
+		// Write timestamp and source
+		debugFile.WriteString(fmt.Sprintf("[%s] [%s] ", timestamp, source))
+
+		// Write hex representation
+		for _, b := range data {
+			debugFile.WriteString(fmt.Sprintf("%02X ", b))
+		}
+		debugFile.WriteString("\n")
+
+		// Write ASCII representation (with control codes shown)
+		debugFile.WriteString(fmt.Sprintf("[%s] [%s] ", timestamp, source))
+		for _, b := range data {
+			if b >= 32 && b < 127 {
+				debugFile.WriteString(string(b))
+			} else if b == '\n' {
+				debugFile.WriteString("\\n")
+			} else if b == '\r' {
+				debugFile.WriteString("\\r")
+			} else if b == '\t' {
+				debugFile.WriteString("\\t")
+			} else if b == 27 {
+				debugFile.WriteString("\\e")
+			} else {
+				debugFile.WriteString(fmt.Sprintf("\\x%02X", b))
+			}
+		}
+		debugFile.WriteString("\n\n")
+
+		// Flush to ensure data is written
+		debugFile.Sync()
+	}
+}
+
 // PTYSession represents a pseudo-terminal session for an AI coder
 type PTYSession struct {
 	ID           string
 	Name         string
 	Command      *exec.Cmd
 	PTY          *os.File
-	Terminal     vt10x.Terminal // vt10x terminal emulator
+	Terminal     vt10x.Terminal // vt10x terminal emulator (DEPRECATED - use RawBuffer)
+	RawBuffer    *RawPTYBuffer  // Raw PTY buffer for direct ANSI passthrough
+	UseRawMode   bool           // If true, use RawBuffer instead of Terminal
 	IsActive     bool
 	IsFullScreen bool
 	DebugMode    bool
@@ -33,7 +108,7 @@ type PTYSession struct {
 	// Terminal configuration state for cleanup
 	terminalState *terminalState
 
-	// Event channels
+	// Event channels - SIMPLIFIED: Reduced from 1000 to 100 for 1-3 sessions
 	OutputChan chan []byte
 	InputChan  chan []byte
 	EventChan  chan PTYEvent
@@ -54,14 +129,7 @@ type PTYSession struct {
 	closeOnce sync.Once
 	closed    bool
 
-	// Memory monitoring for channel buffer sizes
-	channelMemoryStats struct {
-		outputChanSize int
-		inputChanSize  int
-		eventChanSize  int
-		lastCheck      time.Time
-		mu             sync.RWMutex
-	}
+	// REMOVED: channelMemoryStats - not needed for 1-3 sessions
 }
 
 // IsAtStartOfLine returns true if the cursor is at the beginning of a line
@@ -130,6 +198,9 @@ func NewPTYSession(id, name, command string, args []string) (*PTYSession, error)
 
 // NewPTYSessionWithEnv creates a new PTY session with additional environment variables
 func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[string]string) (*PTYSession, error) {
+	// Initialize debug logging if enabled
+	initDebugLogging()
+
 	// Detect if this is a stream-json session
 	isStreamJSON := false
 	for i, arg := range args {
@@ -172,9 +243,21 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 		terminalState = nil // Ensure we don't try to restore invalid state
 	}
 
-	// Create vt10x terminal emulator with LARGE virtual buffer for scrollback
-	// PTY stays 80x24 but vt10x gets much more space for history
-	terminal := vt10x.New(vt10x.WithSize(80, 1000)) // 1000 lines of scrollback!
+	// Create terminal emulator - use vt10x for proper terminal state handling
+	// Claude Code (Ink) does extensive screen rewriting that requires proper emulation
+	useRawMode := false // Raw mode doesn't work with Ink's aggressive rewriting
+	var terminal vt10x.Terminal
+	var rawBuffer *RawPTYBuffer
+
+	if useRawMode {
+		// Raw PTY buffer - doesn't work well with Ink's screen rewriting
+		rawBuffer = NewRawPTYBuffer(100)
+		terminal = nil
+	} else {
+		// Use vt10x with standard 24-line viewport (no massive scrollback)
+		terminal = vt10x.New(vt10x.WithSize(80, 24))
+		rawBuffer = nil
+	}
 
 	session := &PTYSession{
 		ID:            id,
@@ -182,14 +265,16 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 		Command:       cmd,
 		PTY:           ptmx,
 		Terminal:      terminal,
+		RawBuffer:     rawBuffer,
+		UseRawMode:    useRawMode,
 		IsActive:      true,
 		IsFullScreen:  false,
 		DebugMode:     false,
 		ctx:           ctx,
 		cancel:        cancel,
-		OutputChan:    make(chan []byte, 1000),
-		InputChan:     make(chan []byte, 1000),
-		EventChan:     make(chan PTYEvent, 1000),
+		OutputChan:    make(chan []byte, 100),  // SIMPLIFIED: Reduced from 1000 to 100
+		InputChan:     make(chan []byte, 100),  // SIMPLIFIED: Reduced from 1000 to 100
+		EventChan:     make(chan PTYEvent, 100), // SIMPLIFIED: Reduced from 1000 to 100
 		dataInjector:  NewDataInjector(),
 		isStreamJSON:  isStreamJSON,
 		outputHistory: make([]byte, 0, 1024*1024), // Start with 1MB capacity
@@ -202,8 +287,7 @@ func NewPTYSessionWithEnv(id, name, command string, args []string, extraEnv map[
 	go session.readLoop()
 	go session.writeLoop()
 
-	// Start periodic channel monitoring (every 30 seconds)
-	go session.channelMonitorLoop()
+	// REMOVED: channelMonitorLoop - not needed for 1-3 sessions
 
 	return session, nil
 }
@@ -240,6 +324,9 @@ func (s *PTYSession) readLoop() {
 				data := make([]byte, n)
 				copy(data, buffer[:n])
 
+				// Debug log the raw PTY output
+				logPTYData(data, "PTY_OUT")
+
 				// Store raw output in history (with ANSI codes)
 				s.historyMutex.Lock()
 				s.outputHistory = append(s.outputHistory, data...)
@@ -250,13 +337,16 @@ func (s *PTYSession) readLoop() {
 				}
 				s.historyMutex.Unlock()
 
-				// Feed data to terminal emulator
+				// Feed data to terminal emulator or raw buffer
 				if s.isStreamJSON {
 					s.processStreamJSON(data)
 				} else {
-					// Write to vt10x terminal emulator in smaller chunks to prevent partial writes
 					s.mu.Lock()
-					if s.Terminal != nil {
+					if s.UseRawMode && s.RawBuffer != nil {
+						// Write to raw buffer for direct ANSI passthrough
+						s.RawBuffer.Write(data)
+					} else if s.Terminal != nil {
+						// Write to vt10x terminal emulator in smaller chunks to prevent partial writes
 						s.writeToTerminalInChunks(data)
 					}
 					s.mu.Unlock()
@@ -292,6 +382,8 @@ func (s *PTYSession) writeLoop() {
 		case <-s.ctx.Done():
 			return
 		case data := <-s.InputChan:
+			// Debug log the input being sent to PTY
+			logPTYData(data, "PTY_IN")
 			if _, err := s.PTY.Write(data); err != nil {
 				// Check if session is closed before sending to channel
 				s.mu.RLock()
@@ -375,6 +467,7 @@ func (s *PTYSession) WriteInputNonBlocking(data []byte) error {
 	s.mu.RUnlock()
 
 	// Direct write to PTY for immediate response - bypasses InputChan entirely
+	logPTYData(data, "PTY_IN_DIRECT")
 	if _, err := s.PTY.Write(data); err != nil {
 		return fmt.Errorf("direct write failed: %w", err)
 	}
@@ -520,6 +613,47 @@ func (s *PTYSession) GetOutputHistory() []byte {
 	history := make([]byte, len(s.outputHistory))
 	copy(history, s.outputHistory)
 	return history
+}
+
+// GetScreenContent returns the current terminal screen content
+// In raw mode, this returns ANSI codes directly for Bubble Tea to render
+func (s *PTYSession) GetScreenContent() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.UseRawMode && s.RawBuffer != nil {
+		// Return raw ANSI content for direct passthrough
+		return s.RawBuffer.GetScreenContent()
+	} else if s.Terminal != nil {
+		// Fallback to vt10x String() method
+		return s.Terminal.String()
+	}
+
+	return ""
+}
+
+// GetRawScreenLines returns the screen as lines of raw bytes
+// This is useful for processing line by line with ANSI codes intact
+func (s *PTYSession) GetRawScreenLines() [][]byte {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	if s.UseRawMode && s.RawBuffer != nil {
+		return s.RawBuffer.GetLines()
+	}
+
+	// Fallback: convert terminal string to lines
+	if s.Terminal != nil {
+		content := s.Terminal.String()
+		lines := strings.Split(content, "\n")
+		result := make([][]byte, len(lines))
+		for i, line := range lines {
+			result[i] = []byte(line)
+		}
+		return result
+	}
+
+	return nil
 }
 
 // Close closes the PTY session
@@ -735,68 +869,6 @@ func (s *PTYSession) logTerminalError(message string, err error, context map[str
 	}
 }
 
-// UpdateChannelStats updates channel usage statistics for memory monitoring
-func (s *PTYSession) UpdateChannelStats() {
-	s.channelMemoryStats.mu.Lock()
-	defer s.channelMemoryStats.mu.Unlock()
-
-	// Update current channel sizes
-	s.channelMemoryStats.outputChanSize = len(s.OutputChan)
-	s.channelMemoryStats.inputChanSize = len(s.InputChan)
-	s.channelMemoryStats.eventChanSize = len(s.EventChan)
-	s.channelMemoryStats.lastCheck = time.Now()
-
-	// Log warning if any channel is getting full (>80% capacity)
-	const warningThreshold = 800 // 80% of 1000 buffer size
-
-	if s.channelMemoryStats.outputChanSize > warningThreshold {
-		s.logTerminalError("output channel high usage", nil, map[string]interface{}{
-			"channel_size": s.channelMemoryStats.outputChanSize,
-			"capacity":     1000,
-			"usage_pct":    float64(s.channelMemoryStats.outputChanSize) / 10.0,
-		})
-	}
-
-	if s.channelMemoryStats.inputChanSize > warningThreshold {
-		s.logTerminalError("input channel high usage", nil, map[string]interface{}{
-			"channel_size": s.channelMemoryStats.inputChanSize,
-			"capacity":     1000,
-			"usage_pct":    float64(s.channelMemoryStats.inputChanSize) / 10.0,
-		})
-	}
-
-	if s.channelMemoryStats.eventChanSize > warningThreshold {
-		s.logTerminalError("event channel high usage", nil, map[string]interface{}{
-			"channel_size": s.channelMemoryStats.eventChanSize,
-			"capacity":     1000,
-			"usage_pct":    float64(s.channelMemoryStats.eventChanSize) / 10.0,
-		})
-	}
-}
-
-// GetChannelStats returns current channel usage statistics
-func (s *PTYSession) GetChannelStats() (outputSize, inputSize, eventSize int, lastCheck time.Time) {
-	s.channelMemoryStats.mu.RLock()
-	defer s.channelMemoryStats.mu.RUnlock()
-
-	return s.channelMemoryStats.outputChanSize,
-		s.channelMemoryStats.inputChanSize,
-		s.channelMemoryStats.eventChanSize,
-		s.channelMemoryStats.lastCheck
-}
-
-// channelMonitorLoop periodically monitors channel usage to detect memory issues
-func (s *PTYSession) channelMonitorLoop() {
-	ticker := time.NewTicker(30 * time.Second) // Check every 30 seconds
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-s.ctx.Done():
-			return
-		case <-ticker.C:
-			// Update and check channel statistics
-			s.UpdateChannelStats()
-		}
-	}
-}
+// REMOVED: UpdateChannelStats - not needed for 1-3 sessions
+// REMOVED: GetChannelStats - not needed for 1-3 sessions
+// REMOVED: channelMonitorLoop - not needed for 1-3 sessions

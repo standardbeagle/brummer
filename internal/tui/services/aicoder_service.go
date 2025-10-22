@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/hinshun/vt10x"
 	"github.com/standardbeagle/brummer/internal/aicoder"
 	"github.com/standardbeagle/brummer/internal/logs"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
@@ -522,51 +523,25 @@ func (s *AICoderService) GetScreenBuffer(sessionID string) ([][]rune, error) {
 	return s.getTerminalScreen(session.PTYSession), nil
 }
 
-// getTerminalScreen gets the terminal screen content
+// getTerminalScreen gets the terminal screen content with full color support
 func (s *AICoderService) getTerminalScreen(terminal interface{}) [][]rune {
-	// Check if this is a PTYSession with GetScreenContent method (raw mode support)
-	if ptySession, ok := terminal.(interface{ GetScreenContent() string }); ok {
-		// Get raw ANSI content directly
-		content := ptySession.GetScreenContent()
-		if content == "" {
+	// If this is a PTYSession, extract the vt10x.Terminal
+	if ptySession, ok := terminal.(*aicoder.PTYSession); ok {
+		terminal = ptySession.GetTerminal()
+		if terminal == nil {
 			return make([][]rune, 0)
 		}
-
-		// Split into lines and convert to rune arrays
-		// Keep ANSI codes intact for Bubble Tea to render
-		lines := strings.Split(content, "\n")
-		screen := make([][]rune, len(lines))
-		for i, line := range lines {
-			screen[i] = []rune(line)
-		}
-		return screen
 	}
 
-	// Try to get the View interface for viewport rendering
-	view, hasView := terminal.(interface {
-		Size() (cols, rows int)
-		Cell(x, y int) interface{} // Returns Glyph with Char, FG, BG
-	})
-
-	// If we can't get the View interface, fall back to String()
-	if !hasView {
-		if term, ok := terminal.(interface{ String() string }); ok {
-			visibleContent := term.String()
-			if visibleContent == "" {
-				return make([][]rune, 0)
-			}
-			lines := strings.Split(visibleContent, "\n")
-			screenBuffer := make([][]rune, len(lines))
-			for i, line := range lines {
-				screenBuffer[i] = []rune(line)
-			}
-			return screenBuffer
-		}
+	// Now we should have a vt10x.Terminal interface
+	vt10xTerm, ok := terminal.(vt10x.Terminal)
+	if !ok {
+		s.logSystemEvent(fmt.Sprintf("DEBUG: Expected vt10x.Terminal, got %T", terminal))
 		return make([][]rune, 0)
 	}
 
-	// Get terminal dimensions
-	cols, rows := view.Size()
+	// Get terminal dimensions directly from vt10x.Terminal
+	cols, rows := vt10xTerm.Size()
 	if cols == 0 {
 		cols = 80 // Default width
 	}
@@ -587,13 +562,13 @@ func (s *AICoderService) getTerminalScreen(terminal interface{}) [][]rune {
 
 		// Process each column position
 		for x := 0; x < cols; x++ {
-			// Get the cell from vt10x at this position
-			cell := view.Cell(x, y)
+			// Get the cell from vt10x at this position (returns vt10x.Glyph)
+			cell := vt10xTerm.Cell(x, y)
 
-			// Extract cell properties using reflection
-			char := s.getRuneField(cell, "Char")
-			fg := s.getColorField(cell, "FG")
-			bg := s.getColorField(cell, "BG")
+			// Extract cell properties directly from Glyph struct
+			char := cell.Char
+			fg := int(cell.FG)  // vt10x.Color is uint32
+			bg := int(cell.BG)
 
 			// Skip trailing spaces on empty lines
 			if char == 0 || char == ' ' {

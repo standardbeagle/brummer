@@ -40,7 +40,40 @@ type AICoderSessionEndedMsg struct {
 	Reason    string // "stopped", "crashed", "error"
 }
 
+// === NEW BATCH MESSAGES ===
+
+// AICoderBatchUpdateMsg contains debounced PTY output ready for processing.
+// This replaces individual AICoderPTYOutputMsg for better performance.
+type AICoderBatchUpdateMsg struct {
+	SessionID string
+	Data      []byte    // Batched data from debouncer
+	Timestamp time.Time // When batch was collected
+}
+
+// AICoderScreenSyncMsg updates the screen buffer in the model.
+// Sent after processing batched PTY output through vt10x.
+type AICoderScreenSyncMsg struct {
+	SessionID    string
+	ScreenBuffer [][]rune        // Rendered terminal screen
+	CursorPos    CursorPosition // Cursor position
+}
+
+// CursorPosition represents cursor position in screen buffer
+type CursorPosition struct {
+	X int
+	Y int
+}
+
+// AICoderSessionSwitchMsg indicates active session is switching.
+type AICoderSessionSwitchMsg struct {
+	OldSessionID string
+	NewSessionID string
+}
+
+// === DEPRECATED MESSAGES ===
+
 // AICoderPTYOutputMsg contains PTY output data from an AI coding session.
+// DEPRECATED: Use AICoderBatchUpdateMsg instead for debounced updates.
 type AICoderPTYOutputMsg struct {
 	SessionID string
 	Data      []byte
@@ -112,6 +145,7 @@ type SwitchToPTYMsg struct {
 }
 
 // AICoderPollPTYMsg is a tick message that triggers PTY output polling.
+// DEPRECATED: No longer needed with proactive debounced updates.
 type AICoderPollPTYMsg struct {
 }
 

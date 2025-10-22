@@ -4,6 +4,7 @@ import (
 	"fmt"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
+	"github.com/standardbeagle/brummer/internal/tui/state"
 )
 
 // AICoderMessageHandler handles AI coder-related messages
@@ -19,6 +20,10 @@ func (h *AICoderMessageHandler) CanHandle(msg tea.Msg) bool {
 	switch msg.(type) {
 	case messages.AICoderSessionCreatedMsg, messages.AICoderSessionUpdatedMsg, messages.AICoderSessionEndedMsg:
 		return true
+	// NEW: Batch messages
+	case messages.AICoderBatchUpdateMsg, messages.AICoderScreenSyncMsg, messages.AICoderSessionSwitchMsg:
+		return true
+	// DEPRECATED: Old messages (kept for migration)
 	case messages.AICoderPTYOutputMsg, messages.AICoderErrorMsg:
 		return true
 	default:
@@ -48,6 +53,39 @@ func (h *AICoderMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mo
 			newState := model.masterData.AICoderState.RemoveSession(m.SessionID)
 			model.masterData.AICoderState = newState
 			return model, nil
+
+		// === NEW BATCH MESSAGE HANDLERS ===
+
+		case messages.AICoderBatchUpdateMsg:
+			// Process batched PTY output
+			if len(m.Data) > 0 {
+				// Store raw output in ring buffer
+				newState := model.masterData.AICoderState.AddRawOutput(m.SessionID, m.Data)
+				model.masterData.AICoderState = newState
+
+				// Log to log store for visibility
+				if model.logStore != nil {
+					model.logStore.Add("ai-coder", m.SessionID, string(m.Data), false)
+				}
+			}
+			return model, nil
+
+		case messages.AICoderScreenSyncMsg:
+			// Update screen buffer with rendered terminal
+			newState := model.masterData.AICoderState.UpdateScreenBuffer(
+				m.ScreenBuffer,
+				state.Position{X: m.CursorPos.X, Y: m.CursorPos.Y},
+			)
+			model.masterData.AICoderState = newState
+			return model, nil
+
+		case messages.AICoderSessionSwitchMsg:
+			// Handle session switch
+			newState := model.masterData.AICoderState.SwitchActiveSession(m.NewSessionID)
+			model.masterData.AICoderState = newState
+			return model, nil
+
+		// === DEPRECATED MESSAGE HANDLERS (kept for migration) ===
 
 		case messages.AICoderPTYOutputMsg:
 			// Write PTY output to log store for visibility in logs tab

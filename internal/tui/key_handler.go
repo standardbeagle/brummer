@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/standardbeagle/brummer/internal/tui/services"
 )
 
 // KeyContext provides rich context about the current state for handlers
@@ -286,15 +287,9 @@ func (h *AICoderKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 		return false
 	}
 
-	// In PTY mode, we want to pass most keys through to the terminal
-	// Only handle specific control keys
+	// In PTY mode, handle ALL keys to send to terminal
 	if ctx.Context == "pty" {
-		switch key.Type {
-		case tea.KeyEsc:
-			return true // Handle ESC to exit PTY mode
-		default:
-			return false // Pass everything else to terminal
-		}
+		return true // Handle all keys in PTY mode
 	}
 
 	// In list mode, handle navigation keys
@@ -307,16 +302,79 @@ func (h *AICoderKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 }
 
 func (h *AICoderKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
-	// Delegate to the AI Coder component
-	// This is where you'd call the component's Update method
-	// or trigger appropriate actions
+	// Check if we're in PTY mode
+	if model.masterData != nil && model.masterData.AICoderState != nil {
+		aiState := model.masterData.AICoderState
+		focusedSession := aiState.FocusedSession
 
-	switch key.String() {
-	case "esc":
-		// Exit PTY mode
-		return func() tea.Msg {
-			return ExitPTYModeMsg{}
+		// If we have a focused session and we're viewing it, send input to PTY
+		if focusedSession != "" && model.currentView() == ViewAICoders {
+			// Special handling for escape key to exit PTY mode
+			if key.Type == tea.KeyEsc {
+				// Clear the focused session to return to list view
+				model.masterData.AICoderState = aiState.SetFocusedSession("")
+				return nil
+			}
+
+			// Convert key to bytes for PTY input
+			var input []byte
+			switch key.Type {
+			case tea.KeyEnter:
+				input = []byte("\r")
+			case tea.KeyTab:
+				input = []byte("\t")
+			case tea.KeyBackspace:
+				input = []byte{127} // DEL character
+			case tea.KeyDelete:
+				input = []byte("\x1b[3~")
+			case tea.KeyUp:
+				input = []byte("\x1b[A")
+			case tea.KeyDown:
+				input = []byte("\x1b[B")
+			case tea.KeyRight:
+				input = []byte("\x1b[C")
+			case tea.KeyLeft:
+				input = []byte("\x1b[D")
+			case tea.KeyHome:
+				input = []byte("\x1b[H")
+			case tea.KeyEnd:
+				input = []byte("\x1b[F")
+			case tea.KeyPgUp:
+				input = []byte("\x1b[5~")
+			case tea.KeyPgDown:
+				input = []byte("\x1b[6~")
+			case tea.KeyCtrlC:
+				input = []byte{3} // ETX (Ctrl-C)
+			case tea.KeyCtrlD:
+				input = []byte{4} // EOT (Ctrl-D)
+			case tea.KeyCtrlZ:
+				input = []byte{26} // SUB (Ctrl-Z)
+			case tea.KeyRunes:
+				input = []byte(string(key.Runes))
+			default:
+				// For other keys, try to convert to string
+				if key.String() != "" {
+					input = []byte(key.String())
+				}
+			}
+
+			// Send input to PTY via the service
+			if len(input) > 0 && model.aiCoderService != nil {
+				svc := model.aiCoderService.(*services.AICoderService)
+				if err := svc.SendInput(focusedSession, input); err != nil {
+					// Log error but don't crash
+					if model.logStore != nil {
+						model.logStore.Add("system", "System", fmt.Sprintf("Error sending input to PTY: %v", err), true)
+					}
+				}
+			}
+
+			return nil
 		}
+	}
+
+	// Handle list mode keys
+	switch key.String() {
 	case "enter":
 		// Enter PTY mode for selected session
 		return func() tea.Msg {

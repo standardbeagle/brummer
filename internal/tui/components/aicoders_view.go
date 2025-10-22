@@ -2,7 +2,6 @@ package components
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -114,43 +113,57 @@ func (c *AICodersViewComponent) renderPTYViewWithState(aiState *state.AICoderSta
 	lines = append(lines, c.headerStyle.Render(fmt.Sprintf("Session: %s", sessionInfo.Name)))
 	lines = append(lines, strings.Repeat("─", c.width))
 
-	// Get terminal content from sub-model
-	ptyLines := aiState.GetPTYOutput(sessionID)
-	terminalState := aiState.GetTerminalState(sessionID)
-
-	// Prefer VT10x terminal state if available, otherwise use PTY buffer
-	var contentLines []string
-	if terminalState != nil && len(terminalState.Lines) > 0 {
-		contentLines = terminalState.Lines
-	} else if len(ptyLines) > 0 {
-		contentLines = ptyLines
-	} else {
-		contentLines = []string{
-			c.normalStyle.Render(fmt.Sprintf("Terminal session starting for: %s", sessionInfo.Name)),
-			c.normalStyle.Render("Waiting for PTY output from AI coder..."),
+	// NEW: Use screen buffer for rendering (optimized for 60 FPS)
+	if aiState.ScreenBuffer != nil && len(aiState.ScreenBuffer) > 0 {
+		// Direct rendering from screen buffer - already processed by vt10x
+		for _, runeSlice := range aiState.ScreenBuffer {
+			line := string(runeSlice)
+			lines = append(lines, line)
 		}
-	}
 
-	// Display content with proper width handling
-	for _, line := range contentLines {
-		cleanLine := processANSIFormatting(line)
+		// Show cursor position if dirty (needs redraw)
+		if aiState.ScreenDirty {
+			// Could add cursor indicator here if needed
+		}
+	} else {
+		// Fallback: Use deprecated methods during migration
+		ptyLines := aiState.GetPTYOutput(sessionID)
+		terminalState := aiState.GetTerminalState(sessionID)
 
-		// Handle long lines with word wrapping
-		if len(cleanLine) > c.width {
-			for len(cleanLine) > c.width {
-				lines = append(lines, cleanLine[:c.width])
-				cleanLine = cleanLine[c.width:]
+		// Prefer VT10x terminal state if available, otherwise use PTY buffer
+		var contentLines []string
+		if terminalState != nil && len(terminalState.Lines) > 0 {
+			contentLines = terminalState.Lines
+		} else if len(ptyLines) > 0 {
+			contentLines = ptyLines
+		} else {
+			contentLines = []string{
+				c.normalStyle.Render(fmt.Sprintf("Terminal session starting for: %s", sessionInfo.Name)),
+				c.normalStyle.Render("Waiting for PTY output from AI coder..."),
 			}
-			if len(cleanLine) > 0 {
+		}
+
+		// Display fallback content with proper width handling
+		for _, line := range contentLines {
+			cleanLine := processANSIFormatting(line)
+
+			// Handle long lines with word wrapping
+			if len(cleanLine) > c.width {
+				for len(cleanLine) > c.width {
+					lines = append(lines, cleanLine[:c.width])
+					cleanLine = cleanLine[c.width:]
+				}
+				if len(cleanLine) > 0 {
+					lines = append(lines, cleanLine)
+				}
+			} else {
 				lines = append(lines, cleanLine)
 			}
-		} else {
-			lines = append(lines, cleanLine)
-		}
 
-		// Stop if we've filled the viewport (minus header/footer space)
-		if len(lines) >= c.height-4 {
-			break
+			// Stop if we've filled the viewport (minus header/footer space)
+			if len(lines) >= c.height-4 {
+				break
+			}
 		}
 	}
 
@@ -251,15 +264,9 @@ func (c *AICodersViewComponent) SetSize(width, height int) {
 
 // processANSIFormatting processes common ANSI escape codes for terminal display
 func processANSIFormatting(line string) string {
-	// Remove ANSI color codes and formatting for cleaner display
-	// This is a simple implementation - can be enhanced for full ANSI support
-	ansiRegex := regexp.MustCompile(`\x1b\[[0-9;]*[mK]`)
-	cleanLine := ansiRegex.ReplaceAllString(line, "")
-
-	// Handle other common escape sequences
-	cleanLine = strings.ReplaceAll(cleanLine, "\x1b[2K", "") // Clear line
-	cleanLine = strings.ReplaceAll(cleanLine, "\x1b[H", "")  // Home cursor
-
-	return cleanLine
+	// TEMPORARY: Return the line as-is to preserve ANSI color codes
+	// This allows 24-bit color and formatting to pass through to the terminal
+	// TODO: Implement proper ANSI rendering with lipgloss styles
+	return line
 }
 
