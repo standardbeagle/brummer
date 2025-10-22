@@ -95,6 +95,15 @@ type ScrollLogsDownMsg struct{}
 
 type ToggleAutoScrollMsg struct{}
 
+// Log filter messages
+type SetShowPatternMsg struct {
+	Pattern string
+}
+
+type SetHidePatternMsg struct {
+	Pattern string
+}
+
 // Web view navigation messages
 type NavigateWebUpMsg struct{}
 

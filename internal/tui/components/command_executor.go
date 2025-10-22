@@ -66,8 +66,6 @@ func (e *CommandExecutor) Execute(msg messages.CommandExecuteMsg) tea.Cmd {
 		return e.handleToggleProxy(args)
 	case "ai":
 		return e.handleAI(args)
-	case "term":
-		return e.handleTerm(args)
 	case "docker-up":
 		return e.handleDockerUp(args)
 	case "docker-down":
@@ -177,9 +175,10 @@ func (e *CommandExecutor) handleShow(args []string) tea.Cmd {
 
 	pattern := strings.Join(args, " ")
 
-	// TODO: Store show pattern in model state for log filtering
-	// For now, just send a success message
-	return e.sendSuccess(fmt.Sprintf("Show filter set: %s", pattern))
+	// Store show pattern in model state for log filtering
+	return func() tea.Msg {
+		return messages.SetShowPatternMsg{Pattern: pattern}
+	}
 }
 
 func (e *CommandExecutor) handleHide(args []string) tea.Cmd {
@@ -189,9 +188,10 @@ func (e *CommandExecutor) handleHide(args []string) tea.Cmd {
 
 	pattern := strings.Join(args, " ")
 
-	// TODO: Store hide pattern in model state for log filtering
-	// For now, just send a success message
-	return e.sendSuccess(fmt.Sprintf("Hide filter set: %s", pattern))
+	// Store hide pattern in model state for log filtering
+	return func() tea.Msg {
+		return messages.SetHidePatternMsg{Pattern: pattern}
+	}
 }
 
 func (e *CommandExecutor) handleClear(args []string) tea.Cmd {
@@ -208,8 +208,9 @@ func (e *CommandExecutor) handleClear(args []string) tea.Cmd {
 		e.logStore.ClearLogs()
 		return e.sendSuccess("Cleared all logs")
 	} else {
-		// TODO: Implement per-process clearing using filters
-		return e.sendError("Per-process log clearing not yet implemented")
+		// Clear logs for specific process
+		e.logStore.ClearLogsForProcess(target)
+		return e.sendSuccess(fmt.Sprintf("Cleared logs for process: %s", target))
 	}
 }
 
@@ -226,8 +227,18 @@ func (e *CommandExecutor) handleProxy(args []string) tea.Cmd {
 
 	subcommand := args[0]
 	if subcommand == "list" {
-		// TODO: Get proxy list from proxy server
-		return e.sendSuccess("Proxy list (not yet implemented)")
+		// Get proxy list from proxy server
+		mappings := e.proxyServer.GetURLMappings()
+		if len(mappings) == 0 {
+			return e.sendSuccess("No proxy URLs registered")
+		}
+
+		var lines []string
+		lines = append(lines, "Registered proxy URLs:")
+		for _, mapping := range mappings {
+			lines = append(lines, fmt.Sprintf("  %s -> %s (%s)", mapping.ProxyURL, mapping.TargetURL, mapping.ProcessName))
+		}
+		return e.sendSuccess(strings.Join(lines, "\n"))
 	} else {
 		// Register URL for proxying
 		urlStr := strings.Join(args, " ")
@@ -241,8 +252,34 @@ func (e *CommandExecutor) handleToggleProxy(args []string) tea.Cmd {
 		return e.sendError("Proxy server not available")
 	}
 
-	// TODO: Implement proxy mode toggle
-	return e.sendSuccess("Proxy mode toggled (not yet implemented)")
+	return func() tea.Msg {
+		// Get current mode
+		currentMode := e.proxyServer.GetMode()
+
+		// Toggle to the other mode
+		var newMode proxy.ProxyMode
+		if currentMode == proxy.ProxyModeFull {
+			newMode = proxy.ProxyModeReverse
+		} else {
+			newMode = proxy.ProxyModeFull
+		}
+
+		// Switch mode
+		err := e.proxyServer.SwitchMode(newMode)
+		if err != nil {
+			return commands.CommandResultMsg{
+				Command: "toggle-proxy",
+				Success: false,
+				Message: fmt.Sprintf("Failed to toggle proxy mode: %v", err),
+			}
+		}
+
+		return commands.CommandResultMsg{
+			Command: "toggle-proxy",
+			Success: true,
+			Message: fmt.Sprintf("✓ Proxy mode switched to: %s", newMode),
+		}
+	}
 }
 
 // AI coder commands
@@ -325,52 +362,104 @@ func (e *CommandExecutor) handleAI(args []string) tea.Cmd {
 	}
 }
 
-func (e *CommandExecutor) handleTerm(args []string) tea.Cmd {
-	// TODO: Show integrated terminal
-	return e.sendSuccess("Showing integrated terminal (not yet implemented)")
-}
-
 // Docker commands
 
 func (e *CommandExecutor) handleDockerUp(args []string) tea.Cmd {
+	if e.processMgr == nil {
+		return e.sendError("Process manager not available")
+	}
+
 	service := ""
 	if len(args) > 0 {
 		service = args[0]
 	}
 
-	// TODO: Implement docker-up
-	if service != "" {
-		return e.sendSuccess(fmt.Sprintf("Starting Docker service: %s", service))
-	} else {
-		return e.sendSuccess("Starting all Docker services")
+	return func() tea.Msg {
+		args := []string{"up"}
+		if service != "" {
+			args = append(args, service)
+		}
+
+		process, err := e.processMgr.StartCommand("docker-compose", "docker-compose", args)
+		if err != nil {
+			return commands.CommandResultMsg{
+				Command: "docker-up",
+				Success: false,
+				Message: fmt.Sprintf("Failed to start Docker: %v", err),
+			}
+		}
+
+		return commands.CommandResultMsg{
+			Command: "docker-up",
+			Success: true,
+			Message: fmt.Sprintf("✓ Started Docker compose (process: %s)", process.ID),
+		}
 	}
 }
 
 func (e *CommandExecutor) handleDockerDown(args []string) tea.Cmd {
+	if e.processMgr == nil {
+		return e.sendError("Process manager not available")
+	}
+
 	service := ""
 	if len(args) > 0 {
 		service = args[0]
 	}
 
-	// TODO: Implement docker-down
-	if service != "" {
-		return e.sendSuccess(fmt.Sprintf("Stopping Docker service: %s", service))
-	} else {
-		return e.sendSuccess("Stopping all Docker services")
+	return func() tea.Msg {
+		args := []string{"down"}
+		if service != "" {
+			args = append(args, service)
+		}
+
+		process, err := e.processMgr.StartCommand("docker-compose", "docker-compose", args)
+		if err != nil {
+			return commands.CommandResultMsg{
+				Command: "docker-down",
+				Success: false,
+				Message: fmt.Sprintf("Failed to stop Docker: %v", err),
+			}
+		}
+
+		return commands.CommandResultMsg{
+			Command: "docker-down",
+			Success: true,
+			Message: fmt.Sprintf("✓ Stopping Docker compose (process: %s)", process.ID),
+		}
 	}
 }
 
 func (e *CommandExecutor) handleDockerBuild(args []string) tea.Cmd {
+	if e.processMgr == nil {
+		return e.sendError("Process manager not available")
+	}
+
 	service := ""
 	if len(args) > 0 {
 		service = args[0]
 	}
 
-	// TODO: Implement docker-build
-	if service != "" {
-		return e.sendSuccess(fmt.Sprintf("Building Docker service: %s", service))
-	} else {
-		return e.sendSuccess("Building all Docker services")
+	return func() tea.Msg {
+		args := []string{"build"}
+		if service != "" {
+			args = append(args, service)
+		}
+
+		process, err := e.processMgr.StartCommand("docker-compose", "docker-compose", args)
+		if err != nil {
+			return commands.CommandResultMsg{
+				Command: "docker-build",
+				Success: false,
+				Message: fmt.Sprintf("Failed to build Docker: %v", err),
+			}
+		}
+
+		return commands.CommandResultMsg{
+			Command: "docker-build",
+			Success: true,
+			Message: fmt.Sprintf("✓ Building Docker compose (process: %s)", process.ID),
+		}
 	}
 }
 

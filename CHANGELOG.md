@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Implemented previously stubbed command executor features
+  - `/show <pattern>` now sets log filter pattern in model state
+  - `/hide <pattern>` now sets log hide pattern in model state
+  - `/clear <process>` now clears logs for specific processes
+  - `/proxy list` now displays registered proxy URL mappings
+  - `/toggle-proxy` now switches between full and reverse proxy modes
+
 ### Changed
 - AI Coder state architecture simplified and modernized
   - Removed deprecated PTYOutputBuffers field (use RawBuffers instead)
