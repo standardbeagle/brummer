@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- AI Coder state architecture simplified and modernized
+  - Removed deprecated PTYOutputBuffers field (use RawBuffers instead)
+  - Removed deprecated TerminalStates field (use ScreenBuffer instead)
+  - Removed deprecated polling state management fields
+  - Removed legacy AddPTYOutput and UpdateTerminalState methods
+  - Cleaner, more maintainable state management
+
 ### Added
 - AI Coder viewport scrolling with full scrollback buffer support
   - Arrow keys (↑↓) and vim keys (j/k) now scroll through terminal history

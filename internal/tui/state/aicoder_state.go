@@ -1,10 +1,7 @@
 package state
 
 import (
-	"strings"
 	"time"
-
-	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
 
 // AICoderState manages all AI coder terminal state
@@ -42,18 +39,6 @@ type AICoderState struct {
 	// Current focused session for UI
 	FocusedSession string
 
-	// === FIELDS TO REMOVE (kept temporarily for migration) ===
-
-	// PTY output buffers (session ID → lines of raw output) - DEPRECATED: use RawBuffers
-	PTYOutputBuffers map[string][]string
-
-	// VT10x terminal states (session ID → processed terminal state) - DEPRECATED: use ScreenBuffer
-	TerminalStates map[string]*messages.TerminalState
-
-	// Polling state management - DEPRECATED: use LastUpdateTime
-	LastPollTime    time.Time
-	PollingInterval time.Duration
-
 	// Version for atomic updates and state tracking
 	version uint64
 }
@@ -88,11 +73,6 @@ func NewAICoderState() *AICoderState {
 		// Existing fields
 		ActiveSessions: make(map[string]SessionInfo),
 		FocusedSession: "",
-
-		// Deprecated fields (kept for migration)
-		PTYOutputBuffers: make(map[string][]string),
-		TerminalStates:   make(map[string]*messages.TerminalState),
-		PollingInterval:  100 * time.Millisecond,
 
 		version: 0,
 	}
@@ -174,50 +154,9 @@ func (s *AICoderState) SwitchActiveSession(newSessionID string) *AICoderState {
 	return newState
 }
 
-// === DEPRECATED METHODS (kept for migration) ===
-
-// AddPTYOutput adds PTY output for a session (pure function)
-// DEPRECATED: Use AddRawOutput instead
-// Returns new state without modifying original (immutable update)
-func (s *AICoderState) AddPTYOutput(sessionID string, output string) *AICoderState {
-	// Copy on write for immutability
-	newState := s.copy()
-
-	// Split output into lines
-	lines := strings.Split(output, "\n")
-
-	// Get existing buffer or create new one
-	existingBuffer := newState.PTYOutputBuffers[sessionID]
-	buffer := make([]string, 0, len(existingBuffer)+len(lines))
-	buffer = append(buffer, existingBuffer...)
-
-	// Add new lines, filtering out empty strings at the end
-	for _, line := range lines {
-		if line != "" || len(buffer) == 0 || buffer[len(buffer)-1] != "" {
-			buffer = append(buffer, line)
-		}
-	}
-
-	// Limit buffer size to prevent memory issues
-	if len(buffer) > 1000 {
-		buffer = buffer[len(buffer)-1000:]
-	}
-
-	newState.PTYOutputBuffers[sessionID] = buffer
-	newState.updateSessionActivity(sessionID)
-	newState.incrementVersion()
-
-	return newState
-}
-
-// UpdateTerminalState updates VT10x terminal state for a session
-func (s *AICoderState) UpdateTerminalState(sessionID string, state *messages.TerminalState) *AICoderState {
-	newState := s.copy()
-	newState.TerminalStates[sessionID] = state
-	newState.updateSessionActivity(sessionID)
-	newState.incrementVersion()
-	return newState
-}
+// === DEPRECATED METHODS - REMOVED ===
+// AddPTYOutput - REMOVED: Use AddRawOutput instead
+// UpdateTerminalState - REMOVED: Use UpdateScreenBuffer instead
 
 // SetFocusedSession changes the focused session
 func (s *AICoderState) SetFocusedSession(sessionID string) *AICoderState {
@@ -236,11 +175,6 @@ func (s *AICoderState) AddSession(sessionID, sessionName string) *AICoderState {
 		Status:   "active",
 		Created:  time.Now(),
 		LastSeen: time.Now(),
-	}
-
-	// Initialize buffers for new session
-	if _, exists := newState.PTYOutputBuffers[sessionID]; !exists {
-		newState.PTYOutputBuffers[sessionID] = []string{}
 	}
 
 	newState.incrementVersion()
@@ -263,8 +197,10 @@ func (s *AICoderState) UpdateSessionStatus(sessionID, status string) *AICoderSta
 func (s *AICoderState) RemoveSession(sessionID string) *AICoderState {
 	newState := s.copy()
 	delete(newState.ActiveSessions, sessionID)
-	delete(newState.PTYOutputBuffers, sessionID)
-	delete(newState.TerminalStates, sessionID)
+	delete(newState.RawBuffers, sessionID)
+	delete(newState.ProcessedOffset, sessionID)
+	delete(newState.LastUpdateTime, sessionID)
+	delete(newState.UpdatePending, sessionID)
 
 	// Clear focused session if it was the removed one
 	if newState.FocusedSession == sessionID {
@@ -275,31 +211,7 @@ func (s *AICoderState) RemoveSession(sessionID string) *AICoderState {
 	return newState
 }
 
-// UpdatePollingTime updates the last poll time
-func (s *AICoderState) UpdatePollingTime() *AICoderState {
-	newState := s.copy()
-	newState.LastPollTime = time.Now()
-	newState.incrementVersion()
-	return newState
-}
-
 // === Query Methods (Pure Functions) ===
-
-// GetPTYOutput returns the PTY output lines for a session
-func (s *AICoderState) GetPTYOutput(sessionID string) []string {
-	if buffer, exists := s.PTYOutputBuffers[sessionID]; exists {
-		return append([]string{}, buffer...) // Return copy
-	}
-	return []string{}
-}
-
-// GetTerminalState returns the terminal state for a session
-func (s *AICoderState) GetTerminalState(sessionID string) *messages.TerminalState {
-	if state, exists := s.TerminalStates[sessionID]; exists {
-		return state
-	}
-	return nil
-}
 
 // GetActiveSessionIDs returns IDs of all active sessions
 func (s *AICoderState) GetActiveSessionIDs() []string {
@@ -344,12 +256,6 @@ func (s *AICoderState) copy() *AICoderState {
 		ActiveSessions: make(map[string]SessionInfo, len(s.ActiveSessions)),
 		FocusedSession: s.FocusedSession,
 
-		// Deprecated fields
-		PTYOutputBuffers: make(map[string][]string, len(s.PTYOutputBuffers)),
-		TerminalStates:   make(map[string]*messages.TerminalState, len(s.TerminalStates)),
-		LastPollTime:     s.LastPollTime,
-		PollingInterval:  s.PollingInterval,
-
 		version: s.version,
 	}
 
@@ -386,16 +292,6 @@ func (s *AICoderState) copy() *AICoderState {
 		newState.ActiveSessions[k] = v
 	}
 
-	// Copy deprecated PTY output buffers (for migration)
-	for k, v := range s.PTYOutputBuffers {
-		newState.PTYOutputBuffers[k] = append([]string{}, v...)
-	}
-
-	// Copy deprecated terminal states (they are immutable already)
-	for k, v := range s.TerminalStates {
-		newState.TerminalStates[k] = v
-	}
-
 	return newState
 }
 
@@ -419,15 +315,9 @@ func (s *AICoderState) Validate() []string {
 	var issues []string
 
 	// Check for session data consistency
-	for sessionID := range s.PTYOutputBuffers {
+	for sessionID := range s.RawBuffers {
 		if _, exists := s.ActiveSessions[sessionID]; !exists {
-			issues = append(issues, "PTY output buffer exists for unknown session: "+sessionID)
-		}
-	}
-
-	for sessionID := range s.TerminalStates {
-		if _, exists := s.ActiveSessions[sessionID]; !exists {
-			issues = append(issues, "Terminal state exists for unknown session: "+sessionID)
+			issues = append(issues, "Raw buffer exists for unknown session: "+sessionID)
 		}
 	}
 
@@ -444,14 +334,12 @@ func (s *AICoderState) Validate() []string {
 // GetStateSummary returns a summary of the current state for debugging
 func (s *AICoderState) GetStateSummary() map[string]interface{} {
 	return map[string]interface{}{
-		"active_sessions":    len(s.ActiveSessions),
-		"focused_session":    s.FocusedSession,
-		"terminal_focused":   s.TerminalFocused,
-		"pty_buffers":        len(s.PTYOutputBuffers),
-		"terminal_states":    len(s.TerminalStates),
-		"version":            s.version,
-		"last_poll_time":     s.LastPollTime,
-		"polling_interval":   s.PollingInterval.String(),
+		"active_sessions":  len(s.ActiveSessions),
+		"focused_session":  s.FocusedSession,
+		"terminal_focused": s.TerminalFocused,
+		"raw_buffers":      len(s.RawBuffers),
+		"screen_dirty":     s.ScreenDirty,
+		"version":          s.version,
 	}
 }
 

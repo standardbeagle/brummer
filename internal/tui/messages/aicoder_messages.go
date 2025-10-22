@@ -134,6 +134,8 @@ type SessionSummary struct {
 }
 
 // TerminalStateMsg contains the terminal state for a specific session.
+// DEPRECATED: This message type was never actually used/emitted in the codebase.
+// Use AICoderScreenSyncMsg instead for screen buffer updates.
 type TerminalStateMsg struct {
 	SessionID string
 	State     *TerminalState
@@ -142,11 +144,6 @@ type TerminalStateMsg struct {
 // SwitchToPTYMsg indicates the UI should switch to PTY mode for a session.
 type SwitchToPTYMsg struct {
 	SessionID string
-}
-
-// AICoderPollPTYMsg is a tick message that triggers PTY output polling.
-// DEPRECATED: No longer needed with proactive debounced updates.
-type AICoderPollPTYMsg struct {
 }
 
 // TerminalState represents a read-only snapshot of terminal state.
