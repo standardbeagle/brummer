@@ -576,11 +576,11 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 		webView:           components.NewWebViewComponentRefactored(),
 		commandWindowView: components.NewCommandWindowViewNew(func(scripts map[string]string, processMgr interface{}) components.CommandAutocompleteInterface {
 		if pm, ok := processMgr.(*processes.Manager); ok {
-			return NewCommandAutocompleteFactory()(scripts, pm)
+			return NewCommandAutocompleteFactory()(scripts, pm, cfg)
 		}
 		return nil
 	}),
-		commandAutocomplete: NewCommandAutocompleteFactory()(processMgr.GetScripts(), processMgr),
+		commandAutocomplete: NewCommandAutocompleteFactory()(processMgr.GetScripts(), processMgr, cfg),
 		keys:              keys,
 		updateChan:        make(chan tea.Msg, UpdateChannelBufferSize),
 		viewManager:       viewManager, // Add the simple view manager

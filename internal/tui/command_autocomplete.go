@@ -8,7 +8,8 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	
+
+	"github.com/standardbeagle/brummer/internal/config"
 	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 )
@@ -26,8 +27,9 @@ type CommandAutocomplete struct {
 	arbitraryMode bool   // True when in arbitrary command mode (Ctrl+N)
 
 	// Command-specific data
-	availableScripts map[string]string // Script name -> script command
+	availableScripts map[string]string   // Script name -> script command
 	processMgr       *processes.Manager  // Reference to process manager to check running scripts
+	cfg              *config.Config      // Configuration for AI providers and other settings
 }
 
 func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
@@ -49,10 +51,11 @@ func NewCommandAutocomplete(scripts map[string]string) CommandAutocomplete {
 	return c
 }
 
-// NewCommandAutocompleteWithProcessManager creates a command autocomplete with process manager
-func NewCommandAutocompleteWithProcessManager(scripts map[string]string, processMgr *processes.Manager) CommandAutocomplete {
+// NewCommandAutocompleteWithProcessManager creates a command autocomplete with process manager and config
+func NewCommandAutocompleteWithProcessManager(scripts map[string]string, processMgr *processes.Manager, cfg *config.Config) CommandAutocomplete {
 	c := NewCommandAutocomplete(scripts)
 	c.processMgr = processMgr
+	c.cfg = cfg
 	return c
 }
 
@@ -303,8 +306,20 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 		case "/ai":
 			// Suggest AI providers from configuration
 			if c.currentIndex == 1 {
-				// Return the available AI providers from config
-				providers := []string{"claude", "claude-3-7", "claude-o3"}
+				// Get available AI providers from config
+				var providers []string
+				if c.cfg != nil && c.cfg.AICoders != nil && c.cfg.AICoders.Providers != nil {
+					// Extract provider names from config
+					for providerName := range c.cfg.AICoders.Providers {
+						providers = append(providers, providerName)
+					}
+					// Sort for consistent ordering
+					sort.Strings(providers)
+				} else {
+					// Fallback if config not available
+					providers = []string{"claude", "bash"}
+				}
+
 				currentText := ""
 				if c.currentIndex < len(c.segments) {
 					currentText = c.segments[c.currentIndex]

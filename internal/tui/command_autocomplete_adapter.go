@@ -2,7 +2,8 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	
+
+	"github.com/standardbeagle/brummer/internal/config"
 	processes "github.com/standardbeagle/brummer/internal/domain/processes"
 	"github.com/standardbeagle/brummer/internal/tui/components"
 )
@@ -64,9 +65,14 @@ func (a *CommandAutocompleteAdapter) IsShowingDropdown() bool {
 }
 
 // NewCommandAutocompleteFactory creates a factory for command autocomplete instances
-func NewCommandAutocompleteFactory() func(scripts map[string]string, pm *processes.Manager) components.CommandAutocompleteInterface {
-	return func(scripts map[string]string, pm *processes.Manager) components.CommandAutocompleteInterface {
-		ca := NewCommandAutocompleteWithProcessManager(scripts, pm)
+func NewCommandAutocompleteFactory() func(scripts map[string]string, pm *processes.Manager, cfg interface{}) components.CommandAutocompleteInterface {
+	return func(scripts map[string]string, pm *processes.Manager, cfg interface{}) components.CommandAutocompleteInterface {
+		// Type assert config to *config.Config
+		var configPtr *config.Config
+		if c, ok := cfg.(*config.Config); ok {
+			configPtr = c
+		}
+		ca := NewCommandAutocompleteWithProcessManager(scripts, pm, configPtr)
 		return &CommandAutocompleteAdapter{inner: &ca}
 	}
 }
