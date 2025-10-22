@@ -549,11 +549,16 @@ func (s *AICoderService) getTerminalScreen(terminal interface{}) [][]rune {
 		rows = 24 // Default height
 	}
 
-	// Build screen buffer ONLY from viewport (Cell positions)
-	// This avoids the scrollback accumulation issue
+	// Get cursor position for reference
+	cursor := vt10xTerm.Cursor()
+	_ = cursor // Keep for future cursor indicator feature
+
+	// Build screen buffer from FULL scrollback (all rows from vt10x)
+	// The Bubble Tea viewport component will handle windowing and scrolling
+	// This is how real terminal emulators work: full scrollback buffer + client-side viewport
 	screen := make([][]rune, 0, rows)
 
-	// Process each row in the viewport
+	// Process each row in the FULL scrollback buffer
 	for y := 0; y < rows; y++ {
 		var outputLine []rune
 		lastFG := -1

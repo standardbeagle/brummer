@@ -352,7 +352,7 @@ func (h *AICoderKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 				model.masterData.AICoderState = aiState.SetTerminalFocus(newFocusState)
 
 				// Show status message
-				statusMsg := "Terminal focus: OFF (ESC to exit, Enter to focus)"
+				statusMsg := "Terminal focus: OFF (arrows=scroll, Enter=focus)"
 				if newFocusState {
 					statusMsg = "Terminal focus: ON (all keys go to terminal, Ctrl+T or ESC to release)"
 				}
@@ -367,7 +367,7 @@ func (h *AICoderKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 				if aiState.TerminalFocused {
 					model.masterData.AICoderState = aiState.SetTerminalFocus(false)
 					return func() tea.Msg {
-						return StatusMsg{Message: "Terminal focus released"}
+						return StatusMsg{Message: "Terminal focus released - arrows scroll viewport"}
 					}
 				}
 				// Otherwise, exit to list view
@@ -390,55 +390,82 @@ func (h *AICoderKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
 				}
 			}
 
-			// Convert key to bytes for PTY input
-			var input []byte
-			switch key.Type {
-			case tea.KeyEnter:
-				input = []byte("\r")
-			case tea.KeyTab:
-				input = []byte("\t")
-			case tea.KeyBackspace:
-				input = []byte{127} // DEL character
-			case tea.KeyDelete:
-				input = []byte("\x1b[3~")
-			case tea.KeyUp:
-				input = []byte("\x1b[A")
-			case tea.KeyDown:
-				input = []byte("\x1b[B")
-			case tea.KeyRight:
-				input = []byte("\x1b[C")
-			case tea.KeyLeft:
-				input = []byte("\x1b[D")
-			case tea.KeyHome:
-				input = []byte("\x1b[H")
-			case tea.KeyEnd:
-				input = []byte("\x1b[F")
-			case tea.KeyPgUp:
-				input = []byte("\x1b[5~")
-			case tea.KeyPgDown:
-				input = []byte("\x1b[6~")
-			case tea.KeyCtrlC:
-				input = []byte{3} // ETX (Ctrl-C)
-			case tea.KeyCtrlD:
-				input = []byte{4} // EOT (Ctrl-D)
-			case tea.KeyCtrlZ:
-				input = []byte{26} // SUB (Ctrl-Z)
-			case tea.KeyRunes:
-				input = []byte(string(key.Runes))
-			default:
-				// For other keys, try to convert to string
-				if key.String() != "" {
-					input = []byte(key.String())
+			// ==== NEW: Viewport scrolling when terminal is NOT focused ====
+			// When not in terminal focus mode, handle scrolling keys for viewport
+			if !aiState.TerminalFocused {
+				isScrollKey := false
+				switch key.Type {
+				case tea.KeyUp, tea.KeyDown, tea.KeyPgUp, tea.KeyPgDown:
+					isScrollKey = true
+				}
+
+				// Also handle j/k vim-style scrolling
+				if key.Type == tea.KeyRunes {
+					switch string(key.Runes) {
+					case "j", "k":
+						isScrollKey = true
+					}
+				}
+
+				// If it's a scroll key, forward to viewport
+				if isScrollKey && model.aicodersView != nil {
+					return model.aicodersView.UpdateViewport(key)
 				}
 			}
+			// ==== END viewport scrolling ====
 
-			// Send input to PTY via the service
-			if len(input) > 0 && model.aiCoderService != nil {
-				svc := model.aiCoderService.(*services.AICoderService)
-				if err := svc.SendInput(focusedSession, input); err != nil {
-					// Log error but don't crash
-					if model.logStore != nil {
-						model.logStore.Add("system", "System", fmt.Sprintf("Error sending input to PTY: %v", err), true)
+			// If terminal is focused, send ALL keys to PTY
+			if aiState.TerminalFocused {
+				// Convert key to bytes for PTY input
+				var input []byte
+				switch key.Type {
+				case tea.KeyEnter:
+					input = []byte("\r")
+				case tea.KeyTab:
+					input = []byte("\t")
+				case tea.KeyBackspace:
+					input = []byte{127} // DEL character
+				case tea.KeyDelete:
+					input = []byte("\x1b[3~")
+				case tea.KeyUp:
+					input = []byte("\x1b[A")
+				case tea.KeyDown:
+					input = []byte("\x1b[B")
+				case tea.KeyRight:
+					input = []byte("\x1b[C")
+				case tea.KeyLeft:
+					input = []byte("\x1b[D")
+				case tea.KeyHome:
+					input = []byte("\x1b[H")
+				case tea.KeyEnd:
+					input = []byte("\x1b[F")
+				case tea.KeyPgUp:
+					input = []byte("\x1b[5~")
+				case tea.KeyPgDown:
+					input = []byte("\x1b[6~")
+				case tea.KeyCtrlC:
+					input = []byte{3} // ETX (Ctrl-C)
+				case tea.KeyCtrlD:
+					input = []byte{4} // EOT (Ctrl-D)
+				case tea.KeyCtrlZ:
+					input = []byte{26} // SUB (Ctrl-Z)
+				case tea.KeyRunes:
+					input = []byte(string(key.Runes))
+				default:
+					// For other keys, try to convert to string
+					if key.String() != "" {
+						input = []byte(key.String())
+					}
+				}
+
+				// Send input to PTY via the service
+				if len(input) > 0 && model.aiCoderService != nil {
+					svc := model.aiCoderService.(*services.AICoderService)
+					if err := svc.SendInput(focusedSession, input); err != nil {
+						// Log error but don't crash
+						if model.logStore != nil {
+							model.logStore.Add("system", "System", fmt.Sprintf("Error sending input to PTY: %v", err), true)
+						}
 					}
 				}
 			}

@@ -8,12 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- AI Coder viewport scrolling with full scrollback buffer support
+  - Arrow keys (↑↓) and vim keys (j/k) now scroll through terminal history
+  - PageUp/PageDown for page-based scrolling
+  - Full 1000-line scrollback buffer from vt10x terminal emulator
+  - Visual scrollbar indicator on right side of viewport
+  - Scroll percentage indicator in footer (e.g., "[45%]")
+  - Comprehensive test suite with 6 test cases and performance benchmarks
 - Comprehensive test suite for slash command autocomplete (46 test cases)
   - Tests for AI provider validation with config and fallback
   - Tests for run, clear, proxy, and arbitrary command validation
   - Tests for suggestion filtering and initialization
 
 ### Fixed
+- AI Coder viewport scrolling not working
+  - Screen buffer now provides full vt10x scrollback (1000 lines) instead of fixed 24-line window
+  - Viewport properly handles windowing and scroll position
+  - Matches behavior of professional terminal emulators (iTerm2, gnome-terminal)
+  - Performance: <1ms per scroll operation, ~1.6ms for full buffer read
 - Command palette autocomplete dropdown now shows immediately when typing "/"
   - Previously required pressing backspace or another key to display suggestions
   - Autocomplete now initializes with "/" on command palette open

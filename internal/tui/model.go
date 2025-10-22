@@ -78,6 +78,9 @@ type Model struct {
 		width         int
 	height        int
 
+	// Layout (centralized calculation)
+	layoutRegions components.LayoutRegions
+
 	// View components (migrated from controllers)
 	processesView     *components.ProcessesViewComponent // Processes view component (stateless)
 	logsView          *components.LogsViewComponent     // Logs view component (stateless)
@@ -1237,25 +1240,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.AICoderPTYOutputMsg:
 		// Handle PTY output using sub-model pattern (Elm/Redux compliant)
 		if m.masterData != nil && m.masterData.AICoderState != nil {
-			// Pure state transformation through sub-model
-			newAICoderState := m.masterData.AICoderState.AddPTYOutput(
+			// Pure state transformation through sub-model using new raw buffer API
+			newAICoderState := m.masterData.AICoderState.AddRawOutput(
 				msg.SessionID,
-				string(msg.Data),
+				msg.Data,
 			)
 			m.masterData.AICoderState = newAICoderState
 		}
 		// Always trigger a view update when PTY output arrives
 
-	case messages.TerminalStateMsg:
-		// Handle VT10x terminal state updates using sub-model pattern
-		if m.masterData != nil && m.masterData.AICoderState != nil {
-			// Pure state transformation through sub-model
-			newAICoderState := m.masterData.AICoderState.UpdateTerminalState(
-				msg.SessionID,
-				msg.State,
-			)
-			m.masterData.AICoderState = newAICoderState
-		}
+	// REMOVED: TerminalStateMsg handler - message type was never used/emitted
+	// Replaced by AICoderScreenSyncMsg for screen buffer updates
 
 	case messages.AICoderSessionCreatedMsg:
 		// Handle AI Coder session created events
@@ -1320,8 +1315,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.toggleProxyMode()
 		case "ai":
 			m.handleAICommand(msg.Message)
-		case "term":
-			m.showTerminal()
 		}
 
 		// Switch view if specified
@@ -1446,6 +1439,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.masterData.LogsState = m.masterData.LogsState.EnableAutoScroll()
 			}
 			m.updateLogsView()
+		}
+
+	case messages.SetShowPatternMsg:
+		// Handle /show command - set log filter pattern
+		if m.masterData != nil && m.masterData.LogsState != nil {
+			m.masterData.LogsState = m.masterData.LogsState.SetShowPattern(msg.Pattern)
+			m.updateLogsView()
+			// Show success notification
+			if m.logStore != nil {
+				m.logStore.Add("system", "System", fmt.Sprintf("✓ Show filter set: %s", msg.Pattern), false)
+			}
+		}
+
+	case messages.SetHidePatternMsg:
+		// Handle /hide command - set log hide pattern
+		if m.masterData != nil && m.masterData.LogsState != nil {
+			m.masterData.LogsState = m.masterData.LogsState.SetHidePattern(msg.Pattern)
+			m.updateLogsView()
+			// Show success notification
+			if m.logStore != nil {
+				m.logStore.Add("system", "System", fmt.Sprintf("✓ Hide filter set: %s", msg.Pattern), false)
+			}
 		}
 
 	case messages.NavigateWebUpMsg:
@@ -2687,8 +2702,26 @@ func (m *Model) handleAICommand(providerName string) {
 				return
 			}
 
-			// Start the session with default terminal dimensions
-			err = svc.StartSession(context.Background(), sessionID, 80, 24)
+			// Start the session with actual terminal dimensions from AI Coders view
+			width, height := 80, 24 // Defaults
+			if m.aicodersView != nil {
+				// Get viewport dimensions from the AI Coders component
+				viewportWidth, viewportHeight := m.aicodersView.GetLayoutRegions().GetViewportArea()
+				if viewportWidth > 0 && viewportHeight > 0 {
+					// Account for header (3 lines) and footer (2 lines) and padding (2 cols)
+					width = viewportWidth - 4   // Minus padding and borders
+					height = viewportHeight - 5 // Minus header and footer
+
+					// Ensure minimum size
+					if width < 80 {
+						width = 80
+					}
+					if height < 24 {
+						height = 24
+					}
+				}
+			}
+			err = svc.StartSession(context.Background(), sessionID, width, height)
 			if err != nil {
 				m.logStore.Add("system", "System", fmt.Sprintf("Error starting AI session: %v", err), true)
 				return
@@ -2710,11 +2743,6 @@ func (m *Model) handleAICommand(providerName string) {
 	} else {
 		m.logStore.Add("system", "System", "Error: AI Coder service is not initialized", true)
 	}
-}
-
-func (m *Model) showTerminal() {
-	// Terminal view not implemented yet
-	m.logStore.Add("system", "System", "Terminal view is not yet implemented", true)
 }
 
 func (m *Model) handleToggleProxy() {
