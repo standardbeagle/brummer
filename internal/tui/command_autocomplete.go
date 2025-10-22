@@ -183,8 +183,8 @@ func (c *CommandAutocomplete) updateSuggestions() {
 
 	// Always show dropdown if we have suggestions or if we're at the beginning
 	if len(c.suggestions) == 0 && c.currentIndex == 0 && (value == "" || value == "/") {
-		// Show initial commands when empty
-		c.suggestions = []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "docker-up", "docker-down", "docker-build", "compose-up", "compose-down", "help", "exit", "quit"}
+		// Show initial commands when empty (with / prefix for clarity)
+		c.suggestions = []string{"/ai", "/run", "/restart", "/stop", "/clear", "/show", "/hide", "/proxy", "/toggle-proxy", "/term", "/docker-up", "/docker-down", "/docker-build", "/compose-up", "/compose-down", "/help", "/exit", "/quit"}
 		c.showDropdown = true
 	}
 
@@ -196,13 +196,12 @@ func (c *CommandAutocomplete) updateSuggestions() {
 
 func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 	if c.currentIndex == 0 {
-		// First segment - show root commands
-		rootCommands := []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "docker-up", "docker-down", "docker-build", "compose-up", "compose-down", "help", "exit", "quit"}
+		// First segment - show root commands (with / prefix)
+		rootCommands := []string{"/ai", "/run", "/restart", "/stop", "/clear", "/show", "/hide", "/proxy", "/toggle-proxy", "/term", "/docker-up", "/docker-down", "/docker-build", "/compose-up", "/compose-down", "/help", "/exit", "/quit"}
 		currentText := ""
 		if len(c.segments) > 0 {
 			currentText = c.segments[0]
-			// Remove leading slash for comparison
-			currentText = strings.TrimPrefix(currentText, "/")
+			// Commands are already prefixed with /, so match directly
 		}
 		return c.filterSuggestions(rootCommands, currentText)
 	}
@@ -308,7 +307,7 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 			if c.currentIndex == 1 {
 				// Get available AI providers from config
 				var providers []string
-				if c.cfg != nil && c.cfg.AICoders != nil && c.cfg.AICoders.Providers != nil {
+				if c.cfg != nil && c.cfg.AICoders != nil && c.cfg.AICoders.Providers != nil && len(c.cfg.AICoders.Providers) > 0 {
 					// Extract provider names from config
 					for providerName := range c.cfg.AICoders.Providers {
 						providers = append(providers, providerName)
@@ -316,8 +315,11 @@ func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 					// Sort for consistent ordering
 					sort.Strings(providers)
 				} else {
-					// Fallback if config not available
-					providers = []string{"claude", "bash"}
+					// Fallback if config not available - use comprehensive list from .brum.example.toml
+					providers = []string{
+						"aider", "bash", "claude", "claude-secure", "copilot", "copilot-secure",
+						"fish", "gemini", "gemini-secure", "local", "opencode", "opus", "sonnet", "zsh",
+					}
 				}
 
 				currentText := ""
