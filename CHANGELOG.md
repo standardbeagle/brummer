@@ -28,6 +28,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated command autocomplete documentation
 
 ### Removed
+- Deprecated `/term` command
+  - Functionality fully replaced by `/ai` command
+  - Removed from slash commands handler
+  - Removed from autocomplete suggestions
+  - Removed from validation logic
+  - Removed from help text
 - Commented-out TODO code in command handler
   - Removed message type mismatch workarounds
   - Removed placeholder message sending code

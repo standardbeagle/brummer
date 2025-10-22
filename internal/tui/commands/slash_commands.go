@@ -71,9 +71,6 @@ func HandleSlashCommand(ctx *SlashCommandContext, input string) tea.Cmd {
 	case "/ai":
 		return handleAI(ctx, parts)
 
-	case "/term":
-		return handleTerm(ctx)
-
 	case "/screenshot":
 		return handleScreenshot(ctx, parts)
 
@@ -332,13 +329,6 @@ func handleToggleProxy(ctx *SlashCommandContext) tea.Cmd {
 	}
 }
 
-// handleTerm shows terminal view
-func handleTerm(ctx *SlashCommandContext) tea.Cmd {
-	return func() tea.Msg {
-		return CommandResultMsg{Command: "term", Success: true, View: "term"}
-	}
-}
-
 // handleAI starts an AI coder session
 func handleAI(ctx *SlashCommandContext, parts []string) tea.Cmd {
 	if len(parts) < 2 {
@@ -496,7 +486,7 @@ func handleComposeDown(ctx *SlashCommandContext, parts []string) tea.Cmd {
 func handleUnknown(ctx *SlashCommandContext, command string) tea.Cmd {
 	return func() tea.Msg {
 		ctx.LogStore.Add("system", "System", fmt.Sprintf("❌ Unknown command: %s", command), true)
-		ctx.LogStore.Add("system", "System", "Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /screenshot, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help, /exit", false)
+		ctx.LogStore.Add("system", "System", "Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /screenshot, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help, /exit", false)
 		return nil
 	}
 }

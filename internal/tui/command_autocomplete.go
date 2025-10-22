@@ -184,7 +184,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 	// Always show dropdown if we have suggestions or if we're at the beginning
 	if len(c.suggestions) == 0 && c.currentIndex == 0 && (value == "" || value == "/") {
 		// Show initial commands when empty (with / prefix for clarity)
-		c.suggestions = []string{"/ai", "/run", "/restart", "/stop", "/clear", "/show", "/hide", "/proxy", "/toggle-proxy", "/term", "/docker-up", "/docker-down", "/docker-build", "/compose-up", "/compose-down", "/help", "/exit", "/quit"}
+		c.suggestions = []string{"/ai", "/run", "/restart", "/stop", "/clear", "/show", "/hide", "/proxy", "/toggle-proxy", "/docker-up", "/docker-down", "/docker-build", "/compose-up", "/compose-down", "/help", "/exit", "/quit"}
 		c.showDropdown = true
 	}
 
@@ -197,7 +197,7 @@ func (c *CommandAutocomplete) updateSuggestions() {
 func (c *CommandAutocomplete) getSuggestionsForCurrentPosition() []string {
 	if c.currentIndex == 0 {
 		// First segment - show root commands (with / prefix)
-		rootCommands := []string{"/ai", "/run", "/restart", "/stop", "/clear", "/show", "/hide", "/proxy", "/toggle-proxy", "/term", "/docker-up", "/docker-down", "/docker-build", "/compose-up", "/compose-down", "/help", "/exit", "/quit"}
+		rootCommands := []string{"/ai", "/run", "/restart", "/stop", "/clear", "/show", "/hide", "/proxy", "/toggle-proxy", "/docker-up", "/docker-down", "/docker-build", "/compose-up", "/compose-down", "/help", "/exit", "/quit"}
 		currentText := ""
 		if len(c.segments) > 0 {
 			currentText = c.segments[0]
@@ -623,10 +623,6 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 		}
 		return true, ""
 
-	case "/term":
-		// No additional parameters needed for terminal
-		return true, ""
-
 	case "/help":
 		// No additional parameters needed
 		return true, ""
@@ -657,12 +653,12 @@ func (c *CommandAutocomplete) ValidateInput() (bool, string) {
 
 	default:
 		// Check if it's a partial command
-		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "term", "docker-up", "docker-down", "docker-build", "compose-up", "compose-down", "help", "exit", "quit"} {
+		for _, cmd := range []string{"run", "restart", "stop", "clear", "show", "hide", "proxy", "toggle-proxy", "ai", "docker-up", "docker-down", "docker-build", "compose-up", "compose-down", "help", "exit", "quit"} {
 			if strings.HasPrefix(cmd, strings.TrimPrefix(command, "/")) {
 				return false, fmt.Sprintf("Incomplete command. Did you mean /%s?", cmd)
 			}
 		}
-		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /term, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help, /exit, /quit", command)
+		return false, fmt.Sprintf("Unknown command: %s. Available commands: /run, /restart, /stop, /clear, /show, /hide, /proxy, /toggle-proxy, /ai, /docker-up, /docker-down, /docker-build, /compose-up, /compose-down, /help, /exit, /quit", command)
 	}
 }
 
