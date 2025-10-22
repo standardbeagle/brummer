@@ -94,8 +94,8 @@ func (h *AICoderMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mo
 				model.logStore.Add("ai-coder", m.SessionID, outputStr, false)
 			}
 
-			// Add PTY output to AI coder state
-			newState := model.masterData.AICoderState.AddPTYOutput(m.SessionID, string(m.Data))
+			// Add PTY output to AI coder state using new raw buffer API
+			newState := model.masterData.AICoderState.AddRawOutput(m.SessionID, m.Data)
 			model.masterData.AICoderState = newState
 			return model, nil
 
@@ -105,8 +105,9 @@ func (h *AICoderMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Mo
 				model.logStore.Add("ai-coder", m.SessionID, fmt.Sprintf("AI Coder Error: %s", m.Error.Error()), true)
 			}
 
-			// Add error to AI coder state
-			newState := model.masterData.AICoderState.AddPTYOutput(m.SessionID, fmt.Sprintf("ERROR: %s", m.Error.Error()))
+			// Add error to AI coder state using new raw buffer API
+			errorData := []byte(fmt.Sprintf("ERROR: %s", m.Error.Error()))
+			newState := model.masterData.AICoderState.AddRawOutput(m.SessionID, errorData)
 			model.masterData.AICoderState = newState
 			return model, nil
 		}

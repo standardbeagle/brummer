@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Centralized layout region calculation for AI Coder view
+  - Single source of truth for terminal dimensions
+  - Automatic PTY resizing when terminal window changes
+  - Proper viewport dimensions accounting for header/footer/padding
+  - Integration with layout_regions.go system
 - Implemented previously stubbed command executor features
   - `/show <pattern>` now sets log filter pattern in model state
   - `/hide <pattern>` now sets log hide pattern in model state

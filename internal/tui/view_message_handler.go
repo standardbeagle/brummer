@@ -2,6 +2,8 @@ package tui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/standardbeagle/brummer/internal/tui/components"
+	"github.com/standardbeagle/brummer/internal/tui/services"
 )
 
 // ViewMessageHandler handles view-related messages and keyboard input
@@ -36,6 +38,44 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 		model.width = m.Width
 		model.height = m.Height
 
+		// ===== NEW: Calculate layout regions ONCE (centralized) =====
+		opts := components.DefaultLayoutOptions(m.Width, m.Height)
+		// TODO: Check if system panel is open once method is available
+		// opts.SystemPanelOpen = model.systemComponent.IsOpen()
+		model.layoutRegions = components.CalculateLayoutRegions(opts)
+
+		// ===== NEW: Pass layout regions to views that support it =====
+		if model.aicodersView != nil {
+			model.aicodersView.SetLayoutRegions(model.layoutRegions)
+
+			// Resize active PTY session to match new terminal size
+			if model.aiCoderService != nil && model.masterData != nil && model.masterData.AICoderState != nil {
+				focusedSessionID := model.masterData.AICoderState.FocusedSession
+				if focusedSessionID != "" {
+					viewportWidth, viewportHeight := model.layoutRegions.GetViewportArea()
+					if viewportWidth > 0 && viewportHeight > 0 {
+						// Calculate PTY dimensions (account for header/footer/padding)
+						ptyWidth := viewportWidth - 4
+						ptyHeight := viewportHeight - 5
+
+						// Ensure minimum size
+						if ptyWidth < 80 {
+							ptyWidth = 80
+						}
+						if ptyHeight < 24 {
+							ptyHeight = 24
+						}
+
+						// Resize the PTY
+						if svc, ok := model.aiCoderService.(*services.AICoderService); ok {
+							_ = svc.ResizePTY(focusedSessionID, ptyWidth, ptyHeight)
+						}
+					}
+				}
+			}
+		}
+
+		// ===== OLD: Legacy view sizing (keep for backward compatibility) =====
 		// Layout calculations now use components.LayoutManager (T021)
 		// Header and footer heights are constants
 		headerHeight := 3
