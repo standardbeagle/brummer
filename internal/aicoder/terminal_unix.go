@@ -6,8 +6,15 @@ import (
 	"fmt"
 	"os"
 	"syscall"
+	"unsafe"
 
 	"golang.org/x/sys/unix"
+)
+
+// Platform-specific ioctl constants
+const (
+	tcgets  = 0x5401 // TCGETS
+	tcsetsf = 0x5404 // TCSETSF
 )
 
 // terminalState stores the original terminal configuration for restoration
@@ -36,15 +43,15 @@ func configurePTYForResponsiveness(ptmx *os.File) (*terminalState, error) {
 	}
 
 	// Get current terminal attributes
-	termios, err := unix.IoctlGetTermios(fd, unix.TCGETS)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get terminal attributes: %w", err)
+	var termios unix.Termios
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(tcgets), uintptr(unsafe.Pointer(&termios))); errno != 0 {
+		return nil, fmt.Errorf("failed to get terminal attributes: %w", errno)
 	}
 
 	// Save original state for restoration
 	state := &terminalState{
 		fd:       fd,
-		original: *termios,
+		original: termios,
 		saved:    true,
 	}
 
@@ -71,8 +78,8 @@ func configurePTYForResponsiveness(ptmx *os.File) (*terminalState, error) {
 	termios.Cc[unix.VTIME] = 0
 
 	// Apply with flush to ensure immediate effect
-	if err := unix.IoctlSetTermios(fd, unix.TCSETSF, termios); err != nil {
-		return nil, fmt.Errorf("failed to set terminal attributes: %w", err)
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(fd), uintptr(tcsetsf), uintptr(unsafe.Pointer(&termios))); errno != 0 {
+		return nil, fmt.Errorf("failed to set terminal attributes: %w", errno)
 	}
 
 	return state, nil
@@ -90,8 +97,8 @@ func restoreTerminalState(state *terminalState) error {
 		return nil // File descriptor is no longer valid, nothing to restore
 	}
 
-	if err := unix.IoctlSetTermios(state.fd, unix.TCSETSF, &state.original); err != nil {
-		return fmt.Errorf("failed to restore terminal attributes: %w", err)
+	if _, _, errno := syscall.Syscall(syscall.SYS_IOCTL, uintptr(state.fd), uintptr(tcsetsf), uintptr(unsafe.Pointer(&state.original))); errno != 0 {
+		return fmt.Errorf("failed to restore terminal attributes: %w", errno)
 	}
 
 	state.saved = false

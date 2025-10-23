@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package pty provides pseudo-terminal functionality
 // for TUI testing in non-TTY environments.
 package pty

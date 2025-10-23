@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package pty provides pseudo-terminal layer for TUI testing without TTY allocation.
 // It enables realistic terminal simulation for testing TUI applications in
 // agent-based environments with limited shell capabilities.

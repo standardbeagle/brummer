@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package tui provides PTY integration for BubbleTea applications.
 // This file contains PTY-based program startup and management functionality
 // that enables realistic terminal simulation without requiring /dev/tty.

@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package tui provides PTY terminal emulation for realistic terminal simulation.
 // This file contains terminal emulation capabilities that enhance the PTY integration
 // with features like scrollback buffer, cursor tracking, and terminal state management.
