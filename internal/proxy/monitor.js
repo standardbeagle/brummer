@@ -2383,6 +2383,274 @@
         }
     }
 
+    // Element selection mode state
+    let elementSelectionActive = false;
+    let elementSelectionOverlay = null;
+    let elementSelectionHighlight = null;
+    let selectedElement = null;
+
+    // Extract element details for inspection
+    function extractElementDetails(element) {
+        if (!element) return null;
+
+        const rect = element.getBoundingClientRect();
+        const computedStyle = window.getComputedStyle(element);
+
+        // Get all attributes
+        const attributes = {};
+        for (let i = 0; i < element.attributes.length; i++) {
+            const attr = element.attributes[i];
+            attributes[attr.name] = attr.value;
+        }
+
+        // Get key computed styles
+        const styles = {
+            display: computedStyle.display,
+            position: computedStyle.position,
+            width: computedStyle.width,
+            height: computedStyle.height,
+            margin: computedStyle.margin,
+            padding: computedStyle.padding,
+            backgroundColor: computedStyle.backgroundColor,
+            color: computedStyle.color,
+            fontSize: computedStyle.fontSize,
+            fontFamily: computedStyle.fontFamily,
+            border: computedStyle.border,
+            zIndex: computedStyle.zIndex
+        };
+
+        // Build CSS selector path
+        const buildSelector = (el) => {
+            if (!el || el === document.body) return 'body';
+
+            let selector = el.tagName.toLowerCase();
+            if (el.id) {
+                selector += '#' + el.id;
+            } else if (el.className && typeof el.className === 'string') {
+                const classes = el.className.trim().split(/\s+/).filter(c => c && !c.startsWith('__brummer'));
+                if (classes.length > 0) {
+                    selector += '.' + classes.join('.');
+                }
+            }
+
+            return selector;
+        };
+
+        const selectorPath = [];
+        let current = element;
+        while (current && current !== document.body && selectorPath.length < 5) {
+            selectorPath.unshift(buildSelector(current));
+            current = current.parentElement;
+        }
+
+        return {
+            tagName: element.tagName.toLowerCase(),
+            id: element.id || null,
+            className: element.className || null,
+            attributes: attributes,
+            styles: styles,
+            bounds: {
+                x: Math.round(rect.x),
+                y: Math.round(rect.y),
+                width: Math.round(rect.width),
+                height: Math.round(rect.height),
+                top: Math.round(rect.top),
+                left: Math.round(rect.left)
+            },
+            selectorPath: selectorPath.join(' > '),
+            textContent: element.textContent ? element.textContent.substring(0, 200) : null,
+            innerHTML: element.innerHTML ? element.innerHTML.substring(0, 500) : null
+        };
+    }
+
+    // Start element selection mode
+    function startElementSelection() {
+        if (elementSelectionActive) return;
+
+        const statusEl = document.getElementById('__brummer_ai_status');
+        const selectBtn = document.getElementById('__brummer_select_element_btn');
+
+        if (!statusEl || !selectBtn) return;
+
+        elementSelectionActive = true;
+        selectBtn.disabled = true;
+        selectBtn.textContent = '⏳ Click element...';
+        statusEl.textContent = '🎯 Click on any element to inspect it (ESC to cancel)';
+        statusEl.style.color = '#3b82f6';
+
+        // Create overlay
+        elementSelectionOverlay = document.createElement('div');
+        elementSelectionOverlay.id = '__brummer_element_overlay';
+        elementSelectionOverlay.style.cssText = `
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 999998;
+            cursor: crosshair;
+        `;
+
+        // Create highlight box
+        elementSelectionHighlight = document.createElement('div');
+        elementSelectionHighlight.id = '__brummer_element_highlight';
+        elementSelectionHighlight.style.cssText = `
+            position: fixed;
+            border: 2px solid #3b82f6;
+            background: rgba(59, 130, 246, 0.1);
+            pointer-events: none;
+            z-index: 999999;
+            display: none;
+            box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+        `;
+
+        document.body.appendChild(elementSelectionOverlay);
+        document.body.appendChild(elementSelectionHighlight);
+
+        // Handle mouse movement to highlight elements
+        const handleMouseMove = (e) => {
+            if (!elementSelectionActive) return;
+
+            const element = document.elementFromPoint(e.clientX, e.clientY);
+            if (!element || element === elementSelectionOverlay || element === elementSelectionHighlight) {
+                elementSelectionHighlight.style.display = 'none';
+                return;
+            }
+
+            const rect = element.getBoundingClientRect();
+            elementSelectionHighlight.style.display = 'block';
+            elementSelectionHighlight.style.left = rect.left + 'px';
+            elementSelectionHighlight.style.top = rect.top + 'px';
+            elementSelectionHighlight.style.width = rect.width + 'px';
+            elementSelectionHighlight.style.height = rect.height + 'px';
+        };
+
+        // Handle element selection
+        const handleClick = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const element = document.elementFromPoint(e.clientX, e.clientY);
+            if (!element || element === elementSelectionOverlay || element === elementSelectionHighlight) {
+                return;
+            }
+
+            selectedElement = extractElementDetails(element);
+            exitElementSelection();
+
+            statusEl.textContent = '✅ Element selected: ' + selectedElement.tagName + (selectedElement.id ? '#' + selectedElement.id : '');
+            statusEl.style.color = '#22c55e';
+
+            DEBUG.log('info', 'element-selection', 'Element selected', selectedElement);
+        };
+
+        // Handle ESC key to cancel
+        const handleKeydown = (e) => {
+            if (e.key === 'Escape') {
+                selectedElement = null;
+                exitElementSelection();
+                statusEl.textContent = 'Element selection cancelled';
+                statusEl.style.color = '#94a3b8';
+            }
+        };
+
+        elementSelectionOverlay.addEventListener('mousemove', handleMouseMove);
+        elementSelectionOverlay.addEventListener('click', handleClick);
+        document.addEventListener('keydown', handleKeydown);
+
+        // Store cleanup functions
+        elementSelectionOverlay.__cleanup = () => {
+            elementSelectionOverlay.removeEventListener('mousemove', handleMouseMove);
+            elementSelectionOverlay.removeEventListener('click', handleClick);
+            document.removeEventListener('keydown', handleKeydown);
+        };
+    }
+
+    // Exit element selection mode
+    function exitElementSelection() {
+        elementSelectionActive = false;
+
+        const selectBtn = document.getElementById('__brummer_select_element_btn');
+        if (selectBtn) {
+            selectBtn.disabled = false;
+            selectBtn.textContent = '🎯 Select Element';
+        }
+
+        if (elementSelectionOverlay) {
+            if (elementSelectionOverlay.__cleanup) {
+                elementSelectionOverlay.__cleanup();
+            }
+            elementSelectionOverlay.remove();
+            elementSelectionOverlay = null;
+        }
+
+        if (elementSelectionHighlight) {
+            elementSelectionHighlight.remove();
+            elementSelectionHighlight = null;
+        }
+    }
+
+    // Send text with element details to AI Coder
+    function sendTextWithElement() {
+        const textarea = document.getElementById('__brummer_ai_message');
+        const statusEl = document.getElementById('__brummer_ai_status');
+        const sendBtn = document.getElementById('__brummer_send_with_element_btn');
+
+        if (!textarea || !statusEl || !sendBtn) return;
+
+        const message = textarea.value.trim();
+
+        if (!message) {
+            statusEl.textContent = '⚠️ Please enter a message';
+            statusEl.style.color = '#f59e0b';
+            return;
+        }
+
+        if (!selectedElement) {
+            statusEl.textContent = '⚠️ Please select an element first';
+            statusEl.style.color = '#f59e0b';
+            return;
+        }
+
+        // Disable button and update status
+        sendBtn.disabled = true;
+        sendBtn.textContent = '⏳ Sending...';
+        statusEl.textContent = 'Sending to AI Coder...';
+        statusEl.style.color = '#3b82f6';
+
+        if (wsConnected && websocket && websocket.readyState === WebSocket.OPEN) {
+            sendWebSocketCommand('ai_coder_message', {
+                message: message,
+                url: window.location.href,
+                timestamp: Date.now(),
+                element: selectedElement,
+                context: {
+                    pageTitle: document.title,
+                    viewport: {
+                        width: window.innerWidth,
+                        height: window.innerHeight
+                    }
+                }
+            });
+
+            // Clear textarea and selected element
+            textarea.value = '';
+            selectedElement = null;
+            statusEl.textContent = '✅ Message + element sent to AI Coder';
+            statusEl.style.color = '#22c55e';
+            sendBtn.disabled = false;
+            sendBtn.textContent = '🎯 + Text';
+
+            DEBUG.log('info', 'ai-coder', 'Message with element sent to AI Coder', { message });
+        } else {
+            statusEl.textContent = '❌ WebSocket not connected';
+            statusEl.style.color = '#ef4444';
+            sendBtn.disabled = false;
+            sendBtn.textContent = '🎯 + Text';
+        }
+    }
+
     // Create floating badge UI
     function createFloatingBadge() {
         if (!document.body) return;
@@ -2641,7 +2909,7 @@
                     box-sizing: border-box;
                     margin-bottom: 8px;
                 "></textarea>
-                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                     <button id="__brummer_send_text_btn" style="
                         flex: 1;
                         padding: 8px 12px;
@@ -2669,6 +2937,36 @@
                         transition: background 0.2s;
                     " onmouseover="this.style.background='#7c3aed'" onmouseout="this.style.background='#8b5cf6'">
                         📸 + Text
+                    </button>
+                </div>
+                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                    <button id="__brummer_select_element_btn" style="
+                        flex: 1;
+                        padding: 8px 12px;
+                        background: #3b82f6;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 500;
+                        cursor: pointer;
+                        transition: background 0.2s;
+                    " onmouseover="this.style.background='#2563eb'" onmouseout="this.style.background='#3b82f6'">
+                        🎯 Select Element
+                    </button>
+                    <button id="__brummer_send_with_element_btn" style="
+                        flex: 1;
+                        padding: 8px 12px;
+                        background: #f59e0b;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 500;
+                        cursor: pointer;
+                        transition: background 0.2s;
+                    " onmouseover="this.style.background='#d97706'" onmouseout="this.style.background='#f59e0b'">
+                        🎯 + Text
                     </button>
                 </div>
                 <div id="__brummer_ai_status" style="margin-bottom: 12px; text-align: center; font-size: 11px; color: #94a3b8;"></div>
@@ -2699,6 +2997,16 @@
             const sendWithScreenshotBtn = document.getElementById('__brummer_send_with_screenshot_btn');
             if (sendWithScreenshotBtn) {
                 sendWithScreenshotBtn.onclick = sendTextWithScreenshot;
+            }
+
+            const selectElementBtn = document.getElementById('__brummer_select_element_btn');
+            if (selectElementBtn) {
+                selectElementBtn.onclick = startElementSelection;
+            }
+
+            const sendWithElementBtn = document.getElementById('__brummer_send_with_element_btn');
+            if (sendWithElementBtn) {
+                sendWithElementBtn.onclick = sendTextWithElement;
             }
         };
         

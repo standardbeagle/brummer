@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Element selection feature for AI Coder integration
+  - Interactive element inspector with visual highlighting
+  - Click-to-select any DOM element on proxied pages
+  - Captures comprehensive element details (tag, attributes, styles, position)
+  - Sends element context to AI Coder with user messages
+  - New UI buttons: "🎯 Select Element" and "🎯 + Text"
+  - ESC key to cancel selection mode
+  - Includes test page and complete documentation
 - Centralized layout region calculation for AI Coder view
   - Single source of truth for terminal dimensions
   - Automatic PTY resizing when terminal window changes
