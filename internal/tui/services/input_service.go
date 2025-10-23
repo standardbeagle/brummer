@@ -1,5 +1,3 @@
-//go:build !windows
-
 package services
 
 import (
@@ -12,7 +10,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/pkg/events"
-	"github.com/standardbeagle/brummer/test/tui/pty"
+	"github.com/standardbeagle/brummer/internal/pty"
 )
 
 // Error constants for Input Service

@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package tui provides PTY program termination handling for BubbleTea applications.
 // This file contains comprehensive termination handling including graceful shutdown,
 // signal handling, resource cleanup, and error recovery mechanisms.

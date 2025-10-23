@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/standardbeagle/brummer/test/tui/pty"
+	"github.com/standardbeagle/brummer/internal/pty"
 )
 
 // PTYTerminalEmulator provides advanced terminal emulation for PTY integration

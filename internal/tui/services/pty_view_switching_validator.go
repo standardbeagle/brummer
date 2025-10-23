@@ -1,5 +1,3 @@
-//go:build !windows
-
 package services
 
 import (
@@ -9,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
-	"github.com/standardbeagle/brummer/test/tui/pty"
+	"github.com/standardbeagle/brummer/internal/pty"
 )
 
 // PTYViewSwitchingValidator provides comprehensive validation for view switching through PTY input

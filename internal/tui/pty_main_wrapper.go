@@ -1,3 +1,5 @@
+//go:build !windows
+
 // Package tui provides PTY main wrapper for BubbleTea applications.
 // This file contains the main wrapper that integrates all PTY components
 // and provides a simple interface for running BubbleTea applications with PTY support.

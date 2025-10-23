@@ -12,7 +12,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/standardbeagle/brummer/test/tui/pty"
+	"github.com/standardbeagle/brummer/internal/pty"
 )
 
 // PTYIntegration provides PTY-based program management for BubbleTea applications
