@@ -2237,6 +2237,152 @@
         }
     }
     
+    // Send text message to AI Coder
+    function sendTextToAICoder() {
+        const textarea = document.getElementById('__brummer_ai_message');
+        const statusEl = document.getElementById('__brummer_ai_status');
+        const sendBtn = document.getElementById('__brummer_send_text_btn');
+
+        if (!textarea || !statusEl || !sendBtn) return;
+
+        const message = textarea.value.trim();
+
+        if (!message) {
+            statusEl.textContent = '⚠️ Please enter a message';
+            statusEl.style.color = '#f59e0b';
+            return;
+        }
+
+        // Disable button and update status
+        sendBtn.disabled = true;
+        sendBtn.textContent = '⏳ Sending...';
+        statusEl.textContent = 'Sending message to AI Coder...';
+        statusEl.style.color = '#3b82f6';
+
+        // Send message via WebSocket
+        if (wsConnected && websocket && websocket.readyState === WebSocket.OPEN) {
+            sendWebSocketCommand('ai_coder_message', {
+                message: message,
+                url: window.location.href,
+                timestamp: Date.now(),
+                context: {
+                    pageTitle: document.title,
+                    viewport: {
+                        width: window.innerWidth,
+                        height: window.innerHeight
+                    }
+                }
+            });
+
+            // Clear textarea and show success
+            textarea.value = '';
+            statusEl.textContent = '✅ Message sent to AI Coder';
+            statusEl.style.color = '#22c55e';
+            sendBtn.disabled = false;
+            sendBtn.textContent = '📤 Send Text';
+
+            DEBUG.log('info', 'ai-coder', 'Message sent to AI Coder', { message });
+        } else {
+            statusEl.textContent = '❌ WebSocket not connected';
+            statusEl.style.color = '#ef4444';
+            sendBtn.disabled = false;
+            sendBtn.textContent = '📤 Send Text';
+        }
+    }
+
+    // Send text with screenshot to AI Coder
+    function sendTextWithScreenshot() {
+        const textarea = document.getElementById('__brummer_ai_message');
+        const statusEl = document.getElementById('__brummer_ai_status');
+        const sendBtn = document.getElementById('__brummer_send_with_screenshot_btn');
+
+        if (!textarea || !statusEl || !sendBtn) return;
+
+        const message = textarea.value.trim();
+
+        if (!message) {
+            statusEl.textContent = '⚠️ Please enter a message';
+            statusEl.style.color = '#f59e0b';
+            return;
+        }
+
+        // Disable button and update status
+        sendBtn.disabled = true;
+        sendBtn.textContent = '⏳ Capturing...';
+        statusEl.textContent = 'Capturing screenshot...';
+        statusEl.style.color = '#3b82f6';
+
+        // Capture screenshot first
+        try {
+            if (typeof html2canvas !== 'undefined') {
+                html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: false,
+                    scale: 1,
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    windowWidth: window.innerWidth,
+                    windowHeight: window.innerHeight
+                }).then(canvas => {
+                    const dataURL = canvas.toDataURL('image/png');
+                    sendMessageWithScreenshotData(message, dataURL, textarea, statusEl, sendBtn);
+                }).catch(err => {
+                    statusEl.textContent = '❌ Screenshot capture failed';
+                    statusEl.style.color = '#ef4444';
+                    sendBtn.disabled = false;
+                    sendBtn.textContent = '📸 + Text';
+                    DEBUG.log('error', 'screenshot', 'Screenshot capture failed', err);
+                });
+            } else {
+                // No html2canvas available - send message with note
+                statusEl.textContent = 'Screenshot library not available, sending text only...';
+                sendTextToAICoder();
+                sendBtn.disabled = false;
+                sendBtn.textContent = '📸 + Text';
+            }
+        } catch (err) {
+            statusEl.textContent = '❌ Screenshot failed: ' + err.message;
+            statusEl.style.color = '#ef4444';
+            sendBtn.disabled = false;
+            sendBtn.textContent = '📸 + Text';
+        }
+    }
+
+    // Helper function to send message with screenshot data
+    function sendMessageWithScreenshotData(message, dataURL, textarea, statusEl, sendBtn) {
+        statusEl.textContent = 'Sending to AI Coder...';
+
+        if (wsConnected && websocket && websocket.readyState === WebSocket.OPEN) {
+            sendWebSocketCommand('ai_coder_message', {
+                message: message,
+                url: window.location.href,
+                screenshot: dataURL,
+                timestamp: Date.now(),
+                context: {
+                    pageTitle: document.title,
+                    viewport: {
+                        width: window.innerWidth,
+                        height: window.innerHeight
+                    }
+                }
+            });
+
+            // Clear textarea and show success
+            textarea.value = '';
+            statusEl.textContent = '✅ Message + screenshot sent to AI Coder';
+            statusEl.style.color = '#22c55e';
+            sendBtn.disabled = false;
+            sendBtn.textContent = '📸 + Text';
+
+            DEBUG.log('info', 'ai-coder', 'Message with screenshot sent to AI Coder', { message });
+        } else {
+            statusEl.textContent = '❌ WebSocket not connected';
+            statusEl.style.color = '#ef4444';
+            sendBtn.disabled = false;
+            sendBtn.textContent = '📸 + Text';
+        }
+    }
+
     // Create floating badge UI
     function createFloatingBadge() {
         if (!document.body) return;
@@ -2479,6 +2625,55 @@
                 <div id="__brummer_screenshot_status" style="margin-bottom: 12px; text-align: center; font-size: 11px; color: #94a3b8;"></div>
                 <hr style="border: none; border-top: 1px solid #334155; margin: 12px 0;">
                 <div style="margin-bottom: 8px;">
+                    <strong>🤖 Send to AI Coder:</strong>
+                </div>
+                <textarea id="__brummer_ai_message" placeholder="Type a message for the AI Coder... (e.g., 'Fix this bug', 'Analyze this page', etc.)" style="
+                    width: 100%;
+                    min-height: 80px;
+                    padding: 8px;
+                    background: #0f172a;
+                    color: #e2e8f0;
+                    border: 1px solid #334155;
+                    border-radius: 6px;
+                    font-size: 12px;
+                    font-family: inherit;
+                    resize: vertical;
+                    box-sizing: border-box;
+                    margin-bottom: 8px;
+                "></textarea>
+                <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                    <button id="__brummer_send_text_btn" style="
+                        flex: 1;
+                        padding: 8px 12px;
+                        background: #10b981;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 500;
+                        cursor: pointer;
+                        transition: background 0.2s;
+                    " onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10b981'">
+                        📤 Send Text
+                    </button>
+                    <button id="__brummer_send_with_screenshot_btn" style="
+                        flex: 1;
+                        padding: 8px 12px;
+                        background: #8b5cf6;
+                        color: white;
+                        border: none;
+                        border-radius: 6px;
+                        font-size: 12px;
+                        font-weight: 500;
+                        cursor: pointer;
+                        transition: background 0.2s;
+                    " onmouseover="this.style.background='#7c3aed'" onmouseout="this.style.background='#8b5cf6'">
+                        📸 + Text
+                    </button>
+                </div>
+                <div id="__brummer_ai_status" style="margin-bottom: 12px; text-align: center; font-size: 11px; color: #94a3b8;"></div>
+                <hr style="border: none; border-top: 1px solid #334155; margin: 12px 0;">
+                <div style="margin-bottom: 8px;">
                     <strong>Debug Commands:</strong>
                 </div>
                 <code style="display: block; background: #0f172a; padding: 8px; border-radius: 4px; font-size: 11px;">
@@ -2493,6 +2688,17 @@
             const screenshotBtn = document.getElementById('__brummer_screenshot_btn');
             if (screenshotBtn) {
                 screenshotBtn.onclick = captureScreenshot;
+            }
+
+            // Add click handlers for AI Coder buttons
+            const sendTextBtn = document.getElementById('__brummer_send_text_btn');
+            if (sendTextBtn) {
+                sendTextBtn.onclick = sendTextToAICoder;
+            }
+
+            const sendWithScreenshotBtn = document.getElementById('__brummer_send_with_screenshot_btn');
+            if (sendWithScreenshotBtn) {
+                sendWithScreenshotBtn.onclick = sendTextWithScreenshot;
             }
         };
         

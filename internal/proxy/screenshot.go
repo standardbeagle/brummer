@@ -223,3 +223,43 @@ func handleScreenshotRequest(requestData map[string]interface{}) (ScreenshotResp
 
 	return response, nil
 }
+
+// formatAICoderMessage formats a user message for the AI Coder with context
+func formatAICoderMessage(message, pageURL, screenshotPath string, data map[string]interface{}) string {
+	var formatted strings.Builder
+
+	// Start with the user's message
+	formatted.WriteString(message)
+	formatted.WriteString("\n\n")
+
+	// Add context section
+	formatted.WriteString("## Context from Browser\n\n")
+	formatted.WriteString(fmt.Sprintf("**Page URL:** %s\n", pageURL))
+
+	// Extract page title if available
+	if context, ok := data["context"].(map[string]interface{}); ok {
+		if title, ok := context["pageTitle"].(string); ok && title != "" {
+			formatted.WriteString(fmt.Sprintf("**Page Title:** %s\n", title))
+		}
+
+		// Add viewport info
+		if viewport, ok := context["viewport"].(map[string]interface{}); ok {
+			width, _ := viewport["width"].(float64)
+			height, _ := viewport["height"].(float64)
+			if width > 0 && height > 0 {
+				formatted.WriteString(fmt.Sprintf("**Viewport:** %dx%d\n", int(width), int(height)))
+			}
+		}
+	}
+
+	// Add screenshot reference if provided
+	if screenshotPath != "" {
+		formatted.WriteString(fmt.Sprintf("\n**Screenshot saved:** `%s`\n", screenshotPath))
+		formatted.WriteString("*The screenshot shows the current state of the page when this message was sent.*\n")
+	}
+
+	// Add timestamp
+	formatted.WriteString(fmt.Sprintf("\n**Sent:** %s\n", time.Now().Format("2006-01-02 15:04:05")))
+
+	return formatted.String()
+}

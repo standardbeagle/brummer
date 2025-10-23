@@ -2010,6 +2010,63 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 		conn.WriteJSON(response)
 		return // Don't send another response below
 
+	case "ai_coder_message":
+		// Handle AI Coder message from browser
+		response.Type = "ai_coder_response"
+
+		if data, ok := msg.Data.(map[string]interface{}); ok {
+			message, _ := data["message"].(string)
+			pageURL, _ := data["url"].(string)
+			screenshot, hasScreenshot := data["screenshot"].(string)
+
+			if message == "" {
+				response.Data = map[string]interface{}{
+					"success": false,
+					"error":   "Message is required",
+				}
+			} else {
+				// Save screenshot if provided
+				var screenshotPath string
+				if hasScreenshot && screenshot != "" {
+					filename, err := saveScreenshot(screenshot, pageURL)
+					if err == nil {
+						screenshotPath = filename
+					}
+				}
+
+				// Format message for AI Coder
+				formattedMessage := formatAICoderMessage(message, pageURL, screenshotPath, data)
+
+				// Send to AI Coder via message queue
+				s.eventBus.Publish(events.Event{
+					Type:      events.QueueMessage,
+					ProcessID: s.getProcessForURL(pageURL),
+					Data: map[string]interface{}{
+						"type":       "ai_coder_input",
+						"message":    formattedMessage,
+						"url":        pageURL,
+						"screenshot": screenshotPath,
+						"timestamp":  time.Now().Unix(),
+					},
+				})
+
+				response.Data = map[string]interface{}{
+					"success":    true,
+					"message":    "Message sent to AI Coder",
+					"screenshot": screenshotPath != "",
+				}
+			}
+		} else {
+			response.Data = map[string]interface{}{
+				"success": false,
+				"error":   "Invalid message format",
+			}
+		}
+
+		// Send response back to client
+		conn.WriteJSON(response)
+		return // Don't send another response below
+
 	default:
 		response.Data = map[string]interface{}{
 			"error": "Unknown command type: " + msg.Type,
