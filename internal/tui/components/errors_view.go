@@ -182,10 +182,10 @@ func (c *ErrorsViewComponent) renderFooter(errorsState *state.ErrorsState) strin
 	}
 
 	if len(parts) > 0 {
-		return strings.Join(parts, " • ") + "\nEnter=Details | c=Clear | f=Filter | r=Refresh"
+		return strings.Join(parts, " • ") + "\nEnter=Details | a=Send to AI Coder | c=Clear | f=Filter | r=Refresh"
 	}
 
-	return "c=Clear | f=Filter | r=Refresh"
+	return "a=Send to AI Coder | c=Clear | f=Filter | r=Refresh"
 }
 
 // createErrorListItems creates list items from error contexts

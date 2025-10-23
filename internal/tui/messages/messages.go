@@ -110,3 +110,11 @@ type NavigateWebUpMsg struct{}
 type NavigateWebDownMsg struct{}
 
 type ToggleWebDetailMsg struct{}
+
+// SendToAICoderMsg is a message that requests sending content to an AI Coder session
+type SendToAICoderMsg struct {
+	ContentType string // "error", "proxy_request", "log", "custom"
+	Content     string // The formatted content to send
+	Title       string // Optional title/summary for the content
+	SessionID   string // Optional specific session ID, empty = active session
+}

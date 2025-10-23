@@ -45,7 +45,7 @@ func RegisterViewSpecificHandlers(registry *KeyHandlerRegistry) {
 		return nil
 	}))
 
-	// ERRORS VIEW: 'c' = clear errors, 'd' = dismiss error, 'x' = clear all (alternative)
+	// ERRORS VIEW: 'c' = clear errors, 'd' = dismiss error, 'x' = clear all (alternative), 'a' = send to AI Coder
 	registry.Register(NewViewSpecificKeyHandler(ViewErrors, func(msg tea.KeyMsg, model *Model) tea.Cmd {
 		switch msg.String() {
 		case "c":
@@ -61,6 +61,47 @@ func RegisterViewSpecificHandlers(registry *KeyHandlerRegistry) {
 			return func() tea.Msg {
 				model.logStore.ClearErrors()
 				return StatusMsg{Message: "All errors cleared"}
+			}
+		case "a":
+			// Send selected error to AI Coder
+			if model.masterData != nil && model.masterData.ErrorsState != nil {
+				selectedError := model.masterData.ErrorsState.GetSelectedError()
+				if selectedError != nil {
+					// Format error for AI Coder
+					content := fmt.Sprintf("Error Type: %s\n", selectedError.Type)
+					content += fmt.Sprintf("Process: %s\n", selectedError.ProcessName)
+					content += fmt.Sprintf("Timestamp: %s\n\n", selectedError.Timestamp.Format("2006-01-02 15:04:05"))
+					content += fmt.Sprintf("Message:\n%s\n\n", selectedError.Message)
+
+					if len(selectedError.Stack) > 0 {
+						content += "Stack Trace:\n"
+						for _, line := range selectedError.Stack {
+							content += fmt.Sprintf("  %s\n", line)
+						}
+						content += "\n"
+					}
+
+					if len(selectedError.Context) > 0 {
+						content += "Context:\n"
+						for _, line := range selectedError.Context {
+							content += fmt.Sprintf("  %s\n", line)
+						}
+					}
+
+					title := fmt.Sprintf("%s in %s", selectedError.Type, selectedError.ProcessName)
+
+					return func() tea.Msg {
+						return messages.SendToAICoderMsg{
+							ContentType: "error",
+							Content:     content,
+							Title:       title,
+							SessionID:   "", // Empty = use active session
+						}
+					}
+				}
+			}
+			return func() tea.Msg {
+				return StatusMsg{Message: "No error selected"}
 			}
 		}
 		return nil
@@ -89,7 +130,7 @@ func RegisterViewSpecificHandlers(registry *KeyHandlerRegistry) {
 		return nil
 	}))
 
-	// WEB VIEW: 'f' = filter requests, 'c' = clear, arrow keys = navigate, Enter = details
+	// WEB VIEW: 'f' = filter requests, 'c' = clear, arrow keys = navigate, Enter = details, 'a' = send to AI Coder
 	registry.Register(NewViewSpecificKeyHandler(ViewWeb, func(msg tea.KeyMsg, model *Model) tea.Cmd {
 		switch msg.String() {
 		case "f":
@@ -139,6 +180,55 @@ func RegisterViewSpecificHandlers(registry *KeyHandlerRegistry) {
 			return func() tea.Msg {
 				// Inspect selected request - same as Enter
 				return messages.ToggleWebDetailMsg{}
+			}
+		case "a":
+			// Send selected proxy request to AI Coder
+			if model.masterData != nil && model.masterData.WebViewState != nil {
+				selectedRequest := model.masterData.WebViewState.GetSelectedRequest()
+				if selectedRequest != nil {
+					// Format proxy request for AI Coder
+					content := fmt.Sprintf("HTTP %s %s\n", selectedRequest.Method, selectedRequest.URL)
+					content += fmt.Sprintf("Status: %d\n", selectedRequest.StatusCode)
+					content += fmt.Sprintf("Duration: %v\n", selectedRequest.Duration)
+					content += fmt.Sprintf("Process: %s\n", selectedRequest.ProcessName)
+					content += fmt.Sprintf("Timestamp: %s\n", selectedRequest.Timestamp.Format("2006-01-02 15:04:05"))
+
+					if selectedRequest.Size > 0 {
+						content += fmt.Sprintf("Size: %d bytes\n", selectedRequest.Size)
+					}
+
+					if selectedRequest.Error != "" {
+						content += fmt.Sprintf("\nError: %s\n", selectedRequest.Error)
+					}
+
+					if selectedRequest.HasAuth {
+						content += fmt.Sprintf("\nAuth Type: %s\n", selectedRequest.AuthType)
+						if selectedRequest.JWTError != "" {
+							content += fmt.Sprintf("JWT Error: %s\n", selectedRequest.JWTError)
+						}
+					}
+
+					if len(selectedRequest.PerformanceMetrics) > 0 {
+						content += "\nPerformance Metrics:\n"
+						for key, value := range selectedRequest.PerformanceMetrics {
+							content += fmt.Sprintf("  %s: %v\n", key, value)
+						}
+					}
+
+					title := fmt.Sprintf("%s %s (%d)", selectedRequest.Method, selectedRequest.Path, selectedRequest.StatusCode)
+
+					return func() tea.Msg {
+						return messages.SendToAICoderMsg{
+							ContentType: "proxy_request",
+							Content:     content,
+							Title:       title,
+							SessionID:   "", // Empty = use active session
+						}
+					}
+				}
+			}
+			return func() tea.Msg {
+				return StatusMsg{Message: "No proxy request selected"}
 			}
 		}
 		return nil

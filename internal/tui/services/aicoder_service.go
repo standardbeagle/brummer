@@ -901,3 +901,52 @@ func (s *AICoderService) Shutdown(ctx context.Context) error {
 func (s *AICoderService) EventBus() interface{} {
 	return s.eventBus
 }
+
+// SendFormattedContent sends formatted content (error, proxy request, etc.) to an AI Coder session
+// If sessionID is empty, sends to the most recently active session
+func (s *AICoderService) SendFormattedContent(sessionID, contentType, title, content string) error {
+	// Determine target session
+	targetSessionID := sessionID
+	if targetSessionID == "" {
+		targetSessionID = s.GetActiveSession()
+		if targetSessionID == "" {
+			return fmt.Errorf("no active AI Coder session found")
+		}
+	}
+
+	// Validate session exists and is active
+	session, err := s.GetSession(targetSessionID)
+	if err != nil {
+		return fmt.Errorf("session not found: %w", err)
+	}
+
+	if session.Status != messages.SessionActive && session.Status != messages.SessionIdle {
+		return fmt.Errorf("session is not active (status: %s)", session.Status)
+	}
+
+	// Format the content with a clear header
+	var formattedContent strings.Builder
+
+	formattedContent.WriteString("\n")
+	formattedContent.WriteString("# ")
+	formattedContent.WriteString(title)
+	formattedContent.WriteString("\n")
+	formattedContent.WriteString("# Type: ")
+	formattedContent.WriteString(contentType)
+	formattedContent.WriteString("\n\n")
+	formattedContent.WriteString(content)
+	formattedContent.WriteString("\n\n")
+
+	// Send to AI Coder session
+	inputBytes := []byte(formattedContent.String())
+	if err := s.SendInput(targetSessionID, inputBytes); err != nil {
+		return fmt.Errorf("failed to send content to AI Coder: %w", err)
+	}
+
+	// Log the activity
+	s.logPTYActivity(targetSessionID,
+		fmt.Sprintf("📋 Received %s: %s", contentType, title),
+		false)
+
+	return nil
+}

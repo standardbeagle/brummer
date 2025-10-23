@@ -351,7 +351,7 @@ func (c *WebViewComponentRefactored) renderStats(webViewState *state.WebViewStat
 
 // renderHelp renders help text
 func (c *WebViewComponentRefactored) renderHelp() string {
-	help := "↑↓ Navigate • Enter Full Detail • f Filter • Space Auto-scroll • q Quit"
+	help := "↑↓ Navigate • Enter Full Detail • a Send to AI Coder • f Filter • c Clear • Space Auto-scroll • q Quit"
 	return c.statsStyle.Render(help)
 }
 

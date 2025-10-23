@@ -1372,6 +1372,33 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.masterData.WebViewState = m.masterData.WebViewState.ClearRequests()
 		}
 
+	case messages.SendToAICoderMsg:
+		// Handle send content to AI Coder
+		if m.aiCoderService != nil {
+			svc := m.aiCoderService.(*services.AICoderService)
+			err := svc.SendFormattedContent(
+				msg.SessionID,
+				msg.ContentType,
+				msg.Title,
+				msg.Content,
+			)
+			if err != nil {
+				// Log error but don't fail
+				if m.logStore != nil {
+					m.logStore.Add("system", "AI Coder",
+						fmt.Sprintf("⚠️  Failed to send %s to AI Coder: %v", msg.ContentType, err),
+						true)
+				}
+			} else {
+				// Log success
+				if m.logStore != nil {
+					m.logStore.Add("system", "AI Coder",
+						fmt.Sprintf("✅ Sent %s to AI Coder: %s", msg.ContentType, msg.Title),
+						false)
+				}
+			}
+		}
+
 	case messages.ProxyRequestMsg:
 		// Handle proxy request - add to web view state
 		if m.logStore != nil {
