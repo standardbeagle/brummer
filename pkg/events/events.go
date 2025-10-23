@@ -33,6 +33,7 @@ const (
 	ProxyRequest       EventType = "proxy.request"
 	ProxyModeSwitched  EventType = "proxy.mode_switched"
 	TelemetryReceived  EventType = "telemetry.received"
+	ScreenshotCaptured EventType = "screenshot.captured"
 	QueueMessage       EventType = "queue.message"
 	REPLResponse       EventType = "repl.response"
 )

@@ -20,6 +20,7 @@ const (
 	TelemetryUserInteraction  TelemetryEventType = "user_interaction"
 	TelemetryResourceTiming   TelemetryEventType = "resource_timing"
 	TelemetryMonitorInit      TelemetryEventType = "monitor_initialized"
+	TelemetryScreenshotReq    TelemetryEventType = "screenshot_request"
 )
 
 // TelemetryEvent represents a single telemetry event from the browser
@@ -146,6 +147,10 @@ func (ts *TelemetryStore) processEvent(session *PageSession, event TelemetryEven
 		if level, ok := event.Data["level"].(string); ok {
 			session.ConsoleLogCount[level]++
 		}
+
+	case TelemetryScreenshotReq:
+		// Screenshot request - will be handled separately by the proxy server
+		// Just log it for now
 	}
 }
 

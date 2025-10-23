@@ -43,6 +43,12 @@ type Request struct {
 	Error       string
 	ProcessName string
 
+	// Request/Response data
+	RequestBody    string            // Request body (truncated for large payloads)
+	ResponseBody   string            // Response body (truncated for large payloads)
+	RequestHeaders map[string]string // Request headers
+	ResponseHeaders map[string]string // Response headers
+
 	// Telemetry data
 	SessionID    string
 	HasTelemetry bool
@@ -242,20 +248,34 @@ func (s *Server) setupHandlers() {
 		// Extract authentication info
 		hasAuth, authType, jwtClaims, jwtError := extractAuthInfo(r)
 
+		// Capture request headers
+		requestHeaders := captureHeaders(r.Header)
+
+		// Capture request body if it's an API request
+		requestBody := ""
+		contentType := r.Header.Get("Content-Type")
+		if isAPIRequest(r, contentType) && r.Method != "GET" && r.Method != "HEAD" {
+			if body, err := captureRequestBody(r, 10000); err == nil {
+				requestBody = body
+			}
+		}
+
 		// Store request info in context
 		ctx.UserData = &Request{
-			ID:          reqID,
-			Method:      r.Method,
-			URL:         r.URL.String(),
-			Host:        r.Host,
-			Path:        r.URL.Path,
-			StartTime:   startTime,
-			ProcessName: processName,
-			HasAuth:     hasAuth,
-			AuthType:    authType,
-			JWTClaims:   jwtClaims,
-			JWTError:    jwtError,
-			IsXHR:       r.Header.Get("X-Requested-With") == "XMLHttpRequest",
+			ID:             reqID,
+			Method:         r.Method,
+			URL:            r.URL.String(),
+			Host:           r.Host,
+			Path:           r.URL.Path,
+			StartTime:      startTime,
+			ProcessName:    processName,
+			HasAuth:        hasAuth,
+			AuthType:       authType,
+			JWTClaims:      jwtClaims,
+			JWTError:       jwtError,
+			IsXHR:          r.Header.Get("X-Requested-With") == "XMLHttpRequest",
+			RequestBody:    requestBody,
+			RequestHeaders: requestHeaders,
 		}
 
 		return r, nil
@@ -277,21 +297,61 @@ func (s *Server) setupHandlers() {
 				req.Size = resp.ContentLength
 			}
 
+			// Capture response headers
+			req.ResponseHeaders = captureHeaders(resp.Header)
+
+			// Capture response body if it's an API request
+			if isAPIRequest(ctx.Req, req.ContentType) {
+				if body, err := captureResponseBody(resp, 10000); err == nil {
+					req.ResponseBody = body
+					req.Size = int64(len(body))
+				}
+			}
+
 			// Store the request
 			s.addRequest(*req)
 
-			// Publish event
+			// Publish event with complete request data
+			eventData := map[string]interface{}{
+				"method":          req.Method,
+				"url":             req.URL,
+				"path":            req.Path,
+				"status":          req.StatusCode,
+				"duration":        req.Duration.Milliseconds(),
+				"size":            req.Size,
+				"processName":     req.ProcessName,
+				"error":           req.Error,
+				"hasAuth":         req.HasAuth,
+				"authType":        req.AuthType,
+				"jwtError":        req.JWTError,
+				"contentType":     req.ContentType,
+				"requestBody":     req.RequestBody,
+				"responseBody":    req.ResponseBody,
+				"requestHeaders":  req.RequestHeaders,
+				"responseHeaders": req.ResponseHeaders,
+			}
+
+			// Add JWT claims if present
+			if req.JWTClaims != nil {
+				eventData["jwtClaims"] = req.JWTClaims
+			}
+
+			// Add telemetry data if present
+			if req.HasTelemetry && req.Telemetry != nil {
+				eventData["hasTelemetry"] = true
+				eventData["sessionId"] = req.SessionID
+				// Add performance metrics from telemetry session
+				if req.Telemetry.PerformanceMetrics != nil {
+					eventData["performanceMetrics"] = req.Telemetry.PerformanceMetrics
+				}
+			} else {
+				eventData["hasTelemetry"] = false
+			}
+
 			s.eventBus.Publish(events.Event{
 				Type:      events.ProxyRequest,
 				ProcessID: req.ProcessName,
-				Data: map[string]interface{}{
-					"method":      req.Method,
-					"url":         req.URL,
-					"status":      req.StatusCode,
-					"duration":    req.Duration.Milliseconds(),
-					"size":        req.Size,
-					"processName": req.ProcessName,
-				},
+				Data:      eventData,
 			})
 
 			// Inject monitoring script into HTML responses
@@ -680,6 +740,108 @@ func (s *Server) addRequest(req Request) {
 	if len(s.requests) > 1000 {
 		s.requests = s.requests[len(s.requests)-1000:]
 	}
+}
+
+// captureRequestBody reads and captures request body (for API calls)
+// Returns the body as string and a new reader for the request
+func captureRequestBody(r *http.Request, maxSize int) (string, error) {
+	if r.Body == nil {
+		return "", nil
+	}
+
+	// Read body
+	body, err := io.ReadAll(io.LimitReader(r.Body, int64(maxSize)))
+	if err != nil {
+		return "", err
+	}
+	r.Body.Close()
+
+	// Create new reader for downstream processing
+	r.Body = io.NopCloser(bytes.NewReader(body))
+
+	// Convert to string
+	bodyStr := string(body)
+	if len(bodyStr) > maxSize {
+		bodyStr = bodyStr[:maxSize] + "...[truncated]"
+	}
+
+	return bodyStr, nil
+}
+
+// captureResponseBody reads and captures response body (for API calls)
+// Returns the body as string and a new reader for the response
+func captureResponseBody(resp *http.Response, maxSize int) (string, error) {
+	if resp.Body == nil {
+		return "", nil
+	}
+
+	// Read body
+	body, err := io.ReadAll(io.LimitReader(resp.Body, int64(maxSize)))
+	if err != nil {
+		return "", err
+	}
+	resp.Body.Close()
+
+	// Decompress if gzipped
+	if resp.Header.Get("Content-Encoding") == "gzip" {
+		reader, err := gzip.NewReader(bytes.NewReader(body))
+		if err == nil {
+			decompressed, err := io.ReadAll(io.LimitReader(reader, int64(maxSize)))
+			reader.Close()
+			if err == nil {
+				body = decompressed
+			}
+		}
+	}
+
+	// Create new reader for downstream processing
+	resp.Body = io.NopCloser(bytes.NewReader(body))
+
+	// Convert to string
+	bodyStr := string(body)
+	if len(bodyStr) > maxSize {
+		bodyStr = bodyStr[:maxSize] + "...[truncated]"
+	}
+
+	return bodyStr, nil
+}
+
+// captureHeaders converts http.Header to map[string]string
+func captureHeaders(headers http.Header) map[string]string {
+	result := make(map[string]string)
+	for key, values := range headers {
+		if len(values) > 0 {
+			result[key] = values[0] // Take first value
+		}
+	}
+	return result
+}
+
+// isAPIRequest determines if a request is an API call (should capture body)
+func isAPIRequest(r *http.Request, contentType string) bool {
+	// Check content type
+	if strings.Contains(contentType, "application/json") ||
+		strings.Contains(contentType, "application/xml") ||
+		strings.Contains(contentType, "text/plain") {
+		return true
+	}
+
+	// Check URL patterns
+	path := strings.ToLower(r.URL.Path)
+	if strings.Contains(path, "/api/") ||
+		strings.Contains(path, "/graphql") ||
+		strings.Contains(path, "/rest/") ||
+		strings.Contains(path, "/v1/") ||
+		strings.Contains(path, "/v2/") {
+		return true
+	}
+
+	// Check if it's XHR/fetch request
+	if r.Header.Get("X-Requested-With") == "XMLHttpRequest" {
+		return true
+	}
+
+	return false
 }
 
 // linkTelemetryToRequests links telemetry data to existing requests
@@ -1114,45 +1276,103 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 			// Extract authentication info
 			hasAuth, authType, jwtClaims, jwtError := extractAuthInfo(resp.Request)
 
+			// Capture headers
+			requestHeaders := captureHeaders(resp.Request.Header)
+			responseHeaders := captureHeaders(resp.Header)
+
+			// Capture bodies for API requests
+			requestBody := ""
+			responseBody := ""
+			contentType := resp.Header.Get("Content-Type")
+
+			// Capture request body (if available - only for non-GET/HEAD)
+			if isAPIRequest(resp.Request, contentType) && resp.Request.Method != "GET" && resp.Request.Method != "HEAD" {
+				if body, err := captureRequestBody(resp.Request, 10000); err == nil {
+					requestBody = body
+				}
+			}
+
+			// Capture response body
+			if isAPIRequest(resp.Request, contentType) {
+				if body, err := captureResponseBody(resp, 10000); err == nil {
+					responseBody = body
+				}
+			}
+
 			// Create request record
 			reqRecord := Request{
-				ID:          reqID,
-				Method:      resp.Request.Method,
-				URL:         originalURL,
-				Host:        resp.Request.Host,
-				Path:        resp.Request.URL.Path,
-				StartTime:   startTime,
-				ProcessName: mapping.ProcessName,
-				StatusCode:  resp.StatusCode,
-				IsError:     resp.StatusCode >= 400,
-				HasAuth:     hasAuth,
-				AuthType:    authType,
-				JWTClaims:   jwtClaims,
-				JWTError:    jwtError,
-				IsXHR:       resp.Request.Header.Get("X-Requested-With") == "XMLHttpRequest",
-				ContentType: resp.Header.Get("Content-Type"),
+				ID:              reqID,
+				Method:          resp.Request.Method,
+				URL:             originalURL,
+				Host:            resp.Request.Host,
+				Path:            resp.Request.URL.Path,
+				StartTime:       startTime,
+				ProcessName:     mapping.ProcessName,
+				StatusCode:      resp.StatusCode,
+				IsError:         resp.StatusCode >= 400,
+				HasAuth:         hasAuth,
+				AuthType:        authType,
+				JWTClaims:       jwtClaims,
+				JWTError:        jwtError,
+				IsXHR:           resp.Request.Header.Get("X-Requested-With") == "XMLHttpRequest",
+				ContentType:     contentType,
+				RequestBody:     requestBody,
+				ResponseBody:    responseBody,
+				RequestHeaders:  requestHeaders,
+				ResponseHeaders: responseHeaders,
 			}
 
 			if resp.ContentLength > 0 {
 				reqRecord.Size = resp.ContentLength
+			} else if responseBody != "" {
+				reqRecord.Size = int64(len(responseBody))
 			}
 
 			// Store the request
 			s.addRequest(reqRecord)
 
-			// Publish event
+			// Publish event with complete request data
 			if s.eventBus != nil {
+				eventData := map[string]interface{}{
+					"method":          reqRecord.Method,
+					"url":             reqRecord.URL,
+					"path":            reqRecord.Path,
+					"status":          reqRecord.StatusCode,
+					"duration":        reqRecord.Duration.Milliseconds(),
+					"size":            reqRecord.Size,
+					"processName":     reqRecord.ProcessName,
+					"error":           reqRecord.Error,
+					"hasAuth":         reqRecord.HasAuth,
+					"authType":        reqRecord.AuthType,
+					"jwtError":        reqRecord.JWTError,
+					"contentType":     reqRecord.ContentType,
+					"requestBody":     reqRecord.RequestBody,
+					"responseBody":    reqRecord.ResponseBody,
+					"requestHeaders":  reqRecord.RequestHeaders,
+					"responseHeaders": reqRecord.ResponseHeaders,
+				}
+
+				// Add JWT claims if present
+				if reqRecord.JWTClaims != nil {
+					eventData["jwtClaims"] = reqRecord.JWTClaims
+				}
+
+				// Add telemetry data if present
+				if reqRecord.HasTelemetry && reqRecord.Telemetry != nil {
+					eventData["hasTelemetry"] = true
+					eventData["sessionId"] = reqRecord.SessionID
+					// Add performance metrics from telemetry session
+					if reqRecord.Telemetry.PerformanceMetrics != nil {
+						eventData["performanceMetrics"] = reqRecord.Telemetry.PerformanceMetrics
+					}
+				} else {
+					eventData["hasTelemetry"] = false
+				}
+
 				s.eventBus.Publish(events.Event{
 					Type:      events.ProxyRequest,
 					ProcessID: reqRecord.ProcessName,
-					Data: map[string]interface{}{
-						"method":      reqRecord.Method,
-						"url":         reqRecord.URL,
-						"status":      reqRecord.StatusCode,
-						"duration":    reqRecord.Duration.Milliseconds(),
-						"size":        reqRecord.Size,
-						"processName": reqRecord.ProcessName,
-					},
+					Data:      eventData,
 				})
 			}
 
@@ -1752,6 +1972,43 @@ func (s *Server) handleWSCommand(conn *websocket.Conn, msg WSMessage) {
 				"error": "Invalid REPL response format",
 			}
 		}
+
+	case "screenshot_request":
+		// Handle screenshot request from browser
+		response.Type = "screenshot_response"
+
+		if data, ok := msg.Data.(map[string]interface{}); ok {
+			// Process screenshot request
+			screenshotResp, err := handleScreenshotRequest(data)
+
+			// Send response back to browser
+			response.Data = screenshotResp
+
+			if err == nil && screenshotResp.Success {
+				// Emit ScreenshotCaptured event for TUI/AI Coder integration
+				s.eventBus.Publish(events.Event{
+					Type:      events.ScreenshotCaptured,
+					ProcessID: s.getProcessForURL(screenshotResp.Metadata.URL),
+					Data: map[string]interface{}{
+						"filename":  screenshotResp.Filename,
+						"url":       screenshotResp.Metadata.URL,
+						"timestamp": screenshotResp.Metadata.Timestamp,
+						"host":      screenshotResp.Metadata.Host,
+						"path":      screenshotResp.Metadata.Path,
+						"fileSize":  screenshotResp.Metadata.FileSize,
+					},
+				})
+			}
+		} else {
+			response.Data = ScreenshotResponse{
+				Success: false,
+				Error:   "Invalid screenshot request format",
+			}
+		}
+
+		// Send response back to client
+		conn.WriteJSON(response)
+		return // Don't send another response below
 
 	default:
 		response.Data = map[string]interface{}{

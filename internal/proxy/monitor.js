@@ -2087,43 +2087,126 @@
     function captureScreenshot() {
         const statusEl = document.getElementById('__brummer_screenshot_status');
         const btnEl = document.getElementById('__brummer_screenshot_btn');
-        
+
         if (!statusEl || !btnEl) return;
-        
+
         // Update UI to show capturing
         btnEl.disabled = true;
         btnEl.textContent = '⏳ Capturing...';
-        statusEl.textContent = 'Requesting screenshot...';
+        statusEl.textContent = 'Capturing screenshot...';
         statusEl.style.color = '#3b82f6';
-        
+
         // Generate unique request ID
         const requestId = 'screenshot_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-        
-        // Send screenshot request via WebSocket
+
+        // Capture screenshot using canvas
+        try {
+            // Create canvas with viewport size
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+
+            // Use html2canvas if available, otherwise use native approach
+            if (typeof html2canvas !== 'undefined') {
+                html2canvas(document.body, {
+                    useCORS: true,
+                    allowTaint: false,
+                    scale: 1,
+                    width: window.innerWidth,
+                    height: window.innerHeight,
+                    windowWidth: window.innerWidth,
+                    windowHeight: window.innerHeight
+                }).then(canvas => {
+                    sendScreenshotData(canvas.toDataURL('image/png'), requestId, btnEl, statusEl);
+                }).catch(err => {
+                    // Fallback to native screenshot if html2canvas fails
+                    captureNativeScreenshot(requestId, btnEl, statusEl);
+                });
+            } else {
+                // Use native browser screenshot API
+                captureNativeScreenshot(requestId, btnEl, statusEl);
+            }
+        } catch (err) {
+            btnEl.disabled = false;
+            btnEl.textContent = '📸 Capture Screenshot';
+            statusEl.textContent = 'Screenshot failed: ' + err.message;
+            statusEl.style.color = '#ef4444';
+            DEBUG.log('error', 'screenshot', 'Screenshot capture failed', err);
+        }
+
+        DEBUG.log('info', 'screenshot', `Screenshot requested with ID: ${requestId}`);
+    }
+
+    // Capture screenshot using native browser APIs
+    function captureNativeScreenshot(requestId, btnEl, statusEl) {
+        // Try using modern browser screenshot APIs
+        if ('getDisplayMedia' in navigator.mediaDevices) {
+            // Screen capture API available
+            navigator.mediaDevices.getDisplayMedia({
+                video: { mediaSource: 'screen' }
+            }).then(stream => {
+                const video = document.createElement('video');
+                video.srcObject = stream;
+                video.play();
+
+                video.onloadedmetadata = () => {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(video, 0, 0);
+
+                    stream.getTracks().forEach(track => track.stop());
+
+                    sendScreenshotData(canvas.toDataURL('image/png'), requestId, btnEl, statusEl);
+                };
+            }).catch(err => {
+                // User canceled or API not available
+                btnEl.disabled = false;
+                btnEl.textContent = '📸 Capture Screenshot';
+                statusEl.textContent = 'Screenshot canceled or not supported';
+                statusEl.style.color = '#ef4444';
+            });
+        } else {
+            // No screenshot API available - show message
+            btnEl.disabled = false;
+            btnEl.textContent = '📸 Capture Screenshot';
+            statusEl.textContent = 'Screenshot API not available. Use browser DevTools (F12).';
+            statusEl.style.color = '#ef4444';
+        }
+    }
+
+    // Send screenshot data to server
+    function sendScreenshotData(dataURL, requestId, btnEl, statusEl) {
+        statusEl.textContent = 'Sending screenshot...';
+
         if (wsConnected && websocket && websocket.readyState === WebSocket.OPEN) {
             // Use WebSocket for screenshot request
             sendWebSocketCommand('screenshot_request', {
                 requestId: requestId,
                 url: window.location.href,
+                dataURL: dataURL,
                 viewport: {
                     width: window.innerWidth,
                     height: window.innerHeight,
                     devicePixelRatio: window.devicePixelRatio
                 },
-                fullPage: true
+                timestamp: Date.now()
             });
-            
+
             // Wait for response with timeout
             const timeout = setTimeout(() => {
                 btnEl.disabled = false;
                 btnEl.textContent = '📸 Capture Screenshot';
-                statusEl.textContent = 'Screenshot timeout. Try using browser DevTools (F12).';
+                statusEl.textContent = 'Screenshot timeout. Server may be busy.';
                 statusEl.style.color = '#ef4444';
             }, 10000);
-            
+
             // Store timeout to clear later
             window.__brummerScreenshotTimeout = timeout;
-            
+
         } else {
             // Fallback to telemetry-based screenshot request
             sendTelemetry({
@@ -2131,35 +2214,33 @@
                 data: {
                     requestId: requestId,
                     url: window.location.href,
+                    dataURL: dataURL,
                     viewport: {
                         width: window.innerWidth,
                         height: window.innerHeight,
                         devicePixelRatio: window.devicePixelRatio
                     },
-                    fullPage: true,
                     timestamp: Date.now()
                 }
             });
-            
+
             // Flush immediately to send the request
             flushTelemetry();
-            
+
             // Update status
             setTimeout(() => {
                 btnEl.disabled = false;
                 btnEl.textContent = '📸 Capture Screenshot';
-                statusEl.textContent = 'Screenshot requested. Check Brummer logs.';
+                statusEl.textContent = 'Screenshot sent. Check Brummer logs.';
                 statusEl.style.color = '#22c55e';
             }, 2000);
         }
-        
-        DEBUG.log('info', 'screenshot', `Screenshot requested with ID: ${requestId}`);
     }
     
     // Create floating badge UI
     function createFloatingBadge() {
         if (!document.body) return;
-        
+
         // Create badge container
         const badge = document.createElement('div');
         badge.id = '__brummer_badge';
@@ -2176,8 +2257,8 @@
             font-weight: 500;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
             z-index: 999999;
-            cursor: pointer;
-            transition: all 0.2s ease;
+            cursor: move;
+            transition: box-shadow 0.2s ease;
             display: flex;
             align-items: center;
             gap: 6px;
@@ -2207,21 +2288,91 @@
         badge.appendChild(icon);
         badge.appendChild(text);
         badge.appendChild(status);
-        
+
+        // Drag functionality
+        let isDragging = false;
+        let dragStartX = 0;
+        let dragStartY = 0;
+        let dragStartTime = 0;
+        let badgeStartX = 0;
+        let badgeStartY = 0;
+
+        badge.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            dragStartTime = Date.now();
+            dragStartX = e.clientX;
+            dragStartY = e.clientY;
+
+            // Get current position
+            const rect = badge.getBoundingClientRect();
+            badgeStartX = rect.left;
+            badgeStartY = rect.top;
+
+            // Disable transitions during drag
+            badge.style.transition = 'none';
+
+            // Prevent text selection during drag
+            e.preventDefault();
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+
+            const deltaX = e.clientX - dragStartX;
+            const deltaY = e.clientY - dragStartY;
+
+            // Calculate new position
+            let newLeft = badgeStartX + deltaX;
+            let newTop = badgeStartY + deltaY;
+
+            // Keep within viewport bounds
+            const maxX = window.innerWidth - badge.offsetWidth;
+            const maxY = window.innerHeight - badge.offsetHeight;
+            newLeft = Math.max(0, Math.min(newLeft, maxX));
+            newTop = Math.max(0, Math.min(newTop, maxY));
+
+            // Update position
+            badge.style.left = newLeft + 'px';
+            badge.style.top = newTop + 'px';
+            badge.style.right = 'auto';
+            badge.style.bottom = 'auto';
+        });
+
+        document.addEventListener('mouseup', (e) => {
+            if (!isDragging) return;
+
+            const dragDuration = Date.now() - dragStartTime;
+            const deltaX = e.clientX - dragStartX;
+            const deltaY = e.clientY - dragStartY;
+            const dragDistance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+            isDragging = false;
+
+            // Re-enable transitions
+            badge.style.transition = 'box-shadow 0.2s ease';
+
+            // If drag was minimal (< 5px) and quick (< 200ms), treat it as a click
+            if (dragDistance < 5 && dragDuration < 200) {
+                toggleDebugPanel();
+            }
+        });
+
         // Add hover effect
         badge.addEventListener('mouseenter', () => {
-            badge.style.transform = 'translateY(-2px)';
-            badge.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.15)';
+            if (!isDragging) {
+                badge.style.boxShadow = '0 6px 12px rgba(0, 0, 0, 0.15)';
+            }
         });
-        
+
         badge.addEventListener('mouseleave', () => {
-            badge.style.transform = 'translateY(0)';
-            badge.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+            if (!isDragging) {
+                badge.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
+            }
         });
-        
-        // Toggle debug panel on click
+
+        // Toggle debug panel function
         let debugPanelVisible = false;
-        badge.addEventListener('click', () => {
+        function toggleDebugPanel() {
             if (debugPanelVisible) {
                 const panel = document.getElementById('__brummer_debug_panel');
                 if (panel) panel.remove();
@@ -2230,7 +2381,7 @@
                 createDebugPanel();
                 debugPanelVisible = true;
             }
-        });
+        }
         
         document.body.appendChild(badge);
         
