@@ -2,6 +2,7 @@ package components
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -137,8 +138,14 @@ func (c *TestViewComponentNew) renderSummaryTab(testViewState *state.TestViewSta
 		fmt.Sprintf("Total Runs: %d", len(activeRuns)),
 	}
 
-	for status, count := range runsByStatus {
-		stats = append(stats, fmt.Sprintf("%s: %d", status, count))
+	// Sort status keys for stable display order (prevent bouncing)
+	statusKeys := make([]string, 0, len(runsByStatus))
+	for status := range runsByStatus {
+		statusKeys = append(statusKeys, status)
+	}
+	sort.Strings(statusKeys)
+	for _, status := range statusKeys {
+		stats = append(stats, fmt.Sprintf("%s: %d", status, runsByStatus[status]))
 	}
 
 	if testViewState.IsRunning() {
