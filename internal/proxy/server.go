@@ -312,47 +312,7 @@ func (s *Server) setupHandlers() {
 			s.addRequest(*req)
 
 			// Publish event with complete request data
-			eventData := map[string]interface{}{
-				"method":          req.Method,
-				"url":             req.URL,
-				"path":            req.Path,
-				"status":          req.StatusCode,
-				"duration":        req.Duration.Milliseconds(),
-				"size":            req.Size,
-				"processName":     req.ProcessName,
-				"error":           req.Error,
-				"hasAuth":         req.HasAuth,
-				"authType":        req.AuthType,
-				"jwtError":        req.JWTError,
-				"contentType":     req.ContentType,
-				"requestBody":     req.RequestBody,
-				"responseBody":    req.ResponseBody,
-				"requestHeaders":  req.RequestHeaders,
-				"responseHeaders": req.ResponseHeaders,
-			}
-
-			// Add JWT claims if present
-			if req.JWTClaims != nil {
-				eventData["jwtClaims"] = req.JWTClaims
-			}
-
-			// Add telemetry data if present
-			if req.HasTelemetry && req.Telemetry != nil {
-				eventData["hasTelemetry"] = true
-				eventData["sessionId"] = req.SessionID
-				// Add performance metrics from telemetry session
-				if req.Telemetry.PerformanceMetrics != nil {
-					eventData["performanceMetrics"] = req.Telemetry.PerformanceMetrics
-				}
-			} else {
-				eventData["hasTelemetry"] = false
-			}
-
-			s.eventBus.Publish(events.Event{
-				Type:      events.ProxyRequest,
-				ProcessID: req.ProcessName,
-				Data:      eventData,
-			})
+			s.publishProxyRequestEvent(req)
 
 			// Inject monitoring script into HTML responses
 			if s.enableTelemetry && resp != nil && resp.StatusCode == 200 {
@@ -383,6 +343,8 @@ func (s *Server) injectMonitoringScript(resp *http.Response, processName string)
 	// Check if response is HTML
 	contentType := resp.Header.Get("Content-Type")
 	if !strings.Contains(strings.ToLower(contentType), "text/html") {
+		// Debug: Log when skipping non-HTML
+		// fmt.Printf("[INJECT] Skipping non-HTML response: %s\n", contentType)
 		return resp
 	}
 
@@ -844,24 +806,79 @@ func isAPIRequest(r *http.Request, contentType string) bool {
 	return false
 }
 
+// publishProxyRequestEvent publishes a ProxyRequest event with all request data
+func (s *Server) publishProxyRequestEvent(req *Request) {
+	eventData := map[string]interface{}{
+		"requestId":       req.ID,  // Include the request ID!
+		"method":          req.Method,
+		"url":             req.URL,
+		"path":            req.Path,
+		"status":          req.StatusCode,
+		"duration":        req.Duration.Milliseconds(),
+		"size":            req.Size,
+		"processName":     req.ProcessName,
+		"error":           req.Error,
+		"hasAuth":         req.HasAuth,
+		"authType":        req.AuthType,
+		"jwtError":        req.JWTError,
+		"contentType":     req.ContentType,
+		"requestBody":     req.RequestBody,
+		"responseBody":    req.ResponseBody,
+		"requestHeaders":  req.RequestHeaders,
+		"responseHeaders": req.ResponseHeaders,
+	}
+
+	// Add JWT claims if present
+	if req.JWTClaims != nil {
+		eventData["jwtClaims"] = req.JWTClaims
+	}
+
+	// Add telemetry data if present
+	if req.HasTelemetry && req.Telemetry != nil {
+		eventData["hasTelemetry"] = true
+		eventData["sessionId"] = req.SessionID
+		// Add performance metrics from telemetry session
+		if req.Telemetry.PerformanceMetrics != nil {
+			eventData["performanceMetrics"] = req.Telemetry.PerformanceMetrics
+		}
+	} else {
+		eventData["hasTelemetry"] = false
+	}
+
+	s.eventBus.Publish(events.Event{
+		Type:      events.ProxyRequest,
+		ProcessID: req.ProcessName,
+		Data:      eventData,
+	})
+}
+
 // linkTelemetryToRequests links telemetry data to existing requests
 func (s *Server) linkTelemetryToRequests(sessionID string) {
+	// Get session info and find matching requests under lock
 	s.dataMu.Lock()
-	defer s.dataMu.Unlock()
-
 	session, exists := s.telemetry.GetSession(sessionID)
 	if !exists || session == nil {
+		s.dataMu.Unlock()
 		return
 	}
 
 	// Find requests that match this session's URL and link them
 	sessionURL := session.URL
 	if sessionURL == "" {
+		s.dataMu.Unlock()
 		return
 	}
 
 	// Normalize the session URL for comparison
 	normalizedSessionURL := normalizeURL(sessionURL)
+
+	// Track updated requests to publish events
+	var updatedRequests []Request
+	foundMatch := false
+
+	// Debug: Log what we're looking for
+	// fmt.Printf("[TELEMETRY] Looking to link session %s with URL: %s (normalized: %s)\n",
+	//     sessionID, sessionURL, normalizedSessionURL)
 
 	for i := range s.requests {
 		req := &s.requests[i]
@@ -871,14 +888,73 @@ func (s *Server) linkTelemetryToRequests(sessionID string) {
 			continue
 		}
 
-		// Check if URLs match (normalized comparison)
+		// Check if URLs match (try multiple matching strategies)
 		normalizedReqURL := normalizeURL(req.URL)
-		if normalizedReqURL == normalizedSessionURL || req.URL == sessionURL {
+
+		// Debug: Log each comparison
+		// fmt.Printf("[TELEMETRY] Comparing request %s: %s (normalized: %s) vs session: %s\n",
+		//     req.ID, req.URL, normalizedReqURL, normalizedSessionURL)
+
+		// Match if:
+		// 1. Normalized URLs match (ignoring query params)
+		// 2. Full URLs match exactly
+		// 3. Session URL starts with request URL (for root pages)
+		urlMatches := normalizedReqURL == normalizedSessionURL ||
+			req.URL == sessionURL ||
+			strings.HasPrefix(sessionURL, req.URL)
+
+		if urlMatches {
 			req.SessionID = sessionID
 			req.HasTelemetry = true
 			req.Telemetry = session
+			foundMatch = true
 			// Telemetry session linked to request
+
+			// Debug: Log successful link
+			// fmt.Printf("[TELEMETRY] ✅ Linked telemetry to request %s\n", req.ID)
+
+			// Add to list of updated requests
+			updatedRequests = append(updatedRequests, *req)
 		}
+	}
+
+	// Create synthetic request if no matches (copy session data while locked)
+	var syntheticReq *Request
+	if !foundMatch && session != nil && session.URL != "" {
+		syntheticReq = &Request{
+			ID:           fmt.Sprintf("telemetry-%s", sessionID),
+			Method:       "GET", // Assume GET for telemetry-only requests
+			URL:          session.URL,
+			Path:         session.URL,
+			StatusCode:   200, // Assume success since we got telemetry
+			StartTime:    session.StartTime,
+			Duration:     time.Since(session.StartTime),
+			ProcessName:  session.ProcessName,
+			HasTelemetry: true,
+			SessionID:    sessionID,
+			Telemetry:    session,
+			ContentType:  "text/html", // Telemetry implies HTML page
+		}
+		// Debug: Log orphaned telemetry
+		// fmt.Printf("[TELEMETRY] ⚠️ Will create synthetic request for orphaned telemetry: %s\n", session.URL)
+	}
+	s.dataMu.Unlock()
+
+	// Publish events outside the lock to avoid blocking
+	// Debug: Log result
+	// fmt.Printf("[TELEMETRY] Found %d requests to update with telemetry\n", len(updatedRequests))
+
+	for _, req := range updatedRequests {
+		s.publishProxyRequestEvent(&req)
+	}
+
+	// Handle synthetic request if needed
+	if syntheticReq != nil {
+		// Publish as a new request so telemetry data is visible
+		s.publishProxyRequestEvent(syntheticReq)
+
+		// Store it for future reference
+		s.addRequest(*syntheticReq) // addRequest has its own locking
 	}
 }
 
@@ -1333,47 +1409,7 @@ func (s *Server) createURLProxyHandler(mapping *URLMapping) http.Handler {
 
 			// Publish event with complete request data
 			if s.eventBus != nil {
-				eventData := map[string]interface{}{
-					"method":          reqRecord.Method,
-					"url":             reqRecord.URL,
-					"path":            reqRecord.Path,
-					"status":          reqRecord.StatusCode,
-					"duration":        reqRecord.Duration.Milliseconds(),
-					"size":            reqRecord.Size,
-					"processName":     reqRecord.ProcessName,
-					"error":           reqRecord.Error,
-					"hasAuth":         reqRecord.HasAuth,
-					"authType":        reqRecord.AuthType,
-					"jwtError":        reqRecord.JWTError,
-					"contentType":     reqRecord.ContentType,
-					"requestBody":     reqRecord.RequestBody,
-					"responseBody":    reqRecord.ResponseBody,
-					"requestHeaders":  reqRecord.RequestHeaders,
-					"responseHeaders": reqRecord.ResponseHeaders,
-				}
-
-				// Add JWT claims if present
-				if reqRecord.JWTClaims != nil {
-					eventData["jwtClaims"] = reqRecord.JWTClaims
-				}
-
-				// Add telemetry data if present
-				if reqRecord.HasTelemetry && reqRecord.Telemetry != nil {
-					eventData["hasTelemetry"] = true
-					eventData["sessionId"] = reqRecord.SessionID
-					// Add performance metrics from telemetry session
-					if reqRecord.Telemetry.PerformanceMetrics != nil {
-						eventData["performanceMetrics"] = reqRecord.Telemetry.PerformanceMetrics
-					}
-				} else {
-					eventData["hasTelemetry"] = false
-				}
-
-				s.eventBus.Publish(events.Event{
-					Type:      events.ProxyRequest,
-					ProcessID: reqRecord.ProcessName,
-					Data:      eventData,
-				})
+				s.publishProxyRequestEvent(&reqRecord)
 			}
 
 			// Inject monitoring script and rewrite URLs for HTML responses

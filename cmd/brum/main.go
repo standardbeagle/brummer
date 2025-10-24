@@ -617,7 +617,8 @@ func runApp(cmd *cobra.Command, args []string) {
 			// Cleanup all processes
 			fmt.Println("Stopping all running processes...")
 			if err := processMgr.Cleanup(); err != nil {
-				// Error during cleanup (logged internally in headless mode)
+				// Surface cleanup errors to user in headless mode
+				fmt.Fprintf(os.Stderr, "⚠️  Process cleanup error: %v\n", err)
 			}
 
 			fmt.Println("Stopping MCP server...")
@@ -755,7 +756,8 @@ func runApp(cmd *cobra.Command, args []string) {
 
 		fmt.Println("Stopping all running processes...")
 		if err := processMgr.Cleanup(); err != nil {
-			// Error during cleanup (logged internally)
+			// Surface cleanup errors to user
+			fmt.Fprintf(os.Stderr, "⚠️  Process cleanup error: %v\n", err)
 		}
 
 		if mcpServerInterface != nil {

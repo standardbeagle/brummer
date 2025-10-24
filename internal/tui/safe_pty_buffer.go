@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -10,19 +9,19 @@ import (
 )
 
 // SafePTYBuffer implements a high-performance, deadlock-safe ring buffer for PTY messages
-// Uses the production-ready smallnest/ringbuffer library with proper synchronization
+// Uses the production-ready smallnest/ringbuffer library (which is already thread-safe)
+//
+// THREAD SAFETY: The underlying ringbuffer.RingBuffer is thread-safe for Read/Write operations.
+// We only use atomic.Pointer to protect against reading/writing after Close().
 type SafePTYBuffer struct {
-	// Core ring buffer implementation (production-ready)
-	ringBuffer *ringbuffer.RingBuffer
+	// Core ring buffer implementation (already thread-safe)
+	ringBuffer atomic.Pointer[ringbuffer.RingBuffer]
 
 	// Performance metrics (atomic operations)
 	messagesWritten atomic.Uint64
 	messagesDropped atomic.Uint64
 	bufferFullCount atomic.Uint64
 	maxUsedSlots    atomic.Uint64
-
-	// Synchronization for configuration changes
-	mu sync.RWMutex
 }
 
 // SafePTYMessage represents a single PTY message with metadata
@@ -55,21 +54,19 @@ func NewSafePTYBuffer(bufferSize uint64) *SafePTYBuffer {
 		bufferSize = 1000000 // Limit to 1M messages
 	}
 
-	return &SafePTYBuffer{
-		ringBuffer: ringbuffer.New(int(bufferSize)),
-	}
+	buf := &SafePTYBuffer{}
+	buf.ringBuffer.Store(ringbuffer.New(int(bufferSize)))
+	return buf
 }
 
 // TryWrite attempts to write a message to the buffer
 // Returns true if successful, false if buffer is full (backpressure)
-// This operation is thread-safe and deadlock-free
+// Thread-safe: ringbuffer.Write() is already thread-safe
 func (b *SafePTYBuffer) TryWrite(msg *SafePTYMessage) bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	// Check if buffer has been closed
-	if b.ringBuffer == nil {
-		return false
+	// Get current ring buffer (atomic read)
+	rb := b.ringBuffer.Load()
+	if rb == nil {
+		return false // Buffer has been closed
 	}
 
 	// Convert PTYMessage to bytes for storage
@@ -79,8 +76,8 @@ func (b *SafePTYBuffer) TryWrite(msg *SafePTYMessage) bool {
 		return false
 	}
 
-	// Try to write to ring buffer
-	n, err := b.ringBuffer.Write(data)
+	// Write to ring buffer (already thread-safe)
+	n, err := rb.Write(data)
 	if err != nil {
 		// Buffer is full or other error
 		b.messagesDropped.Add(1)
@@ -90,28 +87,26 @@ func (b *SafePTYBuffer) TryWrite(msg *SafePTYMessage) bool {
 		return false
 	}
 
-	// Update metrics
+	// Update metrics (atomic operations)
 	b.messagesWritten.Add(1)
-	b.updateMaxUsedSlots()
+	b.updateMaxUsedSlots(rb)
 
 	return true
 }
 
 // TryRead attempts to read a message from the buffer
 // Returns message and true if successful, nil and false if buffer is empty
-// This operation is thread-safe and deadlock-free
+// Thread-safe: ringbuffer.Read() is already thread-safe
 func (b *SafePTYBuffer) TryRead() (*SafePTYMessage, bool) {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	// Check if buffer has been closed
-	if b.ringBuffer == nil {
-		return nil, false
+	// Get current ring buffer (atomic read)
+	rb := b.ringBuffer.Load()
+	if rb == nil {
+		return nil, false // Buffer has been closed
 	}
 
 	// Create buffer for reading
 	data := make([]byte, 4096) // Max message size
-	n, err := b.ringBuffer.Read(data)
+	n, err := rb.Read(data)
 	if err != nil {
 		// Buffer is empty or other error
 		return nil, false
@@ -129,26 +124,19 @@ func (b *SafePTYBuffer) TryRead() (*SafePTYMessage, bool) {
 
 // TryReadBatch attempts to read up to maxMessages from the buffer
 // Returns slice of messages and actual count read
-// More efficient than multiple TryRead calls for batch processing
+// Thread-safe: Uses TryRead() which is already thread-safe
 func (b *SafePTYBuffer) TryReadBatch(maxMessages int) ([]*SafePTYMessage, int) {
 	if maxMessages <= 0 {
 		return nil, 0
 	}
 
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	// Check if buffer has been closed
-	if b.ringBuffer == nil {
-		return nil, 0
-	}
-
 	batch := make([]*SafePTYMessage, 0, maxMessages)
 
+	// Read messages one at a time (TryRead is already thread-safe)
 	for len(batch) < maxMessages {
 		msg, ok := b.TryRead()
 		if !ok {
-			break // Buffer empty
+			break // Buffer empty or closed
 		}
 		batch = append(batch, msg)
 	}
@@ -157,14 +145,15 @@ func (b *SafePTYBuffer) TryReadBatch(maxMessages int) ([]*SafePTYMessage, int) {
 }
 
 // GetMetrics returns current buffer performance metrics
+// Thread-safe: Uses atomic operations for all reads
 func (b *SafePTYBuffer) GetMetrics() SafeBufferMetrics {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
 	var bufferSize, currentUsed uint64
-	if b.ringBuffer != nil {
-		bufferSize = uint64(b.ringBuffer.Capacity())
-		currentUsed = uint64(b.ringBuffer.Length())
+
+	// Get current ring buffer (atomic read)
+	rb := b.ringBuffer.Load()
+	if rb != nil {
+		bufferSize = uint64(rb.Capacity())
+		currentUsed = uint64(rb.Length())
 	}
 
 	return SafeBufferMetrics{
@@ -203,54 +192,47 @@ func (b *SafePTYBuffer) calculateSaturationRatio() float64 {
 }
 
 // IsEmpty returns true if the buffer is empty
+// Thread-safe: ringbuffer.Length() is thread-safe
 func (b *SafePTYBuffer) IsEmpty() bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	if b.ringBuffer == nil {
+	rb := b.ringBuffer.Load()
+	if rb == nil {
 		return true
 	}
 
-	return b.ringBuffer.Length() == 0
+	return rb.Length() == 0
 }
 
 // IsFull returns true if the buffer is full
+// Thread-safe: ringbuffer.Length() and Capacity() are thread-safe
 func (b *SafePTYBuffer) IsFull() bool {
-	b.mu.RLock()
-	defer b.mu.RUnlock()
-
-	if b.ringBuffer == nil {
+	rb := b.ringBuffer.Load()
+	if rb == nil {
 		return false
 	}
 
-	return b.ringBuffer.Length() >= b.ringBuffer.Capacity()
+	return rb.Length() >= rb.Capacity()
 }
 
 // Close safely closes the buffer and releases resources
+// Thread-safe: atomic.Pointer.Store is atomic
 func (b *SafePTYBuffer) Close() error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	if b.ringBuffer != nil {
-		// Clear any remaining data
-		b.ringBuffer = nil
-	}
-
+	// Set ring buffer to nil (atomic operation)
+	b.ringBuffer.Store(nil)
 	return nil
 }
 
 // Reset clears the buffer and resets all metrics
-// WARNING: This is thread-safe but will drop any pending messages
+// WARNING: This will drop any pending messages
+// Thread-safe: Uses atomic operations
 func (b *SafePTYBuffer) Reset() {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	// Reset ring buffer
-	if b.ringBuffer != nil {
-		b.ringBuffer = ringbuffer.New(b.ringBuffer.Capacity())
+	// Get current buffer to preserve capacity
+	rb := b.ringBuffer.Load()
+	if rb != nil {
+		// Create new ring buffer with same capacity (atomic swap)
+		b.ringBuffer.Store(ringbuffer.New(rb.Capacity()))
 	}
 
-	// Reset metrics
+	// Reset metrics (atomic operations)
 	b.messagesWritten.Store(0)
 	b.messagesDropped.Store(0)
 	b.bufferFullCount.Store(0)
@@ -258,12 +240,14 @@ func (b *SafePTYBuffer) Reset() {
 }
 
 // updateMaxUsedSlots updates the maximum used slots metric
-func (b *SafePTYBuffer) updateMaxUsedSlots() {
-	if b.ringBuffer == nil {
+// Thread-safe: Uses atomic compare-and-swap
+func (b *SafePTYBuffer) updateMaxUsedSlots(rb *ringbuffer.RingBuffer) {
+	if rb == nil {
 		return
 	}
 
-	current := uint64(b.ringBuffer.Length())
+	current := uint64(rb.Length())
+	// Atomic CAS loop to update max value
 	for {
 		max := b.maxUsedSlots.Load()
 		if current <= max || b.maxUsedSlots.CompareAndSwap(max, current) {

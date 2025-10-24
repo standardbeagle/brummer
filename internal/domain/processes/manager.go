@@ -823,24 +823,105 @@ func (m *Manager) StopAllProcesses() error {
 
 // Cleanup stops all processes and cleans up resources
 func (m *Manager) Cleanup() error {
+	// Stop all tracked processes
 	err := m.StopAllProcesses()
 
-	// Kill any remaining development processes with minimal blocking
-	done := make(chan bool, 1)
-	go func() {
-		m.KillProcessesByPort()
-		done <- true
-	}()
+	// Kill port-based processes SYNCHRONOUSLY (don't return until done)
+	m.KillProcessesByPort()
 
-	// Wait for cleanup but don't block forever
-	select {
-	case <-done:
-		// Cleanup completed
-	case <-time.After(1 * time.Second):
-		// Timeout - continue shutdown
+	// Poll for process termination (50 checks x 10ms = 500ms max)
+	// This allows fast shutdown when processes die quickly
+	for i := 0; i < 50; i++ {
+		runningCount := m.getRunningProcessCount()
+		if runningCount == 0 {
+			// All processes stopped - exit early
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Final verification - force kill any survivors
+	remaining := m.getRunningProcessCount()
+	if remaining > 0 {
+		// Get list of stubborn processes for error reporting
+		stubbornProcesses := m.getRunningProcessNames()
+
+		// Force kill any processes that are still running
+		m.forceKillAllProcesses()
+
+		// Give forced kills a moment to take effect
+		time.Sleep(100 * time.Millisecond)
+
+		// Check if force kill worked
+		finalRemaining := m.getRunningProcessCount()
+		if finalRemaining > 0 {
+			// Some processes survived even force kill - report error
+			finalSurvivors := m.getRunningProcessNames()
+			return fmt.Errorf("failed to kill %d processes after force kill: %v (original: %v)",
+				finalRemaining, finalSurvivors, stubbornProcesses)
+		}
+
+		// Force kill succeeded but processes were stubborn
+		if err == nil {
+			err = fmt.Errorf("warning: %d processes required force kill (SIGKILL): %v",
+				remaining, stubbornProcesses)
+		}
 	}
 
 	return err
+}
+
+// getRunningProcessCount returns the number of currently running processes
+func (m *Manager) getRunningProcessCount() int {
+	count := 0
+	m.processes.Range(func(key, value interface{}) bool {
+		if process, ok := value.(*Process); ok {
+			if process.GetStatus() == StatusRunning {
+				count++
+			}
+		}
+		return true // continue iteration
+	})
+	return count
+}
+
+// getRunningProcessNames returns the names and PIDs of currently running processes
+func (m *Manager) getRunningProcessNames() []string {
+	var names []string
+	m.processes.Range(func(key, value interface{}) bool {
+		if process, ok := value.(*Process); ok {
+			if process.GetStatus() == StatusRunning {
+				pid := "unknown"
+				if process.Cmd != nil && process.Cmd.Process != nil {
+					pid = fmt.Sprintf("PID:%d", process.Cmd.Process.Pid)
+				}
+				names = append(names, fmt.Sprintf("%s(%s)", process.Name, pid))
+			}
+		}
+		return true // continue iteration
+	})
+	return names
+}
+
+// forceKillAllProcesses forcefully kills all running processes without waiting
+func (m *Manager) forceKillAllProcesses() {
+	m.processes.Range(func(key, value interface{}) bool {
+		if process, ok := value.(*Process); ok {
+			if process.GetStatus() == StatusRunning {
+				// Use the most aggressive kill method
+				if process.Cmd != nil && process.Cmd.Process != nil {
+					pid := process.Cmd.Process.Pid
+
+					// Use platform-specific kill functions that handle process trees
+					killProcessTree(pid)
+
+					// Also ensure direct kill as final measure
+					_ = process.Cmd.Process.Kill()
+				}
+			}
+		}
+		return true // continue iteration
+	})
 }
 
 // killProcessTree kills a process and all its children
