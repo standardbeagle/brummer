@@ -116,4 +116,10 @@ type ProxyRequestMsg struct {
 
 	// Performance metrics from browser telemetry
 	PerformanceMetrics map[string]interface{}
+
+	// Request/Response data
+	RequestHeaders  map[string]string
+	ResponseHeaders map[string]string
+	RequestBody     string
+	ResponseBody    string
 }

@@ -28,6 +28,12 @@ type RequestInfo struct {
 	SessionID    string
 	PerformanceMetrics map[string]interface{} // Browser performance metrics (TTFB, DOM, etc.)
 	// Note: Full telemetry data would require more complex types for this component
+
+	// Request/Response data
+	RequestHeaders  map[string]string
+	ResponseHeaders map[string]string
+	RequestBody     string
+	ResponseBody    string
 }
 
 // WebViewState manages all web view UI state

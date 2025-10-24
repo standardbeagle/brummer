@@ -2,10 +2,13 @@ package components
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/standardbeagle/brummer/internal/tui/state"
 )
@@ -32,10 +35,171 @@ type WebViewComponentRefactored struct {
 	detailStyle     lipgloss.Style
 }
 
+// Helper functions for icons and formatting
+
+// getStatusIcon returns an icon and color for HTTP status codes
+func getStatusIcon(status int) (string, lipgloss.Color) {
+	switch {
+	case status >= 200 && status < 300:
+		return "✅", lipgloss.Color("10") // Green
+	case status >= 300 && status < 400:
+		return "↩️", lipgloss.Color("11") // Yellow
+	case status >= 400 && status < 500:
+		return "❌", lipgloss.Color("196") // Red
+	case status >= 500:
+		return "🚨", lipgloss.Color("196") // Red
+	default:
+		return "❓", lipgloss.Color("245") // Gray
+	}
+}
+
+// getRequestTypeIcon returns an icon for different request types based on URL and content type
+func getRequestTypeIcon(url, contentType string) string {
+	// Check file extension first
+	if strings.Contains(url, ".js") || strings.HasSuffix(url, "/js") {
+		return "📜" // JavaScript
+	}
+	if strings.Contains(url, ".css") || strings.HasSuffix(url, "/css") {
+		return "🎨" // CSS
+	}
+	if strings.Contains(url, ".png") || strings.Contains(url, ".jpg") || strings.Contains(url, ".jpeg") ||
+		strings.Contains(url, ".gif") || strings.Contains(url, ".svg") || strings.Contains(url, ".webp") {
+		return "🖼️" // Image
+	}
+	if strings.Contains(url, ".html") || strings.HasSuffix(url, "/") {
+		return "📄" // HTML page
+	}
+	if strings.Contains(url, ".json") || strings.Contains(url, "/api/") {
+		return "🔌" // API
+	}
+	if strings.Contains(url, ".woff") || strings.Contains(url, ".ttf") {
+		return "🔤" // Font
+	}
+	if strings.Contains(url, ".pdf") {
+		return "📋" // PDF
+	}
+
+	// Check content type if available
+	if strings.Contains(contentType, "application/json") {
+		return "🔌" // API
+	}
+	if strings.Contains(contentType, "text/html") {
+		return "📄" // HTML page
+	}
+	if strings.Contains(contentType, "text/css") {
+		return "🎨" // CSS
+	}
+	if strings.Contains(contentType, "application/javascript") {
+		return "📜" // JavaScript
+	}
+	if strings.Contains(contentType, "image/") {
+		return "🖼️" // Image
+	}
+
+	return "📎" // Generic/Other
+}
+
+// formatDuration formats duration in a compact way
+func formatDuration(d time.Duration) string {
+	if d < time.Millisecond {
+		return "0ms"
+	} else if d < time.Second {
+		return fmt.Sprintf("%.0fms", float64(d.Nanoseconds())/1000000)
+	} else if d < 10*time.Second {
+		return fmt.Sprintf("%.1fs", d.Seconds())
+	} else {
+		return fmt.Sprintf("%.0fs", d.Seconds())
+	}
+}
+
+// cleanURL removes protocol, domain, and port from URLs for cleaner display
+// Since all proxy requests will have the same domain/port, we show only the path
+func cleanURL(fullURL string) string {
+	if fullURL == "" {
+		return ""
+	}
+
+	// Parse URL to extract path
+	// Handle common patterns:
+	// http://localhost:3000/path -> /path
+	// http://localhost:20888/path -> /path
+	// https://example.com/path -> /path
+
+	// Find the start of the path (after //)
+	protocolIndex := strings.Index(fullURL, "://")
+	if protocolIndex == -1 {
+		// No protocol found, might already be a path
+		return fullURL
+	}
+
+	// Find the domain part (://)
+	domainStart := protocolIndex + 3
+	if domainStart >= len(fullURL) {
+		return fullURL
+	}
+
+	// Find the first / after the domain
+	pathStart := strings.Index(fullURL[domainStart:], "/")
+	if pathStart == -1 {
+		// No path, return root
+		return "/"
+	}
+
+	// Return the path part
+	path := fullURL[domainStart+pathStart:]
+	if path == "" {
+		return "/"
+	}
+
+	return path
+}
+
+// CompactDelegate creates a custom delegate for single-line items
+type CompactDelegate struct {
+	list.DefaultDelegate
+}
+
+func (d CompactDelegate) Height() int {
+	return 1 // Force single line height
+}
+
+func (d CompactDelegate) Spacing() int {
+	return 0 // No spacing between items
+}
+
+func (d CompactDelegate) Update(msg tea.Msg, m *list.Model) tea.Cmd {
+	// Handle key messages
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch {
+		case key.Matches(msg, key.NewBinding(key.WithKeys("up"))):
+			if m.Index() > 0 {
+				m.Select(m.Index() - 1)
+			}
+		case key.Matches(msg, key.NewBinding(key.WithKeys("down"))):
+			if m.Index() < len(m.Items())-1 {
+				m.Select(m.Index() + 1)
+			}
+		case key.Matches(msg, key.NewBinding(key.WithKeys("enter"))):
+			// Enter key shows details (handled by parent)
+			return m.NewStatusMessage("Selected: " + m.SelectedItem().(WebRequestItemWrapper).URL)
+		case key.Matches(msg, key.NewBinding(key.WithKeys("q"))):
+			// Let parent handle quit
+			return nil
+		}
+	}
+
+	// Use default handling for other keys
+	return d.DefaultDelegate.Update(msg, m)
+}
+
 // NewWebViewComponentRefactored creates a new web view component using Bubble Tea list
 func NewWebViewComponentRefactored() *WebViewComponentRefactored {
-	// Create list delegate with custom styling
-	delegate := list.NewDefaultDelegate()
+	// Create compact delegate for single-line display
+	delegate := &CompactDelegate{
+		DefaultDelegate: list.NewDefaultDelegate(),
+	}
+	delegate.ShowDescription = false // Don't render description lines at all
 	delegate.Styles.SelectedTitle = delegate.Styles.SelectedTitle.Foreground(lipgloss.Color("33")).Bold(true).Underline(true)
 	delegate.Styles.SelectedDesc = delegate.Styles.SelectedDesc.Foreground(lipgloss.Color("33")).Bold(true)
 
@@ -46,6 +210,9 @@ func NewWebViewComponentRefactored() *WebViewComponentRefactored {
 	requestsList.SetFilteringEnabled(false)
 	requestsList.SetShowPagination(false)
 	requestsList.SetShowHelp(false)
+
+	// Configure for compact display
+	requestsList.DisableQuitKeybindings() // Allow 'q' to be used by parent
 
 	return &WebViewComponentRefactored{
 		BaseComponent: NewBaseComponent(),
@@ -280,7 +447,7 @@ func (c *WebViewComponentRefactored) renderDetailPanel(webViewState *state.WebVi
 		if domLoad, ok := selectedRequest.PerformanceMetrics["domContentLoadedTime"].(float64); ok {
 			details = append(details, fmt.Sprintf("  DOM Loaded: %.1fms", domLoad))
 		}
-		if loadTime, ok := selectedRequest.PerformanceMetrics["loadCompleteTime"].(float64); ok {
+		if loadTime, ok := selectedRequest.PerformanceMetrics["loadCompleteTime"].(float64); ok && loadTime > 0 {
 			details = append(details, fmt.Sprintf("  Load Complete: %.1fms", loadTime))
 		}
 		if firstPaint, ok := selectedRequest.PerformanceMetrics["first_paint"].(float64); ok {
@@ -300,6 +467,60 @@ func (c *WebViewComponentRefactored) renderDetailPanel(webViewState *state.WebVi
 	if selectedRequest.HasTelemetry && selectedRequest.SessionID != "" {
 		details = append(details, "")
 		details = append(details, fmt.Sprintf("Session: %s", selectedRequest.SessionID))
+	}
+
+	// Request Headers
+	if len(selectedRequest.RequestHeaders) > 0 {
+		details = append(details, "")
+		details = append(details, c.detailHeaderStyle.Render("Request Headers:"))
+		// Sort header keys for stable display order (prevent bouncing)
+		reqHeaderKeys := make([]string, 0, len(selectedRequest.RequestHeaders))
+		for key := range selectedRequest.RequestHeaders {
+			reqHeaderKeys = append(reqHeaderKeys, key)
+		}
+		sort.Strings(reqHeaderKeys)
+		for _, key := range reqHeaderKeys {
+			headerLine := fmt.Sprintf("  %s: %s", key, selectedRequest.RequestHeaders[key])
+			details = append(details, headerLine)
+		}
+	}
+
+	// Response Headers
+	if len(selectedRequest.ResponseHeaders) > 0 {
+		details = append(details, "")
+		details = append(details, c.detailHeaderStyle.Render("Response Headers:"))
+		// Sort header keys for stable display order (prevent bouncing)
+		respHeaderKeys := make([]string, 0, len(selectedRequest.ResponseHeaders))
+		for key := range selectedRequest.ResponseHeaders {
+			respHeaderKeys = append(respHeaderKeys, key)
+		}
+		sort.Strings(respHeaderKeys)
+		for _, key := range respHeaderKeys {
+			headerLine := fmt.Sprintf("  %s: %s", key, selectedRequest.ResponseHeaders[key])
+			details = append(details, headerLine)
+		}
+	}
+
+	// Request Body
+	if selectedRequest.RequestBody != "" {
+		details = append(details, "")
+		details = append(details, c.detailHeaderStyle.Render("Request Body:"))
+		// Split body into lines for better display
+		bodyLines := strings.Split(selectedRequest.RequestBody, "\n")
+		for _, line := range bodyLines {
+			details = append(details, "  "+line)
+		}
+	}
+
+	// Response Body
+	if selectedRequest.ResponseBody != "" {
+		details = append(details, "")
+		details = append(details, c.detailHeaderStyle.Render("Response Body:"))
+		// Split body into lines for better display
+		bodyLines := strings.Split(selectedRequest.ResponseBody, "\n")
+		for _, line := range bodyLines {
+			details = append(details, "  "+line)
+		}
 	}
 
 	// Format detail lines with proper width
@@ -377,43 +598,59 @@ func (i WebRequestItemWrapper) FilterValue() string {
 }
 
 func (i WebRequestItemWrapper) Title() string {
-	// Use ► indicator for selected items
-	indicator := "  "
-	if i.IsSelected {
-		indicator = "► "
+	// Get status icon
+	statusIcon, _ := getStatusIcon(i.StatusCode)
+
+	// Get request type icon
+	typeIcon := getRequestTypeIcon(i.URL, "") // Content type not available in wrapper
+
+	// Add telemetry indicator
+	telemetryIcon := ""
+	if i.HasTelemetry {
+		telemetryIcon = "📊" // Telemetry available
 	}
 
-	// Format duration - always show duration even for very fast requests
-	duration := ""
-	if i.Duration > 0 {
-		if i.Duration < time.Millisecond {
-			duration = fmt.Sprintf(" %.0fμs", float64(i.Duration.Nanoseconds())/1000)
-		} else if i.Duration < time.Second {
-			duration = fmt.Sprintf(" %.0fms", float64(i.Duration.Nanoseconds())/1000000)
-		} else {
-			duration = fmt.Sprintf(" %.1fs", i.Duration.Seconds())
-		}
-	} else {
-		// For 0 duration requests, show as "<1ms" to indicate very fast local requests
-		duration = " <1ms"
-	}
+	// Format duration
+	duration := formatDuration(i.Duration)
 
-	return fmt.Sprintf("%s%-8s %-12s", indicator, i.Method, i.ProcessName) + duration
-}
+	// Build compact format: [status] [type] [method] [path] [duration] [telemetry]
+	// Example: ✅ 📄 GET /api/users 125ms 📊
 
-func (i WebRequestItemWrapper) Description() string {
-	// Truncate URL if too long
-	maxURLLength := 50
-	url := i.URL
+	// Clean URL to remove protocol, domain, and port
+	cleanURL := cleanURL(i.URL)
+
+	// Truncate URL for compact display
+	maxURLLength := 25
+	url := cleanURL
 	if len(url) > maxURLLength {
 		url = url[:maxURLLength-3] + "..."
 	}
 
-	// Handle error status
-	statusText := fmt.Sprintf("%d", i.StatusCode)
-	if i.Error != "" {
-		statusText = "Error"
+	// Build the line
+	parts := []string{
+		statusIcon,
+		typeIcon,
+		i.Method,
+		url,
+		duration,
 	}
 
-	return fmt.Sprintf("%-50s %-8s", url, statusText)
+	// Add telemetry if available
+	if telemetryIcon != "" {
+		parts = append(parts, telemetryIcon)
+	}
+
+	// Join parts with spacing
+	title := strings.Join(parts, " ")
+
+	// Apply status color to the status icon
+	// Note: In a real implementation, we'd need to handle colored text in the title
+	// For now, we'll use a simple format
+
+	return title
+}
+
+func (i WebRequestItemWrapper) Description() string {
+	// Description is hidden for compact display
+	return ""
 }

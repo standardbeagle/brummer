@@ -872,7 +872,13 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 			duration := time.Duration(0)
 			size := int64(0)
 			processName := ""
+			error := ""
+			hasAuth := false
+			authType := ""
+			jwtError := ""
+			var jwtClaims map[string]interface{}
 
+			// Extract standard request fields
 			if val, ok := event.Data["method"]; ok {
 				if s, ok := val.(string); ok {
 					method = s
@@ -903,10 +909,91 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 					processName = s
 				}
 			}
+			if val, ok := event.Data["error"]; ok {
+				if s, ok := val.(string); ok {
+					error = s
+				}
+			}
+			if val, ok := event.Data["hasAuth"]; ok {
+				if b, ok := val.(bool); ok {
+					hasAuth = b
+				}
+			}
+			if val, ok := event.Data["authType"]; ok {
+				if s, ok := val.(string); ok {
+					authType = s
+				}
+			}
+			if val, ok := event.Data["jwtError"]; ok {
+				if s, ok := val.(string); ok {
+					jwtError = s
+				}
+			}
+			if val, ok := event.Data["jwtClaims"]; ok {
+				if claims, ok := val.(map[string]interface{}); ok {
+					jwtClaims = claims
+				}
+			}
+			
+			// Extract telemetry data
+			hasTelemetry := false
+			sessionID := ""
+			var performanceMetrics map[string]interface{}
 
-			// Generate ID from timestamp and URL
-			timestamp := time.Now()
-			id := fmt.Sprintf("%d-%s", timestamp.UnixNano(), method)
+			if val, ok := event.Data["hasTelemetry"]; ok {
+				if b, ok := val.(bool); ok {
+					hasTelemetry = b
+				}
+			}
+			if val, ok := event.Data["sessionId"]; ok {
+				if s, ok := val.(string); ok {
+					sessionID = s
+				}
+			}
+			if val, ok := event.Data["performanceMetrics"]; ok {
+				if metrics, ok := val.(map[string]interface{}); ok {
+					performanceMetrics = metrics
+				}
+			}
+
+			// Extract request/response headers and bodies
+			var requestHeaders map[string]string
+			var responseHeaders map[string]string
+			requestBody := ""
+			responseBody := ""
+
+			if val, ok := event.Data["requestHeaders"]; ok {
+				if headers, ok := val.(map[string]string); ok {
+					requestHeaders = headers
+				}
+			}
+			if val, ok := event.Data["responseHeaders"]; ok {
+				if headers, ok := val.(map[string]string); ok {
+					responseHeaders = headers
+				}
+			}
+			if val, ok := event.Data["requestBody"]; ok {
+				if body, ok := val.(string); ok {
+					requestBody = body
+				}
+			}
+			if val, ok := event.Data["responseBody"]; ok {
+				if body, ok := val.(string); ok {
+					responseBody = body
+				}
+			}
+
+			// Generate ID from event data or timestamp
+			var id string
+			if val, ok := event.Data["requestId"]; ok {
+				if reqId, ok := val.(string); ok {
+					id = reqId
+				}
+			}
+			if id == "" {
+				timestamp := time.Now()
+				id = fmt.Sprintf("%d-%s", timestamp.UnixNano(), method)
+			}
 
 			// Send as message to update loop (non-blocking to avoid deadlocking the event bus)
 			msg := messages.ProxyRequestMsg{
@@ -917,11 +1004,20 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 				StatusCode:  statusCode,
 				Duration:    duration,
 				ProcessName: processName,
-				Timestamp:   timestamp,
+				Timestamp:   time.Now(), // Use current timestamp
 				Size:        size,
-				HasTelemetry: false, // Will be true if telemetry is available
-				SessionID:    "",       // Will be populated if telemetry is available
-				PerformanceMetrics: make(map[string]interface{}), // Will be populated with telemetry data
+				Error:       error,
+				HasAuth:     hasAuth,
+				AuthType:    authType,
+				JWTError:    jwtError,
+				JWTClaims:   jwtClaims,
+				HasTelemetry: hasTelemetry,    // ✅ Now extracted from event
+				SessionID:    sessionID,       // ✅ Now extracted from event
+				PerformanceMetrics: performanceMetrics, // ✅ Now extracted from event
+				RequestHeaders:  requestHeaders,  // ✅ Request headers
+				ResponseHeaders: responseHeaders, // ✅ Response headers
+				RequestBody:     requestBody,     // ✅ Request body
+				ResponseBody:    responseBody,    // ✅ Response body
 			}
 
 			// Non-blocking send to avoid deadlocking the event bus worker
@@ -1426,6 +1522,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				HasTelemetry: msg.HasTelemetry,
 				SessionID:    msg.SessionID,
 				PerformanceMetrics: msg.PerformanceMetrics,
+				RequestHeaders:  msg.RequestHeaders,
+				ResponseHeaders: msg.ResponseHeaders,
+				RequestBody:     msg.RequestBody,
+				ResponseBody:    msg.ResponseBody,
 			}
 			beforeCount := m.masterData.WebViewState.GetTotalRequests()
 			m.masterData.WebViewState = m.masterData.WebViewState.AddRequest(requestInfo)
