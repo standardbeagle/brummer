@@ -1238,8 +1238,8 @@
             responseTime: perfData.responseEnd - perfData.responseStart,
             domProcessingTime: perfData.domComplete - perfData.domLoading,
             domContentLoadedTime: perfData.domContentLoadedEventEnd - perfData.navigationStart,
-            loadCompleteTime: perfData.loadEventEnd - perfData.navigationStart,
-            
+            loadCompleteTime: perfData.loadEventEnd > 0 ? perfData.loadEventEnd - perfData.navigationStart : 0,
+
             // Navigation type
             navigationType: ['navigate', 'reload', 'back_forward', 'reserved'][navigation.type] || 'unknown',
             redirectCount: navigation.redirectCount
