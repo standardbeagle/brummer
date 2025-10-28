@@ -82,12 +82,50 @@ func (c *AICodersViewComponent) Init() tea.Cmd {
 	return nil
 }
 
-// UpdateViewport handles viewport scrolling for arrow keys and page up/down
+// UpdateViewport handles viewport scrolling for arrow keys, page up/down, and mouse events
 // This should be called from the main model's Update() method when handling key messages
 func (c *AICodersViewComponent) UpdateViewport(msg tea.Msg) tea.Cmd {
 	var cmd tea.Cmd
 	c.viewport, cmd = c.viewport.Update(msg)
 	return cmd
+}
+
+// Update handles component updates including mouse events and auto-scroll
+func (c *AICodersViewComponent) Update(msg tea.Msg) tea.Cmd {
+	switch msg := msg.(type) {
+	case tea.MouseMsg:
+		// Handle mouse wheel events for scrolling
+		if msg.Type == tea.MouseWheelUp || msg.Type == tea.MouseWheelDown {
+			// Update viewport with mouse event
+			return c.UpdateViewport(msg)
+		}
+
+	// Add other message types as needed
+	default:
+		// For other message types, update viewport if needed
+		return c.UpdateViewport(msg)
+	}
+
+	return nil
+}
+
+// AutoScrollToBottom automatically scrolls the viewport to the bottom
+// This should be called when new content is added to keep the latest output visible
+func (c *AICodersViewComponent) AutoScrollToBottom() {
+	if c.viewport.TotalLineCount() > c.viewport.Height {
+		// Only auto-scroll if the viewport is already near the bottom (within 5 lines)
+		// This prevents auto-scroll when user is manually scrolling up to read earlier content
+		currentOffset := c.viewport.YOffset
+		maxOffset := c.viewport.TotalLineCount() - c.viewport.Height
+
+		// Auto-scroll if user is at bottom or close to it (within 5 lines)
+		if maxOffset-currentOffset <= 5 {
+			c.viewport.GotoBottom()
+		}
+	} else {
+		// If content fits in viewport, always show the latest
+		c.viewport.GotoBottom()
+	}
 }
 
 // ViewWithState renders the component using external state (stateless/Elm-compliant)
@@ -175,6 +213,9 @@ func (c *AICodersViewComponent) renderPTYViewWithState(aiState *state.AICoderSta
 	// Set viewport content (viewport handles scrolling and overflow automatically)
 	c.viewport.SetContent(strings.Join(contentLines, "\n"))
 
+	// Auto-scroll to bottom if new content was added
+	c.AutoScrollToBottom()
+
 	// Get viewport rendering (with scroll position)
 	viewportContent := c.viewport.View()
 
@@ -197,7 +238,7 @@ func (c *AICodersViewComponent) renderPTYViewWithState(aiState *state.AICoderSta
 
 	// Show different footer based on terminal focus mode
 	if aiState.TerminalFocused {
-		footerLines = append(footerLines, c.activeStyle.Render("🔒 TERMINAL FOCUS MODE - Ctrl+T or ESC to release"+scrollInfo))
+		footerLines = append(footerLines, c.activeStyle.Render("🔒 TERMINAL FOCUS MODE - Ctrl+T to release (ESC goes to terminal)"+scrollInfo))
 	} else {
 		footerLines = append(footerLines, c.normalStyle.Render("Enter or Ctrl+T=Focus | ESC=List | ↑↓=Scroll | ?=Help"+scrollInfo))
 	}

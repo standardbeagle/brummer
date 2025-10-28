@@ -118,8 +118,11 @@ func (h *GlobalNavigationHandler) Priority() int {
 }
 
 func (h *GlobalNavigationHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
+	// Handle navigation keys globally, including in AI Coder view
+	// This allows switching away from AI Coder view and prevents lockup
+	// NOTE: AI Coder handler will still have priority when there's an active session
+
 	// Handle number keys 1-7 and left/right arrow keys globally
-	// NOTE: Tab key is NOT handled here - reserved for input element navigation
 	switch key.Type {
 	case tea.KeyLeft, tea.KeyRight:
 		return true
@@ -196,9 +199,9 @@ func (h *QuitHandler) Priority() int {
 }
 
 func (h *QuitHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
-	// Don't handle quit keys when in AI Coder terminal focus mode
-	// In that mode, Ctrl+C should go to the terminal
-	if ctx.Context == "terminal_focused" {
+	// Don't handle quit keys when in AI Coder view at all
+	// AI Coder handler is absolute priority and handles all keys including Ctrl+C and Esc
+	if ctx.View == ViewAICoders {
 		return false
 	}
 	return key.Type == tea.KeyCtrlC || key.Type == tea.KeyEsc
@@ -254,9 +257,13 @@ func (h *SlashCommandHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 		return false
 	}
 
+	// NEVER handle "/" when in AI Coder view - AI Coder handler has absolute priority
+	if ctx.View == ViewAICoders {
+		return false
+	}
+
 	// Don't handle "/" when in input field contexts:
 	// - command_window: Command palette itself
-	// - pty: AI coder terminal (except at start of line)
 	// - modal: Any modal dialog with input
 	// - script_selector: Script selection input
 	switch ctx.Context {
@@ -269,11 +276,6 @@ func (h *SlashCommandHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 	case "script_selector":
 		// Don't intercept "/" in script selector
 		return false
-	case "pty":
-		// Context-aware behavior for AI coder terminal:
-		// - "/" at start of line: Opens Brummer command palette
-		// - "/" mid-line: Sent to AI coder as regular input
-		return ctx.CursorPosition == 0
 	}
 
 	// In all other contexts (normal, file_browser, system_panel, etc),
@@ -310,7 +312,7 @@ func (h *AICoderKeyHandler) Name() string {
 }
 
 func (h *AICoderKeyHandler) Priority() int {
-	return 10 // HIGHEST priority - terminal input must be captured first
+	return 1 // ABSOLUTE HIGHEST priority - no other handlers can interfere
 }
 
 func (h *AICoderKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
@@ -319,169 +321,136 @@ func (h *AICoderKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 		return false
 	}
 
-	// Ctrl+T is ALWAYS handled in AI Coders view (toggle terminal focus)
-	if key.Type == tea.KeyCtrlT {
+	// When terminal is focused, handle ALL keys (they go to PTY)
+	if ctx.Context == "terminal_focused" {
 		return true
 	}
 
-	// In PTY mode OR terminal focus mode, handle ALL keys
-	if ctx.Context == "pty" || ctx.Context == "terminal_focused" {
-		return true // Handle all keys in these modes
-	}
+	// When terminal is NOT focused but we're in AI Coder view,
+	// we still need to handle specific control keys if there's a focused session
+	// The Handle method will check if there's actually a focused session
 
-	// In list mode, handle navigation keys + Enter to focus terminal
-	switch key.String() {
-	case "j", "k", "up", "down", "enter", "a", "d", "q":
+	// Check for specific keys we want to handle when not in terminal focus
+	switch key.Type {
+	case tea.KeyEnter:
+		// Enter key to refocus terminal (if there's a focused session)
 		return true
+	case tea.KeyCtrlT:
+		// Ctrl+T to toggle terminal focus (if there's a focused session)
+		return true
+	case tea.KeyRunes:
+		if len(key.Runes) == 1 && key.Runes[0] == 'q' {
+			// 'q' to exit session (if there's a focused session)
+			return true
+		}
 	}
 
+	// Let all other keys pass through to navigation handlers
+	// This allows 1-7, arrows, etc. to work normally
 	return false
 }
 
+
 func (h *AICoderKeyHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
-	// Check if we're in PTY mode
-	if model.masterData != nil && model.masterData.AICoderState != nil {
-		aiState := model.masterData.AICoderState
-		focusedSession := aiState.FocusedSession
+	// Must be in AI Coders view to handle any keys
+	if model.currentView() != ViewAICoders {
+		return nil
+	}
 
-		// If we have a focused session and we're viewing it, send input to PTY
-		if focusedSession != "" && model.currentView() == ViewAICoders {
-			// Special handling for Ctrl+T to toggle terminal focus
-			if key.Type == tea.KeyCtrlT {
-				newFocusState := !aiState.TerminalFocused
-				model.masterData.AICoderState = aiState.SetTerminalFocus(newFocusState)
+	// Validate we have the required state
+	if model.masterData == nil || model.masterData.AICoderState == nil {
+		return nil
+	}
 
-				// Show status message
-				statusMsg := "Terminal focus: OFF (arrows=scroll, Enter=focus)"
-				if newFocusState {
-					statusMsg = "Terminal focus: ON (all keys go to terminal, Ctrl+T or ESC to release)"
-				}
-				return func() tea.Msg {
-					return StatusMsg{Message: statusMsg}
-				}
+	aiState := model.masterData.AICoderState
+	focusedSession := aiState.FocusedSession
+
+	// Ctrl+T is special - it should work even without a focused session to exit AI Coder view
+	if key.Type == tea.KeyCtrlT {
+		if focusedSession != "" && aiState.TerminalFocused {
+			// Has focused session and terminal is focused - release terminal focus
+			model.masterData.AICoderState = aiState.SetTerminalFocus(false)
+			return func() tea.Msg {
+				return StatusMsg{Message: "Terminal focus released - arrows scroll viewport, Enter to refocus"}
 			}
-
-			// Special handling for escape key
-			if key.Type == tea.KeyEsc {
-				// If in terminal focus mode, release focus
-				if aiState.TerminalFocused {
-					model.masterData.AICoderState = aiState.SetTerminalFocus(false)
-					return func() tea.Msg {
-						return StatusMsg{Message: "Terminal focus released - arrows scroll viewport"}
-					}
-				}
-				// Otherwise, exit to list view
-				model.masterData.AICoderState = aiState.SetFocusedSession("")
-				return nil
+		} else if focusedSession != "" && !aiState.TerminalFocused {
+			// Has focused session but terminal not focused - enable terminal focus
+			model.masterData.AICoderState = aiState.SetTerminalFocus(true)
+			return func() tea.Msg {
+				return StatusMsg{Message: "Terminal focus enabled - keys go to terminal, Ctrl+T to release"}
 			}
-
-			// Special handling for Enter key to toggle terminal focus
-			if key.Type == tea.KeyEnter && !aiState.TerminalFocused {
-				model.masterData.AICoderState = aiState.SetTerminalFocus(true)
-				// Also send the Enter to the terminal
-				if model.aiCoderService != nil {
-					svc := model.aiCoderService.(interface {
-						WriteInput(sessionID string, data []byte) error
-					})
-					svc.WriteInput(focusedSession, []byte("\r"))
-				}
-				return func() tea.Msg {
-					return StatusMsg{Message: "Terminal focus enabled (Ctrl+T or ESC to release)"}
-				}
-			}
-
-			// ==== NEW: Viewport scrolling when terminal is NOT focused ====
-			// When not in terminal focus mode, handle scrolling keys for viewport
-			if !aiState.TerminalFocused {
-				isScrollKey := false
-				switch key.Type {
-				case tea.KeyUp, tea.KeyDown, tea.KeyPgUp, tea.KeyPgDown:
-					isScrollKey = true
-				}
-
-				// Also handle j/k vim-style scrolling
-				if key.Type == tea.KeyRunes {
-					switch string(key.Runes) {
-					case "j", "k":
-						isScrollKey = true
-					}
-				}
-
-				// If it's a scroll key, forward to viewport
-				if isScrollKey && model.aicodersView != nil {
-					return model.aicodersView.UpdateViewport(key)
-				}
-			}
-			// ==== END viewport scrolling ====
-
-			// If terminal is focused, send ALL keys to PTY
-			if aiState.TerminalFocused {
-				// Convert key to bytes for PTY input
-				var input []byte
-				switch key.Type {
-				case tea.KeyEnter:
-					input = []byte("\r")
-				case tea.KeyTab:
-					input = []byte("\t")
-				case tea.KeyBackspace:
-					input = []byte{127} // DEL character
-				case tea.KeyDelete:
-					input = []byte("\x1b[3~")
-				case tea.KeyUp:
-					input = []byte("\x1b[A")
-				case tea.KeyDown:
-					input = []byte("\x1b[B")
-				case tea.KeyRight:
-					input = []byte("\x1b[C")
-				case tea.KeyLeft:
-					input = []byte("\x1b[D")
-				case tea.KeyHome:
-					input = []byte("\x1b[H")
-				case tea.KeyEnd:
-					input = []byte("\x1b[F")
-				case tea.KeyPgUp:
-					input = []byte("\x1b[5~")
-				case tea.KeyPgDown:
-					input = []byte("\x1b[6~")
-				case tea.KeyCtrlC:
-					input = []byte{3} // ETX (Ctrl-C)
-				case tea.KeyCtrlD:
-					input = []byte{4} // EOT (Ctrl-D)
-				case tea.KeyCtrlZ:
-					input = []byte{26} // SUB (Ctrl-Z)
-				case tea.KeyRunes:
-					input = []byte(string(key.Runes))
-				default:
-					// For other keys, try to convert to string
-					if key.String() != "" {
-						input = []byte(key.String())
-					}
-				}
-
-				// Send input to PTY via the service
-				if len(input) > 0 && model.aiCoderService != nil {
-					svc := model.aiCoderService.(*services.AICoderService)
-					if err := svc.SendInput(focusedSession, input); err != nil {
-						// Log error but don't crash
-						if model.logStore != nil {
-							model.logStore.Add("system", "System", fmt.Sprintf("Error sending input to PTY: %v", err), true)
-						}
-					}
-				}
-			}
-
-			return nil
+		} else {
+			// No focused session - exit AI Coder view entirely
+			return model.viewManager.SwitchToView(ViewProcesses)
 		}
 	}
 
-	// Handle list mode keys
-	switch key.String() {
-	case "enter":
-		// Enter PTY mode for selected session
-		return func() tea.Msg {
-			return EnterPTYModeMsg{}
+	// For all other keys, must have a focused session to handle them
+	if focusedSession == "" {
+		return nil
+	}
+
+	
+	// ==== HANDLE KEYS BASED ON TERMINAL FOCUS STATE ====
+	if !aiState.TerminalFocused {
+		// Terminal NOT focused - only handle specific control keys
+		switch key.Type {
+		case tea.KeyEnter:
+			// Enter key when not in terminal focus mode - refocus terminal and send Enter
+			model.masterData.AICoderState = aiState.SetTerminalFocus(true)
+
+			// Also send the Enter key to the terminal
+			if model.aiCoderService != nil {
+				svc := model.aiCoderService.(*services.AICoderService)
+				svc.SendInput(focusedSession, []byte("\r"))
+			}
+
+			return func() tea.Msg {
+				return StatusMsg{Message: "Terminal focus enabled - keys go to terminal, Ctrl+T to release"}
+			}
+
+		case tea.KeyRunes:
+			if len(key.Runes) == 1 && key.Runes[0] == 'q' {
+				// Clear focused session completely - exit to session list
+				model.masterData.AICoderState = aiState.SetTerminalFocus(false).SetFocusedSession("")
+
+				return func() tea.Msg {
+					return StatusMsg{Message: "Exited AI Coder session - back to session list"}
+				}
+			}
 		}
-	// ... other key handlers
+		// For any other keys when not focused, return nil to let other handlers process them
+		return nil
+	}
+
+	// ==== TERMINAL IS FOCUSED ====
+	// When terminal is focused, send ALL keys to PTY using KeyToPTY converter
+	// ESC key is NOT intercepted here so it can be used by AI coder tools (vim, nvim, etc.)
+	// Only Ctrl+T can release terminal focus
+
+	// Send keys to PTY
+	input, err := KeyToPTY(key)
+	if err != nil {
+		// Log unsupported key but don't crash
+		if model.logStore != nil {
+			model.logStore.Add("ai_coder", "AI Coder",
+				fmt.Sprintf("Unsupported key for PTY: %v", err), false)
+		}
+		return nil
+	}
+
+	// Send input to PTY via the service
+	if model.aiCoderService != nil {
+		// Use type assertion with interface check for test compatibility
+		if svc, ok := model.aiCoderService.(interface{ SendInput(string, []byte) error }); ok {
+			if err := svc.SendInput(focusedSession, input); err != nil {
+				// Log error but don't crash
+				if model.logStore != nil {
+					model.logStore.Add("system", "System",
+						fmt.Sprintf("Error sending input to PTY: %v", err), true)
+				}
+			}
+		}
 	}
 
 	return nil
@@ -504,6 +473,11 @@ func (h *GeneralKeyHandler) Name() string     { return "GeneralKeys" }
 func (h *GeneralKeyHandler) Priority() int    { return 900 } // Low priority, catch-all
 
 func (h *GeneralKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
+	// NEVER handle keys when in AI Coder view - AI Coder handler has absolute priority
+	if ctx.View == ViewAICoders {
+		return false
+	}
+
 	// Don't handle keys in AI Coder PTY mode (let them pass through)
 	if ctx.Context == "pty" {
 		return false
