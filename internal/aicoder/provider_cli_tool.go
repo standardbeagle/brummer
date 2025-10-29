@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 )
@@ -25,7 +26,7 @@ type CLIToolProvider struct {
 // Note: CLIToolConfig is now defined in types.go
 
 // NewCLIToolProvider creates a new CLI tool provider
-func NewCLIToolProvider(name string, config CLIToolConfig) *CLIToolProvider {
+func NewCLIToolProvider(name string, config CLIToolConfig, mcpURL string) *CLIToolProvider {
 	if config.Command == "" {
 		config.Command = name // default to provider name
 	}
@@ -34,13 +35,43 @@ func NewCLIToolProvider(name string, config CLIToolConfig) *CLIToolProvider {
 		config.FlagMapping = getDefaultFlagMapping(name)
 	}
 
+	// Create Claude settings file for MCP connection if provided
+	var setupEnv []string
+	if mcpURL != "" && (name == "claude" || name == "claude-secure") {
+		// Claude will automatically read BRUMMER_MCP_URL from environment
+		// Just create a minimal settings file to enable the MCP server
+		settingsPath := filepath.Join(config.WorkingDir, ".claude", "settings.local.json")
+		settingsContent := `{
+  "mcpServers": [
+    {
+      "name": "Brummer",
+      "command": "mcp-server",
+      "args": ["--port", "${BRUMMER_MCP_PORT:-7777}"]
+    }
+  ]
+}`
+
+		// Create settings directory and file
+		if err := os.MkdirAll(filepath.Join(config.WorkingDir, ".claude"), 0755); err != nil {
+			fmt.Printf("Warning: Failed to create .claude directory: %v\n", err)
+		} else if err := os.WriteFile(settingsPath, []byte(settingsContent), 0644); err != nil {
+			fmt.Printf("Warning: Failed to create Claude settings file: %v\n", err)
+		}
+
+		// Add CLAUDE_SETTINGS_PATH environment variable
+		setupEnv = append(setupEnv, fmt.Sprintf("%s=%s", "CLAUDE_SETTINGS_PATH", settingsPath))
+	}
+
+	env := buildEnvironment(config.Environment)
+	env = append(env, setupEnv...)
+
 	return &CLIToolProvider{
 		name:        name,
 		command:     config.Command,
 		flagMapping: config.FlagMapping,
 		args:        config.BaseArgs,
 		workingDir:  config.WorkingDir,
-		env:         buildEnvironment(config.Environment),
+		env:         env,
 	}
 }
 

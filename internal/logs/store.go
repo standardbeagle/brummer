@@ -256,8 +256,10 @@ func (s *Store) addSync(processID, processName, content string, isError bool) *L
 	// No need to process individual entries here
 
 	// Detect and track URLs (with deduplication)
-	urls := detectURLs(content)
-	for _, url := range urls {
+	// Only extract URLs from process output, not from proxy/system logs
+	if s.shouldExtractURLs(processName, processID) {
+		urls := detectURLs(content)
+		for _, url := range urls {
 		// Check if we already have this URL
 		if existing, exists := s.urlMap[url]; exists {
 			// Update the existing entry with the most recent occurrence
@@ -277,6 +279,7 @@ func (s *Store) addSync(processID, processName, content string, isError bool) *L
 			s.urlMap[url] = &urlEntry
 			// Rebuild the urls slice from the map
 			s.rebuildURLsList()
+		}
 		}
 	}
 
@@ -848,6 +851,34 @@ func (s *Store) collapseConsecutiveDuplicates(entries []LogEntry) []CollapsedLog
 	result = append(result, current)
 
 	return result
+}
+
+// shouldExtractURLs determines if URLs should be extracted from log entries
+// Only extract URLs from actual process output, not from proxy/system logs
+func (s *Store) shouldExtractURLs(processName, processID string) bool {
+	// Exclude URLs from system/internal processes that aren't actual application output
+	excludedProcesses := []string{
+		"system",        // System messages
+		"proxy",         // Proxy server logs
+		"custom",        // Custom proxy registrations
+		"mcp-server",    // MCP server logs
+	}
+
+	// Check if process name is in exclusion list
+	for _, excluded := range excludedProcesses {
+		if processName == excluded {
+			return false
+		}
+	}
+
+	// Also exclude process IDs that indicate system/internal sources
+	if strings.Contains(processID, "system") ||
+		strings.Contains(processID, "proxy") ||
+		strings.Contains(processID, "mcp") {
+		return false
+	}
+
+	return true
 }
 
 // areLogsIdentical checks if two log entries are identical for collapsing purposes

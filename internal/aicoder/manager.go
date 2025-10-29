@@ -77,7 +77,7 @@ func NewAICoderManager(config Config, eventBus EventBus) (*AICoderManager, error
 	}
 
 	// Register CLI tool providers based on configuration
-	if err := registerCLIToolProviders(providerReg, config); err != nil {
+	if err := registerCLIToolProviders(providerReg, config, ""); err != nil {
 		return nil, fmt.Errorf("failed to register CLI tool providers: %w", err)
 	}
 
@@ -283,7 +283,7 @@ func (m *AICoderManager) StartCoder(coderID string) error {
 }
 
 // registerCLIToolProviders registers CLI tool providers based on configuration and installation check
-func registerCLIToolProviders(providerReg *ProviderRegistry, config Config) error {
+func registerCLIToolProviders(providerReg *ProviderRegistry, config Config, mcpURL string) error {
 	// Get provider configurations
 	providerConfigs := config.GetProviderConfigs()
 
@@ -309,7 +309,7 @@ func registerCLIToolProviders(providerReg *ProviderRegistry, config Config) erro
 		}
 
 		// Create and register the provider
-		cliProvider := NewCLIToolProvider(name, *cliToolConfig)
+		cliProvider := NewCLIToolProvider(name, *cliToolConfig, mcpURL)
 		if err := providerReg.Register(name, cliProvider); err != nil {
 			// Log error but continue with other providers
 			fmt.Printf("Warning: failed to register %s provider: %v\n", name, err)

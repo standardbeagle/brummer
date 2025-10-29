@@ -724,7 +724,10 @@ func runApp(cmd *cobra.Command, args []string) {
 		// which broke WindowSizeMsg functionality. Standard BubbleTea initialization works correctly.
 
 		// Start TUI with standard BubbleTea
-		p := tea.NewProgram(model, tea.WithAltScreen())
+		p := tea.NewProgram(model,
+			tea.WithAltScreen(),
+			tea.WithMouseCellMotion(),
+		)
 
 		// Set up signal handler for graceful shutdown
 		done := make(chan error, 1)

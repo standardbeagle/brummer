@@ -36,6 +36,9 @@ func NewMessageRouter() *MessageRouter {
 	// Priority 2: System messages
 	router.RegisterHandler(NewSystemMessageHandler())
 
+	// Priority 2.5: AI Coder mouse events (high priority for mouse wheel)
+	router.RegisterHandler(NewAICoderMouseMessageHandler())
+
 	// Priority 3: Domain-specific handlers
 	router.RegisterHandler(NewProcessMessageHandler())
 	router.RegisterHandler(NewLogMessageHandler())

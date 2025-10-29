@@ -1,286 +1,75 @@
-# Brummer Example Configuration File
-# Copy this to .brum.toml in your project or home directory
+# Brummer Configuration Example
+# Copy this file to .brum.toml and customize for your needs
 
-# Package manager preferences
-# preferred_package_manager = "pnpm"
-
-# MCP (Model Context Protocol) Settings
-# mcp_port = 7777
-# no_mcp = false
-
-# Network robustness (experimental)
-# use_robust_networking = false
-
-# Proxy Server Settings
-# proxy_port = 19888
-# proxy_mode = "reverse"
-# proxy_url = ""
-# standard_proxy = false
-# no_proxy = false
-
-# AI Coder Configuration
-#
-# Variable Replacement in CLI Arguments:
-# You can use ${VAR_NAME} syntax in base_args to inject dynamic values.
-# Brummer automatically provides these variables:
-# - ${BRUMMER_MCP_URL}: The full MCP server URL (e.g., http://localhost:7777/mcp)
-# - ${BRUMMER_MCP_PORT}: Just the port number (e.g., 7777)
-# - Any environment variable from your system
-#
 [ai_coders]
+# Enable AI coder functionality
 enabled = true
+
+# Maximum concurrent AI sessions
 max_concurrent = 3
-workspace_base_dir = "~/.brummer/ai-coders"
-default_provider = "claude"  # Available: claude, gemini, copilot, opencode, bash
-timeout_minutes = 30
-auto_cleanup = true
-cleanup_after_hours = 24
 
-# ============================================================================
-# Claude CLI Tool Configuration
-# ============================================================================
-# Anthropic's Claude Code CLI with Brummer MCP integration
-# Install: npm install -g @anthropic-ai/claude-code
-# Usage: /ai claude  (default provider)
-#        /ai opus    (use Opus model)
-#        /ai sonnet  (use Sonnet model)
-#        /ai claude-secure (with permission prompts)
+# Default AI provider to use
+default_provider = "claude"
 
+# AI Provider Configurations
+[ai_coders.providers]
+
+# Claude with MCP connection via settings file
 [ai_coders.providers.claude]
-[ai_coders.providers.claude.cli_tool]
-command = "claude"
-base_args = [
-    "--mcp-config",
-    "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}",
-    "--dangerously-skip-permissions"  # Auto-approve MCP actions for rapid development
-]
-model = "sonnet"  # Default: sonnet, opus, haiku
+  command = "claude"
+  # Creates .claude/settings.local.json with BRUMMER_MCP_PORT environment variable (dynamic port support)
 
-[ai_coders.providers.claude.cli_tool.flag_mapping]
-model = "--model"
-output_format = "--output-format"
-debug = "--debug"
-
-# Claude Secure - Prompts for each MCP action
+# Claude Secure with MCP connection via settings file
 [ai_coders.providers.claude-secure]
-[ai_coders.providers.claude-secure.cli_tool]
-command = "claude"
-base_args = [
-    "--mcp-config",
-    "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}"
-    # No --dangerously-skip-permissions - will prompt for each action
-]
-model = "sonnet"
+  command = "claude-secure"
+  # Creates .claude/settings.local.json with BRUMMER_MCP_PORT environment variable (dynamic port support)
 
-[ai_coders.providers.claude-secure.cli_tool.flag_mapping]
-model = "--model"
-output_format = "--output-format"
-debug = "--debug"
-
-# Claude Opus - Most capable model
-[ai_coders.providers.opus]
-[ai_coders.providers.opus.cli_tool]
-command = "claude"
-base_args = [
-    "--mcp-config",
-    "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}",
-    "--model", "opus",
-    "--dangerously-skip-permissions"
-]
-model = "opus"
-
-[ai_coders.providers.opus.cli_tool.flag_mapping]
-model = "--model"
-output_format = "--output-format"
-debug = "--debug"
-
-# Claude Sonnet - Fast and smart
-[ai_coders.providers.sonnet]
-[ai_coders.providers.sonnet.cli_tool]
-command = "claude"
-base_args = [
-    "--mcp-config",
-    "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}",
-    "--model", "sonnet",
-    "--dangerously-skip-permissions"
-]
-model = "sonnet"
-
-[ai_coders.providers.sonnet.cli_tool.flag_mapping]
-model = "--model"
-output_format = "--output-format"
-debug = "--debug"
-
-# ============================================================================
-# Gemini CLI Tool Configuration
-# ============================================================================
-# Google's Gemini CLI with Brummer MCP integration
-# Install: npm install -g @google/generative-ai-cli
-# Usage: /ai gemini
-# MCP: Gemini CLI uses `gemini mcp` command to manage MCP servers
-#      Configure MCP servers via: gemini mcp add brummer http ${BRUMMER_MCP_URL}
-
+# Gemini with YOLO mode
 [ai_coders.providers.gemini]
-[ai_coders.providers.gemini.cli_tool]
-command = "gemini"
-base_args = [
-    "--yolo",  # Auto-approve all tools (like --dangerously-skip-permissions)
-    "--allowed-mcp-server-names", "brummer"
-    # MCP servers are configured separately via: gemini mcp add brummer http ${BRUMMER_MCP_URL}
-]
+  command = "gemini"
+  extra_args = [
+    "--yolo"
+  ]
 
-[ai_coders.providers.gemini.cli_tool.flag_mapping]
-model = "--model"
-debug = "--debug"
+# Cursor with no restrictions
+[ai_coders.providers.cursor]
+  command = "cursor"
+  extra_args = [
+    "--yolo",
+    "--no-timeout"
+  ]
 
-[ai_coders.providers.gemini.cli_tool.environment]
-# Gemini CLI uses authentication from setup
-
-# Gemini Secure - Prompts for each action
-[ai_coders.providers.gemini-secure]
-[ai_coders.providers.gemini-secure.cli_tool]
-command = "gemini"
-base_args = [
-    "--approval-mode", "default",  # Prompt for approval
-    "--allowed-mcp-server-names", "brummer"
-]
-
-[ai_coders.providers.gemini-secure.cli_tool.flag_mapping]
-model = "--model"
-debug = "--debug"
-
-# ============================================================================
-# GitHub Copilot CLI Configuration
-# ============================================================================
-# GitHub Copilot in the CLI with Brummer MCP integration
-# Install: npm install -g @githubnext/github-copilot-cli
-# Usage: /ai copilot
-# Note: Copilot uses --additional-mcp-config for MCP server configuration
-
-[ai_coders.providers.copilot]
-[ai_coders.providers.copilot.cli_tool]
-command = "copilot"
-base_args = [
-    "--allow-all-tools",  # Auto-approve all tools
-    "--additional-mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}"
-]
-
-[ai_coders.providers.copilot.cli_tool.flag_mapping]
-model = "--model"
-
-[ai_coders.providers.copilot.cli_tool.environment]
-# Copilot uses GitHub authentication
-
-# Copilot Secure - Prompts for each action
-[ai_coders.providers.copilot-secure]
-[ai_coders.providers.copilot-secure.cli_tool]
-command = "copilot"
-base_args = [
-    # No --allow-all-tools, will prompt for each action
-    "--additional-mcp-config", "{\"mcpServers\":{\"brummer\":{\"type\":\"http\",\"url\":\"${BRUMMER_MCP_URL}\"}}}"
-]
-
-[ai_coders.providers.copilot-secure.cli_tool.flag_mapping]
-model = "--model"
-
-# ============================================================================
-# OpenCode CLI Tool Configuration
-# ============================================================================
-# OpenCode CLI - currently investigating MCP support
-# Install: npm install -g opencode
-# Usage: /ai opencode
-# Note: OpenCode may not yet support MCP - configuration ready for when it does
-
-[ai_coders.providers.opencode]
-[ai_coders.providers.opencode.cli_tool]
-command = "opencode"
-base_args = [
-    "run"
-    # TODO: Add MCP config when OpenCode adds support
-    # Check: opencode --help for latest MCP options
-]
-
-[ai_coders.providers.opencode.cli_tool.flag_mapping]
-model = "--model"
-prompt = "--prompt"
-
-[ai_coders.providers.opencode.cli_tool.environment]
-# OpenCode uses its own authentication
-
-# ============================================================================
-# Bash Shell Provider
-# ============================================================================
-# Direct bash shell for manual command execution and scripting
-# Usage: /ai bash
-
-[ai_coders.providers.bash]
-[ai_coders.providers.bash.cli_tool]
-command = "bash"
-base_args = [
-    "-i"  # Interactive mode
-]
-working_dir = "."
-
-# Alternative shells available
-[ai_coders.providers.zsh]
-[ai_coders.providers.zsh.cli_tool]
-command = "zsh"
-base_args = ["-i"]
-working_dir = "."
-
-[ai_coders.providers.fish]
-[ai_coders.providers.fish.cli_tool]
-command = "fish"
-base_args = ["-i"]
-working_dir = "."
-
-# ============================================================================
-# Additional Providers
-# ============================================================================
-
-# Aider - AI pair programming tool
+# Aider with auto-accept behavior
 [ai_coders.providers.aider]
-[ai_coders.providers.aider.cli_tool]
-command = "aider"
-base_args = ["--yes"]  # Auto-confirm changes
-working_dir = "."
+  command = "aider"
+  base_args = ["--yes", "--no-auto-commits"]
+  extra_args = [
+    "--yolo"
+  ]
 
-[ai_coders.providers.aider.cli_tool.flag_mapping]
-model = "--model"
-message = "--message"
+# Custom CLI tool with specific arguments
+[ai_coders.providers.custom-tool]
+  command = "/usr/local/bin/my-ai-tool"
+  base_args = ["--verbose"]
+  extra_args = [
+    "--dangerously-bypass-restrictions",
+    "--force-allow-file-access",
+    "--no-permission-prompt"
+  ]
 
-[ai_coders.providers.aider.cli_tool.environment]
-# OPENAI_API_KEY from environment
-
-# Local Model Provider (Ollama)
-[ai_coders.providers.local]
-base_url = "http://localhost:11434"
-model = "codellama"
-max_tokens = 2048
-temperature = 0.7
-request_timeout_seconds = 60
-
-# Resource Limits
-[ai_coders.resource_limits]
-max_memory_mb = 512
-max_disk_space_mb = 1024
-max_cpu_percent = 50
-max_processes = 5
-max_files_per_coder = 100
-
-# Workspace Settings
+# Base AI coder settings
 [ai_coders.workspace]
-template = "basic"
-gitignore_rules = ["node_modules/", ".env", "*.log", "dist/", "build/"]
-allowed_extensions = [".go", ".js", ".ts", ".py", ".md", ".json", ".yaml", ".toml", ".txt", ".sh"]
-forbidden_paths = ["/etc", "/var", "/sys", "/proc"]
-max_file_size_mb = 10
-backup_enabled = true
+  template = "typescript-react"
+  gitignore_rules = [
+    "node_modules/*",
+    "*.log",
+    ".env"
+  ]
+  allowed_extensions = [".ts", ".tsx", ".js", ".jsx", ".json"]
+  max_file_size_mb = 10
 
-# AI Coder Logging
-[ai_coders.logging]
-level = "info"
-output_file = "ai-coders.log"
-rotate_size_mb = 50
-keep_rotations = 5
-include_ai_output = false
+# Resource limits
+[ai_coders.resource_limits]
+  max_memory_mb = 2048
+  max_cpu_percent = 80
+  max_files_per_coder = 100

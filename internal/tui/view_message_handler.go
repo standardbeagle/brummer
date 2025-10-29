@@ -107,8 +107,13 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 		// to ensure proper sizing for overlay rendering
 
 	case tea.MouseMsg:
-		// Handle mouse events (placeholder for future mouse support)
-		// Currently not implemented
+		// Handle mouse events - Note: AI Coder mouse wheel events are handled by AICoderMouseMessageHandler
+		// This handler only deals with mouse events for other views or non-wheel events
+		if model.currentView() != ViewAICoders {
+			// For non-AI Coder views, we could add mouse handling here in the future
+			// Currently no mouse handling for other views
+		}
+		// AI Coder mouse wheel events are now handled by AICoderMouseMessageHandler with higher priority
 
 	case urlDetectedMsg:
 		// Handle URL detection - update web view

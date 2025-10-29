@@ -28,6 +28,9 @@ type ProviderConfig struct {
 
 	// CLI Tool specific configuration
 	CLITool *CLIToolConfig `toml:"cli_tool,omitempty"`
+
+	// Additional CLI arguments passed to the AI executable
+	ExtraArgs []string `toml:"extra_args,omitempty"`
 }
 
 // CLIToolConfig represents configuration for CLI-based AI tools

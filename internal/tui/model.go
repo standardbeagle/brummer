@@ -3092,16 +3092,18 @@ func (m *Model) buildKeyContext() KeyContext {
 		if m.masterData != nil && m.masterData.AICoderState != nil {
 			focusedSessionID := m.masterData.AICoderState.FocusedSession
 			if focusedSessionID != "" && m.masterData.AICoderState.HasActiveSessions() {
-				// Set context based on terminal focus mode
+				// ONLY set special context when terminal is ACTUALLY focused
+				// When terminal is not focused, leave context as "normal" to allow
+				// normal navigation and other key handlers to work
 				if m.masterData.AICoderState.TerminalFocused {
 					ctx.Context = "terminal_focused"
-				} else {
-					ctx.Context = "pty"
+					// TODO: Get cursor position and input content from PTY
+					// For now, assume cursor is at position 0 for slash command logic
+					ctx.CursorPosition = 0
+					ctx.InputContent = ""
 				}
-				// TODO: Get cursor position and input content from PTY
-				// For now, assume cursor is at position 0 for slash command logic
-				ctx.CursorPosition = 0
-				ctx.InputContent = ""
+				// If terminal is not focused but there's a focused session,
+				// keep context as "normal" - this allows navigation keys to work
 			}
 		}
 	}

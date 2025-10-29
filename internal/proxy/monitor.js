@@ -2512,7 +2512,12 @@
         const handleMouseMove = (e) => {
             if (!elementSelectionActive) return;
 
+            // Temporarily disable pointer events on overlay to detect elements underneath
+            const originalPointerEvents = elementSelectionOverlay.style.pointerEvents;
+            elementSelectionOverlay.style.pointerEvents = 'none';
             const element = document.elementFromPoint(e.clientX, e.clientY);
+            elementSelectionOverlay.style.pointerEvents = originalPointerEvents;
+
             if (!element || element === elementSelectionOverlay || element === elementSelectionHighlight) {
                 elementSelectionHighlight.style.display = 'none';
                 return;
@@ -2531,7 +2536,12 @@
             e.preventDefault();
             e.stopPropagation();
 
+            // Temporarily disable pointer events on overlay to detect elements underneath
+            const originalPointerEvents = elementSelectionOverlay.style.pointerEvents;
+            elementSelectionOverlay.style.pointerEvents = 'none';
             const element = document.elementFromPoint(e.clientX, e.clientY);
+            elementSelectionOverlay.style.pointerEvents = originalPointerEvents;
+
             if (!element || element === elementSelectionOverlay || element === elementSelectionHighlight) {
                 return;
             }

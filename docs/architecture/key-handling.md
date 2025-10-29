@@ -11,6 +11,7 @@ The keyboard handling system in Brummer uses a **priority-based handler registry
 
 See [Redux/Elm Architecture Documentation](./redux-elm-architecture.md) for the complete pattern.
 
+
 ## Core Concepts
 
 ### 1. Single Point of Entry

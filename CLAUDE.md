@@ -390,6 +390,7 @@ Components communicate via **event-driven architecture** using EventBus (`pkg/ev
 For detailed patterns, see:
 - [Architecture Overview](/docs/architecture/overview.md) - Core components and integration patterns
 - [Concurrency Patterns](/docs/architecture/concurrency-patterns.md) - Race condition prevention and safe concurrent programming
+- [Key Handling](/docs/architecture/key-handling.md) - Priority-based keyboard routing system
 
 ## MCP (Model Context Protocol) Integration
 
@@ -420,7 +421,7 @@ For detailed AI Coders documentation, see:
 - **MCP Integration**: [Overview](/docs/mcp/integration-overview.md), [Configuration](/docs/mcp/server-configuration.md), [Tools](/docs/mcp/tools-and-routing.md)
 - **Configuration**: [Examples](/docs/configuration/examples.md), [Hub Mode](/docs/hub-mode.md)
 - **Features**: [AI Coders](/docs/features/ai-coders.md), [Command Autocomplete](/docs/features/command-autocomplete.md), [Test Management](/docs/features/test-management.md), [Environment Variables](/docs/features/environment-variable-management.md)
-- **Development**: [Roadmap](/docs/ROADMAP.md), [Keyboard Migration Guide](/docs/development/keyboard-migration-guide.md)
+- **Development**: [Roadmap](/docs/ROADMAP.md)
 - **Troubleshooting**: [Common Issues](/docs/troubleshooting.md)
 
 ## Important Notes

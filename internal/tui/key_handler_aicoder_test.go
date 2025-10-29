@@ -472,3 +472,99 @@ func TestCtrlTUniversalExit(t *testing.T) {
 		}
 	})
 }
+
+// TestArrowKeysWithTerminalFocused tests that arrow keys go to PTY when terminal is focused
+func TestArrowKeysWithTerminalFocused(t *testing.T) {
+	// Setup model with AI Coder session and terminal focused
+	model := createTestModel(ViewAICoders, true)
+	model.masterData.AICoderState = model.masterData.AICoderState.SetTerminalFocus(true)
+	model.aiCoderService = &services.AICoderService{} // Mock service
+
+	// Create registry with AI Coder handler (priority 1) and Navigation handler (priority 900)
+	registry := NewKeyHandlerRegistry()
+	aiHandler := NewAICoderKeyHandler(nil)
+	navHandler := NewGlobalNavigationHandler(model.viewManager, false)
+	registry.Register(aiHandler)
+	registry.Register(navHandler)
+
+	// Test left arrow key - should be handled by AI Coder handler, NOT navigation handler
+	leftKey := tea.KeyMsg{Type: tea.KeyLeft}
+	ctx := KeyContext{
+		View:    ViewAICoders,
+		Context: "terminal_focused",
+	}
+
+	// Verify AI Coder handler says it can handle the left arrow
+	canHandleAI := aiHandler.CanHandle(leftKey, ctx)
+	if !canHandleAI {
+		t.Error("AI Coder handler should say it can handle left arrow when terminal focused")
+	}
+
+	// Verify navigation handler can also handle left arrow (but AI Coder has priority)
+	canHandleNav := navHandler.CanHandle(leftKey, ctx)
+	if !canHandleNav {
+		t.Error("Navigation handler should say it can handle left arrow (as fallback)")
+	}
+
+	// When registry routes the key, AI Coder handler should be checked first due to priority
+	// and should consume the key (send to PTY)
+	cmd := registry.HandleKey(leftKey, ctx, model)
+
+	// The command should be nil (key goes directly to PTY via service, no message returned)
+	if cmd != nil {
+		t.Errorf("AI Coder handler should return nil for left arrow when terminal focused (goes to PTY), got: %v", cmd)
+	}
+
+	// Verify we're still in AI Coder view (not navigated away)
+	if model.currentView() != ViewAICoders {
+		t.Errorf("Should remain in AI Coder view, but switched to: %v", model.currentView())
+	}
+
+	// Test right arrow key - same behavior as left arrow
+	rightKey := tea.KeyMsg{Type: tea.KeyRight}
+	cmd = registry.HandleKey(rightKey, ctx, model)
+	if cmd != nil {
+		t.Errorf("AI Coder handler should return nil for right arrow when terminal focused, got: %v", cmd)
+	}
+	if model.currentView() != ViewAICoders {
+		t.Errorf("Should remain in AI Coder view after right arrow")
+	}
+
+	// Test arrow keys when terminal NOT focused - should navigate
+	model.masterData.AICoderState = model.masterData.AICoderState.SetTerminalFocus(false)
+	ctx.Context = "normal" // Context should be "normal" when terminal not focused
+
+	// Left arrow should navigate (return to previous view)
+	currentView := model.currentView()
+	cmd = registry.HandleKey(leftKey, ctx, model)
+	if cmd == nil {
+		t.Error("Registry should return a command for left arrow when terminal not focused")
+	}
+	if model.currentView() == currentView {
+		t.Errorf("Left arrow should navigate to different view when terminal not focused")
+	}
+
+	// Test all arrow keys with terminal focused
+	t.Run("All arrow keys with terminal focused", func(t *testing.T) {
+		model.masterData.AICoderState = model.masterData.AICoderState.SetTerminalFocus(true)
+		ctx.Context = "terminal_focused"
+		currentView := model.currentView()
+
+		arrowKeys := []tea.KeyMsg{
+			{Type: tea.KeyLeft},
+			{Type: tea.KeyRight},
+			{Type: tea.KeyUp},
+			{Type: tea.KeyDown},
+		}
+
+		for i, key := range arrowKeys {
+			cmd := registry.HandleKey(key, ctx, model)
+			if cmd != nil {
+				t.Errorf("Arrow key %d should return nil when terminal focused (goes to PTY), got: %v", i, cmd)
+			}
+			if model.currentView() != currentView {
+				t.Errorf("Arrow key %d should not navigate when terminal focused", i)
+			}
+		}
+	})
+}

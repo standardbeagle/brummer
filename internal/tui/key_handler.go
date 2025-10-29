@@ -64,11 +64,10 @@ func (r *KeyHandlerRegistry) HandleKey(key tea.KeyMsg, ctx KeyContext, model *Mo
 	for _, handler := range r.handlers {
 		if handler.CanHandle(key, ctx) {
 			cmd := handler.Handle(key, model)
-			if cmd != nil {
-				// Handler actually handled the key, return its command
-				return cmd
-			}
-			// Handler matched but returned nil - continue to next handler
+			// Once a handler claims it can handle the key, stop trying other handlers
+			// This prevents lower-priority handlers from overriding higher-priority ones
+			// even if the high-priority handler returns nil (which means it processed the key)
+			return cmd
 		}
 	}
 
