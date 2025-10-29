@@ -3,6 +3,7 @@ package components
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -33,6 +34,13 @@ type AICodersViewComponent struct {
 
 	// Viewport for scrollable terminal output
 	viewport viewport.Model
+
+	// Auto-scroll tracking
+	lastAutoScrollTime int64    // Timestamp of last auto-scroll
+	userScrolled       bool     // Track if user manually scrolled
+	lastScrollPosition int      // Track last scroll position for user detection
+	forceAutoScroll    bool     // Force auto-scroll for next update
+	currentSessionID   string   // Track current session to detect changes
 
 	// Styles
 	headerStyle   lipgloss.Style
@@ -85,6 +93,32 @@ func (c *AICodersViewComponent) Init() tea.Cmd {
 // UpdateViewport handles viewport scrolling for arrow keys, page up/down, and mouse events
 // This should be called from the main model's Update() method when handling key messages
 func (c *AICodersViewComponent) UpdateViewport(msg tea.Msg) tea.Cmd {
+	// Track user scrolling via keyboard
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		// Check if this key affects viewport scrolling
+		isScrollKey := msg.Type == tea.KeyUp ||
+			msg.Type == tea.KeyDown ||
+			msg.Type == tea.KeyPgUp ||
+			msg.Type == tea.KeyPgDown ||
+			msg.Type == tea.KeyHome ||
+			msg.Type == tea.KeyEnd
+
+		// Also check for vim-style scrolling
+		if !isScrollKey && msg.Type == tea.KeyRunes {
+			switch string(msg.Runes) {
+			case "j", "k":
+				isScrollKey = true
+			}
+		}
+
+		if isScrollKey {
+			// Mark user scrolled
+			c.userScrolled = true
+			c.lastScrollPosition = c.viewport.YOffset
+		}
+	}
+
 	var cmd tea.Cmd
 	c.viewport, cmd = c.viewport.Update(msg)
 	return cmd
@@ -96,6 +130,10 @@ func (c *AICodersViewComponent) Update(msg tea.Msg) tea.Cmd {
 	case tea.MouseMsg:
 		// Handle mouse wheel events for scrolling
 		if msg.Type == tea.MouseWheelUp || msg.Type == tea.MouseWheelDown {
+			// Mark that user manually scrolled
+			c.userScrolled = true
+			c.lastScrollPosition = c.viewport.YOffset
+
 			// Update viewport with mouse event
 			return c.UpdateViewport(msg)
 		}
@@ -109,23 +147,94 @@ func (c *AICodersViewComponent) Update(msg tea.Msg) tea.Cmd {
 	return nil
 }
 
-// AutoScrollToBottom automatically scrolls the viewport to the bottom
-// This should be called when new content is added to keep the latest output visible
+// AutoScrollToBottom automatically scrolls the viewport to keep the prompt visible
+// Enhanced logic to better handle user scrolling and ensure prompt visibility
 func (c *AICodersViewComponent) AutoScrollToBottom() {
-	if c.viewport.TotalLineCount() > c.viewport.Height {
-		// Only auto-scroll if the viewport is already near the bottom (within 5 lines)
-		// This prevents auto-scroll when user is manually scrolling up to read earlier content
-		currentOffset := c.viewport.YOffset
-		maxOffset := c.viewport.TotalLineCount() - c.viewport.Height
+	now := time.Now().UnixMilli()
+	totalLines := c.viewport.TotalLineCount()
+	viewportHeight := c.viewport.Height
 
-		// Auto-scroll if user is at bottom or close to it (within 5 lines)
-		if maxOffset-currentOffset <= 5 {
-			c.viewport.GotoBottom()
-		}
-	} else {
-		// If content fits in viewport, always show the latest
+	// Case 1: Content fits in viewport - always show latest
+	if totalLines <= viewportHeight {
 		c.viewport.GotoBottom()
+		c.lastAutoScrollTime = now
+		c.userScrolled = false // Reset user scroll flag
+		return
 	}
+
+	// Case 2: Force auto-scroll is enabled (e.g., after user input)
+	if c.forceAutoScroll {
+		c.viewport.GotoBottom()
+		c.lastAutoScrollTime = now
+		c.userScrolled = false
+		c.forceAutoScroll = false
+		return
+	}
+
+	// Case 3: Check if user recently scrolled manually
+	currentOffset := c.viewport.YOffset
+	maxOffset := totalLines - viewportHeight
+
+	// Detect user scroll direction
+	if c.userScrolled && c.lastScrollPosition != currentOffset {
+		// User is actively scrolling - don't auto-scroll
+		// Reset user scroll flag if they've stopped scrolling for a while
+		if now-c.lastAutoScrollTime > 5000 { // 5 seconds
+			c.userScrolled = false
+		}
+		return
+	}
+
+	// Case 4: Smart auto-scroll based on content position and user behavior
+	bottomThreshold := 2 // More aggressive - within 2 lines of bottom
+
+	// Calculate how far from bottom we are
+	distanceFromBottom := maxOffset - currentOffset
+
+	// Auto-scroll conditions:
+	// 1. Already at or very close to bottom (within threshold)
+	// 2. Haven't scrolled manually in the last 3 seconds
+	// 3. New content was added recently (simulated by calling this method)
+	recentAutoScroll := now-c.lastAutoScrollTime < 3000 // 3 seconds
+	atBottom := distanceFromBottom <= bottomThreshold
+	notRecentlyScrolledByUser := !c.userScrolled || (now-c.lastAutoScrollTime > 3000)
+
+	if atBottom && notRecentlyScrolledByUser {
+		c.viewport.GotoBottom()
+		c.lastAutoScrollTime = now
+		c.userScrolled = false
+	} else if recentAutoScroll && distanceFromBottom <= bottomThreshold*2 {
+		// If we recently auto-scrolled and still close to bottom, continue
+		c.viewport.GotoBottom()
+		c.lastAutoScrollTime = now
+	}
+}
+
+// ForceAutoScroll forces the next auto-scroll to bottom regardless of user scroll state
+// Useful when user enters input and wants to see the result
+func (c *AICodersViewComponent) ForceAutoScroll() {
+	c.forceAutoScroll = true
+}
+
+// IsUserScrolled returns whether the user has manually scrolled away from bottom
+func (c *AICodersViewComponent) IsUserScrolled() bool {
+	if c.viewport.TotalLineCount() <= c.viewport.Height {
+		return false // Content fits, no scrolling possible
+	}
+
+	maxOffset := c.viewport.TotalLineCount() - c.viewport.Height
+	distanceFromBottom := maxOffset - c.viewport.YOffset
+
+	return c.userScrolled || distanceFromBottom > 3
+}
+
+// ResetAutoScroll resets the auto-scroll state (useful when switching sessions)
+func (c *AICodersViewComponent) ResetAutoScroll() {
+	c.userScrolled = false
+	c.lastScrollPosition = 0
+	c.forceAutoScroll = false
+	c.lastAutoScrollTime = time.Now().UnixMilli()
+	c.viewport.GotoBottom()
 }
 
 // ViewWithState renders the component using external state (stateless/Elm-compliant)
@@ -162,6 +271,12 @@ func (c *AICodersViewComponent) ViewWithState(masterData *state.MasterData) stri
 func (c *AICodersViewComponent) renderPTYViewWithState(aiState *state.AICoderState, sessionID string) string {
 	if sessionID == "" {
 		return c.normalStyle.Render("No session selected")
+	}
+
+	// Reset auto-scroll when switching to a different session
+	if c.currentSessionID != sessionID {
+		c.currentSessionID = sessionID
+		c.ResetAutoScroll()
 	}
 
 	// Get content width from layout regions (or fallback to legacy width)

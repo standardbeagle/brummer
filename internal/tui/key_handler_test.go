@@ -26,7 +26,7 @@ func TestKeyHandlerRegistry(t *testing.T) {
 		},
 		handle: func(key tea.KeyMsg, model *Model) tea.Cmd {
 			handler1Called = true
-			return nil
+			return func() tea.Msg { return nil } // Return non-nil command
 		},
 	}
 
@@ -38,7 +38,7 @@ func TestKeyHandlerRegistry(t *testing.T) {
 		},
 		handle: func(key tea.KeyMsg, model *Model) tea.Cmd {
 			handler2Called = true
-			return nil
+			return func() tea.Msg { return nil } // Return non-nil command
 		},
 	}
 
@@ -50,7 +50,7 @@ func TestKeyHandlerRegistry(t *testing.T) {
 		},
 		handle: func(key tea.KeyMsg, model *Model) tea.Cmd {
 			handler3Called = true
-			return nil
+			return func() tea.Msg { return nil } // Return non-nil command
 		},
 	}
 
@@ -96,17 +96,17 @@ func TestContextAwareSlashCommand(t *testing.T) {
 	ctx := KeyContext{View: ViewProcesses, Context: "normal"}
 	assert.True(t, handler.CanHandle(slashKey, ctx))
 
-	// Test 2: In AI Coder PTY mode at start of line, should be handled
+	// Test 2: In AI Coder PTY mode at start of line, should NOT be handled (AI Coder has absolute priority)
 	ctx = KeyContext{View: ViewAICoders, Context: "pty", CursorPosition: 0}
-	assert.True(t, handler.CanHandle(slashKey, ctx))
+	assert.False(t, handler.CanHandle(slashKey, ctx))
 
-	// Test 3: In AI Coder PTY mode mid-line, should NOT be handled
+	// Test 3: In AI Coder PTY mode mid-line, should NOT be handled (AI Coder has absolute priority)
 	ctx = KeyContext{View: ViewAICoders, Context: "pty", CursorPosition: 5}
 	assert.False(t, handler.CanHandle(slashKey, ctx))
 
-	// Test 4: In AI Coder list mode, should be handled
+	// Test 4: In AI Coder list mode, should NOT be handled (AI Coder has absolute priority)
 	ctx = KeyContext{View: ViewAICoders, Context: "normal"}
-	assert.True(t, handler.CanHandle(slashKey, ctx))
+	assert.False(t, handler.CanHandle(slashKey, ctx))
 
 	// Test handling with callback
 	model := &Model{}
@@ -132,10 +132,10 @@ func TestGlobalNavigationHandler(t *testing.T) {
 	viewManager := NewSimpleViewManager(ViewProcesses)
 	handler := NewGlobalNavigationHandler(viewManager, false)
 
-	// Test Tab key handling
+	// Test Tab key handling - GlobalNavigationHandler does NOT handle Tab (reserved for input navigation)
 	tabKey := tea.KeyMsg{Type: tea.KeyTab}
 	ctx := KeyContext{View: ViewProcesses}
-	assert.True(t, handler.CanHandle(tabKey, ctx))
+	assert.False(t, handler.CanHandle(tabKey, ctx), "GlobalNavigationHandler should not handle Tab key")
 
 	// Test number keys 1-7 (fixed to include all views)
 	for i := '1'; i <= '7'; i++ {
@@ -153,6 +153,18 @@ func TestGlobalNavigationHandler(t *testing.T) {
 	// Test other keys (should not be handled)
 	enterKey := tea.KeyMsg{Type: tea.KeyEnter}
 	assert.False(t, handler.CanHandle(enterKey, ctx))
+
+	// Test that global navigation CAN handle keys in AI Coder view as fallback
+	// AI Coder handler has absolute priority (1) vs GlobalNavigation (900)
+	// So AI Coder handler gets keys first, but GlobalNavigation is available as fallback
+	aiCoderCtx := KeyContext{View: ViewAICoders}
+	numberKey1 := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'1'}}
+	leftKey := tea.KeyMsg{Type: tea.KeyLeft}
+	rightKey := tea.KeyMsg{Type: tea.KeyRight}
+
+	assert.True(t, handler.CanHandle(numberKey1, aiCoderCtx), "Number keys should be handled in AI Coder view as fallback")
+	assert.True(t, handler.CanHandle(leftKey, aiCoderCtx), "Left arrow should be handled in AI Coder view as fallback")
+	assert.True(t, handler.CanHandle(rightKey, aiCoderCtx), "Right arrow should be handled in AI Coder view as fallback")
 }
 
 // TestQuitHandler tests the double-press quit protection
@@ -172,6 +184,11 @@ func TestQuitHandler(t *testing.T) {
 	tab := tea.KeyMsg{Type: tea.KeyTab}
 	assert.False(t, handler.CanHandle(tab, ctx))
 
+	// Test that quit handler does NOT handle keys in AI Coder view (AI Coder has absolute priority)
+	aiCoderCtx := KeyContext{View: ViewAICoders}
+	assert.False(t, handler.CanHandle(ctrlC, aiCoderCtx), "Ctrl+C should not be handled in AI Coder view")
+	assert.False(t, handler.CanHandle(esc, aiCoderCtx), "Esc should not be handled in AI Coder view")
+
 	// Test double-press protection
 	model := &Model{}
 
@@ -181,7 +198,7 @@ func TestQuitHandler(t *testing.T) {
 	msg := cmd()
 	statusMsg, ok := msg.(StatusMsg)
 	assert.True(t, ok)
-	assert.Equal(t, "Press Ctrl+C again to quit", statusMsg.Message)
+	assert.Equal(t, "Press ESC or Ctrl+C again to quit", statusMsg.Message)
 
 	// Second press within 500ms should quit
 	cmd = handler.Handle(ctrlC, model)

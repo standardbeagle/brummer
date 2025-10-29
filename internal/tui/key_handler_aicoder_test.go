@@ -157,12 +157,15 @@ func TestAICoderKeyHandling(t *testing.T) {
 		assert.NotNil(t, cmd, "Ctrl+T should release terminal focus")
 		assert.False(t, model.masterData.AICoderState.TerminalFocused, "Terminal should not be focused after Ctrl+T")
 
-		// Reset and test ESC key
+		// Reset and test ESC key behavior when terminal focused
 		model.masterData.AICoderState = model.masterData.AICoderState.SetTerminalFocus(true)
 		escKey := tea.KeyMsg{Type: tea.KeyEsc}
 		cmd = registry.HandleKey(escKey, ctx, model)
-		assert.NotNil(t, cmd, "ESC should release terminal focus")
-		assert.False(t, model.masterData.AICoderState.TerminalFocused, "Terminal should not be focused after ESC")
+		// ESC should now go to PTY when terminal focused (not release focus)
+		// When ESC goes to PTY, handler returns nil (input goes directly to service)
+		assert.True(t, model.masterData.AICoderState.TerminalFocused, "Terminal should remain focused after ESC (ESC goes to PTY)")
+		// ESC going to PTY means handler returns nil (input sent to service directly)
+		assert.Nil(t, cmd, "ESC going to PTY should return nil command")
 	})
 
 	t.Run("View Switching", func(t *testing.T) {
