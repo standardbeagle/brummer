@@ -473,6 +473,139 @@ func TestCtrlTUniversalExit(t *testing.T) {
 	})
 }
 
+// TestCtrlCQuitInAICoderView tests that Ctrl+C works for double-press quit in AI Coder view
+func TestCtrlCQuitInAICoderView(t *testing.T) {
+	t.Run("Ctrl+C with terminal not focused - should trigger double-press quit", func(t *testing.T) {
+		// Setup model with AI Coder session but terminal NOT focused
+		model := createTestModel(ViewAICoders, true)
+		model.masterData.AICoderState = model.masterData.AICoderState.SetTerminalFocus(false)
+
+		// Create handlers
+		aiHandler := NewAICoderKeyHandler(nil)
+		quitHandler := NewQuitHandler()
+		registry := NewKeyHandlerRegistry()
+		registry.Register(aiHandler)    // priority 1
+		registry.Register(quitHandler)  // priority 50
+
+		// Context: terminal not focused
+		ctx := KeyContext{
+			View:    ViewAICoders,
+			Context: "normal",
+		}
+
+		ctrlCKey := tea.KeyMsg{Type: tea.KeyCtrlC}
+
+		// Verify AI Coder handler does NOT claim Ctrl+C
+		if aiHandler.CanHandle(ctrlCKey, ctx) {
+			t.Error("AI Coder handler should NOT handle Ctrl+C when terminal not focused")
+		}
+
+		// Verify QuitHandler DOES claim Ctrl+C in AI Coder view
+		if !quitHandler.CanHandle(ctrlCKey, ctx) {
+			t.Error("QuitHandler should handle Ctrl+C in AI Coder view")
+		}
+
+		// First press should show warning
+		cmd := registry.HandleKey(ctrlCKey, ctx, model)
+		if cmd == nil {
+			t.Error("First Ctrl+C should return a command (warning message)")
+		}
+		if !model.awaitingQuitConfirmation {
+			t.Error("Model should be awaiting quit confirmation after first Ctrl+C")
+		}
+
+		// Second press within timeout should quit
+		cmd = registry.HandleKey(ctrlCKey, ctx, model)
+		if cmd == nil {
+			t.Error("Second Ctrl+C should return a quit command")
+		}
+		// Can't directly test tea.Quit, but the command should be truthy
+	})
+
+	t.Run("Ctrl+C with terminal focused - should go to PTY, not quit", func(t *testing.T) {
+		// Setup model with AI Coder session and terminal FOCUSED
+		model := createTestModel(ViewAICoders, true)
+		model.masterData.AICoderState = model.masterData.AICoderState.SetTerminalFocus(true)
+		model.aiCoderService = &services.AICoderService{} // Mock service
+
+		// Create handlers
+		aiHandler := NewAICoderKeyHandler(nil)
+		quitHandler := NewQuitHandler()
+		registry := NewKeyHandlerRegistry()
+		registry.Register(aiHandler)    // priority 1
+		registry.Register(quitHandler)  // priority 50
+
+		// Context: terminal focused
+		ctx := KeyContext{
+			View:    ViewAICoders,
+			Context: "terminal_focused",
+		}
+
+		ctrlCKey := tea.KeyMsg{Type: tea.KeyCtrlC}
+
+		// Verify AI Coder handler DOES claim Ctrl+C when terminal focused
+		if !aiHandler.CanHandle(ctrlCKey, ctx) {
+			t.Error("AI Coder handler should handle Ctrl+C when terminal focused (send to PTY)")
+		}
+
+		// When registry routes, AI Coder handler (priority 1) should win
+		cmd := registry.HandleKey(ctrlCKey, ctx, model)
+
+		// AI Coder handler returns nil (key goes to PTY)
+		if cmd != nil {
+			t.Errorf("AI Coder handler should return nil for Ctrl+C when terminal focused (goes to PTY), got: %v", cmd)
+		}
+
+		// Verify quit confirmation flag is NOT set (Ctrl+C went to PTY, not to quit handler)
+		if model.awaitingQuitConfirmation {
+			t.Error("Should NOT be awaiting quit confirmation when terminal is focused (Ctrl+C should go to PTY)")
+		}
+	})
+
+	t.Run("Esc in AI Coder view - should go to PTY when terminal focused, not trigger quit", func(t *testing.T) {
+		// Setup model with AI Coder session and terminal FOCUSED
+		model := createTestModel(ViewAICoders, true)
+		model.masterData.AICoderState = model.masterData.AICoderState.SetTerminalFocus(true)
+		model.aiCoderService = &services.AICoderService{}
+
+		// Create handlers
+		aiHandler := NewAICoderKeyHandler(nil)
+		quitHandler := NewQuitHandler()
+		registry := NewKeyHandlerRegistry()
+		registry.Register(aiHandler)
+		registry.Register(quitHandler)
+
+		// Context: terminal focused
+		ctx := KeyContext{
+			View:    ViewAICoders,
+			Context: "terminal_focused",
+		}
+
+		escKey := tea.KeyMsg{Type: tea.KeyEsc}
+
+		// Verify QuitHandler does NOT claim Esc in AI Coder view
+		if quitHandler.CanHandle(escKey, ctx) {
+			t.Error("QuitHandler should NOT handle Esc in AI Coder view (reserved for AI tools)")
+		}
+
+		// Verify AI Coder handler DOES claim Esc when terminal focused
+		if !aiHandler.CanHandle(escKey, ctx) {
+			t.Error("AI Coder handler should handle Esc when terminal focused (send to PTY)")
+		}
+
+		// Registry should route to AI Coder handler
+		cmd := registry.HandleKey(escKey, ctx, model)
+		if cmd != nil {
+			t.Error("Esc should go to PTY when terminal focused")
+		}
+
+		// Verify quit is NOT triggered
+		if model.awaitingQuitConfirmation {
+			t.Error("Esc should not trigger quit in AI Coder view")
+		}
+	})
+}
+
 // TestArrowKeysWithTerminalFocused tests that arrow keys go to PTY when terminal is focused
 func TestArrowKeysWithTerminalFocused(t *testing.T) {
 	// Setup model with AI Coder session and terminal focused

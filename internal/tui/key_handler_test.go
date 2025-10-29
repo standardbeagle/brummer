@@ -184,10 +184,11 @@ func TestQuitHandler(t *testing.T) {
 	tab := tea.KeyMsg{Type: tea.KeyTab}
 	assert.False(t, handler.CanHandle(tab, ctx))
 
-	// Test that quit handler does NOT handle keys in AI Coder view (AI Coder has absolute priority)
+	// Test that quit handler handles Ctrl+C in AI Coder view (for double-press quit)
+	// but does NOT handle Esc (reserved for AI tools/PTY)
 	aiCoderCtx := KeyContext{View: ViewAICoders}
-	assert.False(t, handler.CanHandle(ctrlC, aiCoderCtx), "Ctrl+C should not be handled in AI Coder view")
-	assert.False(t, handler.CanHandle(esc, aiCoderCtx), "Esc should not be handled in AI Coder view")
+	assert.True(t, handler.CanHandle(ctrlC, aiCoderCtx), "Ctrl+C should be handled in AI Coder view for double-press quit")
+	assert.False(t, handler.CanHandle(esc, aiCoderCtx), "Esc should not be handled in AI Coder view (reserved for AI tools)")
 
 	// Test double-press protection
 	model := &Model{}

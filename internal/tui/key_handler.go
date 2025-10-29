@@ -198,12 +198,21 @@ func (h *QuitHandler) Priority() int {
 }
 
 func (h *QuitHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
-	// Don't handle quit keys when in AI Coder view at all
-	// AI Coder handler is absolute priority and handles all keys including Ctrl+C and Esc
-	if ctx.View == ViewAICoders {
+	// Only handle quit keys (Ctrl+C and Esc)
+	if key.Type != tea.KeyCtrlC && key.Type != tea.KeyEsc {
 		return false
 	}
-	return key.Type == tea.KeyCtrlC || key.Type == tea.KeyEsc
+
+	// When in AI Coder view:
+	// - Allow Ctrl+C for double-press quit (when terminal not focused)
+	// - Block Esc (goes to PTY when terminal focused, handled by AI Coder handler when not focused)
+	if ctx.View == ViewAICoders {
+		// Allow Ctrl+C only (Esc is reserved for AI tools)
+		return key.Type == tea.KeyCtrlC
+	}
+
+	// Outside AI Coder view, handle both Ctrl+C and Esc
+	return true
 }
 
 func (h *QuitHandler) Handle(key tea.KeyMsg, model *Model) tea.Cmd {
@@ -337,6 +346,14 @@ func (h *AICoderKeyHandler) CanHandle(key tea.KeyMsg, ctx KeyContext) bool {
 	case tea.KeyCtrlT:
 		// Ctrl+T to toggle terminal focus (if there's a focused session)
 		return true
+	case tea.KeyCtrlC:
+		// Ctrl+C when terminal not focused: let QuitHandler handle it for double-press quit
+		// We don't handle it here, so it passes to QuitHandler (priority 50)
+		return false
+	case tea.KeyEsc:
+		// Esc when terminal not focused: we could handle it for 'q' key equivalent
+		// But we let it pass through so it doesn't interfere with other handlers
+		return false
 	case tea.KeyRunes:
 		if len(key.Runes) == 1 && key.Runes[0] == 'q' {
 			// 'q' to exit session (if there's a focused session)
