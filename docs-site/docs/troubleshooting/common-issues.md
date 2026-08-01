@@ -411,7 +411,7 @@ cat package.json | grep -A 10 scripts
 ### Community Support
 
 - GitHub Issues: [github.com/standardbeagle/brummer/issues](https://github.com/standardbeagle/brummer/issues)
-- Documentation: [standardbeagle.github.io/brummer](https://standardbeagle.github.io/brummer)
+- Documentation: [dev.standardbeagle.com/brummer](https://dev.standardbeagle.com/brummer)
 
 ### Logs Location
 

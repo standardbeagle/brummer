@@ -6,12 +6,12 @@ A TUI (Terminal User Interface) for managing npm/yarn/pnpm/bun scripts with inte
 
 ## 📖 Documentation
 
-📚 **Full documentation available at: [https://standardbeagle.github.io/brummer/](https://standardbeagle.github.io/brummer/)**
+📚 **Full documentation available at: [https://dev.standardbeagle.com/brummer/](https://dev.standardbeagle.com/brummer/)**
 
 Quick links:
-- [Getting Started Guide](https://standardbeagle.github.io/brummer/docs/getting-started)
-- [Installation Options](https://standardbeagle.github.io/brummer/docs/installation)
-- [MCP Integration](https://standardbeagle.github.io/brummer/docs/mcp-integration/overview)
+- [Getting Started Guide](https://dev.standardbeagle.com/brummer/docs/getting-started)
+- [Installation Options](https://dev.standardbeagle.com/brummer/docs/installation)
+- [MCP Integration](https://dev.standardbeagle.com/brummer/docs/mcp-integration/overview)
 
 ## Features
 

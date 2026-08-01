@@ -32,7 +32,7 @@
   "bugs": {
     "url": "https://github.com/standardbeagle/brummer/issues"
   },
-  "homepage": "https://standardbeagle.github.io/brummer/",
+  "homepage": "https://dev.standardbeagle.com/brummer/",
   "engines": {
     "node": ">=14.0.0"
   },
