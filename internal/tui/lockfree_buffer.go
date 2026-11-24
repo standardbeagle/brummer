@@ -277,3 +277,179 @@ func nextPowerOfTwo(n uint64) uint64 {
 
 	return n
 }
+
+// LockFreeMessageBuffer implements a generic lock-free ring buffer for any message type
+// This is a drop-in replacement for buffered channels with better performance
+type LockFreeMessageBuffer struct {
+	// Ring buffer storage (power of 2 size for fast modulo via bitwise AND)
+	buffer []interface{}
+	size   uint64
+	mask   uint64 // size - 1 for fast modulo operation
+
+	// Atomic cursors (aligned to cache line boundaries to prevent false sharing)
+	writePos uint64 // Next write position
+	readPos  uint64 // Next read position
+
+	// Padding to prevent false sharing between atomic fields
+	_pad1 [56]byte
+
+	// Performance metrics (atomic counters)
+	messagesWritten uint64
+	messagesDropped uint64
+	bufferFullCount uint64
+	maxUsedSlots    uint64
+
+	// Additional padding
+	_pad2 [32]byte
+}
+
+// NewLockFreeMessageBuffer creates a new generic lock-free ring buffer
+// bufferSize must be a power of 2 for optimal performance
+func NewLockFreeMessageBuffer(bufferSize uint64) *LockFreeMessageBuffer {
+	// Ensure buffer size is power of 2
+	if bufferSize == 0 || (bufferSize&(bufferSize-1)) != 0 {
+		// Round up to next power of 2
+		bufferSize = nextPowerOfTwo(bufferSize)
+	}
+
+	return &LockFreeMessageBuffer{
+		buffer: make([]interface{}, bufferSize),
+		size:   bufferSize,
+		mask:   bufferSize - 1,
+	}
+}
+
+// TryWrite attempts to write a message to the buffer
+// Returns true if successful, false if buffer is full (backpressure)
+// This operation is lock-free and wait-free
+func (b *LockFreeMessageBuffer) TryWrite(msg interface{}) bool {
+	// Load current positions atomically
+	currentWrite := atomic.LoadUint64(&b.writePos)
+	currentRead := atomic.LoadUint64(&b.readPos)
+
+	// Calculate next write position
+	nextWrite := currentWrite + 1
+
+	// Check if buffer would be full after write
+	// We keep one slot empty to distinguish full from empty
+	if nextWrite-currentRead >= b.size {
+		// Buffer is full - apply backpressure
+		atomic.AddUint64(&b.messagesDropped, 1)
+		atomic.AddUint64(&b.bufferFullCount, 1)
+		return false
+	}
+
+	// Store message in buffer
+	slot := currentWrite & b.mask
+	atomic.StorePointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&b.buffer[slot])),
+		unsafe.Pointer(&msg),
+	)
+
+	// Advance write position atomically
+	if !atomic.CompareAndSwapUint64(&b.writePos, currentWrite, nextWrite) {
+		// Someone else beat us to it
+		return false
+	}
+
+	// Update metrics
+	atomic.AddUint64(&b.messagesWritten, 1)
+
+	// Update max used slots metric
+	used := nextWrite - currentRead
+	for {
+		currentMax := atomic.LoadUint64(&b.maxUsedSlots)
+		if used <= currentMax || atomic.CompareAndSwapUint64(&b.maxUsedSlots, currentMax, used) {
+			break
+		}
+	}
+
+	return true
+}
+
+// TryRead attempts to read a message from the buffer
+// Returns message and true if successful, nil and false if buffer is empty
+// This operation is lock-free and wait-free
+func (b *LockFreeMessageBuffer) TryRead() (interface{}, bool) {
+	// Load current positions atomically
+	currentRead := atomic.LoadUint64(&b.readPos)
+	currentWrite := atomic.LoadUint64(&b.writePos)
+
+	// Check if buffer is empty
+	if currentRead >= currentWrite {
+		return nil, false
+	}
+
+	// Read message from buffer
+	slot := currentRead & b.mask
+	msgPtr := atomic.LoadPointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&b.buffer[slot])),
+	)
+
+	if msgPtr == nil {
+		// Message not yet written by writer (very rare race condition)
+		return nil, false
+	}
+
+	// Copy the value (dereference)
+	msg := *(*interface{})(msgPtr)
+
+	// Clear the slot (helps with GC and debugging)
+	atomic.StorePointer(
+		(*unsafe.Pointer)(unsafe.Pointer(&b.buffer[slot])),
+		nil,
+	)
+
+	// Advance read position atomically
+	if atomic.CompareAndSwapUint64(&b.readPos, currentRead, currentRead+1) {
+		return msg, true
+	}
+
+	// Someone else beat us to it - return what we read anyway
+	return msg, true
+}
+
+// IsEmpty returns true if the buffer has no messages
+func (b *LockFreeMessageBuffer) IsEmpty() bool {
+	return atomic.LoadUint64(&b.readPos) >= atomic.LoadUint64(&b.writePos)
+}
+
+// IsFull returns true if the buffer is full
+func (b *LockFreeMessageBuffer) IsFull() bool {
+	currentWrite := atomic.LoadUint64(&b.writePos)
+	currentRead := atomic.LoadUint64(&b.readPos)
+	return currentWrite-currentRead >= b.size-1
+}
+
+// AvailableSpace returns the number of available slots
+func (b *LockFreeMessageBuffer) AvailableSpace() uint64 {
+	currentWrite := atomic.LoadUint64(&b.writePos)
+	currentRead := atomic.LoadUint64(&b.readPos)
+	return b.size - (currentWrite - currentRead)
+}
+
+// GetMetrics returns performance statistics
+func (b *LockFreeMessageBuffer) GetMetrics() BufferMetrics {
+	return BufferMetrics{
+		BufferSize:      b.size,
+		CurrentUsed:     atomic.LoadUint64(&b.writePos) - atomic.LoadUint64(&b.readPos),
+		MaxUsedSlots:    atomic.LoadUint64(&b.maxUsedSlots),
+		MessagesWritten: atomic.LoadUint64(&b.messagesWritten),
+		MessagesDropped: atomic.LoadUint64(&b.messagesDropped),
+		BufferFullCount: atomic.LoadUint64(&b.bufferFullCount),
+		SaturationRatio: b.calculateSaturationRatio(),
+	}
+}
+
+// calculateSaturationRatio computes the ratio of dropped messages
+func (b *LockFreeMessageBuffer) calculateSaturationRatio() float64 {
+	written := atomic.LoadUint64(&b.messagesWritten)
+	dropped := atomic.LoadUint64(&b.messagesDropped)
+	total := written + dropped
+
+	if total == 0 {
+		return 0.0
+	}
+
+	return float64(dropped) / float64(total)
+}

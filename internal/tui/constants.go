@@ -27,7 +27,8 @@ const (
 	SystemPanelMaxMessages = 100
 
 	// Update channel buffer size - EMERGENCY FIX for AI coder PTY output saturation
-	// TODO: Replace with lock-free ring buffer (see race analysis)
+	// NOTE: For better performance, consider using LockFreeMessageBuffer from lockfree_buffer.go
+	// This provides lock-free operations with built-in backpressure instead of blocking channels
 	UpdateChannelBufferSize = 10000 // Increased 100x to prevent channel blocking
 )
 

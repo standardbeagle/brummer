@@ -8,7 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/standardbeagle/brummer/internal/shared/types"
 	"github.com/standardbeagle/brummer/internal/tui/commands"
+	"github.com/standardbeagle/brummer/internal/tui/messages"
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -186,15 +188,13 @@ func (h *ProgressHandler) UpdateProgress(progressID string, current int, total i
 
 	// Return progress update command
 	return func() tea.Msg {
-		// TODO: Fix type mismatch in messages package
-		// return messages.NewCommandProgressMessage(
-		//	progress.CommandID,
-		//	progress.CommandType,
-		//	int(progress.Percentage),
-		//	progress.Message,
-		//	commands.SystemOperationContext(0), // Version will be set by state handler
-		// )
-		return tea.Msg(nil)
+		return messages.NewCommandProgressMessage(
+			progress.CommandID,
+			types.CommandType(progress.CommandType),
+			int(progress.Percentage),
+			progress.Message,
+			convertOperationContext(commands.SystemOperationContext(0)),
+		)
 	}
 }
 
@@ -251,15 +251,13 @@ func (h *ProgressHandler) UpdateSubProgress(progressID, subID string, current in
 	h.lastUpdate.Store(time.Now())
 
 	return func() tea.Msg {
-		// TODO: Fix type mismatch in messages package
-		// return messages.NewCommandProgressMessage(
-		//	progress.CommandID,
-		//	progress.CommandType,
-		//	int(progress.Percentage),
-		//	progress.Message,
-		//	commands.SystemOperationContext(0),
-		// )
-		return tea.Msg(nil)
+		return messages.NewCommandProgressMessage(
+			progress.CommandID,
+			types.CommandType(progress.CommandType),
+			int(progress.Percentage),
+			progress.Message,
+			convertOperationContext(commands.SystemOperationContext(0)),
+		)
 	}
 }
 
@@ -361,20 +359,18 @@ func (h *ProgressHandler) completeProgress(progress *Progress) tea.Cmd {
 	h.completedProgress = append(h.completedProgress, progress)
 
 	return func() tea.Msg {
-		// TODO: Fix type mismatch in messages package
-		// return messages.NewCommandCompletedMessage(
-		//	progress.CommandID,
-		//	progress.CommandType,
-		//	ProgressResult{
-		//		ID:         progress.ID,
-		//		Success:    true,
-		//		Duration:   time.Since(progress.StartTime),
-		//		FinalStats: h.calculateFinalStats(progress),
-		//	},
-		//	time.Since(progress.StartTime),
-		//	commands.SystemOperationContext(0),
-		// )
-		return tea.Msg(nil)
+		return messages.NewCommandCompletedMessage(
+			progress.CommandID,
+			types.CommandType(progress.CommandType),
+			map[string]interface{}{
+				"ID":         progress.ID,
+				"Success":    true,
+				"Duration":   time.Since(progress.StartTime),
+				"FinalStats": h.calculateFinalStats(progress),
+			},
+			time.Since(progress.StartTime),
+			convertOperationContext(commands.SystemOperationContext(0)),
+		)
 	}
 }
 
@@ -400,6 +396,35 @@ func (h *ProgressHandler) estimateDuration(progress *Progress) time.Duration {
 		return time.Duration(float64(elapsed) * float64(progress.Total) / float64(progress.Current))
 	}
 	return elapsed
+}
+
+// convertOperationContext converts from commands.OperationContext to types.OperationContext
+func convertOperationContext(cmdCtx commands.OperationContext) types.OperationContext {
+	metadata := make(map[string]interface{})
+	if len(cmdCtx.Dependencies) > 0 {
+		metadata["dependencies"] = cmdCtx.Dependencies
+	}
+	if cmdCtx.Timeout > 0 {
+		metadata["timeout"] = cmdCtx.Timeout
+	}
+	if cmdCtx.RetryPolicy.MaxAttempts > 0 {
+		metadata["retryPolicy"] = cmdCtx.RetryPolicy
+	}
+
+	return types.OperationContext{
+		RequestID:  "",
+		UserID:     "",
+		SessionID:  "",
+		TraceID:    "",
+		OperationID: "",
+		Priority:   types.PriorityNormal,
+		Timeout:    cmdCtx.Timeout,
+		RetryCount: 0,
+		MaxRetries: cmdCtx.RetryPolicy.MaxAttempts,
+		Metadata:   metadata,
+		CreatedAt:  time.Now(),
+		DryRun:     false,
+	}
 }
 
 // checkTimeouts checks for progress operations that have timed out

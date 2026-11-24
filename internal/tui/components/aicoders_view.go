@@ -35,12 +35,15 @@ type AICodersViewComponent struct {
 	// Viewport for scrollable terminal output
 	viewport viewport.Model
 
-	// Auto-scroll tracking
-	lastAutoScrollTime int64    // Timestamp of last auto-scroll
-	userScrolled       bool     // Track if user manually scrolled
-	lastScrollPosition int      // Track last scroll position for user detection
-	forceAutoScroll    bool     // Force auto-scroll for next update
-	currentSessionID   string   // Track current session to detect changes
+	// Auto-scroll tracking (simplified state machine)
+	// States: "auto" (following new content) or "manual" (user scrolled away)
+	scrollMode         string    // "auto" or "manual"
+	lastContentLines   int       // Track content size to detect new content
+	forceAutoScroll    bool      // Force auto-scroll for next update (after user input)
+	currentSessionID   string    // Track current session to detect changes
+	userScrolled       bool  // Whether user has manually scrolled
+	lastScrollPosition int   // Last scroll position
+	lastAutoScrollTime int64 // Last auto-scroll timestamp (Unix milliseconds)
 
 	// Styles
 	headerStyle   lipgloss.Style
@@ -69,17 +72,19 @@ func NewAICodersViewComponent(service interface{}) *AICodersViewComponent {
 	}
 
 	c := &AICodersViewComponent{
-		BaseComponent: NewBaseComponent(),
-		service:       service,
-		viewport:      vp,
-		headerStyle:   lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),  // Bright Blue
-		contentStyle:  lipgloss.NewStyle().Padding(0, 1),                                 // Content padding
-		footerStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("245")),            // Gray footer
-		activeStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("10")),             // Bright Green
-		idleStyle:     lipgloss.NewStyle().Foreground(lipgloss.Color("11")),             // Bright Yellow
-		errorStyle:    lipgloss.NewStyle().Foreground(lipgloss.Color("9")),              // Bright Red
-		selectedStyle: lipgloss.NewStyle().Background(lipgloss.Color("240")).Bold(true), // Gray background
-		normalStyle:   lipgloss.NewStyle().Foreground(lipgloss.Color("15")),             // White
+		BaseComponent:    NewBaseComponent(),
+		service:          service,
+		viewport:         vp,
+		scrollMode:       "auto", // Start in auto-scroll mode
+		lastContentLines: 0,
+		headerStyle:      lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12")),  // Bright Blue
+		contentStyle:     lipgloss.NewStyle().Padding(0, 1),                                 // Content padding
+		footerStyle:      lipgloss.NewStyle().Foreground(lipgloss.Color("245")),            // Gray footer
+		activeStyle:      lipgloss.NewStyle().Foreground(lipgloss.Color("10")),             // Bright Green
+		idleStyle:        lipgloss.NewStyle().Foreground(lipgloss.Color("11")),             // Bright Yellow
+		errorStyle:       lipgloss.NewStyle().Foreground(lipgloss.Color("9")),              // Bright Red
+		selectedStyle:    lipgloss.NewStyle().Background(lipgloss.Color("240")).Bold(true), // Gray background
+		normalStyle:      lipgloss.NewStyle().Foreground(lipgloss.Color("15")),             // White
 	}
 
 	return c
@@ -93,10 +98,15 @@ func (c *AICodersViewComponent) Init() tea.Cmd {
 // UpdateViewport handles viewport scrolling for arrow keys, page up/down, and mouse events
 // This should be called from the main model's Update() method when handling key messages
 func (c *AICodersViewComponent) UpdateViewport(msg tea.Msg) tea.Cmd {
-	// Track user scrolling via keyboard
+	prevOffset := c.viewport.YOffset
+
+	// Update viewport first
+	var cmd tea.Cmd
+	c.viewport, cmd = c.viewport.Update(msg)
+
+	// Detect user scroll actions by checking if offset changed
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		// Check if this key affects viewport scrolling
 		isScrollKey := msg.Type == tea.KeyUp ||
 			msg.Type == tea.KeyDown ||
 			msg.Type == tea.KeyPgUp ||
@@ -107,21 +117,28 @@ func (c *AICodersViewComponent) UpdateViewport(msg tea.Msg) tea.Cmd {
 		// Also check for vim-style scrolling
 		if !isScrollKey && msg.Type == tea.KeyRunes {
 			switch string(msg.Runes) {
-			case "j", "k":
+			case "j", "k", "g", "G":
 				isScrollKey = true
 			}
 		}
 
-		if isScrollKey {
-			// Mark user scrolled
-			c.userScrolled = true
-			c.lastScrollPosition = c.viewport.YOffset
+		if isScrollKey && c.viewport.YOffset != prevOffset {
+			// User actively scrolled - check if they scrolled away from bottom
+			if !c.isAtBottom() {
+				c.scrollMode = "manual"
+			} else {
+				// User scrolled but ended up at bottom - stay in auto mode
+				c.scrollMode = "auto"
+			}
 		}
 	}
 
-	var cmd tea.Cmd
-	c.viewport, cmd = c.viewport.Update(msg)
 	return cmd
+}
+
+// isAtBottom returns true if viewport is scrolled to the bottom
+func (c *AICodersViewComponent) isAtBottom() bool {
+	return c.viewport.AtBottom()
 }
 
 // Update handles component updates including mouse events and auto-scroll
@@ -306,8 +323,10 @@ func (c *AICodersViewComponent) renderPTYViewWithState(aiState *state.AICoderSta
 		// Direct rendering from screen buffer - already processed by vt10x
 		for _, runeSlice := range aiState.ScreenBuffer {
 			line := string(runeSlice)
+			// Process ANSI formatting and apply lipgloss styles
+			processedLine := processANSIFormatting(line)
 			// Add left padding for better readability
-			contentLines = append(contentLines, "  "+line)
+			contentLines = append(contentLines, "  "+processedLine)
 		}
 
 		// Add cursor indicator if dirty (needs redraw)
@@ -514,11 +533,20 @@ func (c *AICodersViewComponent) SetSize(width, height int) {
 	}
 }
 
-// processANSIFormatting processes common ANSI escape codes for terminal display
+// processANSIFormatting processes ANSI escape codes and applies lipgloss styles
+// This enhances terminal output with proper color and formatting support
 func processANSIFormatting(line string) string {
+	// Parse and render ANSI color codes using lipgloss
+	// Lipgloss automatically handles ANSI escape sequences
+	// and applies appropriate styling
+	return lipgloss.NewStyle().Inline(true).Render(line)
+}
+
+// processANSIFormattingLegacy provides the original behavior for comparison
+// Keeping as reference - can be removed once new implementation is validated
+func processANSIFormattingLegacy(line string) string {
 	// TEMPORARY: Return the line as-is to preserve ANSI color codes
 	// This allows 24-bit color and formatting to pass through to the terminal
-	// TODO: Implement proper ANSI rendering with lipgloss styles
 	return line
 }
 

@@ -1235,12 +1235,109 @@ func (fbs *FileBrowserService) SubscribeToEvents() {
 
 	// Subscribe to process events that might affect file watching
 	fbs.eventBus.Subscribe(events.ProcessStarted, func(evt events.Event) {
-		// TODO: React to process starts that might affect file watching
+		// React to process starts that might affect file watching
+		// When a process starts, it might create/modify files
+		// This is especially important for dev servers and build processes
+		processID, _ := evt.Data["process_id"].(string)
+		workingDir, _ := evt.Data["working_dir"].(string)
+
+		// If the process has a working directory, ensure we're watching it
+		if workingDir != "" {
+			// Trigger a refresh of the file browser to pick up new/changed files
+			fbs.requestRefresh(fmt.Sprintf("process_start:%s", processID))
+		}
 	})
 
 	fbs.eventBus.Subscribe(events.ProcessExited, func(evt events.Event) {
-		// TODO: React to process exits that might affect file watching
+		// React to process exits that might affect file watching
+		// When a process exits, we might want to refresh to see final output files
+		processID, _ := evt.Data["process_id"].(string)
+		workingDir, _ := evt.Data["working_dir"].(string)
+
+		// If the process has a working directory, refresh to see final state
+		if workingDir != "" {
+			// Trigger a refresh of the file browser
+			fbs.requestRefresh(fmt.Sprintf("process_exit:%s", processID))
+		}
 	})
+}
+
+// requestRefresh triggers a refresh of the file browser
+// This is called when process events indicate files might have changed
+func (fbs *FileBrowserService) requestRefresh(reason string) {
+	currentPath := fbs.GetCurrentPath()
+
+	// Re-scan the current directory
+	listing := fbs.ListDirectoryPath(currentPath)
+
+	// Update the file cache with fresh data
+	if listing.Error == "" {
+		// Clear and rebuild cache for current path
+		fbs.refreshFileCache(currentPath, listing.Files)
+
+		// Emit refresh event to notify subscribers
+		fbs.emitRefreshEvent(currentPath, reason, listing.Files)
+
+		// Emit path changed event to trigger UI updates
+		fbs.emitPathChangedEvent(currentPath)
+	} else {
+		// Emit error event if refresh failed
+		fbs.emitFileErrorEvent(fmt.Sprintf("Failed to refresh directory: %s", listing.Error), "refresh", currentPath)
+	}
+}
+
+// refreshFileCache updates the file cache with fresh file information
+func (fbs *FileBrowserService) refreshFileCache(path string, files []*FileInfo) {
+	fbs.mu.Lock()
+	defer fbs.mu.Unlock()
+
+	// Get current cache
+	cache := fbs.getFileCache()
+
+	// Remove old entries for this path
+	for key := range cache {
+		if strings.HasPrefix(key, path+string(filepath.Separator)) || key == path {
+			delete(cache, key)
+		}
+	}
+
+	// Add fresh entries
+	for _, file := range files {
+		cache[file.Path] = file
+	}
+
+	// Store updated cache
+	fbs.fileCache.Store(cache)
+}
+
+// emitRefreshEvent emits a file browser refresh event
+func (fbs *FileBrowserService) emitRefreshEvent(path, reason string, files []*FileInfo) {
+	if fbs.eventBus != nil {
+		fbs.eventBus.Publish(events.Event{
+			Type: "file_browser.refreshed",
+			Data: map[string]interface{}{
+				"path":   path,
+				"reason": reason,
+				"files":  files,
+				"time":   time.Now(),
+			},
+		})
+	}
+}
+
+// emitFileErrorEvent emits a file error event
+func (fbs *FileBrowserService) emitFileErrorEvent(errorMsg, operation, path string) {
+	if fbs.eventBus != nil {
+		fbs.eventBus.Publish(events.Event{
+			Type: "file.error",
+			Data: map[string]interface{}{
+				"error":     errorMsg,
+				"operation": operation,
+				"path":      path,
+				"time":      time.Now(),
+			},
+		})
+	}
 }
 
 // Event emission methods

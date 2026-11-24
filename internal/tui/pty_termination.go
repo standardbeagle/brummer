@@ -222,8 +222,12 @@ func (th *PTYTerminationHandler) Start() error {
 	}
 
 	// Start signal monitoring through command pattern
-	// TODO: Replace with proper command pattern for signal monitoring
-	// For now, disable signal monitoring to avoid goroutines
+	// NOTE: Signal monitoring via goroutines has been disabled to prevent deadlocks
+	// To re-enable: Convert signal handling to use tea.Cmd pattern with proper
+	// lifecycle management. Each signal should trigger a command that:
+	// 1. Checks if shutdown is already in progress
+	// 2. Coordinates with main update loop via messages
+	// 3. Uses timeout-based callbacks instead of blocking
 	if th.config.EnableDebug {
 		fmt.Printf("Signal monitoring disabled for goroutine elimination\n")
 	}
@@ -378,8 +382,12 @@ func (th *PTYTerminationHandler) setupSignalHandling() error {
 }
 
 // monitorSignals monitors and handles incoming signals
-// TODO: Replace with proper command pattern for signal monitoring
-// For now, disable signal monitoring to avoid goroutines
+// NOTE: Disabled to avoid goroutines and deadlocks
+// IMPLEMENTATION REQUIRED:
+// 1. Replace goroutine-based signal monitoring with tea.Cmd pattern
+// 2. Signal handlers should return commands that send messages to main update loop
+// 3. Main update loop processes signals and triggers appropriate shutdown
+// 4. Use timeout-based coordination to prevent blocking
 func (th *PTYTerminationHandler) monitorSignals() {
 	if th.config.EnableDebug {
 		fmt.Printf("Signal monitoring disabled for goroutine elimination\n")

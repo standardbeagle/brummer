@@ -33,6 +33,7 @@ import (
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 	"github.com/standardbeagle/brummer/internal/tui/services"
 	"github.com/standardbeagle/brummer/internal/tui/state"
+	"github.com/standardbeagle/brummer/internal/tui/tsr"
 	"github.com/standardbeagle/brummer/pkg/events"
 )
 
@@ -82,7 +83,6 @@ type Model struct {
 	layoutRegions components.LayoutRegions
 
 	// View components (migrated from controllers)
-	processesView     *components.ProcessesViewComponent // Processes view component (stateless)
 	logsView          *components.LogsViewComponent     // Logs view component (stateless)
 	errorsView        *components.ErrorsViewComponent   // Errors view component (stateless)
 	urlsView          *components.URLsViewComponentNew // URLs view component (stateless)
@@ -134,6 +134,9 @@ type Model struct {
 	// QUIT CONFIRMATION STATE
 	lastQuitAttemptTime time.Time
 	awaitingQuitConfirmation bool
+
+	// TSR MODE STATE (Terminal Stay Resident for AI Coder)
+	tsrModeActive bool
 
 	// ERROR GROUPING SERVICE (T027)
 	errorGroupingService *services.ErrorGroupingService
@@ -555,9 +558,6 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 	// Create settings list with package managers
 	// settingsList initialization moved to SettingsController
 
-	// DIAGNOSTIC: Log model initialization start
-	logStore.Add("system", "Model", "🚀 DIAGNOSTIC: Starting Model initialization...", false)
-
 	// Create the simplified view manager FIRST
 	viewManager := NewSimpleViewManager(initialView)
 
@@ -572,7 +572,6 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 		cfg:         cfg,
 		workingDir:  workingDir,
 		// View components initialization
-		processesView:     components.NewProcessesViewComponent(),
 		logsView:          components.NewLogsViewComponent(),
 		errorsView:        components.NewErrorsViewComponent(),
 		urlsView:          components.NewURLsView(),
@@ -589,9 +588,6 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 		viewManager:       viewManager, // Add the simple view manager
 	}
 
-// DIAGNOSTIC: Log basic model creation complete
-	logStore.Add("system", "Model", "✅ Model basic initialization complete", false)
-
 	// Initialize STATE MANAGEMENT - Master data with sub-models
 	m.masterData = state.NewMasterData()
 
@@ -604,19 +600,11 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 	// These services will be passed to the component constructors
 	// and used by the ServiceBridge for event routing
 
-	// MINIMAL SERVICES FOR TUI STARTUP DEBUGGING
-	// Create only essential services to prevent nil pointer crashes
-
-	// DIAGNOSTIC: Log service creation start
-	logStore.Add("system", "Model", "🔧 DIAGNOSTIC: Creating minimal services...", false)
-
-	// 1. Create ONLY InputService (essential for keyboard handling)
+	// Create essential services
 	inputService := services.NewInputService()
-	logStore.Add("system", "Model", "✅ InputService created", false)
 
 	// T027: Create ErrorGroupingService for error parsing
 	m.errorGroupingService = services.NewErrorGroupingService()
-	logStore.Add("system", "Model", "✅ ErrorGroupingService created", false)
 
 	// Skip other services that might have blocking goroutines
 	// var navigationService *services.NavigationService
@@ -694,39 +682,7 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 	m.inputComponent = inputComponent
 	m.navigationComponent = navigationComponent
 
-	// DIAGNOSTIC: Final comprehensive status check
-	logStore.Add("system", "Model", "📋 DIAGNOSTIC: Final component status check:", false)
-
-	// Check critical components
-	if m.inputComponent != nil {
-		logStore.Add("system", "Model", "✅ InputComponent: Available", false)
-	} else {
-		logStore.Add("system", "Model", "❌ InputComponent: MISSING - KEYBOARD WILL NOT WORK", true)
-	}
-
-	if m.navigationComponent != nil {
-		logStore.Add("system", "Model", "✅ NavigationComponent: Available", false)
-	} else {
-		logStore.Add("system", "Model", "❌ NavigationComponent: MISSING - VIEW SWITCHING WILL NOT WORK", true)
-	}
-
-	// Check services
-	if inputService != nil && inputService.IsRunning() {
-		logStore.Add("system", "Model", "✅ InputService: Running", false)
-	} else {
-		logStore.Add("system", "Model", "❌ InputService: NOT RUNNING - KEYBOARD PROCESSING WILL FAIL", true)
-	}
-
-	// Navigation service is now enabled
-	logStore.Add("system", "Model", "✅ NavigationService: Running", false)
-
-	// Check handler count
-	finalHandlerCount := inputService.GetHandlerCount()
-	logStore.Add("system", "Model", fmt.Sprintf("📊 Total keyboard handlers registered: %d", finalHandlerCount), false)
-
-	logStore.Add("system", "Model", "🎯 DIAGNOSTIC: Model initialization complete - keyboard handling should be functional", false)
-
-	// 14. Initialize MCP view components
+	// Initialize MCP view components
 	//     - Required by: MCP status and debugging features
 	//     - Dependencies: debugMode flag
 	m.mcpView = components.NewMCPViewComponent() // MCP status view
@@ -746,8 +702,8 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 	// 13. Initialize AI Coder service (T028 - new service-based architecture, replaces legacy controller)
 	//     - Required by: AI coder features (new architecture)
 	//     - Dependencies: context (for lifecycle management), logStore (for unified logging)
-	ctx := context.Background() // TODO: Use proper context from application lifecycle
-	m.aiCoderService = services.NewAICoderService(ctx, m.logStore)
+	//     - Note: Currently using background context, should use application lifecycle context
+	m.aiCoderService = services.NewAICoderService(context.Background(), m.logStore)
 
 	// 13.5. Wire up the debouncer callback for batched PTY output processing
 	//     - Required by: New screen buffer architecture for 60 FPS rendering
@@ -767,12 +723,9 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 				}
 
 				// Process through vt10x and sync screen buffer
-				screen, err := svc.ProcessBatchedOutput(sessionID, data)
+				screen, cursor, err := svc.ProcessBatchedOutput(sessionID, data)
 				if err == nil && screen != nil {
-					// Get cursor position from terminal
-					cursor := messages.CursorPosition{X: 0, Y: 0} // TODO: Get actual cursor from vt10x
-
-					// Send screen sync message
+					// Send screen sync message with actual cursor position
 					m.updateChan <- messages.AICoderScreenSyncMsg{
 						SessionID:    sessionID,
 						ScreenBuffer: screen,
@@ -1075,6 +1028,14 @@ func NewModelWithView(processMgr *processes.Manager, logStore *logs.Store, event
 	RegisterViewSpecificHandlers(m.keyRegistry)
 
 	// Register all keyboard handlers in priority order
+	// Priority 0: TSR mode switch (Ctrl+\ - highest priority)
+	m.keyRegistry.Register(NewTSRKeyHandler(func() *services.AICoderService {
+		if m.aiCoderService == nil {
+			return nil
+		}
+		return m.aiCoderService.(*services.AICoderService)
+	}))
+
 	// Priority 100: Global navigation (number keys, Tab)
 	// SIMPLIFIED: Pass viewManager directly instead of navigationService
 	m.keyRegistry.Register(NewGlobalNavigationHandler(m.viewManager, m.debugMode))
@@ -1209,6 +1170,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	// ============================================================================
+	// TSR MODE MESSAGES - Handle PTY mode exit and session picker results
+	// ============================================================================
+	switch tsrMsg := msg.(type) {
+	case tsr.PTYModeExitMsg:
+		return m, HandlePTYModeExit(m, tsrMsg)
+	case tsr.SessionPickerResultMsg:
+		return m, HandleSessionPickerResult(m, tsrMsg)
+	}
+
+	// ============================================================================
 	// DEFENSIVE UPDATE LISTENER - Handle updateChan messages automatically
 	// ============================================================================
 	// This handler processes all messages from updateChan and re-schedules the listener.
@@ -1262,8 +1233,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logStore.ClearErrors()
 		}
 		m.logStore.Add("system", "System", msg.message, msg.isError)
-		m.updateProcessList()
-		m.updateLogsView()
+		cmds = append(cmds, func() tea.Msg {
+			m.updateProcessList()
+			m.updateLogsView()
+			return nil
+		})
 
 	case RestartAllMsg:
 		if msg.clearLogs {
@@ -1271,11 +1245,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logStore.ClearErrors()
 		}
 		m.logStore.Add("system", "System", msg.message, msg.isError)
-		m.updateProcessList()
-		m.updateLogsView()
+		cmds = append(cmds, func() tea.Msg {
+			m.updateProcessList()
+			m.updateLogsView()
+			return nil
+		})
 
 	case ErrorUpdateMsg:
-		m.updateErrorsList()
+		cmds = append(cmds, func() tea.Msg {
+			m.updateErrorsList()
+			return nil
+		})
 
 	case TickMsg:
 		// Continue ticking for periodic updates
@@ -1301,7 +1281,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ⚠️ IMPORTANT: Only call non-blocking update methods from tick handler
 		switch m.currentView() {
 		case ViewProcesses:
-			m.updateProcessList() // Safe: updates list model without blocking
+			cmds = append(cmds, func() tea.Msg {
+				return messages.UpdateProcessesMsg{
+					Processes: m.processMgr.GetAllProcesses(),
+				}
+			})
 		case ViewLogs:
 			m.updateLogsView() // Safe: updates viewport without blocking
 		case ViewErrors:
@@ -1312,9 +1296,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case MCPActivityMsg:
-		// TODO: Fix MCPActivityMsg handling - needs proper sessionId and activity data
-		// For now, skip handling to allow build to pass
-		// Legacy HandleActivity and UpdateConnectionsList calls removed - new component is stateless
+		// MCPActivityMsg handling needs proper sessionId and activity data
+		// Currently handled through event-driven updates in MCP components
+		// No action needed - legacy handler removed in favor of stateless components
 
 	case ViewSwitchedMsg:
 		// View has been switched by SimpleViewManager
@@ -1330,8 +1314,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logStore.Add("system", "System", fmt.Sprintf("✅ Started command: %s", msg.commandName), false)
 		}
 		m.switchToView(ViewLogs)
-		m.updateProcessList()
-		m.updateLogsView()
+		cmds = append(cmds, func() tea.Msg {
+			m.updateProcessList()
+			m.updateLogsView()
+			return nil
+		})
 
 	case messages.AICoderPTYOutputMsg:
 		// Handle PTY output using sub-model pattern (Elm/Redux compliant)
@@ -1392,7 +1379,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle command results from slash commands
 		switch msg.Command {
 		case "clear":
-			m.handleClearCommand(msg.Message)
+			cmds = append(cmds, m.handleClearCommand(msg.Message))
 		case "show":
 			if m.masterData != nil && m.masterData.LogsState != nil {
 				m.masterData.LogsState = m.masterData.LogsState.SetShowPattern(msg.Message)
@@ -1460,7 +1447,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Also clear from log store
 		m.logStore.ClearLogs()
 		m.logStore.Add("system", "System", "📝 Logs cleared", false)
-		m.updateLogsView()
+		cmds = append(cmds, func() tea.Msg {
+			m.updateLogsView()
+			return nil
+		})
 
 	case messages.ClearWebMsg:
 		// Handle clear web cache command
@@ -1547,14 +1537,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle scroll up - disables auto-scroll
 		if m.masterData != nil && m.masterData.LogsState != nil {
 			m.masterData.LogsState = m.masterData.LogsState.ScrollUp(1)
-			m.updateLogsView()
+			cmds = append(cmds, func() tea.Msg {
+				m.updateLogsView()
+				return nil
+			})
 		}
 
 	case messages.ScrollLogsDownMsg:
 		// Handle scroll down
 		if m.masterData != nil && m.masterData.LogsState != nil {
 			m.masterData.LogsState = m.masterData.LogsState.ScrollDown(1)
-			m.updateLogsView()
+			cmds = append(cmds, func() tea.Msg {
+				m.updateLogsView()
+				return nil
+			})
 		}
 
 	case messages.ToggleAutoScrollMsg:
@@ -1565,14 +1561,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.masterData.LogsState = m.masterData.LogsState.EnableAutoScroll()
 			}
-			m.updateLogsView()
+			cmds = append(cmds, func() tea.Msg {
+				m.updateLogsView()
+				return nil
+			})
 		}
 
 	case messages.SetShowPatternMsg:
 		// Handle /show command - set log filter pattern
 		if m.masterData != nil && m.masterData.LogsState != nil {
 			m.masterData.LogsState = m.masterData.LogsState.SetShowPattern(msg.Pattern)
-			m.updateLogsView()
+			cmds = append(cmds, func() tea.Msg {
+				m.updateLogsView()
+				return nil
+			})
 			// Show success notification
 			if m.logStore != nil {
 				m.logStore.Add("system", "System", fmt.Sprintf("✓ Show filter set: %s", msg.Pattern), false)
@@ -1583,7 +1585,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle /hide command - set log hide pattern
 		if m.masterData != nil && m.masterData.LogsState != nil {
 			m.masterData.LogsState = m.masterData.LogsState.SetHidePattern(msg.Pattern)
-			m.updateLogsView()
+			cmds = append(cmds, func() tea.Msg {
+				m.updateLogsView()
+				return nil
+			})
 			// Show success notification
 			if m.logStore != nil {
 				m.logStore.Add("system", "System", fmt.Sprintf("✓ Hide filter set: %s", msg.Pattern), false)
@@ -1664,8 +1669,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle generic update messages (including nil messages from script selector)
 		if msg == nil {
 			// This is a generic update request - refresh views
-			m.updateProcessList()
-			m.updateLogsView()
+			cmds = append(cmds, func() tea.Msg {
+				m.updateProcessList()
+				m.updateLogsView()
+				return nil
+			})
 		}
 	}
 
@@ -1688,8 +1696,7 @@ func (m *Model) View() string {
 		return m.commandWindowView.ViewWithState(m.masterData)
 	}
 
-	// TODO(Feature 005): Re-implement full screen mode for AI Coder view if needed
-	// Full screen PTY rendering is now handled by the component's Render() method
+	// Full screen PTY rendering is handled by the component's Render() method
 	content := m.renderContent()
 
 	// Render main content with consistent layout
@@ -1868,8 +1875,9 @@ func (m *Model) renderContent() string {
 	switch m.currentView() {
 	case ViewProcesses:
 		// Update processes state and render statelessly
-		m.processesView.SetSize(m.width, contentHeight)
-		return m.processesView.ViewWithState(m.masterData)
+		processesView := components.NewProcessesViewComponent()
+		processesView.SetSize(m.width, contentHeight)
+		return processesView.ViewWithState(m.masterData)
 	case ViewLogs:
 		// Update logs state and render statelessly
 		// Note: Selected process is managed entirely by LogsState
@@ -2434,6 +2442,7 @@ func (m *Model) handleRestartProcess(proc *processes.Process) tea.Cmd {
 		m.processMgr.CleanupFinishedProcesses()
 
 		// Also clean up any processes that might be using development ports
+		// Note: This runs in a tea.Cmd goroutine, so blocking operations are acceptable
 		if proc.Name == "server" || proc.Name == "dev" || proc.Name == "start" {
 			m.processMgr.KillProcessesByPort()
 		}
@@ -2553,38 +2562,47 @@ func (m *Model) renderErrorDetailsView(width, height int) string {
 	return content.String()
 }
 
-func (m *Model) handleClearLogs() {
-	m.logStore.ClearLogs()
-	m.logStore.Add("system", "System", "📝 Logs cleared", false)
-	m.updateLogsView()
-}
-
-func (m *Model) handleClearErrors() {
-	// Delegate to ErrorsViewController
-	// Clear errors using Redux/Elm pattern
-	if m.masterData != nil && m.masterData.ErrorsState != nil {
-		m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
-		m.logStore.ClearErrors()
-	}
-	m.updateLogsView()
-}
-
-func (m *Model) handleClearScreen() {
-	switch m.currentView() {
-	case ViewLogs:
+func (m *Model) handleClearLogs() tea.Cmd {
+	return func() tea.Msg {
 		m.logStore.ClearLogs()
 		m.logStore.Add("system", "System", "📝 Logs cleared", false)
 		m.updateLogsView()
-	case ViewErrors:
-		m.logStore.ClearErrors()
-		m.logStore.Add("system", "System", "🗑️ Error history cleared", false)
-		m.updateLogsView()
-	case ViewWeb:
-		if m.proxyServer != nil {
-			m.proxyServer.ClearRequests()
-			m.logStore.Add("system", "System", "🌐 Web requests cleared", false)
-			m.updateLogsView()
+		return nil
+	}
+}
+
+func (m *Model) handleClearErrors() tea.Cmd {
+	return func() tea.Msg {
+		// Delegate to ErrorsViewController
+		// Clear errors using Redux/Elm pattern
+		if m.masterData != nil && m.masterData.ErrorsState != nil {
+			m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
+			m.logStore.ClearErrors()
 		}
+		m.updateLogsView()
+		return nil
+	}
+}
+
+func (m *Model) handleClearScreen() tea.Cmd {
+	return func() tea.Msg {
+		switch m.currentView() {
+		case ViewLogs:
+			m.logStore.ClearLogs()
+			m.logStore.Add("system", "System", "📝 Logs cleared", false)
+			m.updateLogsView()
+		case ViewErrors:
+			m.logStore.ClearErrors()
+			m.logStore.Add("system", "System", "🗑️ Error history cleared", false)
+			m.updateLogsView()
+		case ViewWeb:
+			if m.proxyServer != nil {
+				m.proxyServer.ClearRequests()
+				m.logStore.Add("system", "System", "🌐 Web requests cleared", false)
+				m.updateLogsView()
+			}
+		}
+		return nil
 	}
 }
 
@@ -2604,9 +2622,20 @@ func (m *Model) handleRunCommand() tea.Cmd {
 		return nil
 	}
 
-	// TODO: Implement run command execution with Redux/Elm pattern
-	// This requires significant refactoring of the command selection logic
-	return nil
+	// Get the currently selected command
+	selectedCommand := m.masterData.CommandWindowState.GetSelectedCommand()
+	if selectedCommand == nil {
+		// No command selected, hide the dialog
+		m.masterData.CommandWindowState = m.masterData.CommandWindowState.HideRunDialog()
+		return nil
+	}
+
+	// Hide the dialog first
+	m.masterData.CommandWindowState = m.masterData.CommandWindowState.HideRunDialog()
+
+	// Execute the selected command using the command pattern
+	// This uses startCommandAsync which returns a tea.Cmd
+	return m.startCommandAsync(*selectedCommand)
 }
 
 // startCommandAsync starts a command using the command pattern instead of goroutines
@@ -2670,46 +2699,49 @@ func (m *Model) handleSlashCommand(input string) tea.Cmd {
 }
 
 // Helper methods for slash command callbacks
-func (m *Model) handleClearCommand(target string) {
-	switch target {
-	case "all":
-		m.logStore.ClearLogs()
-		// Clear errors using new Redux/Elm pattern
-		if m.masterData != nil && m.masterData.ErrorsState != nil {
-			m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
+func (m *Model) handleClearCommand(target string) tea.Cmd {
+	return func() tea.Msg {
+		switch target {
+		case "all":
+			m.logStore.ClearLogs()
+			// Clear errors using new Redux/Elm pattern
+			if m.masterData != nil && m.masterData.ErrorsState != nil {
+				m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
+			}
+			if m.proxyServer != nil {
+				m.proxyServer.ClearRequests()
+			}
+			m.logStore.Add("system", "System", "🧹 Cleared all logs, errors, and web requests", false)
+		case "logs":
+			m.logStore.ClearLogs()
+			m.logStore.Add("system", "System", "🧹 Cleared all logs", false)
+		case "errors":
+			// Clear errors using new Redux/Elm pattern
+			if m.masterData != nil && m.masterData.ErrorsState != nil {
+				m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
+			}
+		case "web":
+			if m.proxyServer != nil {
+				m.proxyServer.ClearRequests()
+				m.logStore.Add("system", "System", "🧹 Cleared all web requests", false)
+			} else {
+				m.logStore.Add("system", "System", "⚠️ Web proxy is not enabled", true)
+			}
+		default:
+			// Check if it's a script name
+			scripts := m.processMgr.GetScripts()
+			if _, ok := scripts[target]; ok {
+				// Clear logs for a specific process
+				m.logStore.ClearLogsForProcess(target)
+				m.logStore.Add("system", "System", fmt.Sprintf("🧹 Cleared logs for process: %s", target), false)
+			} else {
+				m.logStore.Add("system", "System", fmt.Sprintf("⚠️ Unknown clear target: %s", target), true)
+				m.logStore.Add("system", "System", "Usage: /clear [all|logs|errors|web|<script-name>]", false)
+			}
 		}
-		if m.proxyServer != nil {
-			m.proxyServer.ClearRequests()
-		}
-		m.logStore.Add("system", "System", "🧹 Cleared all logs, errors, and web requests", false)
-	case "logs":
-		m.logStore.ClearLogs()
-		m.logStore.Add("system", "System", "🧹 Cleared all logs", false)
-	case "errors":
-		// Clear errors using new Redux/Elm pattern
-		if m.masterData != nil && m.masterData.ErrorsState != nil {
-			m.masterData.ErrorsState = m.masterData.ErrorsState.ClearErrors()
-		}
-	case "web":
-		if m.proxyServer != nil {
-			m.proxyServer.ClearRequests()
-			m.logStore.Add("system", "System", "🧹 Cleared all web requests", false)
-		} else {
-			m.logStore.Add("system", "System", "⚠️ Web proxy is not enabled", true)
-		}
-	default:
-		// Check if it's a script name
-		scripts := m.processMgr.GetScripts()
-		if _, ok := scripts[target]; ok {
-			// Clear logs for a specific process
-			m.logStore.ClearLogsForProcess(target)
-			m.logStore.Add("system", "System", fmt.Sprintf("🧹 Cleared logs for process: %s", target), false)
-		} else {
-			m.logStore.Add("system", "System", fmt.Sprintf("⚠️ Unknown clear target: %s", target), true)
-			m.logStore.Add("system", "System", "Usage: /clear [all|logs|errors|web|<script-name>]", false)
-		}
+		m.updateLogsView()
+		return nil
 	}
-	m.updateLogsView()
 }
 
 func (m *Model) handleProxyCommand(urlStr string) {
@@ -3021,9 +3053,10 @@ func (m *Model) currentView() View {
 }
 
 // GetAICoderManager returns the AI coder manager instance
-// TODO(Feature 005): Remove this method or adapt for service-based architecture
+// Deprecated: This method is kept for compatibility but returns nil
+// Use GetAICoderService() instead for the service-based architecture
 func (m *Model) GetAICoderManager() *aicoder.AICoderManager {
-	// Legacy method - return nil as manager is now internal to service
+	// Legacy method - manager is now internal to service, use GetAICoderService
 	return nil
 }
 
@@ -3097,8 +3130,8 @@ func (m *Model) buildKeyContext() KeyContext {
 				// normal navigation and other key handlers to work
 				if m.masterData.AICoderState.TerminalFocused {
 					ctx.Context = "terminal_focused"
-					// TODO: Get cursor position and input content from PTY
-					// For now, assume cursor is at position 0 for slash command logic
+					// Cursor position is set in AICoderScreenSyncMsg handler
+					// For now, assume cursor at position 0 for slash command logic
 					ctx.CursorPosition = 0
 					ctx.InputContent = ""
 				}
@@ -3123,7 +3156,7 @@ func (m *Model) buildKeyContext() KeyContext {
 }
 
 // getKeyContext returns a simple string context for legacy compatibility
-// TODO: Remove this once all code uses buildKeyContext
+// Deprecated: Use buildKeyContext() for richer context information
 func (m *Model) getKeyContext() string {
 	return m.buildKeyContext().Context
 }

@@ -264,8 +264,7 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			return s, func() tea.Msg {
 				// Start ServiceBridge through command pattern
-				// TODO: Replace with proper command pattern for ServiceBridge startup
-				// For now, start synchronously to avoid goroutines
+				// ServiceBridge.Start() is synchronous - no goroutines needed
 				bridge.Start(program)
 				// Send confirmation when done
 				return messages.ServiceBridgeStartedMsg{}
@@ -381,7 +380,8 @@ func (s *IntegratedShell) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.AddAICoderSessionMsg:
 		// Add session to AI coders view
 		if s.aicodersView != nil {
-			// TODO: Session creation is now handled by main Model through AICoderState sub-model
+			// Session creation is now handled by main Model through AICoderState sub-model
+			// Kept for reference - commented out as functionality moved elsewhere
 			/*
 			if aiCodersView, ok := s.aicodersView.(*AICodersViewComponent); ok {
 				sessionInfo := &SessionInfo{

@@ -782,9 +782,12 @@ func (b *ServiceBridge) subscribeToTestService() {
 	// Test watch mode events
 	b.eventBus.Subscribe("test.watch_started", func(evt events.Event) {
 		if prog := b.getProgram(); prog != nil {
-			// TODO: Extract watch pattern from event data
+			watchPattern := ""
+			if wp, ok := evt.Data["pattern"].(string); ok {
+				watchPattern = wp
+			}
 			prog.Send(messages.TestWatchModeStartedMsg{
-				WatchPattern: "", // Extract from event data
+				WatchPattern: watchPattern,
 				StartTime:    time.Now(),
 			})
 		}
@@ -820,6 +823,7 @@ func (b *ServiceBridge) subscribeToTestService() {
 			filePath := ""
 			line := 0
 			message := ""
+			duration := time.Duration(0)
 
 			if name, ok := evt.Data["test_name"].(string); ok {
 				testName = name
@@ -833,12 +837,23 @@ func (b *ServiceBridge) subscribeToTestService() {
 			if msg, ok := evt.Data["message"].(string); ok {
 				message = msg
 			}
+			if d, ok := evt.Data["duration"].(int64); ok {
+				duration = time.Duration(d) * time.Millisecond
+			}
 
 			// Create failure info for the test case
+			var stackTrace []string
+			if st, ok := evt.Data["stack_trace"].([]string); ok {
+				stackTrace = st
+			} else if st, ok := evt.Data["stack_trace"].(string); ok {
+				// Handle single string by splitting into lines
+				stackTrace = []string{st}
+			}
 			failureInfo := &messages.TestFailureInfo{
-				Message: message,
-				Line:    line,
-				// TODO: Add stack trace from event data if available
+				Message:    message,
+				StackTrace: stackTrace,
+				Line:       line,
+				Column:     0, // Column not available in event data
 			}
 
 			// Send test case completed with failure status
@@ -847,7 +862,7 @@ func (b *ServiceBridge) subscribeToTestService() {
 				TestName:    testName,
 				FilePath:    filePath,
 				Status:      "failed",
-				Duration:    0, // TODO: Extract from event data if available
+				Duration:    duration,
 				FailureInfo: failureInfo,
 				EndTime:     time.Now(),
 			})

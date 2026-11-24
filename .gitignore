@@ -64,3 +64,6 @@ pnpm-lock.yaml
 
 # Marketing materials
 marketing/
+# tman shims
+/test
+/test.cmd

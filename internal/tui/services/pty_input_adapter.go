@@ -148,15 +148,25 @@ func (a *PTYInputAdapter) Start() error {
 	}
 
 	// Start input processing through command pattern
-	// TODO: Replace with proper command pattern for input processing
-	// For now, disable input processing to avoid goroutines
+	// NOTE: Input processing disabled to avoid goroutines and deadlocks
+	// IMPLEMENTATION REQUIRED: Convert to command pattern
+	// Should use tea.Cmd to:
+	// 1. Process PTY input in background with proper cancellation
+	// 2. Send processed input events to main update loop
+	// 3. Handle timeouts and backpressure
+	// 4. Coordinate with activity monitoring
 	if a.config.EnableDebug {
 		fmt.Printf("Input processing disabled for goroutine elimination\n")
 	}
 
 	// Start activity monitoring through command pattern
-	// TODO: Replace with proper command pattern for activity monitoring
-	// For now, disable activity monitoring to avoid goroutines
+	// NOTE: Activity monitoring disabled to avoid goroutines and deadlocks
+	// IMPLEMENTATION REQUIRED: Convert to command pattern
+	// Should use tea.Cmd to:
+	// 1. Monitor PTY activity via timeouts
+	// 2. Trigger appropriate actions on inactivity
+	// 3. Reset timers on user input
+	// 4. Send activity state updates to main loop
 	if a.config.ActivityTimeout > 0 && a.config.EnableDebug {
 		fmt.Printf("Activity monitoring disabled for goroutine elimination\n")
 	}
@@ -183,8 +193,13 @@ func (a *PTYInputAdapter) Stop() error {
 	}
 
 	// Wait for operations to finish through command pattern
-	// TODO: Replace with proper command pattern for shutdown coordination
-	// For now, perform immediate shutdown to avoid goroutines
+	// NOTE: Shutdown coordination disabled to avoid goroutines and deadlocks
+	// IMPLEMENTATION REQUIRED: Convert to command pattern
+	// Should use tea.Cmd to:
+	// 1. Coordinate graceful shutdown via context
+	// 2. Wait for active operations with timeout
+	// 3. Clean up resources properly
+	// 4. Send shutdown completion message
 	if a.config.EnableDebug {
 		fmt.Printf("Immediate shutdown for goroutine elimination\n")
 	}
@@ -291,8 +306,13 @@ type PTYInputAdapterStats struct {
 }
 
 // inputProcessor processes incoming key events from the PTY reader
-// TODO: Replace with proper command pattern for input processing
-// For now, disable input processing to avoid goroutines
+// NOTE: Input processing disabled to avoid goroutines and deadlocks
+// IMPLEMENTATION REQUIRED: Convert to command pattern
+// Should use tea.Cmd to:
+// 1. Read from PTY input channel in background
+// 2. Process and transform input events
+// 3. Send to main update loop via updateChan
+// 4. Handle backpressure and errors
 func (a *PTYInputAdapter) inputProcessor() {
 	if a.config.EnableDebug {
 		fmt.Printf("Input processing disabled for goroutine elimination\n")
@@ -300,8 +320,13 @@ func (a *PTYInputAdapter) inputProcessor() {
 }
 
 // activityMonitor monitors for inactivity and handles timeouts
-// TODO: Replace with proper command pattern for activity monitoring
-// For now, disable activity monitoring to avoid goroutines
+// NOTE: Activity monitoring disabled to avoid goroutines and deadlocks
+// IMPLEMENTATION REQUIRED: Convert to command pattern
+// Should use tea.Cmd to:
+// 1. Start timeout timer for activity detection
+// 2. Reset timer on each PTY activity event
+// 3. Trigger timeout actions (e.g., auto-save, session pause)
+// 4. Send activity state messages to main loop
 func (a *PTYInputAdapter) activityMonitor() {
 	if a.config.EnableDebug {
 		fmt.Printf("Activity monitoring disabled for goroutine elimination\n")
@@ -321,8 +346,13 @@ func (r *PTYReader) Start() error {
 	r.cancel = cancel
 
 	// Start PTY monitoring through command pattern
-	// TODO: Replace with proper command pattern for PTY monitoring
-	// For now, disable PTY monitoring to avoid goroutines
+	// NOTE: PTY monitoring disabled to avoid goroutines and deadlocks
+	// IMPLEMENTATION REQUIRED: Convert to command pattern
+	// Should use tea.Cmd to:
+	// 1. Monitor PTY output and input streams
+	// 2. Detect session state changes
+	// 3. Send state updates to main loop
+	// 4. Handle PTY close/exit events
 	if r.adapter.config.EnableDebug {
 		fmt.Printf("PTY monitoring disabled for goroutine elimination\n")
 	}
@@ -342,8 +372,13 @@ func (r *PTYReader) Stop() {
 }
 
 // monitorPTYInput monitors the PTY for keyboard input
-// TODO: Replace with proper command pattern for PTY input monitoring
-// For now, disable PTY input monitoring to avoid goroutines
+// NOTE: PTY input monitoring disabled to avoid goroutines and deadlocks
+// IMPLEMENTATION REQUIRED: Convert to command pattern
+// Should use tea.Cmd to:
+// 1. Monitor PTY input stream for keyboard events
+// 2. Process and buffer input data
+// 3. Send to inputProcessor for handling
+// 4. Handle input EOF and errors
 func (r *PTYReader) monitorPTYInput() {
 	if r.adapter.config.EnableDebug {
 		fmt.Printf("PTY input monitoring disabled for goroutine elimination\n")

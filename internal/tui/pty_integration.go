@@ -277,8 +277,12 @@ func (pi *PTYIntegration) Start() error {
 
 	// Execute startup callbacks through command pattern
 	for _, callback := range pi.startupCallbacks {
-		// TODO: Replace with proper command pattern for startup callbacks
-		// For now, execute synchronously to avoid goroutines
+		// NOTE: Startup callbacks executed synchronously to avoid goroutines
+		// IMPLEMENTATION REQUIRED: Convert to command pattern
+		// Each callback should return tea.Cmd that:
+		// 1. Executes the callback in a goroutine
+		// 2. Sends result back via message
+		// 3. Handles timeouts via context
 		callback()
 	}
 
@@ -298,8 +302,13 @@ func (pi *PTYIntegration) Run() (tea.Model, error) {
 	defer pi.Stop()
 
 	// Run the program synchronously to avoid goroutines
-	// TODO: Replace with proper command pattern for async program execution
-	// For now, execute synchronously and handle errors directly
+	// NOTE: Synchronous execution prevents deadlocks
+	// IMPLEMENTATION REQUIRED: Convert to command pattern
+	// Should use tea.Cmd to:
+	// 1. Start program in background goroutine
+	// 2. Monitor via context with timeout
+	// 3. Send PTY events to main loop via updateChan
+	// 4. Handle cancellation gracefully
 
 	// Run the PTY program to completion
 	if _, err := pi.ptyProgram.Run(); err != nil {
@@ -359,8 +368,12 @@ func (pi *PTYIntegration) Stop() error {
 
 	// Execute shutdown callbacks through command pattern
 	for _, callback := range pi.shutdownCallbacks {
-		// TODO: Replace with proper command pattern for shutdown callbacks
-		// For now, execute synchronously to avoid goroutines
+		// NOTE: Shutdown callbacks executed synchronously to avoid goroutines
+		// IMPLEMENTATION REQUIRED: Convert to command pattern
+		// Each callback should return tea.Cmd that:
+		// 1. Executes cleanup in background with timeout
+		// 2. Sends completion message back
+		// 3. Handles cancellation if shutdown is forced
 		callback()
 	}
 
@@ -527,9 +540,14 @@ func (pi *PTYIntegration) AddErrorCallback(callback func(error)) {
 
 // setupSignalHandling sets up signal handling for the PTY program
 func (pi *PTYIntegration) setupSignalHandling() error {
-	// TODO: Replace with proper command pattern for signal handling
-	// For now, disable signal handling to avoid goroutines
-	// Signal handling would need to be implemented through Bubble Tea events
+	// NOTE: Signal handling disabled to avoid goroutines and deadlocks
+	// IMPLEMENTATION REQUIRED: Convert to command pattern
+	// Should implement signal handling through Bubble Tea:
+	// 1. Register signal watchers that return tea.Cmd
+	// 2. Commands send signal messages to update loop
+	// 3. Update loop processes signals and triggers appropriate actions
+	// 4. Use OS-level signal handling with proper cleanup
+	return nil
 
 	if pi.config.EnableDebug {
 		fmt.Printf("Signal handling disabled for goroutine elimination\n")

@@ -184,10 +184,9 @@ func (s *AICoderService) StartSession(ctx context.Context, sessionID string, wid
 	}
 
 	// Create PTY session (this also starts the PTY process and I/O loops)
-	// Note: NewPTYSession starts with default 80x24 dimensions
-	// TODO: Support custom dimensions in NewPTYSession or resize after creation
-	s.logSystemEvent(fmt.Sprintf("Creating PTY session for %s (command: %s %s)", session.Name, command, strings.Join(args, " ")))
-	s.logPTYActivity(sessionID, fmt.Sprintf("🤖 AI creating PTY session: %s", session.Name), false)
+	// Note: NewPTYSession starts with default 80x24 dimensions, then we resize if custom dimensions provided
+	s.logSystemEvent(fmt.Sprintf("Creating PTY session for %s (command: %s %s, dimensions: %dx%d)", session.Name, command, strings.Join(args, " "), width, height))
+	s.logPTYActivity(sessionID, fmt.Sprintf("🤖 AI creating PTY session: %s (%dx%d)", session.Name, width, height), false)
 
 	ptySession, err := aicoder.NewPTYSession(sessionID, session.Name, command, args)
 	if err != nil {
@@ -453,21 +452,22 @@ func (s *AICoderService) GetTerminalState(sessionID string) (*messages.TerminalS
 
 // ProcessBatchedOutput processes debounced PTY output through vt10x
 // This is called by the debouncer callback after batching updates
-func (s *AICoderService) ProcessBatchedOutput(sessionID string, data []byte) ([][]rune, error) {
+// Returns both screen buffer and cursor position
+func (s *AICoderService) ProcessBatchedOutput(sessionID string, data []byte) ([][]rune, messages.CursorPosition, error) {
 	// Only process if this is the active session
 	activeID, _ := s.activeSessionID.Load().(string)
 	if activeID != sessionID {
 		// Store in raw buffer but don't process
-		return nil, nil
+		return nil, messages.CursorPosition{}, nil
 	}
 
 	session, err := s.GetSession(sessionID)
 	if err != nil {
-		return nil, err
+		return nil, messages.CursorPosition{}, err
 	}
 
 	if session.PTYSession == nil {
-		return nil, ErrSessionNotStarted
+		return nil, messages.CursorPosition{}, ErrSessionNotStarted
 	}
 
 	// Process through vt10x terminal
@@ -475,11 +475,18 @@ func (s *AICoderService) ProcessBatchedOutput(sessionID string, data []byte) ([]
 	// Just get the rendered screen - pass PTYSession for raw mode support
 	screen := s.getTerminalScreen(session.PTYSession)
 
+	// Extract actual cursor position from vt10x terminal
+	cursor := session.PTYSession.Terminal.Cursor()
+	cursorPos := messages.CursorPosition{
+		X: cursor.X,
+		Y: cursor.Y,
+	}
+
 	// Update activity
 	session.LastActivity = time.Now()
 	session.BytesRead.Add(uint64(len(data)))
 
-	return screen, nil
+	return screen, cursorPos, nil
 }
 
 // SwitchActiveSession switches which session is actively being processed

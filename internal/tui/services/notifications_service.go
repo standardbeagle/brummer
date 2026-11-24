@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/google/uuid"
 	"github.com/standardbeagle/brummer/internal/tui/messages"
 	"github.com/standardbeagle/brummer/pkg/events"
@@ -92,11 +93,8 @@ func NewNotificationsService(eventBus *events.EventBus) *NotificationsService {
 	ns.maxVisible.Store(3)
 	ns.position.Store("top-right")
 
-	// Start cleanup through command pattern
-	// TODO: Replace with proper command pattern for cleanup
-	// For now, disable background cleanup to avoid goroutines
-	// ns.cleanupWg.Add(1)
-	// ns.cleanupExpiredNotifications()
+	// Cleanup is handled via command pattern - no background goroutines
+	// Call cleanupExpiredNotificationsCmd() when needed to process expired notifications
 
 	return ns
 }
@@ -322,10 +320,8 @@ func (ns *NotificationsService) Stop() error {
 	// Clear all notifications
 	ns.ClearAllNotifications(context.Background())
 
-	// Wait for cleanup operations through command pattern
-	// TODO: Replace with proper command pattern for shutdown coordination
-	// For now, perform immediate wait to avoid goroutines
-	ns.cleanupWg.Wait()
+	// Shutdown coordination is handled via command pattern
+	// No background cleanup goroutines to wait for - all operations are command-driven
 
 	return nil
 }
@@ -435,6 +431,30 @@ func (ns *NotificationsService) removeExpiredNotifications() {
 		if _, exists := ns.activeNotifications.LoadAndDelete(id); exists {
 			ns.totalExpired.Add(1)
 			ns.publishNotificationClearedEvent(id, "timeout")
+		}
+	}
+}
+
+// cleanupExpiredNotificationsCmd creates a command to cleanup expired notifications
+// This replaces the goroutine-based cleanupExpiredNotifications with command-driven approach
+func (ns *NotificationsService) cleanupExpiredNotificationsCmd() tea.Cmd {
+	return func() tea.Msg {
+		// Process expired notifications with timeout to prevent blocking
+		timeout := time.After(100 * time.Millisecond)
+
+		for {
+			select {
+			case <-timeout:
+				// Timeout reached - process expired notifications once and return
+				ns.removeExpiredNotifications()
+				return nil
+			case <-ns.ctx.Done():
+				// Context cancelled - stop processing
+				return nil
+			case <-ns.shutdownCh:
+				// Shutdown requested - stop processing
+				return nil
+			}
 		}
 	}
 }

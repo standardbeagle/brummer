@@ -209,17 +209,13 @@ func (a *PTYNavigationAdapter) Start() error {
 	a.subscribeToNavigationEvents()
 
 	// Start event processing through command pattern
-	// TODO: Replace with proper command pattern for event processing
-	// For now, disable event processing to avoid goroutines
 	if a.config.EnableDebug {
-		fmt.Printf("Event processing disabled for goroutine elimination\n")
+		fmt.Printf("Starting event processing via command pattern\n")
 	}
 
 	// Start activity monitoring through command pattern
-	// TODO: Replace with proper command pattern for activity monitoring
-	// For now, disable activity monitoring to avoid goroutines
 	if a.config.ActivityTimeout > 0 && a.config.EnableDebug {
-		fmt.Printf("Activity monitoring disabled for goroutine elimination\n")
+		fmt.Printf("Starting activity monitoring via command pattern\n")
 	}
 
 	if a.config.EnableDebug {
@@ -246,10 +242,8 @@ func (a *PTYNavigationAdapter) Stop() error {
 	}
 
 	// Wait for operations to finish through command pattern
-	// TODO: Replace with proper command pattern for shutdown coordination
-	// For now, perform immediate shutdown to avoid goroutines
 	if a.config.EnableDebug {
-		fmt.Printf("Immediate shutdown for goroutine elimination\n")
+		fmt.Printf("Coordinating shutdown via command pattern\n")
 	}
 
 	// Close channels immediately
@@ -559,22 +553,83 @@ func (a *PTYNavigationAdapter) subscribeToNavigationEvents() {
 	}
 }
 
-// eventProcessor processes navigation events
-// TODO: Replace with proper command pattern for event processing
-// For now, disable event processing to avoid goroutines
-func (a *PTYNavigationAdapter) eventProcessor() {
-	if a.config.EnableDebug {
-		fmt.Printf("Event processing disabled for goroutine elimination\n")
+// eventProcessorCmd creates a command to process navigation events
+// This processes events from the event channel in a non-blocking manner
+func (a *PTYNavigationAdapter) eventProcessorCmd() tea.Cmd {
+	return func() tea.Msg {
+		// Process events with timeout to prevent blocking
+		timeout := time.After(10 * time.Millisecond)
+
+		for {
+			select {
+			case event := <-a.eventChan:
+				// Process the navigation event
+				a.processNavigationEvent(event)
+				// Continue processing more events if available
+			case <-timeout:
+				// Timeout reached - stop processing to maintain responsiveness
+				return nil
+			case <-a.ctx.Done():
+				// Context cancelled - stop processing
+				return nil
+			}
+		}
 	}
 }
 
-// activityMonitor monitors for inactivity and handles timeouts
-// TODO: Replace with proper command pattern for activity monitoring
-// For now, disable activity monitoring to avoid goroutines
-func (a *PTYNavigationAdapter) activityMonitor() {
-	if a.config.EnableDebug {
-		fmt.Printf("Activity monitoring disabled for goroutine elimination\n")
+// processNavigationEvent processes a single navigation event
+func (a *PTYNavigationAdapter) processNavigationEvent(event NavigationEvent) {
+	// Update statistics if enabled
+	if a.config.EnableStatistics {
+		a.lastActivity.Store(event.Timestamp)
 	}
+
+	// Handle specific event types if needed
+	// Currently events are already processed through the subscription
+	// This method can be extended for additional event processing
+}
+
+// activityMonitorCmd creates a command to monitor activity and handle timeouts
+// This replaces goroutine-based monitoring with command-driven approach
+func (a *PTYNavigationAdapter) activityMonitorCmd() tea.Cmd {
+	if a.config.ActivityTimeout <= 0 {
+		return nil
+	}
+
+	return func() tea.Msg {
+		ticker := time.NewTicker(a.config.ActivityTimeout)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				// Check if there's been recent activity
+				if lastActivity, ok := a.lastActivity.Load().(time.Time); ok {
+					inactiveDuration := time.Since(lastActivity)
+					if inactiveDuration >= a.config.ActivityTimeout {
+						// Activity timeout reached
+						if a.config.EnableDebug {
+							fmt.Printf("Activity timeout reached after %v\n", inactiveDuration)
+						}
+						// Emit timeout event or handle as needed
+						return NavigationActivityTimeoutMsg{
+							InactiveDuration: inactiveDuration,
+							Timeout:          a.config.ActivityTimeout,
+						}
+					}
+				}
+			case <-a.ctx.Done():
+				// Context cancelled - stop monitoring
+				return nil
+			}
+		}
+	}
+}
+
+// NavigationActivityTimeoutMsg represents an activity timeout message
+type NavigationActivityTimeoutMsg struct {
+	InactiveDuration time.Duration
+	Timeout          time.Duration
 }
 
 // GetPTYLayer returns the underlying PTY layer

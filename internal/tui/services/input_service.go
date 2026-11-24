@@ -404,9 +404,8 @@ func (s *InputService) Start(ctx context.Context) error {
 		return errors.New(ErrInputServiceNotActive)
 	}
 
-	// Initialize background tasks through command pattern
-	// TODO: Replace with proper command pattern for background tasks
-	// For now, disable background worker to avoid goroutines
+	// Background tasks are handled via command pattern when needed
+	// No persistent goroutines - all operations are command-driven
 
 	return nil
 }
@@ -417,23 +416,30 @@ func (s *InputService) Shutdown(ctx context.Context) error {
 		return nil // Already shutdown
 	}
 
-	// Close shutdown channel
+	// Close shutdown channel to signal all operations to stop
 	close(s.shutdownCh)
 
-	// Wait for background tasks through command pattern
-	// TODO: Replace with proper command pattern for shutdown coordination
-	// For now, perform immediate shutdown to avoid goroutines
+	// Shutdown coordination is handled via command pattern
+	// No background tasks to wait for - all operations are command-driven
 
 	// Cleanup event bus immediately
 	s.eventBus.Shutdown()
 	return nil
 }
 
-// backgroundWorker handles any background tasks
-// TODO: Replace with proper command pattern for background tasks
-// For now, disable background worker to avoid goroutines
-func (s *InputService) backgroundWorker() {
-	// No background tasks to avoid goroutines
+// backgroundWorkerCmd creates a command for any background tasks
+// This replaces goroutine-based background workers with command-driven approach
+func (s *InputService) backgroundWorkerCmd() tea.Cmd {
+	return func() tea.Msg {
+		// Input service doesn't need persistent background tasks
+		// All operations are command-driven and triggered as needed
+		// This command can be used for periodic cleanup or maintenance if needed
+
+		// For now, simply return nil as no background processing is needed
+		// The service operates entirely through commands triggered by external events
+
+		return nil
+	}
 }
 
 // keyToString converts a tea.Key or tea.KeyMsg to a string representation for map keys

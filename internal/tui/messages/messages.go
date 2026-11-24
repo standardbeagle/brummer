@@ -2,6 +2,8 @@ package messages
 
 import (
 	"time"
+
+	"github.com/standardbeagle/brummer/internal/domain/processes"
 )
 
 // CommandResultMsg is now defined in commands/slash_commands.go to avoid circular imports
@@ -118,3 +120,16 @@ type SendToAICoderMsg struct {
 	Title       string // Optional title/summary for the content
 	SessionID   string // Optional specific session ID, empty = active session
 }
+
+// UpdateProcessesMsg is a message to update the list of processes in the state.
+type UpdateProcessesMsg struct {
+	Processes []*processes.Process
+}
+
+// SelectProcessMsg is a message to select a process in the processes view.
+type SelectProcessMsg struct {
+	ProcessID string
+}
+
+// Msg is a union type for all messages
+type Msg interface{}

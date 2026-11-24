@@ -84,10 +84,7 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 		// Calculate content height once for all controllers
 		contentHeight := model.calculateContentHeight()
 
-		// Update all view controllers with new size including content height
-		if model.processesView != nil {
-			model.processesView.UpdateSize(m.Width, m.Height, headerHeight, footerHeight, contentHeight)
-		}
+		// Update view components with new size
 		if model.logsView != nil {
 			model.logsView.SetSize(m.Width, contentHeight)
 		}
@@ -124,10 +121,9 @@ func (h *ViewMessageHandler) HandleMessage(msg tea.Msg, model *Model) (tea.Model
 	case refreshMsg:
 		// Handle refresh request
 		// Could trigger data refreshes in various controllers
-		if model.currentView() == ViewProcesses && model.processesView != nil {
-			// Refresh process list
-			model.updateProcessList()
-			cmds = append(cmds, model.waitForUpdates())
+		if model.currentView() == ViewLogs && model.logsView != nil {
+			// Refresh logs view
+			model.updateLogsView()
 		}
 	}
 

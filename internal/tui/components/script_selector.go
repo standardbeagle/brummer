@@ -634,10 +634,31 @@ func (s *ScriptSelector) GetScriptSelector() ScriptSelectorAutocompleteInterface
 // Helper functions
 // Note: getTerminalSize() is defined in command_window_view.go and reused here
 
+// safeOperationCmd creates a command for async operations with panic recovery
+// This replaces the safeGoroutine function with proper command pattern
+func safeOperationCmd(operationName string, fn func() error, onError func(error)) tea.Cmd {
+	return func() tea.Msg {
+		defer func() {
+			if r := recover(); r != nil {
+				err := fmt.Errorf("panic in %s: %v", operationName, r)
+				if onError != nil {
+					onError(err)
+				}
+			}
+		}()
+
+		if err := fn(); err != nil && onError != nil {
+			onError(err)
+		}
+
+		return nil
+	}
+}
+
 // safeGoroutine wraps operation execution with panic recovery
-// TODO: Replace with proper command pattern for async operations
-// For now, execute synchronously to avoid goroutines
+// Deprecated: Use safeOperationCmd instead for command pattern
 func safeGoroutine(operationName string, fn func() error, onError func(error)) {
+	// Execute synchronously to avoid goroutines
 	func() {
 		defer func() {
 			if r := recover(); r != nil {
