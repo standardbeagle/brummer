@@ -222,7 +222,7 @@ func (c *ProcessViewNew) handleKeyPress(key tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// If a script is selected that's not running, start it
 		if c.selectedIndex >= 0 && c.selectedIndex < len(processes) {
 			selectedProc := processes[c.selectedIndex]
-			
+
 			if selectedProc.Status == process.StatusRunning {
 				// Switch to logs view for running process
 				return c, func() tea.Msg {
@@ -262,7 +262,7 @@ func (c *ProcessViewNew) View() string {
 	return Debug().TrackRender("ProcessViewNew", func() string {
 		// DEBUG: Always show process count at top
 		debugHeader := fmt.Sprintf("[DEBUG View: %d processes, showEmpty: %v]", len(c.processes), c.showEmptyState)
-		
+
 		if c.showEmptyState || len(c.processes) == 0 {
 			return debugHeader + "\n" + c.renderEmptyState()
 		}
@@ -376,14 +376,14 @@ func (c *ProcessViewNew) renderProcessList() string {
 	} else if separatorWidth > 200 {
 		separatorWidth = 200 // Cap at reasonable max to prevent overflow
 	}
-	
+
 	// Create separator line that fits exactly
 	separatorLine := strings.Repeat("─", separatorWidth)
 	separator := c.separatorStyle.
 		Width(c.width).
 		MaxWidth(c.width).
 		Render(separatorLine)
-	
+
 	stats := c.renderStats()
 	help := c.renderHelp()
 
@@ -418,7 +418,7 @@ func (c *ProcessViewNew) renderProcessItem(proc *process.Process, selected bool)
 	// Use safe padding to align columns
 	nameField := SafePadRight(name, maxNameWidth)
 	uptimeField := SafePadLeft(uptime, 10)
-	
+
 	// Only show PID if process is actually running (has an ID)
 	var pidField string
 	if proc.ID != "" {
@@ -535,12 +535,12 @@ func (c *ProcessViewNew) renderStats() string {
 // renderHelp renders keyboard shortcuts help
 func (c *ProcessViewNew) renderHelp() string {
 	help := "[r]estart [s]top [x]select [R]estart-all [S]top-all [enter]logs"
-	
+
 	// Truncate if too wide
 	if SafeStringWidth(help) > c.width {
 		help = SafeTruncateWithEllipsis(help, c.width-2)
 	}
-	
+
 	// Apply style with width constraint
 	if c.focused {
 		return c.footerStyle.Copy().
@@ -600,25 +600,25 @@ func (c *ProcessViewNew) updateProcessList() {
 	if c.processMgr != nil {
 		// Get running/stopped processes
 		runningProcesses := c.processMgr.GetAllProcesses()
-		
+
 		// Build a map of running script names
 		runningScripts := make(map[string]bool)
 		for _, proc := range runningProcesses {
 			runningScripts[proc.Name] = true
 		}
-		
+
 		// Add available scripts that aren't running
 		allProcesses := make([]*process.Process, 0)
 		allProcesses = append(allProcesses, runningProcesses...)
-		
+
 		// Check for scripts in package.json
 		pkg := c.processMgr.GetPackageJSON()
 		// DEBUG
 		if pkg == nil {
 			// Create a dummy process to show the issue
 			debugProc := &process.Process{
-				ID:   "",
-				Name: "[DEBUG: No package.json]",
+				ID:     "",
+				Name:   "[DEBUG: No package.json]",
 				Status: process.StatusStopped,
 			}
 			debugProc.SetStatus(process.StatusStopped)
@@ -626,8 +626,8 @@ func (c *ProcessViewNew) updateProcessList() {
 		} else if len(pkg.Scripts) == 0 {
 			// Create a dummy process to show the issue
 			debugProc := &process.Process{
-				ID:   "",
-				Name: "[DEBUG: No scripts in package.json]",
+				ID:     "",
+				Name:   "[DEBUG: No scripts in package.json]",
 				Status: process.StatusStopped,
 			}
 			debugProc.SetStatus(process.StatusStopped)
@@ -639,7 +639,7 @@ func (c *ProcessViewNew) updateProcessList() {
 					// Create a placeholder process for the script
 					// We create a minimal process that represents an available script
 					scriptProc := &process.Process{
-						ID:     "",  // Empty ID indicates not running
+						ID:     "", // Empty ID indicates not running
 						Name:   scriptName,
 						Status: process.StatusStopped,
 					}
@@ -649,11 +649,10 @@ func (c *ProcessViewNew) updateProcessList() {
 				}
 			}
 		}
-		
+
 		c.processes = allProcesses
 		c.showEmptyState = len(c.processes) == 0 && c.processMgr.GetPackageJSON() == nil
 		c.lastUpdate = time.Now()
-		
 
 		// Initialize selection if needed
 		if c.selectedIndex < 0 && len(c.processes) > 0 {

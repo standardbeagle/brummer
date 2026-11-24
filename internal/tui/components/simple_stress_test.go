@@ -15,8 +15,8 @@ func TestSimpleLogStoreConcurrency(t *testing.T) {
 	store := logs.NewStore(MaxLogEntries, nil)
 
 	var wg sync.WaitGroup
-	numWriters := DefaultConcurrentWriters * 2  // More writers for simple test
-	logsPerWriter := DefaultLogsPerWriter * 2   // More logs for simple test
+	numWriters := DefaultConcurrentWriters * 2 // More writers for simple test
+	logsPerWriter := DefaultLogsPerWriter * 2  // More logs for simple test
 
 	// Concurrent writers
 	for i := 0; i < numWriters; i++ {

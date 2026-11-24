@@ -17,7 +17,7 @@ type FakeSuggestionProvider struct {
 func (f *FakeSuggestionProvider) Suggest(prefix string) []CommandSuggestion {
 	f.callCount++
 	f.lastPrefix = prefix
-	
+
 	// Filter based on prefix
 	var filtered []CommandSuggestion
 	for _, s := range f.suggestions {
@@ -54,28 +54,28 @@ func TestCommandInputComponent_WithProvider(t *testing.T) {
 			{Command: "/processes", Description: "View processes", Category: "Navigation"},
 		},
 	}
-	
+
 	// Create component and set provider
 	component := NewCommandInputComponent()
 	component.SetProvider(provider)
-	
+
 	// Test 1: Provider is called on creation
 	if provider.callCount == 0 {
 		t.Error("Provider should be called when set")
 	}
-	
+
 	// Test 2: Typing updates suggestions
 	component.textInput.SetValue("/a")
 	component.updateSuggestions()
-	
+
 	if provider.lastPrefix != "/a" {
 		t.Errorf("Expected prefix '/a', got '%s'", provider.lastPrefix)
 	}
-	
+
 	if len(component.suggestions) != 2 {
 		t.Errorf("Expected 2 AI suggestions, got %d", len(component.suggestions))
 	}
-	
+
 	// Test 3: Suggestions are filtered correctly
 	for _, s := range component.suggestions {
 		if !strings.HasPrefix(s.Command, "/ai") {
@@ -91,26 +91,26 @@ func TestCommandInputComponent_WithExecutor(t *testing.T) {
 			return CommandExecuteMsg{Command: "test"}
 		},
 	}
-	
+
 	// Create component and set executor
 	component := NewCommandInputComponent()
 	component.SetExecutor(executor)
-	
+
 	// Simulate entering a command
 	component.textInput.SetValue("/start dev")
-	
+
 	// Simulate pressing enter
 	_, cmd := component.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	
+
 	// Verify executor was called
 	if len(executor.executedCommands) != 1 {
 		t.Errorf("Expected 1 command execution, got %d", len(executor.executedCommands))
 	}
-	
+
 	if executor.executedCommands[0] != "/start dev" {
 		t.Errorf("Expected command '/start dev', got '%s'", executor.executedCommands[0])
 	}
-	
+
 	// Verify command was returned
 	if cmd == nil {
 		t.Error("Expected command to be returned")
@@ -125,29 +125,29 @@ func TestCommandPalette_WithAdapter(t *testing.T) {
 		},
 	}
 	executor := &FakeCommandExecutor{}
-	
+
 	// Create adapter
 	adapter := NewPaletteAdapter(provider, executor)
-	
+
 	// Test GetSuggestions through adapter
 	suggestions := adapter.GetSuggestions("/t")
-	
+
 	if len(suggestions) != 1 {
 		t.Errorf("Expected 1 suggestion, got %d", len(suggestions))
 	}
-	
+
 	// Verify format includes description
 	if !strings.Contains(suggestions[0], "Test command") {
 		t.Errorf("Expected suggestion to contain description, got '%s'", suggestions[0])
 	}
-	
+
 	// Test ExecuteCommand through adapter
 	cmd := adapter.ExecuteCommand("/test")
-	
+
 	if len(executor.executedCommands) != 1 {
 		t.Errorf("Expected 1 command execution, got %d", len(executor.executedCommands))
 	}
-	
+
 	if cmd == nil {
 		t.Error("Expected command to be returned")
 	}
@@ -156,15 +156,15 @@ func TestCommandPalette_WithAdapter(t *testing.T) {
 func TestDynamicSuggestionProvider(t *testing.T) {
 	// Create provider with test data
 	scripts := map[string]string{
-		"dev": "Development server",
+		"dev":  "Development server",
 		"test": "Run tests",
 	}
-	
+
 	provider := NewDynamicSuggestionProvider(nil, scripts)
-	
+
 	// Test script suggestions
 	suggestions := provider.Suggest("/start")
-	
+
 	found := false
 	for _, s := range suggestions {
 		if s.Command == "/start dev" {
@@ -175,14 +175,14 @@ func TestDynamicSuggestionProvider(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !found {
 		t.Error("Expected to find '/start dev' suggestion")
 	}
-	
+
 	// Test navigation suggestions
 	suggestions = provider.Suggest("/log")
-	
+
 	found = false
 	for _, s := range suggestions {
 		if s.Command == "/logs" {
@@ -193,7 +193,7 @@ func TestDynamicSuggestionProvider(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !found {
 		t.Error("Expected to find '/logs' suggestion")
 	}
@@ -204,19 +204,19 @@ func TestCommandInputComponent_Integration(t *testing.T) {
 	scripts := map[string]string{
 		"dev": "Development server",
 	}
-	
+
 	provider := NewDynamicSuggestionProvider(nil, scripts)
 	executor := &FakeCommandExecutor{}
-	
+
 	// Create component with injected dependencies
 	component := NewCommandInputComponent()
 	component.SetProvider(provider)
 	component.SetExecutor(executor)
-	
+
 	// Simulate user typing "/st"
 	component.textInput.SetValue("/st")
 	component.updateSuggestions()
-	
+
 	// Should suggest start commands
 	found := false
 	for _, s := range component.suggestions {
@@ -225,34 +225,34 @@ func TestCommandInputComponent_Integration(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !found {
 		t.Error("Expected to find start command suggestions")
 	}
-	
+
 	// Simulate selecting first suggestion with tab
 	if len(component.suggestions) > 0 {
 		// Need to ensure suggestions are shown first
 		component.showSuggestions = true
-		
+
 		// Simulate tab key to select suggestion
 		model, _ := component.Update(tea.KeyMsg{Type: tea.KeyTab})
 		updatedComponent := model.(*CommandInputComponent)
-		
+
 		// Input should be updated to the suggestion
 		if !strings.HasPrefix(updatedComponent.textInput.Value(), "/start") {
 			t.Errorf("Expected input to start with '/start', got '%s'", updatedComponent.textInput.Value())
 		}
 		component = updatedComponent
 	}
-	
+
 	// Simulate executing command
 	_, cmd := component.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	
+
 	if cmd == nil {
 		t.Error("Expected command to be executed")
 	}
-	
+
 	if len(executor.executedCommands) == 0 {
 		t.Error("Expected command to be executed through executor")
 	}

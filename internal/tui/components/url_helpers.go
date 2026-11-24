@@ -9,7 +9,7 @@ import (
 var (
 	// Match URLs with protocols
 	urlRegex = regexp.MustCompile(`(?i)\b((?:https?|wss?|ftp)://[\w\-._~:/?#[\]@!$&'()*+,;=%]+)\b`)
-	
+
 	// Match localhost URLs with ports (common in dev)
 	localhostRegex = regexp.MustCompile(`(?i)\b(localhost|127\.0\.0\.1|0\.0\.0\.0|::1)(?::(\d{1,5}))?\b`)
 )
@@ -30,7 +30,7 @@ func extractURLs(line string) []string {
 			url = strings.TrimSuffix(url, ";")
 			url = strings.TrimSuffix(url, ")")
 			url = strings.TrimSuffix(url, "]")
-			
+
 			if !seen[url] {
 				urls = append(urls, url)
 				seen[url] = true
@@ -49,21 +49,21 @@ func extractURLs(line string) []string {
 				strings.Contains(lowerLine, "running") ||
 				strings.Contains(lowerLine, "started") ||
 				strings.Contains(lowerLine, "ready") {
-				
+
 				host := match[1]
 				port := match[2]
-				
+
 				// Normalize localhost variations
 				if host == "0.0.0.0" || host == "::" || host == "::1" {
 					host = "localhost"
 				}
-				
+
 				// Assume HTTP for common web ports
 				protocol := "http"
 				if port == "443" || port == "8443" || port == "4443" {
 					protocol = "https"
 				}
-				
+
 				url := protocol + "://" + host + ":" + port
 				if !seen[url] {
 					urls = append(urls, url)
@@ -87,7 +87,7 @@ func extractURLs(line string) []string {
 // getURLType determines the type of URL (http, https, ws, etc.)
 func getURLType(url string) string {
 	url = strings.ToLower(url)
-	
+
 	if strings.HasPrefix(url, "https://") {
 		return "https"
 	} else if strings.HasPrefix(url, "http://") {
@@ -99,7 +99,7 @@ func getURLType(url string) string {
 	} else if strings.HasPrefix(url, "ftp://") {
 		return "ftp"
 	}
-	
+
 	return "unknown"
 }
 

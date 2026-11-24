@@ -126,7 +126,7 @@ func (l *LogsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Initial load - replace all logs
 				l.filteredLogs = []string{}
 			}
-			
+
 			// Process each entry
 			for _, entry := range msg.Entries {
 				if entry != nil {
@@ -138,7 +138,7 @@ func (l *LogsViewComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 							continue
 						}
 					}
-					
+
 					// Format the entry
 					formatted := l.formatLogEntry(entry)
 					l.filteredLogs = append(l.filteredLogs, formatted)

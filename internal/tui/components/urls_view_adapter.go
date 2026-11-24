@@ -355,12 +355,12 @@ func (i urlItem) Title() string {
 	}
 
 	title := fmt.Sprintf("%s%s %s", prefix, icon, i.url.URL)
-	
+
 	// Add proxy badge if available
 	if i.url.HasProxy {
 		title += fmt.Sprintf(" 🚀 [Proxy: %s]", i.url.ProxyURL)
 	}
-	
+
 	if i.url.Active {
 		title += " ✓"
 	}
@@ -374,12 +374,12 @@ func (i urlItem) Description() string {
 	if i.url.ProcessID != "" {
 		parts = append(parts, fmt.Sprintf("Process: %s", i.url.ProcessID))
 	}
-	
+
 	// Add proxy label if available
 	if i.url.HasProxy && i.url.ProxyLabel != "" {
 		parts = append(parts, fmt.Sprintf("Label: %s", i.url.ProxyLabel))
 	}
-	
+
 	// Add proxy port if available
 	if i.url.HasProxy && i.url.ProxyPort > 0 {
 		parts = append(parts, fmt.Sprintf("Port: %d", i.url.ProxyPort))

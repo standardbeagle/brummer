@@ -31,10 +31,10 @@ func (a *PaletteAdapter) GetSuggestions(prefix string) []string {
 	if a.provider == nil {
 		return []string{}
 	}
-	
+
 	suggestions := a.provider.Suggest(prefix)
 	result := make([]string, 0, len(suggestions))
-	
+
 	for _, s := range suggestions {
 		// Include command and description for display
 		if s.Description != "" {
@@ -43,6 +43,6 @@ func (a *PaletteAdapter) GetSuggestions(prefix string) []string {
 			result = append(result, s.Command)
 		}
 	}
-	
+
 	return result
 }

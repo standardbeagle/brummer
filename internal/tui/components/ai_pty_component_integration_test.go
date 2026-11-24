@@ -51,4 +51,3 @@ func TestAIPTY_StartTerminalProducesOutput(t *testing.T) {
 		t.Fatalf("expected non-empty view after PTY start")
 	}
 }
-

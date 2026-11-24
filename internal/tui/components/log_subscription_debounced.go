@@ -48,6 +48,11 @@ func (s *DebouncedLogSubscription) NotifyNewLogs() {
 // Subscribe returns a Bubble Tea command that listens for log updates
 func (s *DebouncedLogSubscription) Subscribe() tea.Cmd {
 	return func() tea.Msg {
+		// Add a timeout fallback to check for new logs periodically
+		// This ensures we don't miss logs from components that don't call NotifyNewLogs()
+		fallbackTimer := time.NewTimer(1 * time.Second)
+		defer fallbackTimer.Stop()
+
 		// Listen for update notifications
 		select {
 		case <-s.updateChan:
@@ -83,6 +88,11 @@ func (s *DebouncedLogSubscription) Subscribe() tea.Cmd {
 					return nil
 				}
 			}
+
+		case <-fallbackTimer.C:
+			// Timeout fallback - check for new logs even without notification
+			// This catches logs from components that don't call NotifyNewLogs()
+			return s.createUpdateMsg()
 
 		case <-s.stopChan:
 			return nil

@@ -79,11 +79,21 @@ func (c *AIPTYComponent) subscribePTY() tea.Cmd {
 		return nil
 	}
 	s := c.session
+	logStore := c.logStore
 	c.pendingSubscribe = true
 	return func() tea.Msg {
+		if logStore != nil {
+			logStore.Add("ai-pty", "AI", "📡 subscribePTY: waiting on OutputChan...", false)
+		}
 		data, ok := <-s.OutputChan
 		if !ok {
+			if logStore != nil {
+				logStore.Add("ai-pty", "AI", "❌ subscribePTY: OutputChan closed", true)
+			}
 			return AIPTYEventMsg{Type: "closed", Msg: "PTY output channel closed"}
+		}
+		if logStore != nil {
+			logStore.Add("ai-pty", "AI", fmt.Sprintf("✅ subscribePTY: received %d bytes", len(data)), false)
 		}
 		return AIPTYOutputMsg{SessionID: s.ID, Data: append([]byte(nil), data...)}
 	}
@@ -246,6 +256,13 @@ func (c *AIPTYComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			// Prefer current terminal screen from vt10x to support cursor navigation
 			termStr := c.session.GetTerminal().String()
+			// FALLBACK: If terminal emulator is empty, use raw history
+			if termStr == "" && len(c.session.GetOutputHistory()) > 0 {
+				termStr = string(c.session.GetOutputHistory())
+				if c.logStore != nil {
+					c.logStore.Add("ai-pty", "AI", "⚠️ Terminal emulator empty, using raw history", false)
+				}
+			}
 			c.viewport.SetContent(termStr)
 			c.viewport.GotoBottom()
 			return c, tea.Batch(c.subscribePTY(), c.subscribePTYEvents())
@@ -254,13 +271,17 @@ func (c *AIPTYComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case AIPTYEventMsg:
 		// Lifecycle and output events via EventChan; always resubscribe unless closed
+		if c.logStore != nil {
+			c.logStore.Add("ai-pty", "AI", fmt.Sprintf("🔔 AIPTYEventMsg received: type=%s", m.Type), false)
+		}
 		switch m.Type {
 		case "started":
 			// Extract session from message (safe in Update method)
 			if sess, ok := m.Session.(*aicoder.PTYSession); ok && sess != nil {
 				c.session = sess
 				c.loggedFirstOutput = false
-				c.isStarting = false
+				// DON'T set c.isStarting = false here! Let the spinner detect output and clear it.
+				// Setting it to false here prevents the spinner from detecting history and populating viewport.
 				// RACE FIX: Update cmdSummary from message, not from goroutine
 				if m.CmdSummary != "" {
 					c.cmdSummary = m.CmdSummary
@@ -353,6 +374,13 @@ func (c *AIPTYComponent) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Periodic refresh: keep viewport in sync even if output events are missed
 		if c.session != nil {
 			termStr := c.session.GetTerminal().String()
+			// FALLBACK: If terminal emulator is empty but we have history, use raw history
+			if termStr == "" && len(c.session.GetOutputHistory()) > 0 {
+				termStr = string(c.session.GetOutputHistory())
+				if c.logStore != nil {
+					c.logStore.Add("ai-pty", "AI", fmt.Sprintf("⚠️ Using raw history fallback (%d bytes)", len(termStr)), false)
+				}
+			}
 			c.viewport.SetContent(termStr)
 			c.viewport.GotoBottom()
 			return c, c.refreshTickCmd()
@@ -462,6 +490,14 @@ func (c *AIPTYComponent) View() string {
 	// content already set from output history
 	content := c.viewport.View()
 
+	// AGGRESSIVE FALLBACK: Always show raw history if viewport is empty but history exists
+	if content == "" && c.session != nil && len(c.session.GetOutputHistory()) > 0 {
+		content = "[RAW OUTPUT - Terminal emulator not working]\n" + string(c.session.GetOutputHistory())
+		if c.logStore != nil {
+			c.logStore.Add("ai-pty", "AI", "⚠️ Viewport empty, using raw history in View()", false)
+		}
+	}
+
 	// If content is empty and we have no status/diag, show a helpful message
 	if content == "" && status == "" && diag == "" {
 		content = "Waiting for AI provider output...\nPress any key to interact with the session."
@@ -511,6 +547,10 @@ func (c *AIPTYComponent) pokePTYCmd() tea.Cmd {
 	session := c.session
 	provider := c.provider
 	return func() tea.Msg {
+		// FIX: Small delay to ensure subscribePTY() goroutine is blocking on channel
+		// before we send input. This prevents a race where we poke before subscriber is ready.
+		time.Sleep(50 * time.Millisecond)
+
 		// Best-effort poke; ignore errors
 		_ = session.WriteInputNonBlocking([]byte("\n"))
 		if provider == "terminal" {

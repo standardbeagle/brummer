@@ -419,14 +419,14 @@ func (c *CommandInputComponent) getPlaceholderForMode(mode CommandMode) string {
 
 func (c *CommandInputComponent) updateSuggestions() {
 	input := c.textInput.Value()
-	
+
 	// Use provider if available for dynamic suggestions
 	if c.provider != nil {
 		c.suggestions = c.provider.Suggest(input)
 		c.selectedIndex = 0
 		return
 	}
-	
+
 	// Fall back to static suggestions
 	// Always filter from the master list
 	inputLower := strings.ToLower(input)
